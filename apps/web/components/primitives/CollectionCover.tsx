@@ -1,4 +1,6 @@
-import { CarIcon, ClockIcon, UploadIcon } from '@/components/icons';
+import { CarIcon, MusicIcon } from '@/components/icons';
+import { GlyphTile } from '@/components/library/GlyphTile';
+import { LIBRARY_BADGES, NEUTRAL_COVER } from '@/components/library/libraryIcons';
 import { LikedSongsCover } from '@/components/library/LikedSongsCover';
 import { Artwork } from '@/components/primitives/Artwork';
 import { cn } from '@/lib/utils';
@@ -20,22 +22,20 @@ export interface CollectionCoverProps {
   mosaic?: readonly string[];
 }
 
-const ICONS: Record<Exclude<CoverIcon, 'heart'>, typeof CarIcon> = {
-  car: CarIcon,
-  clock: ClockIcon,
-  upload: UploadIcon,
-};
-
 /** Presentational only: no data fetching, no store reads. A collection's
- *  cover is either its artwork, a system icon, or the bare ember gradient. */
+ *  cover is its artwork, a 2x2 mosaic of song covers, a system collection's
+ *  gradient and glyph, or (a playlist with nothing) the neutral music note. */
 export function CollectionCover({ src, icon, className, fallback = 'gradient', mosaic }: CollectionCoverProps) {
-  const Icon = icon && icon !== 'heart' ? ICONS[icon] : null;
   const liked = icon === 'heart';
+  const system = icon === 'clock' ? LIBRARY_BADGES.recent : icon === 'upload' ? LIBRARY_BADGES.uploads : null;
   const tiles = !icon && mosaic && mosaic.length >= 4 ? mosaic.slice(0, 4) : null;
+  // A playlist with nothing to show (no art, fewer than four song covers):
+  // the neutral charcoal tile with a soft music note.
+  const neutral = !icon && !tiles && !src && fallback === 'gradient';
   return (
     <Artwork
       src={tiles ? null : src}
-      fallback={fallback === 'card' ? 'none' : 'gradient'}
+      fallback={fallback === 'card' || neutral ? 'none' : 'gradient'}
       className={cn(
         'aspect-square rounded-md shadow-soft',
         fallback === 'card' && 'bg-card',
@@ -43,7 +43,11 @@ export function CollectionCover({ src, icon, className, fallback = 'gradient', m
       )}
     >
       {liked ? <LikedSongsCover className="absolute inset-0" /> : null}
-      {Icon ? <Icon className="absolute inset-0 m-auto h-1/3 w-1/3 text-ember-foreground/90" /> : null}
+      {system ? <GlyphTile background={system.tile} icon={system.icon} className="absolute inset-0" /> : null}
+      {icon === 'car' ? <CarIcon className="absolute inset-0 m-auto h-1/3 w-1/3 text-ember-foreground/90" /> : null}
+      {neutral ? (
+        <GlyphTile data-neutral-cover background={NEUTRAL_COVER.background} color={NEUTRAL_COVER.color} icon={MusicIcon} className="absolute inset-0" />
+      ) : null}
       {tiles ? (
         <div data-mosaic className="absolute inset-0 grid grid-cols-2 grid-rows-2">
           {tiles.map((url, i) => (

@@ -18,8 +18,7 @@ export interface CollectionCardProps {
   /** A playlist shared with you: a "Shared by <owner>" pill with their
    *  face takes the people mark's and the subtitle's place. */
   sharedBy?: Pick<PlaylistPerson, 'name' | 'avatarUrl'>;
-  size: 'md' | 'lg';
-  /** 'card' (default): the boxed Library card. 'tile': the phone Home
+  /** 'card' (default): the Library's unboxed standard tile. 'tile': the phone Home
    *  row's bare tile, cover on top, a two-line title and one muted line.
    *  'tile-lg': the desktop Home row's tile, bigger type, and with `onPlay`
    *  a play button that slides up over the cover on hover. */
@@ -32,7 +31,7 @@ export interface CollectionCardProps {
 
 /** Presentational only: no data fetching, no store reads. One tile in a
  *  CollectionShelf, for a system collection or a playlist alike. */
-export function CollectionCard({ title, subtitle, href, cover, badge, shared, sharedBy, size, variant = 'card', onPlay, playing = false }: CollectionCardProps) {
+export function CollectionCard({ title, subtitle, href, cover, badge, shared, sharedBy, variant = 'card', onPlay, playing = false }: CollectionCardProps) {
   if (variant === 'tile-lg') {
     return (
       <div className="group min-w-0">
@@ -83,18 +82,20 @@ export function CollectionCard({ title, subtitle, href, cover, badge, shared, sh
       </Link>
     );
   }
+  // The Library page's standard tile: unboxed, no card background or
+  // padding, name and a small meta line under the cover.
   return (
-    <Link href={href} className="group block p-4 rounded-md bg-card hover:bg-card/80 transition-colors">
-      <CollectionCover {...cover} />
-      <div className="mt-3 flex items-center gap-1.5">
-        {badge === 'downloaded' && <CheckIcon className="h-3.5 w-3.5 text-ember shrink-0" />}
+    <Link href={href} data-collection-tile className="group block min-w-0">
+      <CollectionCover {...cover} className={cn('w-full rounded-[8px] shadow-none', cover.className)} />
+      <div className="mt-cluster flex min-w-0 items-center gap-inset">
+        {badge === 'downloaded' && <CheckIcon className="size-3.5 shrink-0 text-ember" />}
         {shared && !sharedBy && <PeopleIcon data-testid="shared-badge" aria-label="Shared" className="size-3.5 shrink-0 text-muted-foreground" />}
-        <div className={cn('truncate font-semibold', size === 'lg' ? 'text-base' : 'text-sm')}>{title}</div>
+        <div className="truncate text-xs font-semibold md:text-sm">{title}</div>
       </div>
       {sharedBy ? (
         <SharedByBadge owner={sharedBy} size="sm" className="mt-inset" />
       ) : (
-        <div className="mt-1 text-xs text-muted-foreground">{subtitle}</div>
+        <div className="mt-inset truncate text-[10px] text-muted-foreground md:text-xs">{subtitle}</div>
       )}
     </Link>
   );

@@ -149,14 +149,14 @@ describe('PhoneLibrary', () => {
     expect(titles().slice(4)).toEqual(['Zebra', 'apple', 'Mango']);
   });
 
-  it('the view toggle asks for the other view; grid is two columns of the same items', () => {
+  it('the view toggle asks for the other view; grid is three across, same items', () => {
     const { unmount } = setup();
     expect(document.querySelector('[data-library-view="list"]')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Show as grid' }));
     expect(handlers.onViewChange).toHaveBeenCalledWith('grid');
     unmount();
     setup({ view: 'grid' });
-    expect(document.querySelector('[data-library-view="grid"]')).toHaveClass('grid-cols-2');
+    expect(document.querySelector('[data-library-view="grid"]')).toHaveClass('grid-cols-3');
     expect(titles()).toEqual(['Liked songs', 'Recently played', 'Uploads', 'Downloaded', 'Zebra', 'apple', 'Mango']);
     fireEvent.click(screen.getByRole('button', { name: 'Show as list' }));
     expect(handlers.onViewChange).toHaveBeenCalledWith('list');
@@ -212,15 +212,18 @@ describe('PhoneLibrary', () => {
     expect(screen.queryByRole('region', { name: 'Create your first playlist' })).toBeNull();
   });
 
-  it('covers: Liked keeps the sound-wave heart, Recently played a mosaic with its badge, Uploads one cover with its badge', () => {
+  it('covers: Liked a white heart, Recently played and Uploads their own gradient with a white glyph', () => {
     setup();
     expect(row('liked').querySelector('[data-liked-cover]')).not.toBeNull();
-    const recent = row('recent').querySelector('[data-library-cover]')!;
-    expect(recent).toHaveAttribute('data-look', 'mosaic');
-    expect(recent.querySelectorAll('[data-mosaic] img')).toHaveLength(4);
-    expect(recent.querySelector('[data-badge]')).not.toBeNull();
-    const uploads = row('uploads').querySelector('[data-library-cover]')!;
-    expect(uploads).toHaveAttribute('data-look', 'single');
-    expect(uploads.querySelector('[data-badge]')).not.toBeNull();
+    for (const [key, kind, gradient] of [
+      ['recent', 'recent', '#246373'],
+      ['uploads', 'uploads', '#a16a2c'],
+    ]) {
+      const cover = row(key).querySelector(`[data-library-cover="${kind}"]`)!;
+      expect(cover.querySelector('img')).toBeNull();
+      const tile = cover.querySelector('[data-glyph-tile]') as HTMLElement;
+      expect(tile.getAttribute('style')).toContain(gradient);
+      expect(tile.querySelector('svg')).not.toBeNull();
+    }
   });
 });

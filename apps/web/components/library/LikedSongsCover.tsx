@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { LIKED_GRADIENT } from '@/components/library/libraryIcons';
 import { cn } from '@/lib/utils';
 
 /** Phosphor "heart" (fill weight, 256x256), the same shape as HeartIcon. */
@@ -13,7 +14,7 @@ export interface LikedSongsCoverProps {
 }
 
 /** The Liked songs cover (owner's pick, picker liked2): a big solid white
- *  heart with a soft shadow on the ember wine gradient. Presentational and
+ *  heart with a soft shadow on the violet gradient. Presentational and
  *  decorative (aria-hidden): the surrounding link keeps the name. Fills its
  *  box; the box sets the size and rounding. */
 export function LikedSongsCover({ className }: LikedSongsCoverProps) {
@@ -25,8 +26,8 @@ export function LikedSongsCover({ className }: LikedSongsCoverProps) {
       <svg viewBox="0 0 100 100" className="block size-full">
         <defs>
           <linearGradient id={bgId} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#f95a55" />
-            <stop offset="1" stopColor="#3a0b1c" />
+            <stop offset="0" stopColor={LIKED_GRADIENT.from} />
+            <stop offset="1" stopColor={LIKED_GRADIENT.to} />
           </linearGradient>
           <filter id={shadowId} x="-20%" y="-20%" width="140%" height="150%">
             <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000000" floodOpacity="0.28" />

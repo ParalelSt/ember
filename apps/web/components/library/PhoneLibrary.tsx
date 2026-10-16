@@ -171,7 +171,7 @@ export function PhoneLibrary({
 
       {items.length > 0 &&
         (view === 'grid' ? (
-          <div data-library-view="grid" className="grid grid-cols-2 gap-x-row gap-y-block">
+          <div data-library-view="grid" className="grid grid-cols-3 gap-x-cluster gap-y-row">
             {items.map((item) => (
               <LibraryItemRow key={item.key} item={item} variant="tile" onActivate={activate} />
             ))}

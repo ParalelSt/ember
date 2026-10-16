@@ -176,7 +176,6 @@ export default function HomePage() {
             <CollectionCard
               key={p.href}
               variant={isDesktop ? 'tile-lg' : 'tile'}
-              size="md"
               title={p.title}
               subtitle={`Playlist · ${p.sharedBy?.name ?? myName}`}
               href={p.href}

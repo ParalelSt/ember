@@ -226,12 +226,12 @@ describe('playlistCover (phone Home tiles)', () => {
     expect(playlistCover(null, arts)).toEqual({ src: null, mosaic: arts.slice(0, 4) });
   });
 
-  it('uses the first song cover full size with one to three', () => {
-    expect(playlistCover(null, arts.slice(0, 1))).toEqual({ src: arts[0] });
-    expect(playlistCover(null, arts.slice(0, 3))).toEqual({ src: arts[0] });
+  it('shows no art with one to three song covers (the neutral note tile)', () => {
+    expect(playlistCover(null, arts.slice(0, 1))).toEqual({ src: null });
+    expect(playlistCover(null, arts.slice(0, 3))).toEqual({ src: null });
   });
 
-  it('falls back to the ember gradient (no src) with none', () => {
+  it('has no src with no song covers', () => {
     expect(playlistCover(null, [])).toEqual({ src: null });
     expect(playlistCover(null, undefined)).toEqual({ src: null });
   });

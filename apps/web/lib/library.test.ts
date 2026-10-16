@@ -151,18 +151,18 @@ describe('badgeCoverLook / firstArts', () => {
 });
 
 describe('the view choice', () => {
-  it('reads list by default and grid once saved', () => {
+  it('reads grid by default and list once saved', () => {
     const store = new Map<string, string>();
     const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
-    expect(readLibraryView(storage)).toBe('list');
-    writeLibraryView('grid', storage);
-    expect(store.get(LIBRARY_VIEW_KEY)).toBe('grid');
     expect(readLibraryView(storage)).toBe('grid');
+    writeLibraryView('list', storage);
+    expect(store.get(LIBRARY_VIEW_KEY)).toBe('list');
+    expect(readLibraryView(storage)).toBe('list');
   });
 
   it('survives storage that throws', () => {
     const bad = { getItem: vi.fn(() => { throw new Error('blocked'); }), setItem: vi.fn(() => { throw new Error('blocked'); }) };
-    expect(readLibraryView(bad)).toBe('list');
+    expect(readLibraryView(bad)).toBe('grid');
     expect(() => writeLibraryView('grid', bad)).not.toThrow();
   });
 });

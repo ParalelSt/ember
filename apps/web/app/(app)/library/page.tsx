@@ -10,7 +10,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useCollections } from '@/hooks/useCollections';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useOnline } from '@/lib/useOnline';
-import { hrefFor, iconFor, refFromPinId } from '@/lib/collections';
+import { hrefFor, iconFor, playlistCover, refFromPinId } from '@/lib/collections';
 import { EmptyState } from '@/components/page/EmptyState';
 import { PageTitle } from '@/components/page/PageTitle';
 import { PhoneLibrary } from '@/components/library/PhoneLibrary';
@@ -78,7 +78,6 @@ export default function LibraryPage() {
         <p className="text-sm text-muted-foreground mb-6">Offline. Showing what is downloaded.</p>
         <CollectionShelf
           title="Downloaded"
-          size="md"
           items={pins.map((p) => {
             const ref = refFromPinId(p.id);
             return {
@@ -87,7 +86,6 @@ export default function LibraryPage() {
               href: hrefFor(ref),
               cover: { src: null, icon: iconFor(ref) },
               badge: 'downloaded' as const,
-              size: 'md' as const,
             };
           })}
           empty={
@@ -117,29 +115,25 @@ export default function LibraryPage() {
 
       <CollectionShelf
         title="Your collections"
-        size="lg"
         items={system.map(({ title, subtitle, href, icon, downloaded }) => ({
           title,
           subtitle,
           href,
           cover: { src: null, icon },
           badge: downloaded ? ('downloaded' as const) : undefined,
-          size: 'lg' as const,
         }))}
       />
 
       <CollectionShelf
         title="Playlists"
-        size="md"
-        items={playlists.map(({ title, subtitle, href, artworkUrl, downloaded, sharing, sharedBy }) => ({
+        items={playlists.map(({ title, subtitle, href, artworkUrl, trackArtworks, downloaded, sharing, sharedBy }) => ({
           title,
           subtitle,
           href,
-          cover: { src: artworkUrl, icon: null },
+          cover: { icon: null, ...playlistCover(artworkUrl, trackArtworks) },
           badge: downloaded ? ('downloaded' as const) : undefined,
           shared: !!sharing,
           sharedBy,
-          size: 'md' as const,
         }))}
         empty={<EmptyState>No playlists yet</EmptyState>}
       />

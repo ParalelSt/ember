@@ -4,27 +4,21 @@ import { CollectionCard, type CollectionCardProps } from '@/components/library/C
 export interface CollectionShelfProps {
   title: string;
   items: CollectionCardProps[];
-  size: 'md' | 'lg';
   empty?: ReactNode;
 }
 
-/** Presentational only: a titled grid of CollectionCards, or `empty` when
+/** Presentational only: a titled grid of unboxed CollectionCards, or `empty` when
  *  there are none. Used for both the "Your collections" and "Playlists"
  *  shelves on /library, and for the offline "Downloaded" shelf. */
-export function CollectionShelf({ title, items, size, empty }: CollectionShelfProps) {
+export function CollectionShelf({ title, items, empty }: CollectionShelfProps) {
   return (
     <section className="mb-10">
       <h2 className="text-xl font-bold tracking-tight mb-3">{title}</h2>
       {items.length === 0 ? (
         empty ?? null
       ) : (
-        <div
-          className={
-            size === 'lg'
-              ? 'grid grid-cols-3 gap-3 sm:gap-4 max-w-3xl'
-              : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4'
-          }
-        >
+        // The standard density: 3 across on a phone, 6 on desktop.
+        <div data-library-grid className="grid grid-cols-3 gap-row md:grid-cols-6 md:gap-block">
           {items.map((item) => (
             <CollectionCard key={item.href} {...item} />
           ))}
