@@ -406,7 +406,7 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
   it('every row scrolls sideways with 180px tiles and < > in its header, Show all only when there is more', () => {
     state.history = makeTracks('hist', ROW_MAX + 1);
     render(<HomePage />);
-    for (const name of ['Recently played', 'Popular now', 'Your playlists']) {
+    for (const name of ['Recently played', 'Because you played "hist song 0"', 'Popular now', 'Your playlists']) {
       const region = within(screen.getByRole('region', { name }));
       const row = region.getByRole('list');
       expect(row).toHaveClass('flex', 'overflow-x-auto');
@@ -424,8 +424,7 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
     const { container } = render(<HomePage />);
     expect(container.querySelector('[data-home-wide]')).not.toBeNull();
     for (const row of document.querySelectorAll('[data-row-shelf]')) expect(row.className).not.toMatch(/-mx-|px-page/);
-    const hero = document.querySelector('[data-hero="wide"]') as HTMLElement;
-    expect(hero.className).not.toMatch(/-m[xl]-/);
+    expect(document.querySelector('[data-hero]')).toBeNull();
   });
 
   it('a song tile plays its row, the current one toggles and stays marked', () => {
@@ -458,17 +457,27 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
     expect(within(screen.getByRole('region', { name: 'Your playlists' })).getByRole('button', { name: 'Pause' })).toBeInTheDocument();
   });
 
-  it('Because you played is the wide card: plays the list, a row from that song, the current one toggles', () => {
+  it('Because you played is a normal row of 180px tiles with the same gap, no hero card', () => {
     render(<HomePage />);
-    const card = within(screen.getByRole('region', { name: 'Because you played "hist song 0"' }));
-    expect(document.querySelector('[data-hero="wide"]')).not.toBeNull();
-    expect(card.getAllByRole('listitem')).toHaveLength(4);
-    fireEvent.click(card.getByRole('button', { name: 'Play these songs' }));
-    expect(state.playTrack).toHaveBeenLastCalledWith(state.recommended[0], state.recommended);
-    fireEvent.click(card.getByText('rec song 3'));
+    const region = within(screen.getByRole('region', { name: 'Because you played "hist song 0"' }));
+    expect(document.querySelector('[data-hero]')).toBeNull();
+    const items = region.getAllByRole('listitem');
+    expect(items).toHaveLength(6);
+    for (const item of items) expect(item).toHaveClass('w-[180px]', 'shrink-0');
+    expect(region.getByRole('list')).toHaveClass('gap-block');
+    expect(region.getByRole('button', { name: 'Scroll right' })).toBeInTheDocument();
+    fireEvent.click(region.getByText('rec song 3'));
     expect(state.playTrack).toHaveBeenLastCalledWith(state.recommended[3], state.recommended);
-    // 6 suggestions, the card holds 5.
-    expect(card.getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?focus=recommended');
+  });
+
+  it('every desktop row shares one tile width and one gap', () => {
+    render(<HomePage />);
+    const rows = document.querySelectorAll('[data-row-shelf="wide"]');
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+    for (const row of rows) {
+      expect(row).toHaveClass('gap-block');
+      for (const item of row.children) expect(item).toHaveClass('w-[180px]');
+    }
   });
 
   it('Show all still opens the full grid of that row', () => {
