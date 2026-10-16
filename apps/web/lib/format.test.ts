@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { formatAddedDate, formatAgo, formatBytes, formatCount, formatTime, formatTotalDuration } from './format';
+import { formatAddedDate, formatAgo, formatSince, formatBytes, formatCount, formatTime, formatTotalDuration } from './format';
 
 describe('formatTime', () => {
   it('formats whole seconds as m:ss', () => {
@@ -162,5 +162,27 @@ describe('formatAgo with PocketBase dates', () => {
     const { formatAgo } = await import('./format');
     expect(formatAgo('', 0)).not.toMatch(/NaN/);
     expect(formatAgo('soon', 0)).not.toMatch(/NaN/);
+  });
+});
+
+describe('formatSince', () => {
+  const now = Date.parse('2026-10-16T12:00:00.000Z');
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  it.each([
+    [ago(20_000), 'just now'],
+    [ago(5 * 60_000), '5 min ago'],
+    [ago(60 * 60_000), '1 hour ago'],
+    [ago(3 * 60 * 60_000 + 59 * 60_000), '3 hours ago'],
+    [ago(30 * 60 * 60_000), 'yesterday'],
+    [ago(12 * 24 * 60 * 60_000), '12 days ago'],
+    ['2026-10-16 11:58:00.000Z', '2 min ago'],
+    [ago(-60_000), 'just now'],
+  ])('%s is %s', (at, words) => {
+    expect(formatSince(at, now)).toBe(words);
+  });
+  it('is empty for a missing or unreadable date', () => {
+    expect(formatSince('', now)).toBe('');
+    expect(formatSince(null, now)).toBe('');
+    expect(formatSince('soon', now)).toBe('');
   });
 });

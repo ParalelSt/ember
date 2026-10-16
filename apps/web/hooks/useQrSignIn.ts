@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Shell } from '@/lib/playback/detectShell';
+import { rememberQrSignIn } from '@/lib/qrLogin/thisDevice';
 
 /** The new device's side of QR sign-in (plan 1a). Starts a request (the
  *  server sets the httpOnly poll cookie), polls /api/auth/qr/status every
@@ -155,6 +156,8 @@ export function useQrSignIn({ shell, onApproved }: Options) {
         const record = j.record as QrSession['record'];
         const name = typeof record.name === 'string' && record.name ? record.name : String(record.email ?? '');
         setState({ kind: 'approved', name });
+        // Settings > Devices shows this sign-in as this device, not another.
+        rememberQrSignIn(waitingId);
         onApprovedRef.current(j.token, record);
         return;
       }

@@ -68,3 +68,18 @@ export function formatAddedDate(value: string | null | undefined, now: number = 
     timeZone: 'UTC',
   });
 }
+
+/** How long ago, in the words Settings > Devices uses: "just now",
+ *  "5 min ago", "3 hours ago", "yesterday", "12 days ago". Takes PocketBase's
+ *  `2026-06-12 10:00:00.000Z` as well as ISO. Empty for an unreadable date. */
+export function formatSince(value: string | null | undefined, now: number = Date.now()): string {
+  const at = new Date(String(value ?? '').replace(' ', 'T')).getTime();
+  if (!value || Number.isNaN(at)) return '';
+  const mins = Math.max(0, Math.floor((now - at) / 60000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? 'yesterday' : `${days} days ago`;
+}
