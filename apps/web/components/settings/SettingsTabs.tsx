@@ -7,8 +7,10 @@ import { SettingsPicker } from './SettingsPicker';
 export function SettingsTabs() {
   const path = usePathname();
   const desktop = useSettingsDesktop();
+  // Scrolls with the page (owner pick settings3): no sticky column, so no
+  // second scrollbar.
   return (
-    <nav aria-label="Settings" className="hidden lg:block lg:w-80 shrink-0 self-start sticky top-[calc(var(--ember-topbar-h,0px)+var(--spacing-block))] max-h-[calc(var(--ember-scroller-h,100dvh)-var(--ember-topbar-h,0px)-var(--spacing-section))] overflow-y-auto">
+    <nav aria-label="Settings" className="hidden lg:block lg:w-80 shrink-0 self-start">
       {desktop && <SettingsPicker activePath={path === '/settings' ? '/settings/profile' : path} />}
     </nav>
   );

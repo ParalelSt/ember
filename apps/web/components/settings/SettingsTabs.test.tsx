@@ -78,9 +78,9 @@ it('updates desktop values from the same live stores as the phone', () => {
   expect(screen.getByRole('link', { name: 'Appearance My theme' })).toBeInTheDocument();
 });
 
-it('keeps the sticky column within the app scroller below the desktop top bar', () => {
+it('scrolls the column with the page: not sticky and no scrollbar of its own', () => {
   render(<SettingsLayout>Content</SettingsLayout>);
   const nav = screen.getByRole('navigation');
-  expect(nav).toHaveClass('sticky', 'overflow-y-auto', 'top-[calc(var(--ember-topbar-h,0px)+var(--spacing-block))]');
-  expect(nav).toHaveClass('max-h-[calc(var(--ember-scroller-h,100dvh)-var(--ember-topbar-h,0px)-var(--spacing-section))]');
+  expect(nav).not.toHaveClass('sticky');
+  expect(nav.className).not.toMatch(/overflow-y-auto|max-h-/);
 });
