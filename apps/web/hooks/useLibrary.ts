@@ -32,6 +32,8 @@ export const QK = {
   track: (videoId: string) => ['track', videoId] as const,
   search: (q: string) => ['search', q] as const,
   uploads: ['uploads'] as const,
+  /** Your own uploads (Settings > Uploads), with size and date. */
+  myUploads: ['uploads', 'mine'] as const,
   /** Which playlists have a song (the Add to playlist menu's marks). */
   containing: (trackId: string) => ['playlists-containing', trackId] as const,
   containingAll: ['playlists-containing'] as const,

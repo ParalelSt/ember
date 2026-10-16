@@ -1,4 +1,4 @@
-import type { AlbumDetail, ArtistPayload, CollectionTrack, LiveCarlist, Playlist, SessionState, Track } from '@/types/track';
+import type { AlbumDetail, ArtistPayload, CollectionTrack, LiveCarlist, MyUpload, Playlist, SessionState, Track } from '@/types/track';
 import type { AddPosition } from '@/lib/carlist';
 import type { CopyOutcome } from '@/lib/playlistCopy';
 import type { CandidatePerson, CollabState, InvitePreview } from '@/lib/collab';
@@ -484,6 +484,19 @@ export const api = {
   listUploads: () => req<{ tracks: Track[] }>('/uploads'),
   deleteUpload: (id: string) =>
     req<{ ok: true }>(`/uploads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** Your own uploads, with size and added date (Settings > Uploads). */
+  listMyUploads: () => req<{ uploads: MyUpload[] }>('/uploads/mine'),
+  /** Edit an upload's details (yours, or any for an admin). */
+  updateUpload: (id: string, patch: { title?: string; artist?: string; album?: string }) =>
+    req<{ upload: MyUpload }>(`/uploads/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+  /** Set an upload's cover: a JPEG or PNG, multipart. */
+  setUploadCover: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return req<{ upload: MyUpload }>(`/uploads/${encodeURIComponent(id)}/cover`, { method: 'POST', body: fd });
+  },
+  removeUploadCover: (id: string) =>
+    req<{ upload: MyUpload }>(`/uploads/${encodeURIComponent(id)}/cover`, { method: 'DELETE' }),
   /** Multipart, so it bypasses the JSON `req` helper. `durationSec` is read
    *  in the browser, the server has no ffprobe to rely on. */
   uploadTrack: async (
