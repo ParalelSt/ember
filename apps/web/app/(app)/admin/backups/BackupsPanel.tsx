@@ -9,10 +9,13 @@ import { useExecuteBackupNow, useQueryAdminBackups } from '@/hooks/useAdmin';
 import { apiUrl } from '@/lib/api';
 import { describeBackupSchedule } from '@/lib/backupSchedule';
 import { formatBytes } from '@/lib/format';
+import { FloatingActionButton } from '@/components/ui/floating-action-button';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export default function BackupsPanel() {
   const { data, isLoading, error } = useQueryAdminBackups();
   const backupNow = useExecuteBackupNow();
+  const isDesktop = useIsDesktop();
 
   const onBackupNow = () => {
     backupNow.mutate(undefined, {
@@ -24,13 +27,20 @@ export default function BackupsPanel() {
   const schedule = data?.schedule ? describeBackupSchedule(data.schedule.cron, data.schedule.keep) : null;
 
   return (
-    <section className="flex flex-col gap-section">
+    // pb-stack: room under the last card for the phone's floating button.
+    <section className="flex flex-col gap-section pb-stack md:pb-0">
       <div>
         <SectionHeader
           title="Backups"
           className="mb-cluster"
           action={
-            <Button variant="ember" onClick={onBackupNow} disabled={backupNow.isPending || isLoading}>
+            // Phone: the floating Back up now below instead.
+            <Button
+              variant="ember"
+              className="hidden md:inline-flex"
+              onClick={onBackupNow}
+              disabled={backupNow.isPending || isLoading}
+            >
               {backupNow.isPending ? 'Backing up…' : 'Back up now'}
             </Button>
           }
@@ -150,6 +160,14 @@ export default function BackupsPanel() {
             </a>
           </div>
         </>
+      )}
+
+      {!isDesktop && (
+        <FloatingActionButton
+          label={backupNow.isPending ? 'Backing up…' : 'Back up now'}
+          onClick={onBackupNow}
+          disabled={backupNow.isPending || isLoading}
+        />
       )}
     </section>
   );

@@ -10,7 +10,10 @@ const state = vi.hoisted(() => ({
   isLoading: false,
   pending: false,
   mutate: vi.fn(),
+  desktop: true,
 }));
+
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => state.desktop }));
 
 vi.mock('@/hooks/useAdmin', () => ({
   useQueryAdminBackups: () => ({ data: state.data, isLoading: state.isLoading, error: null }),
@@ -33,6 +36,7 @@ beforeEach(() => {
   state.isLoading = false;
   state.pending = false;
   state.mutate.mockReset();
+  state.desktop = true;
 });
 
 describe('AdminBackupsPage', () => {
@@ -117,4 +121,38 @@ it('shows when the automatic backup schedule is unavailable', () => {
   state.data = { ...base(), schedule: null };
   render(<AdminBackupsPage />);
   expect(screen.getByTestId('backup-schedule')).toHaveTextContent('Automatic backups: status unavailable.');
+});
+
+describe('AdminBackupsPage header button and phone floating pill', () => {
+  it('desktop keeps Back up now in the header and has no floating button', () => {
+    const { container } = render(<AdminBackupsPage />);
+    const header = screen.getByRole('button', { name: 'Back up now' });
+    expect(header).toHaveClass('md:inline-flex');
+    expect(header.closest('[data-fab]')).toBeNull();
+    expect(container.querySelector('[data-fab]')).toBeNull();
+  });
+
+  it('a phone gets a floating Back up now pill that runs the backup', () => {
+    state.desktop = false;
+    const { container } = render(<AdminBackupsPage />);
+    // The header button is CSS-hidden below md.
+    const header = container.querySelector('button:not([data-fab])')!;
+    expect(header).toHaveClass('hidden', 'md:inline-flex');
+    const fab = container.querySelector<HTMLButtonElement>('[data-fab]')!;
+    expect(fab).toHaveAttribute('data-slot', 'fab');
+    expect(fab).toHaveTextContent('Back up now');
+    expect(fab).toHaveClass('px-block');
+    fireEvent.click(fab);
+    expect(state.mutate).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('section')).toHaveClass('pb-stack', 'md:pb-0');
+  });
+
+  it('the phone pill is disabled and says so while a backup runs', () => {
+    state.desktop = false;
+    state.pending = true;
+    const { container } = render(<AdminBackupsPage />);
+    const fab = container.querySelector('[data-fab]')!;
+    expect(fab).toHaveTextContent('Backing up…');
+    expect(fab).toBeDisabled();
+  });
 });
