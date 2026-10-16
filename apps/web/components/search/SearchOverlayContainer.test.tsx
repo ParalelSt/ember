@@ -1,7 +1,7 @@
-import type { ComponentProps, PropsWithChildren } from 'react';
+import type { ComponentProps } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SearchOverlayContainer } from './SearchOverlayContainer';
 import { useUiStore } from '@/stores/useUiStore';
 import type { Track } from '@/types/track';
@@ -19,22 +19,12 @@ const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('next/navigation', () => ({ usePathname: () => pathname.value }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
-// @base-ui's Dialog reaches the repo root's hoisted React 18 through its own
-// node_modules copy (see BugReportDialog.test.tsx), so render a plain
-// element for the chrome: this test is about the overlay's behavior, not
-// base-ui's own portal/focus machinery. The stand-ins carry the modal
-// markers a real dialog would (a backdrop, aria-modal) so the desktop
-// dropdown can be checked for NOT having them.
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ children }: PropsWithChildren) => <div>{children}</div>,
-  DialogContent: ({ children }: PropsWithChildren) => (
-    <div>
-      <div data-slot="dialog-overlay" data-testid="sheet-backdrop" />
-      <div data-testid="search-sheet" role="dialog" aria-modal="true">{children}</div>
-    </div>
-  ),
-  DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
+import { PhonePlayerBar } from '@/components/player/PhonePlayerBar';
+
+vi.mock('@/components/ui/slider', () => ({
+  Slider: () => <input type="range" aria-label="progress" readOnly />,
 }));
+const playback = { toggle: vi.fn(), next: vi.fn(), open: vi.fn(), seek: vi.fn() };
 
 const online = vi.hoisted(() => ({ value: true }));
 vi.mock('@/lib/useOnline', () => ({ useOnline: () => online.value }));
@@ -96,12 +86,16 @@ function makeTrack(over: Partial<Track> = {}): Track {
 /** The overlay plus one ordinary button beside it, standing in for the rest
  *  of the app: on desktop the dropdown covers nothing, so that button has to
  *  stay clickable and is where focus goes back to on Escape. */
-function renderOverlay() {
+function renderOverlay(withPlayer = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <button type="button" data-testid="elsewhere">Play</button>
       <SearchOverlayContainer />
+      {withPlayer && (
+        <PhonePlayerBar track={makeTrack({ title: 'Currently playing' })} playing position={10} duration={191}
+          onToggle={playback.toggle} onNext={playback.next} onOpen={playback.open} onSeek={playback.seek} />
+      )}
     </QueryClientProvider>,
   );
 }
@@ -452,19 +446,39 @@ describe('SearchOverlayContainer, desktop dropdown', () => {
   });
 });
 
-// The phone shape: a full-screen modal sheet with a back arrow left of the
+// The phone shape: a bounded, non-modal sheet with a back arrow left of the
 // box (closes) and an X inside it that only ever clears.
 describe('SearchOverlayContainer, phone sheet', () => {
   beforeEach(() => {
     desktop.value = false;
   });
 
-  it('renders the modal sheet, not the dropdown', () => {
+  it('keeps phone search non-modal so the player remains accessible', () => {
     renderOverlay();
 
-    expect(screen.getByTestId('search-sheet')).toHaveAttribute('aria-modal', 'true');
-    expect(screen.getByTestId('sheet-backdrop')).toBeInTheDocument();
+    expect(screen.getByRole('search')).not.toHaveAttribute('aria-modal', 'true');
+    expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
+    const player = screen.getByTestId('elsewhere');
+    player.focus();
+    expect(player).toHaveFocus();
+    expect(useUiStore.getState().searchOpen).toBe(true);
     expect(panel()).toBeNull();
+  });
+
+  it('keeps playback usable while empty, typing and showing results', async () => {
+    api.search.mockResolvedValue({ tracks: [makeTrack({ title: 'Search result' })] });
+    renderOverlay(true);
+    const pause = screen.getByRole('button', { name: 'Pause' });
+    expect(pause).toBeVisible();
+    fireEvent.click(pause);
+    fireEvent.change(box(), { target: { value: 'result' } });
+    fireEvent.click(pause);
+    expect(await screen.findByText('Search result')).toBeVisible();
+    fireEvent.click(pause);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(playback.toggle).toHaveBeenCalledTimes(3);
+    expect(playback.next).toHaveBeenCalledTimes(1);
+    expect(useUiStore.getState().searchOpen).toBe(true);
   });
 
   it('closes on the back arrow, and its box takes focus on open', async () => {
@@ -493,6 +507,8 @@ describe('SearchOverlayContainer, phone sheet', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close search' }));
     expect(useUiStore.getState().searchOpen).toBe(false);
+    expect(screen.queryByPlaceholderText('What do you want to listen to?')).toBeNull();
+    act(() => useUiStore.getState().setSearchOpen(true));
     expect(box()).toHaveValue('daft');
   });
 
@@ -505,7 +521,7 @@ describe('SearchOverlayContainer, phone sheet', () => {
 
   it('shows the mic and no X while empty, then only the clear X with text', () => {
     renderOverlay();
-    const sheet = screen.getByTestId('search-sheet');
+    const sheet = screen.getByRole('search');
 
     expect(screen.getByRole('button', { name: 'Search by voice' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
@@ -533,11 +549,6 @@ describe('SearchOverlayContainer, phone sheet', () => {
     expect(useUiStore.getState().searchOpen).toBe(true);
     expect(screen.getByRole('button', { name: 'Search by voice' })).toBeInTheDocument();
   });
-
-  // (Whether a closed sheet renders nothing is base-ui's Dialog doing its
-  // job, and the stand-in above always renders its children, so there is
-  // nothing here to assert. The desktop box, which IS always in the page,
-  // is covered above.)
 
   it('shows recents and no Trending heading with an empty query', () => {
     recents.tracks = [makeTrack()];

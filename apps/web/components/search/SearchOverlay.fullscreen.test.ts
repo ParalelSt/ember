@@ -1,34 +1,24 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { cn } from '@/lib/utils';
 
 const read = (p: string) => readFileSync(join(__dirname, '..', '..', p), 'utf8');
 
-// Regression (0.7.30): the shared dialog started capping every dialog at
-// 100dvh minus 2rem so small pop-ups stand off the keyboard. The phone search
-// is a full-screen dialog, so it stopped 32px short of the bottom and the
-// dimmed nav showed through the gap, like space kept for controls that never
-// came.
-describe('phone search sheet is full height', () => {
+describe('phone search bounds', () => {
   const overlay = read('components/search/SearchOverlay.tsx');
-  const dialog = read('components/ui/dialog.tsx');
-  const sheetClass = overlay.match(/className="(top-0 left-0[^"]*)"/)?.[1] ?? '';
-  const dialogBase = dialog.match(/"(fixed top-\[calc[^"]*)"/)?.[1] ?? '';
+  const layout = read('app/(app)/layout.tsx');
 
-  it('finds both class lists', () => {
-    expect(sheetClass).not.toBe('');
-    expect(dialogBase).toContain('max-h-[calc(100dvh-2rem');
+  it('uses the shell content height instead of covering the player with a viewport-sized portal', () => {
+    expect(overlay).toContain('absolute inset-0');
+    expect(overlay).toContain('h-full');
+    expect(overlay).not.toContain('<Dialog');
+    // The search and top bar share a bounded area that ends before PlayerBar.
+    expect(layout).toMatch(/data-phone-search-area[\s\S]*<TopBar[\s\S]*<SearchOverlayContainer[\s\S]*<\/div>\s*<PlayerBar/);
   });
 
-  it('overrides the dialog height cap with an important max-h-none', () => {
-    // tailwind-merge does not see max-h-none and the arbitrary calc() cap as
-    // the same utility, so both would ship and CSS order would decide.
-    // The important flag makes the full height win regardless.
-    expect(cn(dialogBase, sheetClass).split(' ')).toContain('max-h-none!');
-  });
-
-  it('fills the screen above the keyboard', () => {
-    expect(sheetClass).toContain('h-[calc(100dvh-var(--keyboard-inset,0px))]');
+  it('caps results above the Android keyboard and respects the status bar', () => {
+    expect(overlay).toContain('max-h-[calc(100dvh-var(--keyboard-inset,0px)-var(--safe-bottom,0px))]');
+    expect(overlay).toContain('pt-(--safe-top)');
+    expect(overlay).toContain('min-h-0 flex-1 overflow-y-auto');
   });
 });

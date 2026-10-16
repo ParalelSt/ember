@@ -1,11 +1,6 @@
 'use client';
 
 import { useEffect, useRef, type ReactNode } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ChevronLeftIcon, CloseIcon, MicIcon, SearchIcon } from '@/components/icons';
@@ -21,9 +16,8 @@ import { cn } from '@/lib/utils';
  *    Non-modal: nothing else on screen is covered, dimmed or disabled, so
  *    the player bar, the sidebar and the page stay usable while it is open.
  *    Starting a song does NOT close it, which is the whole point.
- *  - `sheet`: a phone. A full-screen modal dialog with a back arrow left of
- *    the box: on a phone there is nothing else on screen worth keeping
- *    reachable. */
+ *  - `sheet`: a phone. A non-modal sheet above the player, with the existing
+ *    close arrow left of the box. Playback stays reachable while searching. */
 export type SearchOverlayVariant = 'dropdown' | 'sheet';
 
 export interface SearchOverlayProps {
@@ -224,19 +218,20 @@ export function SearchOverlay({
     return <SearchDropdown open={open} onClose={onClose} field={field} body={body} />;
   }
 
-  // The phone: a full-screen sheet with Android's own search header. The
+  if (!open) return null;
+
+  // The phone sheet fills the shell above the player, without a modal
+  // backdrop or focus trap disabling playback. The keyboard cap only
+  // shortens search when the native keyboard actually covers this area. The
   // back arrow left of the box closes it, exactly like the Back gesture
   // (useBackDismiss in the container) and Escape; the X inside the box only
   // ever clears. The text survives closing, same as every other close.
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? undefined : onClose())}>
-      <DialogContent
-        showCloseButton={false}
-        className="top-0 left-0 h-[calc(100dvh-var(--keyboard-inset,0px))] max-h-none! w-full max-w-none sm:max-w-none translate-x-0 translate-y-0 flex flex-col gap-0 overflow-hidden rounded-none bg-background p-0 pt-(--safe-top) pb-(--safe-bottom) ring-0"
+    <section
+        role="search"
+        aria-label="Search"
+        className="absolute inset-0 z-40 h-full max-h-[calc(100dvh-var(--keyboard-inset,0px)-var(--safe-bottom,0px))] flex flex-col gap-0 overflow-hidden bg-background pt-(--safe-top)"
       >
-        {/* Visually hidden: base-ui requires a title for a11y, the search
-            icon + input already say what this is. */}
-        <DialogTitle className="sr-only">Search</DialogTitle>
         <div className="flex shrink-0 items-center gap-inset pb-cluster pl-inset pr-block pt-block">
           <Button
             variant="ghost"
@@ -251,7 +246,6 @@ export function SearchOverlay({
           <div className="min-w-0 flex-1">{field}</div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-block pb-block">{body}</div>
-      </DialogContent>
-    </Dialog>
+    </section>
   );
 }

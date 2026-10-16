@@ -1,11 +1,12 @@
 'use client';
 
+import { useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
 import { TrackRow } from '@/components/track/TrackRow';
 import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
-import { MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
+import { CloseIcon, MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
 import { useSearchQuery } from '@/hooks/useSearchQuery';
 import { OnlineOnly } from '@/components/OnlineOnly';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,7 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
 
 export default function SearchPage() {
+  const fieldRef = useRef<HTMLDivElement>(null);
   const {
     q,
     setQ,
@@ -73,15 +75,31 @@ export default function SearchPage() {
     <OnlineOnly>
       <div className="pt-4 md:pt-0">
         <PageTitle className="mb-6">Search</PageTitle>
-        <div className="relative max-w-xl">
+        <div ref={fieldRef} className="relative max-w-xl">
           <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="What do you want to listen to?"
-            className="pl-11 pr-12 h-12 rounded-full bg-card border-0"
+            aria-label="Search"
+            className={cn("pl-11 h-12 rounded-full bg-card border-0", q ? "pr-22" : "pr-12")}
           />
+          {q && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Clear search"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setQ('');
+                fieldRef.current?.querySelector('input')?.focus();
+              }}
+              className="absolute right-12 top-1/2 -translate-y-1/2 active:!-translate-y-1/2 h-9 w-9 rounded-full"
+            >
+              <CloseIcon className="h-4 w-4" />
+            </Button>
+          )}
           {/* Always visible (right side of the bar): unsupported browsers get a
               pointer to Chrome instead of a hidden button. */}
           <Button
