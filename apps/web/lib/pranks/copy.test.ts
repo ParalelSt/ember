@@ -61,6 +61,7 @@ describe('log words', () => {
   it('has words for every reason, and a readable fallback', () => {
     expect(reasonWords('paused')).toBe('their music was paused');
     expect(reasonWords('engine-unsupported')).toBe('their app cannot do that yet');
+    expect(reasonWords('autoplay-blocked')).toBe('their browser wanted a tap first');
     expect(reasonWords('error:decode')).toBe('something went wrong (decode)');
     expect(statusWords('cancelled', '', '', null)).toBe('cancelled');
   });

@@ -49,6 +49,59 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('overlayPlayer', () => {
+  it('unlocks the same element in a gesture before remote playback', async () => {
+    let gesture = false;
+    let unlocked = false;
+    el.play.mockImplementation(() => {
+      if (gesture) unlocked = true;
+      return unlocked ? Promise.resolve() : Promise.reject(new DOMException('Gesture required', 'NotAllowedError'));
+    });
+    const o = make();
+    const blocked = o.play('/api/x', { volume: 1, maxSec: 30 });
+    expect(await blocked.started).toBe(false);
+    expect((await blocked.finished).reason).toBe('blocked');
+    gesture = true;
+    o.unlock?.();
+    gesture = false;
+    await flush();
+    expect(el.src).toMatch(/^data:audio\/wav;base64,/);
+    const h = o.play('/api/x', { volume: 0.4, maxSec: 30 });
+    expect(await h.started).toBe(true);
+    o.unlock?.();
+    expect(el.src).toBe('/api/x');
+    expect(el.volume).toBe(0.4);
+    o.destroy();
+  });
+
+  it('says blocked, not error, when the browser refuses to start without a tap', async () => {
+    el.play.mockImplementation(() => Promise.reject(new DOMException('Gesture required', 'NotAllowedError')));
+    const h = make().play('/api/x', { volume: 1, maxSec: 30 });
+    expect(await h.started).toBe(false);
+    expect(await h.finished).toEqual({ reason: 'blocked', playedSec: 0 });
+  });
+
+  it('primes the element once: later taps leave it alone', async () => {
+    const o = make();
+    o.unlock?.();
+    o.unlock?.();
+    await flush();
+    expect(el.play).toHaveBeenCalledTimes(1);
+    o.unlock?.();
+    await flush();
+    expect(el.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('tries again on the next tap when priming was refused', async () => {
+    el.playMode = 'reject';
+    const o = make();
+    o.unlock?.();
+    await flush();
+    el.playMode = 'resolve';
+    o.unlock?.();
+    await flush();
+    expect(el.play).toHaveBeenCalledTimes(2);
+  });
+
   it('plays the url at the given volume and settles on ended with the time heard', async () => {
     const o = make();
     const h = o.play('/api/x', { volume: 0.4, maxSec: 30 });

@@ -43,6 +43,7 @@ function fakeOverlay() {
       const finished = new Promise<OverlayResult>((r) => (finishResolve = (x) => { busy = false; r(x); }));
       return { started, finished };
     }),
+    unlock: vi.fn(),
     setVolume: vi.fn(),
     stop: vi.fn(() => finishResolve({ reason: 'stopped', playedSec: 1 })),
     busy: () => busy,
@@ -82,6 +83,34 @@ beforeEach(() => {
 });
 
 describe('PrankReceiver: sounds', () => {
+  // Mobile browsers refuse a sound that starts with no tap of its own (iOS
+  // asks for every element): each tap primes the sound's element instead.
+  it('primes the sound element on every tap, click or key, and stops listening on unmount', () => {
+    const { unmount } = mount();
+    document.dispatchEvent(new Event('touchend'));
+    document.dispatchEvent(new Event('click'));
+    document.dispatchEvent(new Event('keydown'));
+    expect(overlay.unlock).toHaveBeenCalledTimes(3);
+    unmount();
+    document.dispatchEvent(new Event('touchend'));
+    expect(overlay.unlock).toHaveBeenCalledTimes(3);
+  });
+
+  it('leaves priming to the app on native Android', () => {
+    mount('android');
+    document.dispatchEvent(new Event('touchend'));
+    expect(overlay.unlock).not.toHaveBeenCalled();
+  });
+
+  it('reports a sound the browser blocked as such, not as a failed load, and never ducks', async () => {
+    mount();
+    const pending = inbox.receive!(sound());
+    overlay.start(false);
+    overlay.finish({ reason: 'blocked', playedSec: 0 });
+    expect(await pending).toMatchObject({ status: 'skipped', reason: 'autoplay-blocked', engine: 'web' });
+    expect(onDuck).not.toHaveBeenCalledWith(0.3);
+  });
+
   it('plays the sound at a share of their volume, ducks once it is heard, reports delivered then done', async () => {
     mount();
     const pending = inbox.receive!(sound());

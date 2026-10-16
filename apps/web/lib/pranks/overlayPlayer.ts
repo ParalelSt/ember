@@ -5,7 +5,7 @@
  *  web, the older Android app, and the desktop app next to its Rust engine.
  *  Silent by design: nothing here logs, toasts or throws. */
 
-export type OverlayEnd = 'ended' | 'stopped' | 'cap' | 'error';
+export type OverlayEnd = 'ended' | 'stopped' | 'cap' | 'error' | 'blocked';
 
 export interface OverlayResult {
   reason: OverlayEnd;
@@ -21,6 +21,11 @@ export interface OverlayHandle {
 }
 
 export interface OverlayPlayer {
+  /** Primes the element with a silent clip. Call it synchronously inside a
+   *  tap or key handler: mobile browsers only let an element play later,
+   *  with no tap of its own, once it has played inside one (iOS asks per
+   *  element). Optional so test doubles and older callers need not have it. */
+  unlock?(): void;
   play(url: string, opts: { volume: number; maxSec: number; startTimeoutMs?: number }): OverlayHandle;
   setVolume(v: number): void;
   stop(): void;
@@ -30,6 +35,14 @@ export interface OverlayPlayer {
 
 /** A sound that has not started within this long is given up on. */
 export const OVERLAY_START_TIMEOUT_MS = 8_000;
+
+/** A 10 ms silent WAV. Played unmuted: a muted play does not count as the
+ *  element having played. */
+const SILENCE = 'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+
+/** NotAllowedError is the browser wanting a tap first; anything else is a
+ *  failed load. */
+const refusal = (e: unknown): OverlayEnd => ((e as { name?: string } | null)?.name === 'NotAllowedError' ? 'blocked' : 'error');
 
 const clamp01 = (n: number) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
 
@@ -53,7 +66,25 @@ export function createOverlayPlayer(makeAudio: () => HTMLAudioElement = domAudio
   /** Ends whatever is playing now; null when idle. */
   let finish: ((reason: OverlayEnd) => void) | null = null;
 
+  let unlocked = false;
+  let priming = false;
+
   return {
+    unlock() {
+      if (unlocked || priming || finish) return;
+      const a = (el ??= makeAudio());
+      a.src = SILENCE;
+      priming = true;
+      try {
+        // play() must be called before anything is awaited: the tap's
+        // permission lasts only for this synchronous run.
+        Promise.resolve(a.play()).then(() => {
+          if (el === a) unlocked = true;
+        }, () => {}).finally(() => { priming = false; });
+      } catch {
+        priming = false;
+      }
+    },
     play(url, { volume, maxSec, startTimeoutMs = OVERLAY_START_TIMEOUT_MS }) {
       finish?.('stopped');
       const a = (el ??= makeAudio());
@@ -108,9 +139,9 @@ export function createOverlayPlayer(makeAudio: () => HTMLAudioElement = domAudio
       a.src = url;
       try {
         const p = a.play();
-        if (p && typeof p.then === 'function') p.then(onPlaying, () => done('error'));
-      } catch {
-        done('error');
+        if (p && typeof p.then === 'function') p.then(onPlaying, (e: unknown) => done(refusal(e)));
+      } catch (e) {
+        done(refusal(e));
       }
       return { started, finished };
     },
@@ -131,6 +162,7 @@ export function createOverlayPlayer(makeAudio: () => HTMLAudioElement = domAudio
       finish?.('stopped');
       el?.remove();
       el = null;
+      unlocked = false;
     },
   };
 }

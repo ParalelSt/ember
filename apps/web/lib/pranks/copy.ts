@@ -67,6 +67,7 @@ const REASONS: Record<string, string> = {
   paused: 'their music was paused',
   busy: 'another prank was running',
   'engine-unsupported': 'their app cannot do that yet',
+  'autoplay-blocked': 'their browser wanted a tap first',
 };
 
 export function reasonWords(reason: string): string {

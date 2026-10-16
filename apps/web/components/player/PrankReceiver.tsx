@@ -71,8 +71,11 @@ export function PrankReceiver({
         return r;
       });
       if (!(await handle.started)) {
-        await settle;
-        return { status: 'skipped', reason: 'error:load', ...base };
+        // Blocked: the browser wants a tap before this element may play
+        // (iOS asks per element). Said apart from a failed load, so the log
+        // tells the two apart.
+        const { reason } = await settle;
+        return { status: 'skipped', reason: reason === 'blocked' ? 'autoplay-blocked' : 'error:load', ...base };
       }
       if (duck) onDuckRef.current(PRANK_LIMITS.duck);
       return {
@@ -144,6 +147,24 @@ export function PrankReceiver({
     },
     [backendRef, engineRef, playSound, playNative],
   );
+
+  // Mobile browsers let a page start sound only after a tap, and iOS asks
+  // again for every audio element: a sound arriving later, with no tap of
+  // its own, was refused. Every tap or key primes the sound's element with
+  // a silent clip until one sticks. Native Android plays it itself.
+  useEffect(() => {
+    if (!userId) return;
+    const unlock = () => {
+      const engine = engineRef.current;
+      if (engine === 'android' || engine === 'native-stub') return;
+      (overlayRef.current ??= makeOverlayRef.current()).unlock?.();
+    };
+    const events = ['touchend', 'click', 'keydown'] as const;
+    for (const event of events) document.addEventListener(event, unlock, true);
+    return () => {
+      for (const event of events) document.removeEventListener(event, unlock, true);
+    };
+  }, [userId, engineRef]);
 
   // Pausing the music ends the sound too (and with it the duck).
   useEffect(() => {
