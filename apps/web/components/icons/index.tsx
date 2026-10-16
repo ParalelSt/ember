@@ -100,5 +100,7 @@ export {
   ArrowRightIcon,
   FolderSimplePlusIcon,
   CloudArrowDownIcon,
+  ShieldWarningIcon,
+  CameraIcon,
 } from './phosphor';
 export { FlameIcon } from './EmberLogo';

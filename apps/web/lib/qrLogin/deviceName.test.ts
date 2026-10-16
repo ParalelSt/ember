@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deviceLabel } from './device';
-import { describeDevice } from './deviceName';
+import { describeDevice, deviceTitle } from './deviceName';
 
 describe('describeDevice', () => {
   it.each([
@@ -28,5 +28,21 @@ describe('describeDevice', () => {
       'Mozilla/5.0 (Linux; Android 12) Chrome/120 Safari/537.36 EmberCar',
     ];
     expect(uas.map((ua) => describeDevice(deviceLabel(ua, 'web')).name)).toEqual(['Windows PC', 'Mac', 'Car screen']);
+  });
+});
+
+describe('deviceTitle', () => {
+  it.each([
+    ['Chrome on Windows', 'Windows PC, Chrome'],
+    ['Safari on iPad', 'iPad, Safari'],
+    ['Ember on Android', 'Android device, Ember app'],
+    ['Ember on Android Automotive', 'Car screen, Ember app'],
+    ['Ember desktop on macOS', 'Mac, Ember desktop app'],
+    ['A browser on Linux', 'Linux computer'],
+    ['Chrome', 'Chrome'],
+    ['Something on Plan 9', 'Something on Plan 9'],
+    ['', 'A device'],
+  ])('%s reads %s', (label, title) => {
+    expect(deviceTitle(label)).toBe(title);
   });
 });

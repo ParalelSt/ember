@@ -22,3 +22,14 @@ export function describeDevice(label: string): { name: string; kind: DeviceKind 
   const os = / on (.+)$/.exec(label)?.[1];
   return (os && BY_OS[os]) || { name: label || 'A device', kind: 'computer' };
 }
+
+/** The line a device gets in Settings > Devices: the friendly name and how
+ *  Ember runs there, "Windows PC, Chrome" or "Android device, Ember app".
+ *  Built from the same fixed words; an unknown label is shown as it is. */
+export function deviceTitle(label: string): string {
+  const m = /^(.+) on (.+)$/.exec(label);
+  const os = m && BY_OS[m[2]];
+  if (!m || !os) return label || 'A device';
+  const how = m[1] === 'Ember' ? 'Ember app' : m[1] === 'Ember desktop' ? 'Ember desktop app' : m[1] === 'A browser' ? '' : m[1];
+  return how ? `${os.name}, ${how}` : os.name;
+}

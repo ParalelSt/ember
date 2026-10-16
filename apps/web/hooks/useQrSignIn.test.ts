@@ -99,6 +99,8 @@ describe('useQrSignIn', () => {
     await advance(POLL_MS + 400);
     expect(onApproved).toHaveBeenCalledWith('tok', { id: 'u1', name: 'Robin', email: 'r@x' });
     expect(result.current.state).toEqual({ kind: 'approved', name: 'Robin' });
+    // Settings > Devices knows this sign-in was this browser's own.
+    expect(localStorage.getItem('ember-qr-signin')).toMatch(/^req\d{12}$/);
     const calls = statusCalls;
     await advance(20_000);
     expect(statusCalls).toBe(calls);
