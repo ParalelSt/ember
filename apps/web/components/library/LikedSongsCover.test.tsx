@@ -13,6 +13,14 @@ describe('LikedSongsCover', () => {
     expect(root.querySelector('svg')).toHaveAttribute('viewBox', '0 0 100 100');
   });
 
+  it('draws one solid white heart, no sound-wave bars', () => {
+    const { container } = render(<LikedSongsCover />);
+    const hearts = container.querySelectorAll('[data-liked-heart]');
+    expect(hearts).toHaveLength(1);
+    expect(hearts[0]).toHaveAttribute('fill', '#ffffff');
+    expect(container.querySelectorAll('line')).toHaveLength(0);
+  });
+
   it('two instances use disjoint gradient and filter ids, and every url(#) resolves', () => {
     const { container } = render(
       <>
@@ -21,20 +29,12 @@ describe('LikedSongsCover', () => {
       </>,
     );
     const all = ids(container);
-    expect(all.length).toBe(6);
-    expect(new Set(all).size).toBe(6);
+    expect(all.length).toBe(4);
+    expect(new Set(all).size).toBe(4);
     const refs = [...container.querySelectorAll('*')]
       .flatMap((el) => [...el.attributes].map((at) => /^url\(#(.+)\)$/.exec(at.value)?.[1]))
       .filter(Boolean);
-    expect(refs.length).toBeGreaterThanOrEqual(6);
+    expect(refs.length).toBe(4);
     for (const r of refs) expect(all).toContain(r);
-  });
-
-  it('auto renders all three bar densities (CSS picks one); a fixed size renders one', () => {
-    const auto = render(<LikedSongsCover />).container;
-    const counts = [...auto.querySelectorAll('[data-detail]')].map((g) => [g.getAttribute('data-detail'), g.querySelectorAll('line').length / 2]);
-    expect(counts).toEqual([['sm', 5], ['md', 9], ['lg', 15]]);
-    const fixed = render(<LikedSongsCover size="md" />).container;
-    expect(fixed.querySelectorAll('[data-detail]')).toHaveLength(1);
   });
 });
