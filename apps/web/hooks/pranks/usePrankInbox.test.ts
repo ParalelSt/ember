@@ -265,14 +265,38 @@ describe('usePrankInbox (429 backoff)', () => {
     expect(deps.fetchInbox).toHaveBeenCalledTimes(1);
   });
 
-  it('does not fetch while the tab is hidden', async () => {
+  it('does not fetch while the tab is hidden and idle', async () => {
     const { deps } = fakeDeps();
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
     try {
-      renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: () => null, deps }));
+      renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: false, receive: () => null, deps }));
       await flush();
       await act(async () => { vi.advanceTimersByTime(30_000); });
       expect(deps.fetchInbox).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    }
+  });
+
+  // The bug behind sounds never arriving on phones: a phone plays with the
+  // screen off or another app in front, so the page is hidden while the
+  // music plays. Those polls were dropped and every sound expired unseen.
+  it('keeps polling while the tab is hidden but music plays, and stops on pause', async () => {
+    const { inbox, deps } = fakeDeps();
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    try {
+      const { rerender } = renderHook((p: { isPlaying: boolean }) =>
+        usePrankInbox({ userId: 'u1', isPlaying: p.isPlaying, receive: () => DELIVERED, deps }), { initialProps: { isPlaying: true } });
+      await flush();
+      expect(deps.fetchInbox).toHaveBeenCalledTimes(1);
+      inbox.push(ping('background'));
+      await act(async () => { await vi.advanceTimersByTimeAsync(POLL_PLAYING_MS); });
+      expect(deps.ack).toHaveBeenCalledWith('background', DELIVERED);
+      rerender({ isPlaying: false });
+      await flush();
+      const count = deps.fetchInbox.mock.calls.length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(POLL_IDLE_MS * 2); });
+      expect(deps.fetchInbox).toHaveBeenCalledTimes(count);
     } finally {
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
     }

@@ -52,7 +52,9 @@ export function usePresenceHeartbeat({
       const force = beat;
       const key = `${current.id}|${isPlaying}`;
       const now = Date.now();
-      if (typeof document !== 'undefined' && document.hidden && beat) return;
+      // No hidden-page check: the beat only runs while music plays, and a
+      // phone mostly plays with the screen off or another app in front
+      // (the page hidden). Dropping those beats showed it as not listening.
       if (backoff.current.blocked(now)) return;
       if (!beat) {
         burst.current = burst.current.filter((t) => now - t < BURST_WINDOW_MS);

@@ -108,3 +108,29 @@ describe('usePresenceHeartbeat (429 backoff)', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('usePresenceHeartbeat (page hidden)', () => {
+  afterEach(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+  });
+
+  // A phone plays with the screen off or another app in front: the page is
+  // hidden, yet the music plays and the admin page must still see it.
+  it('keeps beating while the page is hidden and music plays', () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    const send = vi.fn<Send>(async () => ({}));
+    setup(send, { userId: 'u1', current: a, isPlaying: true });
+    vi.advanceTimersByTime(PRESENCE_INTERVAL_MS * 2);
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
+  it('still goes quiet on pause while hidden', () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    const send = vi.fn<Send>(async () => ({}));
+    const { rerender } = setup(send, { userId: 'u1', current: a, isPlaying: true });
+    rerender({ userId: 'u1', current: a, isPlaying: false });
+    const n = send.mock.calls.length;
+    vi.advanceTimersByTime(PRESENCE_INTERVAL_MS * 3);
+    expect(send).toHaveBeenCalledTimes(n);
+  });
+});

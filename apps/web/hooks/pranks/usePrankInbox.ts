@@ -101,6 +101,10 @@ export function usePrankInbox({
   ) => PrankAck | PrankReceipt | PrankLater | null | Promise<PrankAck | PrankReceipt | PrankLater | null>;
   deps?: PrankInboxDeps;
 }) {
+  const playingRef = useRef(isPlaying);
+  useEffect(() => {
+    playingRef.current = isPlaying;
+  }, [isPlaying]);
   const receiveRef = useRef(receive);
   useEffect(() => {
     receiveRef.current = receive;
@@ -145,11 +149,14 @@ export function usePrankInbox({
 
   /** One fetch at a time, never inside a backoff, never closer than
    *  MIN_FETCH_GAP_MS to the last one (an effect re-firing must not turn
-   *  into a request storm), and none while the tab is hidden. */
+   *  into a request storm), and none while the tab is hidden with nothing
+   *  playing. Hidden while playing still fetches: that is how a phone
+   *  plays (screen off, another app in front, the native engine behind a
+   *  hidden WebView), and a sound only lands while music plays. */
   const catchUp = useRef((skipGap = false): Promise<void> => {
     if (inFlight.current) return inFlight.current;
     const now = Date.now();
-    if (typeof document !== 'undefined' && document.hidden) return Promise.resolve();
+    if (typeof document !== 'undefined' && document.hidden && !playingRef.current) return Promise.resolve();
     if (backoff.current.blocked(now) || (!skipGap && now - lastFetchAt.current < MIN_FETCH_GAP_MS)) return Promise.resolve();
     lastFetchAt.current = now;
     const p = depsRef.current
