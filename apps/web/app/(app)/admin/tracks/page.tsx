@@ -14,11 +14,10 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { MoreIcon, TrashIcon } from '@/components/icons';
-import {
-  useExecuteDeleteAdminTrack,
-  useExecuteUpdateAdminTrack,
-  useQueryAdminTracks,
-} from '@/hooks/useAdmin';
+import { useExecuteDeleteAdminTrack, useQueryAdminTracks } from '@/hooks/useAdmin';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useTrackEdit } from '@/components/admin/useTrackEdit';
+import { TrackGrid } from '@/components/admin/TrackGrid';
 import type { AdminTrack } from '@/lib/api';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
@@ -38,44 +37,81 @@ export default function AdminTracksPage() {
     setCommittedSearch(searchInput.trim());
   };
 
+  const isDesktop = useIsDesktop();
+
   return (
     <section>
-      <div className="flex items-center justify-between gap-4 mb-4">
-        <SectionHeader title={`Tracks${data ? ` · ${data.totalItems}` : ''}`} />
-        <form
-          onSubmit={(e) => { e.preventDefault(); submitSearch(); }}
-          className="flex gap-2"
-        >
-          <Input
-            placeholder="Search title or artist…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="max-w-xs"
-          />
-          <Button type="submit" variant="outline" size="sm">Search</Button>
-        </form>
-      </div>
-
-      {isLoading && <EmptyState>Loading…</EmptyState>}
-      {!isLoading && data && data.tracks.length === 0 && (
-        <EmptyState>No tracks match.</EmptyState>
-      )}
-
-      {data && data.tracks.length > 0 && (
+      {isDesktop ? (
         <>
-          <div className="flex flex-col gap-1">
-            {data.tracks.map((t) => (
-              <TrackRow key={t.recordId} track={t} onDelete={() => setPendingDelete(t)} />
-            ))}
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <SectionHeader title={`Tracks${data ? ` · ${data.totalItems}` : ''}`} />
+            <form
+              onSubmit={(e) => { e.preventDefault(); submitSearch(); }}
+              className="flex gap-2"
+            >
+              <Input
+                placeholder="Search title or artist…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="max-w-xs"
+              />
+              <Button type="submit" variant="outline" size="sm">Search</Button>
+            </form>
           </div>
 
-          <Pagination
-            page={data.page}
-            totalPages={data.totalPages}
-            busy={isFetching}
-            onChange={setPage}
-          />
+          {isLoading && <EmptyState>Loading…</EmptyState>}
+          {!isLoading && data && data.tracks.length === 0 && (
+            <EmptyState>No tracks match.</EmptyState>
+          )}
+
+          {data && data.tracks.length > 0 && (
+            <>
+              <div className="flex flex-col gap-1">
+                {data.tracks.map((t) => (
+                  <TrackRow key={t.recordId} track={t} onDelete={() => setPendingDelete(t)} />
+                ))}
+              </div>
+
+              <Pagination
+                page={data.page}
+                totalPages={data.totalPages}
+                busy={isFetching}
+                onChange={setPage}
+              />
+            </>
+          )}
         </>
+      ) : (
+        <div className="flex flex-col gap-block md:hidden">
+          <form
+            role="search"
+            onSubmit={(e) => { e.preventDefault(); submitSearch(); }}
+            className="flex gap-cluster"
+          >
+            <Input
+              type="search"
+              aria-label="Search tracks"
+              placeholder="Search title or artist…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="flex-1"
+            />
+            <Button type="submit" variant="outline">Search</Button>
+          </form>
+          {data && (
+            <p className="text-xs text-muted-foreground">
+              {data.totalItems} {data.totalItems === 1 ? 'track' : 'tracks'}
+            </p>
+          )}
+          {isLoading && <EmptyState>Loading…</EmptyState>}
+          {!isLoading && data && data.tracks.length === 0 && <EmptyState>No tracks match.</EmptyState>}
+          {data && data.tracks.length > 0 && (
+            <>
+              <TrackGrid tracks={data.tracks} onDelete={setPendingDelete} />
+              <Pagination page={data.page} totalPages={data.totalPages} busy={isFetching} onChange={setPage} />
+            </>
+          )}
+        </div>
       )}
 
       <ConfirmDialog
@@ -102,32 +138,8 @@ export default function AdminTracksPage() {
 }
 
 function TrackRow({ track, onDelete }: { track: AdminTrack; onDelete: () => void }) {
-  const updateTrack = useExecuteUpdateAdminTrack();
   const [editOpen, setEditOpen] = useState(false);
-  const [title, setTitle] = useState(track.title);
-  const [artist, setArtist] = useState(track.artist);
-  const [album, setAlbum] = useState(track.album ?? '');
-  const [busy, setBusy] = useState(false);
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      await updateTrack.mutateAsync({
-        recordId: track.recordId,
-        patch: {
-          title: title !== track.title ? title : undefined,
-          artist: artist !== track.artist ? artist : undefined,
-          album: album !== (track.album ?? '') ? album : undefined,
-        },
-      });
-      toast.success('Track updated');
-      setEditOpen(false);
-    } catch (e) {
-      toast.error(`Couldn't save: ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { title, setTitle, artist, setArtist, album, setAlbum, busy, save } = useTrackEdit(track, () => setEditOpen(false));
 
   return (
     <div className="grid grid-cols-[40px_minmax(0,2fr)_minmax(0,1.2fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md hover:bg-card transition-colors">
