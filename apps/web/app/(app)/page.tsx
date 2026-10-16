@@ -6,6 +6,7 @@ import { TrackShelf } from '@/components/track/TrackShelf';
 import { TrackCard } from '@/components/track/TrackCard';
 import {
   useQueryCharts,
+  useQueryMixes,
   useQueryHistory,
   useQueryLikes,
   useQueryRecommended,
@@ -41,7 +42,8 @@ import {
 import { playlistCover } from '@/lib/collections';
 import { publicName } from '@/lib/collab';
 import { ChartTile } from '@/components/charts/ChartTile';
-import { CHART_INK } from '@/lib/genres/taxonomy';
+import { CHART_INK, mixLook } from '@/lib/genres/taxonomy';
+import { MixCard } from '@/components/mixes/MixCard';
 
 interface Section {
   key: string;
@@ -117,6 +119,8 @@ export default function HomePage() {
   const { data: trending = [], isLoading: trendingLoading } = useQueryTrending();
   const { data: charts } = useQueryCharts();
   const genreCharts = charts?.genres ?? [];
+  const { data: mixesData } = useQueryMixes();
+  const mixes = (mixesData?.mixes ?? []).filter((m) => m.count > 0);
   const seedTrack = history[0];
   const { data: recommended = [], isLoading: recommendedLoading } = useQueryRecommended(seedTrack?.sourceId);
 
@@ -144,6 +148,7 @@ export default function HomePage() {
   if (trending.length > 0 || trendingLoading) available.add('trending');
   if (playlists.length > 0) available.add('playlists');
   if (genreCharts.length > 0) available.add('charts');
+  if (mixes.length > 0) available.add('mixes');
   const chips = homeChips(available);
   const view = phoneHomeView(filter, available);
   const myName = publicName(user);
@@ -155,6 +160,7 @@ export default function HomePage() {
     playlists,
     carlist,
     playingPlaylistId,
+    mixes,
     max: isDesktop ? QUICK_MAX_DESKTOP : QUICK_MAX,
   });
   const playQuick = (item: QuickPick) => {
@@ -183,6 +189,27 @@ export default function HomePage() {
                 : null)}
             />
           ))}
+        </RowShelf>
+      );
+    }
+    if (key === 'mixes') {
+      return (
+        <RowShelf key={key} title="Your mixes" variant={isDesktop ? 'desktop' : 'phone'} phoneTileClassName="w-[172px]">
+          {mixes.map((m) => {
+            const look = mixLook(m.key);
+            return (
+              <MixCard
+                key={m.key}
+                title={m.title}
+                subtitle={m.subtitle}
+                href={`/mix/${encodeURIComponent(m.key)}`}
+                artworkUrls={m.cover.artworkUrls}
+                color={m.cover.color || look.tint}
+                ink={look.ink}
+                variant={isDesktop ? 'desktop' : 'phone'}
+              />
+            );
+          })}
         </RowShelf>
       );
     }

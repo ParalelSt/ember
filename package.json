@@ -73,6 +73,7 @@
     "test:genre-charts-py": ".venv/bin/python -m unittest tests/test_player_genre_charts.py",
     "test:charts-ui": "node tests/charts-ui.test.mjs",
     "test:pb-genres": "node tests/pb-genres.test.mjs",
+    "test:mixes-ui": "node tests/mixes-ui.test.mjs",
     "test:search-ui": "node tests/instant-search-ui.test.mjs",
     "test:search-clear-x-ui": "node tests/search-clear-x-ui.test.mjs",
     "test:voice-ui": "node tests/voice-search-ui.test.mjs",

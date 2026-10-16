@@ -23,6 +23,20 @@ describe('recentFirst', () => {
 });
 
 describe('quickPicks', () => {
+  it('gives the member\'s top two mixes a slot after Liked songs and a live carlist', () => {
+    const mix = (key: string, title: string) => ({ key, title, cover: { artworkUrls: [`/art/${key}.jpg`] } });
+    const picks = quickPicks({
+      liked,
+      playlists: [pl('a', 'Road trip'), pl('b', 'Gym'), pl('c', 'Chill'), pl('d', 'Run')],
+      carlist: { id: 's1', code: 'ABC', name: 'Drive', isHost: true },
+      mixes: [mix('rock-metal', 'Rock & Metal'), mix('balkan', 'Balkan'), mix('pop', 'Pop')],
+    });
+    expect(picks.map((p) => p.title)).toEqual(['Liked songs', 'Drive', 'Rock & Metal Mix', 'Balkan Mix', 'Road trip', 'Gym']);
+    expect(picks[2]).toMatchObject({ key: 'mix-rock-metal', href: '/mix/rock-metal', src: '/art/rock-metal.jpg', icon: null });
+    expect(picks[2].ref).toBeUndefined();
+  });
+
+
   it('starts with Liked songs, then your playlists with their covers', () => {
     const picks = quickPicks({ liked, playlists: [pl('a', 'Road trip', '/art/a.jpg'), pl('b', 'Gym')], carlist: null });
     expect(picks.map((p) => p.title)).toEqual(['Liked songs', 'Road trip', 'Gym']);

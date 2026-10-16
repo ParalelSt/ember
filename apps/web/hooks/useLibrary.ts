@@ -28,6 +28,8 @@ export const QK = {
   trending: ['trending'] as const,
   charts: ['charts'] as const,
   chart: (slug: string) => ['chart', slug] as const,
+  mixes: ['mixes'] as const,
+  mix: (key: string) => ['mix', key] as const,
   recommended: (seed: string | undefined) => ['recommended', seed ?? null] as const,
   artist: (id: string) => ['artist', id] as const,
   album: (id: string) => ['album', id] as const,
@@ -207,6 +209,32 @@ export function useQueryChart(slug: string) {
     queryKey: QK.chart(slug),
     queryFn: () => api.getChart(slug),
     enabled: !!slug,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** How often Home asks again while the member's first mixes are building. */
+export const MIXES_BUILDING_POLL_MS = 15_000;
+
+/** The signed-in member's genre mixes (tiles). Polls while a build runs, so
+ *  the shelf turns up without a reload. */
+export function useQueryMixes() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: QK.mixes,
+    queryFn: () => api.getMixes(),
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+    refetchInterval: (q) => (q.state.data?.building ? MIXES_BUILDING_POLL_MS : false),
+  });
+}
+
+/** One mix with its songs. */
+export function useQueryMix(key: string) {
+  return useQuery({
+    queryKey: QK.mix(key),
+    queryFn: () => api.getMix(key),
+    enabled: !!key,
     staleTime: 5 * 60_000,
   });
 }

@@ -183,13 +183,15 @@ export interface RowShelfProps {
   /** 'phone' (default): 140px tiles snapping by touch, edge to edge.
    *  'desktop': 180px tiles inside the gutter, with < and > in the header. */
   variant?: 'phone' | 'desktop';
+  /** A phone tile width other than 140px (the mix cards' 172px). */
+  phoneTileClassName?: string;
 }
 
 /** Presentational only: the phone Home's sideways shelf, Spotify style. A
  *  RowHeader, then a row of tiles that scrolls by touch (snapping to a
  *  tile, no bar showing) and runs from screen edge to screen edge while
  *  lining up with the page's gutter at rest. */
-export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, className, variant = 'phone' }: RowShelfProps) {
+export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, className, variant = 'phone', phoneTileClassName }: RowShelfProps) {
   const all = Children.toArray(children);
   if (all.length === 0) return null;
   const tiles = all.slice(0, limit);
@@ -200,7 +202,7 @@ export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, classN
       <RowHeader title={title} showAllHref={more} />
       <div role="list" data-row-shelf className={ROW_SCROLL_CLASS}>
         {tiles.map((tile, i) => (
-          <div key={isValidElement(tile) && tile.key != null ? tile.key : i} role="listitem" className={ROW_TILE_CLASS}>
+          <div key={isValidElement(tile) && tile.key != null ? tile.key : i} role="listitem" className={phoneTileClassName ? cn(ROW_TILE_CLASS, phoneTileClassName) : ROW_TILE_CLASS}>
             {tile}
           </div>
         ))}
