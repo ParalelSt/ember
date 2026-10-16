@@ -21,6 +21,12 @@ describe('LikedSongsCover', () => {
     expect(container.querySelectorAll('line')).toHaveLength(0);
   });
 
+  it('uses the violet gradient', () => {
+    const { container } = render(<LikedSongsCover />);
+    const stops = [...container.querySelectorAll('stop')].map((s) => s.getAttribute('stop-color'));
+    expect(stops).toEqual(['#6544dc', '#b9c9ef']);
+  });
+
   it('two instances use disjoint gradient and filter ids, and every url(#) resolves', () => {
     const { container } = render(
       <>

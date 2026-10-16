@@ -51,7 +51,7 @@ it('passes cached collection songs and playlist metadata to the shared rows', ()
   expect(screen.getByRole('link', { name: /Liked songs/ })).toHaveTextContent('Playlist · 0 songs');
   const recent = screen.getByRole('link', { name: /Recently played/ });
   expect(recent).toHaveTextContent('Auto playlist · 1 song');
-  expect(recent.querySelector('img')).toHaveAttribute('src', '/recent');
+  expect(recent.querySelector('[data-library-cover="recent"] [data-glyph-tile] svg')).not.toBeNull();
   // The upload page lives in Settings now, not in the nav.
   expect(screen.queryByRole('link', { name: /^Uploads/ })).toBeNull();
   const playlist = screen.getByRole('link', { name: /Mix/ });

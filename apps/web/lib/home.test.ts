@@ -61,7 +61,7 @@ describe('quickPicks', () => {
     expect(QUICK_MAX).toBe(6);
   });
 
-  it('gives a playlist with four song covers a mosaic, fewer the first cover, none the gradient', () => {
+  it('gives a playlist with four song covers a mosaic, fewer or none the neutral tile', () => {
     const arts = ['1', '2', '3', '4'].map((n) => `/art/${n}.jpg`);
     const picks = quickPicks({
       liked,
@@ -69,7 +69,7 @@ describe('quickPicks', () => {
       carlist: null,
     });
     expect(picks[1]).toMatchObject({ src: null, mosaic: arts });
-    expect(picks[2]).toMatchObject({ src: '/art/1.jpg' });
+    expect(picks[2]).toMatchObject({ src: null });
     expect(picks[2].mosaic).toBeUndefined();
     expect(picks[3]).toMatchObject({ src: null });
     expect(picks[3].mosaic).toBeUndefined();

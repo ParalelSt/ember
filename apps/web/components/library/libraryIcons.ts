@@ -4,10 +4,8 @@ import type { LibraryBadgeKind } from '@/lib/library';
 
 export type { LibraryBadgeKind };
 
-/** The phone Library's system collection badges, in ONE place: the small
- *  round mark in the corner of the Recently played, Uploads and Downloaded
- *  mosaic covers (and the big glyph on their plain tile when there are no
- *  song covers yet). Icons come from the shared Phosphor entry point, so every cover
+/** The Library's system collection looks, in ONE place: the gradient and
+ *  white glyph of the Recently played, Uploads and Downloaded covers. Icons come from the shared Phosphor entry point, so every cover
  *  uses the same glyphs.
  *
  *  The colours are fixed art, the same in every theme (like the Liked songs
@@ -18,17 +16,22 @@ export type LibraryBadgeIcon = Icon;
 
 export interface LibraryBadge {
   icon: LibraryBadgeIcon;
-  /** The badge circle's fill. */
-  color: string;
-  /** The plain tile's fill when the collection has no song covers yet. */
+  /** The cover's 135deg gradient fill (the owner's "distinct" pick). */
   tile: string;
 }
 
 export const LIBRARY_BADGES: Record<LibraryBadgeKind, LibraryBadge> = {
-  recent: { icon: ClockIcon, color: '#f2514a', tile: 'linear-gradient(145deg, #f2514a, #3a0b1c)' },
-  uploads: { icon: FolderSimplePlusIcon, color: '#e8912d', tile: 'linear-gradient(145deg, #e8912d, #3d1f06)' },
-  downloaded: { icon: CloudArrowDownIcon, color: '#d9547a', tile: 'linear-gradient(145deg, #d9547a, #33101f)' },
+  recent: { icon: ClockIcon, tile: 'linear-gradient(135deg, #246373, #88bfc3)' },
+  uploads: { icon: FolderSimplePlusIcon, tile: 'linear-gradient(135deg, #a16a2c, #e6c785)' },
+  downloaded: { icon: CloudArrowDownIcon, tile: 'linear-gradient(135deg, #245d46, #80bba0)' },
 };
+
+/** The Liked songs cover's gradient stops, top-left to bottom-right. */
+export const LIKED_GRADIENT = { from: '#6544dc', to: '#b9c9ef' } as const;
+
+/** A playlist with no art of its own (and fewer than four song covers): a
+ *  charcoal tile with a soft gray music note. */
+export const NEUTRAL_COVER = { background: '#232426', color: '#8c8e94' } as const;
 
 /** The glyph colour on a badge and on a plain tile. */
 export const LIBRARY_BADGE_FOREGROUND = '#ffffff';

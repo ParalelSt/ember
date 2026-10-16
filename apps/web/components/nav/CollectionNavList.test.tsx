@@ -32,8 +32,7 @@ describe('CollectionNavList', () => {
       const row = screen.getByRole('link', { name: new RegExp(`^${name}`) });
       const cover = row.querySelector(`[data-library-cover="${kind}"]`);
       expect(cover).toHaveClass('size-8', 'rounded-[4px]');
-      expect(cover).toHaveAttribute('data-look', 'plain');
-      expect(cover?.querySelector('[data-glyph] svg')).not.toBeNull();
+      expect(cover?.querySelector('[data-glyph-tile] svg')).not.toBeNull();
       expect(row).toHaveTextContent(subtitle);
       expect(row).not.toHaveTextContent('songs');
     }
@@ -72,12 +71,11 @@ it('uses supplied counts and system artwork, keeping navigation and truncation',
   expect(screen.getByText('Uploads · 1 song')).toBeInTheDocument();
   const recent = screen.getByRole('link', { name: /^Recently played/ });
   expect(recent).toHaveClass('bg-sidebar-accent', 'px-cluster', 'py-1.5', 'gap-row');
-  expect(recent.querySelectorAll('[data-mosaic] img')).toHaveLength(4);
-  expect(recent.querySelector('[data-badge]')).not.toBeNull();
+  expect(recent.querySelector('[data-library-cover="recent"] [data-glyph-tile] svg')).not.toBeNull();
   expect(screen.getByText('Recently played')).toHaveClass('truncate', 'text-[14.5px]');
   const uploads = screen.getByRole('link', { name: /^Uploads/ });
-  expect(uploads.querySelector('img')).toHaveAttribute('src', '/upload');
-  expect(uploads.querySelector('[data-badge]')).not.toBeNull();
+  expect(uploads.querySelector('img')).toBeNull();
+  expect(uploads.querySelector('[data-library-cover="uploads"] [data-glyph-tile] svg')).not.toBeNull();
   recent.click();
   expect(onNavigate).toHaveBeenCalledOnce();
 });

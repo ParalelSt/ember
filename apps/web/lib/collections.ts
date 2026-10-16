@@ -100,8 +100,7 @@ export interface CollectionSummary {
 
 /** What a playlist tile on the phone Home shows: its own cover when it has
  *  one (you picked it), else a 2x2 mosaic of its first four distinct song
- *  covers, else the first song cover full size when it has one to three,
- *  else nothing (the ember gradient). Pure. */
+ *  covers, else nothing (the neutral music-note tile). Pure. */
 export function playlistCover(
   artworkUrl: string | null,
   trackArtworks: readonly string[] | undefined,
@@ -109,7 +108,7 @@ export function playlistCover(
   if (artworkUrl) return { src: artworkUrl };
   const arts = trackArtworks ?? [];
   if (arts.length >= 4) return { src: null, mosaic: arts.slice(0, 4) };
-  return { src: arts[0] ?? null };
+  return { src: null };
 }
 
 /** Pure: no queries, no store reads. A system collection's subtitle is

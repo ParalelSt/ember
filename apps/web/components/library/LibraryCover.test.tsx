@@ -1,69 +1,51 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
-
-// The badge icons are provisional and live in one map: swapping an entry
-// there must change every cover, so the test swaps one.
-vi.mock('@/components/library/libraryIcons', async (orig) => {
-  const real = await orig<typeof import('@/components/library/libraryIcons')>();
-  const Swapped = (props: { className?: string }) => <svg data-icon="swapped" {...props} />;
-  return { ...real, LIBRARY_BADGES: { ...real.LIBRARY_BADGES, uploads: { ...real.LIBRARY_BADGES.uploads, icon: Swapped } } };
-});
-
-const { LibraryCover } = await import('./LibraryCover');
-const { LIBRARY_BADGES } = await import('@/components/library/libraryIcons');
+import { LibraryCover } from './LibraryCover';
+import { LIBRARY_BADGES } from '@/components/library/libraryIcons';
 
 const arts = (n: number) => Array.from({ length: n }, (_, i) => `https://img.test/${i}.jpg`);
 const box = (container: HTMLElement) => container.firstElementChild as HTMLElement;
 
 describe('LibraryCover', () => {
-  it('a 2x2 mosaic of the first four song covers with the round badge in the corner', () => {
-    const { container } = render(<LibraryCover cover={{ kind: 'badge', badge: 'recent', arts: arts(6) }} />);
-    const el = box(container);
-    expect(el).toHaveAttribute('data-library-cover', 'recent');
-    expect(el).toHaveAttribute('data-look', 'mosaic');
-    expect([...el.querySelectorAll('[data-mosaic] img')].map((i) => i.getAttribute('src'))).toEqual(arts(4));
-    const badge = el.querySelector('[data-badge]') as HTMLElement;
-    expect(badge).toHaveClass('rounded-full', 'right-[6%]', 'bottom-[6%]');
-    expect(badge.style.background).not.toBe('');
-    expect(badge.querySelector('svg')).not.toBeNull();
+  it.each([
+    ['recent', '#246373', '#88bfc3'],
+    ['uploads', '#a16a2c', '#e6c785'],
+    ['downloaded', '#245d46', '#80bba0'],
+  ] as const)('%s is its own gradient with a white glyph, whatever songs it has', (badge, from, to) => {
+    for (const songs of [[], arts(2), arts(6)]) {
+      const { container, unmount } = render(<LibraryCover cover={{ kind: 'badge', badge, arts: songs }} />);
+      const el = box(container);
+      expect(el).toHaveAttribute('data-library-cover', badge);
+      expect(el.querySelector('img')).toBeNull();
+      const tile = el.querySelector('[data-glyph-tile]') as HTMLElement;
+      expect(tile.style.background).toContain('135deg');
+      expect(tile.getAttribute('style')).toContain(from);
+      expect(tile.getAttribute('style')).toContain(to);
+      expect(tile.style.color).toBe('#ffffff');
+      expect(tile.querySelector('svg')).not.toBeNull();
+      unmount();
+    }
   });
 
-  it('one to three covers: the first full size, badge kept', () => {
-    const { container } = render(<LibraryCover cover={{ kind: 'badge', badge: 'downloaded', arts: arts(2) }} />);
-    const el = box(container);
-    expect(el).toHaveAttribute('data-look', 'single');
-    expect(el.querySelectorAll('img')).toHaveLength(1);
-    expect(el.querySelector('img')).toHaveAttribute('src', arts(1)[0]);
-    expect(el.querySelector('[data-badge]')).not.toBeNull();
-  });
-
-  it('no covers: a plain coloured tile with the glyph, no badge', () => {
-    const { container } = render(<LibraryCover cover={{ kind: 'badge', badge: 'recent', arts: [] }} />);
-    const el = box(container);
-    expect(el).toHaveAttribute('data-look', 'plain');
-    expect(el.querySelector('img')).toBeNull();
-    expect(el.querySelector('[data-badge]')).toBeNull();
-    expect(el.querySelector('[data-glyph] svg')).not.toBeNull();
-    expect(el.getAttribute('style')).toContain('linear-gradient');
-  });
-
-  it('takes its badge icons from the one map in components/library/libraryIcons', () => {
-    const { container } = render(<LibraryCover cover={{ kind: 'badge', badge: 'uploads', arts: arts(4) }} />);
-    expect(box(container).querySelector('[data-badge] [data-icon="swapped"]')).not.toBeNull();
+  it('takes its glyphs from the one map in components/library/libraryIcons', () => {
     expect(Object.keys(LIBRARY_BADGES).sort()).toEqual(['downloaded', 'recent', 'uploads']);
   });
 
-  it('Liked songs keeps the sound-wave heart', () => {
+  it('Liked songs keeps the white heart', () => {
     const { container } = render(<LibraryCover cover={{ kind: 'liked' }} className="size-14" />);
     expect(box(container)).toHaveClass('size-14');
-    expect(container.querySelector('[data-liked-cover]')).not.toBeNull();
+    expect(container.querySelector('[data-liked-heart]')).toHaveAttribute('fill', '#ffffff');
   });
 
-  it('a playlist shows its own cover or its song mosaic', () => {
+  it('a playlist shows its own cover, its four-cover mosaic, or the neutral note tile', () => {
     const one = render(<LibraryCover cover={{ kind: 'art', src: 'https://img.test/own.jpg' }} />);
     expect(one.container.querySelector('img')).toHaveAttribute('src', 'https://img.test/own.jpg');
     one.unmount();
     const four = render(<LibraryCover cover={{ kind: 'art', src: null, mosaic: arts(4) }} />);
     expect(four.container.querySelectorAll('[data-mosaic] img')).toHaveLength(4);
+    four.unmount();
+    const none = render(<LibraryCover cover={{ kind: 'art', src: null }} />);
+    expect(none.container.querySelector('img')).toBeNull();
+    expect(none.container.querySelector('[data-neutral-cover] svg')).not.toBeNull();
   });
 });
