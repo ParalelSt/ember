@@ -8,9 +8,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div>
       <SettingsHeader />
-      {/* Side nav from lg only: at md the sidebar already takes 240px, and a
-          second column left the page ~230px (bughunt V8). From md to lg the tabs
-          remain a row; phones use the grouped Settings home. */}
+      {/* Start two columns at lg: the app sidebar leaves too little room at md. */}
       <div className="flex flex-col lg:flex-row gap-stack lg:gap-section">
         <SettingsTabs />
         <SettingsContent>{children}</SettingsContent>
