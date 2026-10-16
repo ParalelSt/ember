@@ -8,6 +8,7 @@ import {
   refFromPinId,
   sameContext,
   systemCollections,
+  navCollections,
   titleFor,
   toSummary,
   sharingOf,
@@ -20,7 +21,7 @@ describe('hrefFor', () => {
     expect(hrefFor({ kind: 'playlist', id: 'abc' })).toBe('/playlist/abc');
     expect(hrefFor({ kind: 'liked' })).toBe('/library/liked');
     expect(hrefFor({ kind: 'recent' })).toBe('/library/recent');
-    expect(hrefFor({ kind: 'uploads' })).toBe('/library/uploads');
+    expect(hrefFor({ kind: 'uploads' })).toBe('/settings/uploads');
   });
 });
 
@@ -107,7 +108,7 @@ describe('systemCollections', () => {
     expect(sys).toHaveLength(3);
     expect(sys[0]).toEqual({ ref: { kind: 'liked' }, title: 'Liked songs', href: '/library/liked', pinId: 'liked', icon: 'heart' });
     expect(sys[1]).toEqual({ ref: { kind: 'recent' }, title: 'Recently played', href: '/library/recent', pinId: 'recent', icon: 'clock' });
-    expect(sys[2]).toEqual({ ref: { kind: 'uploads' }, title: 'Uploads', href: '/library/uploads', pinId: 'uploads', icon: 'upload' });
+    expect(sys[2]).toEqual({ ref: { kind: 'uploads' }, title: 'Uploads', href: '/settings/uploads', pinId: 'uploads', icon: 'upload' });
   });
 });
 
@@ -234,5 +235,12 @@ describe('playlistCover (phone Home tiles)', () => {
     expect(toSummary({ kind: 'playlist', id: 'p' }, { trackCount: 0 }).trackCount).toBe(0);
     expect(toSummary({ kind: 'playlist', id: 'p' })).not.toHaveProperty('trackCount');
     expect(toSummary({ kind: 'liked' }, { trackCount: 4 })).not.toHaveProperty('trackCount');
+  });
+});
+
+describe('navCollections', () => {
+  it('leaves Uploads out of the sidebar and drawer but keeps it in systemCollections', () => {
+    expect(navCollections().map((c) => c.ref.kind)).toEqual(['liked', 'recent']);
+    expect(systemCollections().map((c) => c.ref.kind)).toContain('uploads');
   });
 });

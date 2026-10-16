@@ -11,7 +11,7 @@ const { CollectionNavList } = await import('./CollectionNavList');
 const ITEMS = [
   { label: 'Liked songs', href: '/library/liked', icon: 'heart' as const },
   { label: 'Recently played', href: '/library/recent', icon: 'clock' as const },
-  { label: 'Uploads', href: '/library/uploads', icon: 'upload' as const },
+  { label: 'Uploads', href: '/settings/uploads', icon: 'upload' as const },
 ];
 
 describe('CollectionNavList', () => {

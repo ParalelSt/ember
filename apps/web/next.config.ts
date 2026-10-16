@@ -60,6 +60,12 @@ const nextConfig: NextConfig = {
   // PocketBase's superuser surface is never forwarded (bughunt W14): proxy.ts
   // answers it with a 404, and this pattern leaves the same routes out for the
   // paths proxy.ts's matcher skips (anything ending in .png, .svg...).
+  // The upload page moved from the Library to Settings; old links and
+  // bookmarks keep working.
+  async redirects() {
+    return [{ source: '/library/uploads', destination: '/settings/uploads', permanent: true }];
+  },
+
   async rewrites() {
     return [
       {

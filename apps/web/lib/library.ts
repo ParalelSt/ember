@@ -160,7 +160,7 @@ export function buildLibraryItems({ liked, history, uploads, playlists, download
       kind: 'uploads',
       title: 'Uploads',
       subtitle: `Uploads · ${countLabel(uploads.length)}`,
-      href: '/library/uploads',
+      href: '/settings/uploads',
       downloaded: has('uploads'),
       pinned: false,
       cover: { kind: 'badge', badge: 'uploads', arts: firstArts(uploads) },

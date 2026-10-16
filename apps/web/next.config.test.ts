@@ -50,3 +50,12 @@ describe('next.config /pb rewrite', () => {
     }
   });
 });
+
+describe('next.config redirects', () => {
+  it('sends the old /library/uploads URL to Settings > Uploads', async () => {
+    const rules = await nextConfig.redirects!();
+    expect(rules).toContainEqual(
+      expect.objectContaining({ source: '/library/uploads', destination: '/settings/uploads' }),
+    );
+  });
+});

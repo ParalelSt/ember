@@ -20,7 +20,7 @@ import { Avatar } from '@/components/primitives/Avatar';
 import { ScanQrButton } from '@/components/auth/ScanQrButton';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
-import { hrefFor, sharedLabel, systemCollections } from '@/lib/collections';
+import { hrefFor, navCollections, sharedLabel } from '@/lib/collections';
 import { firstArts } from '@/lib/library';
 import { useUiStore } from '@/stores/useUiStore';
 
@@ -67,7 +67,7 @@ export function Sidebar() {
       {user && (
         <div className="mt-4 border-t border-sidebar-border pt-3">
           <CollectionNavList
-            items={systemCollections().map(({ ref, title, href, icon }) => ({
+            items={navCollections().map(({ ref, title, href, icon }) => ({
                 label: title,
                 href,
                 icon,

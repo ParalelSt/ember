@@ -18,7 +18,7 @@ export const SYSTEM_COLLECTIONS: readonly SystemKind[] = ['liked', 'recent', 'up
 const SYSTEM = {
   liked: { title: 'Liked songs', href: '/library/liked', icon: 'heart' },
   recent: { title: 'Recently played', href: '/library/recent', icon: 'clock' },
-  uploads: { title: 'Uploads', href: '/library/uploads', icon: 'upload' },
+  uploads: { title: 'Uploads', href: '/settings/uploads', icon: 'upload' },
 } as const satisfies Record<SystemKind, { title: string; href: string; icon: CollectionIcon }>;
 
 export function hrefFor(ref: CollectionRef): string {
@@ -63,6 +63,14 @@ export function systemCollections(): SystemCollection[] {
     const ref: CollectionRef = { kind };
     return { ref, title: titleFor(ref), href: hrefFor(ref), pinId: pinIdFor(ref), icon: SYSTEM[kind].icon };
   });
+}
+
+/** The system collections the sidebar and phone drawer link to. Uploads is
+ *  left out on purpose: the upload page lives under Settings (it is not
+ *  something everyone uses), while Library and Home still list the
+ *  collection via systemCollections(). */
+export function navCollections(): SystemCollection[] {
+  return systemCollections().filter((c) => c.ref.kind !== 'uploads');
 }
 
 /** One tile's worth of data for CollectionCard, for a system collection or
