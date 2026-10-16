@@ -1,0 +1,7 @@
+/* The picker's tinted badges. The foreground mix follows the active theme. */
+.icon {
+  --settings-icon-color: hsl(var(--settings-icon-hue) 85% 65%);
+  --settings-icon-background: hsl(var(--settings-icon-hue) 70% 55% / .2);
+  color: color-mix(in srgb, var(--settings-icon-color) 75%, var(--foreground));
+  background-color: var(--settings-icon-background);
+}

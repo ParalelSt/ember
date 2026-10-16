@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import { SettingsHome } from '@/components/settings/SettingsHome';
 
 export default function SettingsIndex() {
-  redirect('/settings/profile');
+  return <SettingsHome />;
 }

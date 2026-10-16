@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
-const TABS = [
+export const SETTINGS_TABS = [
   { href: '/settings/profile', label: 'Profile' },
   { href: '/settings/appearance', label: 'Appearance' },
   { href: '/settings/library', label: 'Library' },
@@ -29,9 +29,9 @@ export function SettingsTabs() {
   }, [path]);
 
   return (
-    <nav className="lg:w-48 shrink-0 relative">
+    <nav className="hidden md:block lg:w-48 shrink-0 relative">
       <ul className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible">
-        {TABS.map(({ href, label }) => {
+        {SETTINGS_TABS.map(({ href, label }) => {
           const active = path.startsWith(href);
           return (
             <li key={href}>
