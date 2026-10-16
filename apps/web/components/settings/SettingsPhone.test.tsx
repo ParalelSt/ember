@@ -58,7 +58,7 @@ it.each(['profile', 'appearance', 'library', 'downloads', 'uploads', 'plugins', 
   expect(back.parentElement).toHaveClass('md:hidden');
   expect(within(back.parentElement!).getByRole('heading')).toHaveTextContent(new RegExp(section, 'i'));
   expect(screen.getByLabelText('Existing content')).toHaveValue('preserved');
-  expect(screen.getByRole('navigation')).toHaveClass('hidden', 'md:block', 'lg:w-48');
+  expect(screen.getByRole('navigation')).toHaveClass('hidden', 'md:block');
 });
 it('preserves desktop redirect and has no phone home there', () => {
   state.desktop = true; render(<SettingsIndex />);
@@ -92,12 +92,11 @@ it('uses the detected device label and omits unrecognized devices', () => {
   ua.mockRestore();
 });
 
-it('keeps the Settings title and tab geometry for desktop sections', () => {
+it('keeps the desktop picker out of the phone layout', () => {
   state.path = '/settings/appearance';
   render(<SettingsLayout>Appearance controls</SettingsLayout>);
-  expect(screen.getByRole('heading', { name: 'Settings' })).toHaveClass('hidden', 'md:block');
   const nav = screen.getByRole('navigation');
-  expect(nav).toHaveClass('hidden', 'md:block', 'lg:w-48');
-  expect(nav.querySelector('ul')).toHaveClass('flex', 'lg:flex-col', 'overflow-x-auto', 'lg:overflow-visible');
-  expect(within(nav).getByRole('link', { name: 'Appearance' })).toHaveClass('bg-card', 'text-foreground');
+  expect(nav).toHaveClass('hidden', 'md:block');
+  expect(within(nav).queryByRole('list')).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Back to Settings' })).toBeInTheDocument();
 });

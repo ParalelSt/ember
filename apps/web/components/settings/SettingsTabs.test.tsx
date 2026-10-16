@@ -1,36 +1,85 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 import type { ComponentProps } from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { useThemeStore } from '@/stores/useThemeStore';
+import { useOfflineStore } from '@/stores/useOfflineStore';
 
-vi.mock('next/link', () => ({ default: ({ children, ...rest }: ComponentProps<'a'>) => <a {...rest}>{children}</a> }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/settings/library' }));
-const { SettingsTabs } = await import('./SettingsTabs');
+const state = vi.hoisted(() => ({ path: '/settings/profile', admin: false }));
+vi.mock('next/link', () => ({ default: ({ children, href, ...rest }: ComponentProps<'a'>) => <a {...rest} href={href} onClick={e => { e.preventDefault(); state.path = String(href); }}>{children}</a> }));
+vi.mock('next/navigation', () => ({ usePathname: () => state.path }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { email: 'mia@example.com' }, name: 'Mia', avatarUrl: '/avatar.png', isAdmin: state.admin }) }));
+vi.mock('@/components/settings/AppUpdateCard', () => ({ AppUpdateCard: () => null }));
+vi.mock('@/components/settings/BuildStamp', () => ({ BuildStamp: () => null }));
+import SettingsLayout from '@/app/(app)/settings/layout';
 
-describe('SettingsTabs', () => {
-  it('lists Library, where Transfer lives, and marks the open tab', () => {
-    render(<SettingsTabs />);
-    const tabs = screen.getAllByRole('link');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Profile', 'Appearance', 'Library', 'Downloads', 'Uploads', 'Plugins', 'Devices', 'Help']);
-    expect(screen.getByRole('link', { name: 'Library' })).toHaveAttribute('href', '/settings/library');
+beforeEach(() => {
+  state.path = '/settings/profile'; state.admin = false;
+  useThemeStore.setState({ doc: { v: 1, preset: 'forest' } });
+  useOfflineStore.setState({ hydrated: false, totalBytes: 0 });
+});
+
+it('shows the shared grouped column, profile card, and real current values', () => {
+  render(<SettingsLayout>Profile content</SettingsLayout>);
+  const nav = screen.getByRole('navigation');
+  for (const group of ['Account', 'App', 'Music']) expect(within(nav).getByRole('list', { name: group })).toBeInTheDocument();
+  expect(within(nav).getByText('Mia')).toBeInTheDocument();
+  expect(within(nav).getByText('mia@example.com')).toBeInTheDocument();
+  expect(within(nav).getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/settings/profile');
+  expect(within(nav).getByRole('link', { name: 'Appearance Forest' })).toBeInTheDocument();
+  expect(within(nav).getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page');
+});
+
+it('selects the routed section and frames its content with a tinted icon and title', () => {
+  const view = render(<SettingsLayout>Profile content</SettingsLayout>);
+  fireEvent.click(screen.getByRole('link', { name: 'Appearance Forest' }));
+  view.rerender(<SettingsLayout>Appearance controls</SettingsLayout>);
+  const active = screen.getByRole('link', { name: 'Appearance Forest' });
+  expect(active).toHaveAttribute('aria-current', 'page');
+  expect(active).toHaveClass('bg-muted');
+  expect(screen.getByRole('link', { name: 'Profile' })).not.toHaveAttribute('aria-current');
+  const title = screen.getByRole('heading', { name: 'Appearance' });
+  expect(title.parentElement?.querySelector('svg')).toBeInTheDocument();
+  expect(title.parentElement).toHaveClass('border-b');
+  expect(screen.getByText('Appearance controls')).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Back to Settings' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('link', { name: 'Edit' }));
+  view.rerender(<SettingsLayout>Profile content</SettingsLayout>);
+  expect(screen.getByRole('heading', { name: 'Profile' })).toBeInTheDocument();
+});
+
+it('only exposes the existing protected admin routes to admins', () => {
+  const view = render(<SettingsLayout>Content</SettingsLayout>);
+  expect(screen.queryByRole('list', { name: 'Admin' })).not.toBeInTheDocument();
+  state.admin = true;
+  view.rerender(<SettingsLayout>Content</SettingsLayout>);
+  expect(within(screen.getByRole('list', { name: 'Admin' })).getAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/admin/users', '/admin/invites', '/admin/tracks', '/admin/pranks', '/admin/backups', '/admin/car']);
+});
+
+it.each(['profile', 'appearance', 'library', 'downloads', 'uploads', 'plugins', 'devices', 'help'])('frames the directly opened %s section without changing its controls', section => {
+  state.path = `/settings/${section}`;
+  render(<SettingsLayout><input aria-label="Existing control" defaultValue="preserved" /></SettingsLayout>);
+  const title = screen.getByRole('heading', { name: new RegExp(`^${section}$`, 'i') });
+  expect(title.parentElement?.querySelector('svg')).toBeInTheDocument();
+  expect(title.parentElement).toHaveClass('border-b');
+  expect(screen.getByLabelText('Existing control')).toHaveValue('preserved');
+  expect(screen.queryByRole('link', { name: 'Back to Settings' })).not.toBeInTheDocument();
+});
+
+it('updates desktop values from the same live stores as the phone', () => {
+  render(<SettingsLayout>Content</SettingsLayout>);
+  expect(screen.getByRole('link', { name: 'Downloads' }).querySelector('[data-settings-value]')).toBeNull();
+  act(() => {
+    useOfflineStore.setState({ hydrated: true, totalBytes: 1048576 });
+    useThemeStore.setState({ doc: { v: 1, preset: 'ember', name: 'My theme' } });
   });
+  expect(screen.getByRole('link', { name: /Downloads 1.*MB/ })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Appearance My theme' })).toBeInTheDocument();
+});
 
-  it('has Devices, for QR sign-in and signing out everywhere', () => {
-    render(<SettingsTabs />);
-    expect(screen.getByRole('link', { name: 'Devices' })).toHaveAttribute('href', '/settings/devices');
-  });
-
-  it('has Appearance right after Profile', () => {
-    render(<SettingsTabs />);
-    expect(screen.getByRole('link', { name: 'Appearance' })).toHaveAttribute('href', '/settings/appearance');
-  });
-
-  // Bughunt V8: at md the app sidebar already takes 240px, and a side nav of
-  // its own left the page ~230px. It is the scrolling row phones use until lg.
-  it('is the row across the top until lg, the side column from lg', () => {
-    const { container } = render(<SettingsTabs />);
-    const nav = container.querySelector('nav')!;
-    expect(nav).toHaveClass('lg:w-48');
-    expect(nav).not.toHaveClass('md:w-48');
-    expect(nav.querySelector('ul')).toHaveClass('flex', 'lg:flex-col', 'overflow-x-auto', 'lg:overflow-visible');
-  });
+it('keeps the sticky column within the app scroller below the desktop top bar', () => {
+  render(<SettingsLayout>Content</SettingsLayout>);
+  const nav = screen.getByRole('navigation');
+  expect(nav).toHaveClass('sticky', 'overflow-y-auto', 'top-[calc(var(--ember-topbar-h,0px)+var(--spacing-block))]');
+  expect(nav).toHaveClass('max-h-[calc(var(--ember-scroller-h,100dvh)-var(--ember-topbar-h,0px)-var(--spacing-section))]');
 });
