@@ -255,6 +255,14 @@ body:has([data-copy-bar]) [data-back-to-top] { bottom: 6.25rem; }
 body:has([data-tabs-dock]) [data-back-to-top] { bottom: 4.5rem; }
 body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem; }
 
+/* A phone floating action (components/ui/floating-action-button) sits in
+   Back to top's corner: Back to top steps up over it (0.5rem gap, the 3rem
+   button, 0.5rem again). The button is hidden from md up, so the lift is
+   phone-only. */
+@media (max-width: 47.99rem) {
+  body:has([data-fab]) [data-back-to-top] { bottom: 4rem; }
+}
+
 /* Marquee for overflowing titles (full-screen NowPlaying). Continuous
    one-direction loop: two copies of the text scroll left and the second
    seamlessly takes the first's place. --marquee-shift is the negative
