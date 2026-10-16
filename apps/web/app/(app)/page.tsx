@@ -63,7 +63,7 @@ export default function HomePage() {
   // A phone and a desktop window get the same Home (chips, quick grid, the
   // owner's order B of sideways rows), each with its own sizes: 140px tiles
   // that snap by touch on a phone, 180px tiles with header arrows, a
-  // four-column grid and a wide hero card on md and up. A media query, not
+  // four-column grid and a same 180px tiles for every row (recommendations too) on md and up. A media query, not
   // md: classes, so only one of the two is ever in the page.
   const isDesktop = useIsDesktop();
   const collection = usePlayCollection();
@@ -232,11 +232,10 @@ export default function HomePage() {
       );
     }
     if (key === 'friends') return <FriendsListening key={key} layout={isDesktop ? 'desktop-row' : 'row'} />;
-    if (key === 'recommended') {
+    if (key === 'recommended' && !isDesktop) {
       return (
         <BecauseYouPlayed
           key={key}
-          variant={isDesktop ? 'wide' : 'phone'}
           title={recsTitle}
           seedArtist={seedTrack?.artist}
           tracks={recommended}

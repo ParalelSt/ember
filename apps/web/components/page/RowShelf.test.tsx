@@ -164,3 +164,45 @@ describe('RowShelf, desktop (the owner\'s "arrows" and "t180" picks)', () => {
     expect(screen.getByRole('button', { name: 'Scroll right' })).toBeDisabled();
   });
 });
+
+describe('RowShelf, desktop mouse drag', () => {
+  const setup = () => {
+    const onClick = vi.fn();
+    render(
+      <RowShelf variant="desktop" title="Popular now">
+        {[0, 1, 2].map((i) => (
+          <button key={i} type="button" onClick={onClick}>{`tile ${i}`}</button>
+        ))}
+      </RowShelf>,
+    );
+    const list = screen.getByRole('list');
+    list.scrollLeft = 100;
+    return { list, onClick, tile: screen.getByText('tile 1') };
+  };
+
+  it('a drag past 6px scrolls the row, shows a grabbing cursor and swallows the click on release', () => {
+    const { list, onClick, tile } = setup();
+    fireEvent.mouseDown(tile, { button: 0, clientX: 300 });
+    fireEvent.mouseMove(window, { clientX: 298 });
+    expect(list.scrollLeft).toBe(100);
+    fireEvent.mouseMove(window, { clientX: 250 });
+    expect(list.scrollLeft).toBe(150);
+    expect(list.style.cursor).toBe('grabbing');
+    fireEvent.mouseUp(window, { clientX: 250 });
+    fireEvent.click(tile);
+    expect(onClick).not.toHaveBeenCalled();
+    expect(list.style.cursor).toBe('');
+    // The next, plain click goes through.
+    fireEvent.click(tile);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('a plain click (press and release in place) still activates the tile', () => {
+    const { onClick, tile } = setup();
+    fireEvent.mouseDown(tile, { button: 0, clientX: 300 });
+    fireEvent.mouseMove(window, { clientX: 303 });
+    fireEvent.mouseUp(window, { clientX: 303 });
+    fireEvent.click(tile);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+});
