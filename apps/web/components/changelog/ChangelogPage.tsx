@@ -28,7 +28,7 @@ export const entryHref = (id: string) => `/whats-new/${encodeURIComponent(id)}`;
  *  the persistent switch right under it. */
 export function ChangelogPage({ entries, newIds, hideTags, onHideTagsChange, onMarkAllRead }: ChangelogPageProps) {
   return (
-    <div data-testid="changelog-page" className="max-w-2xl">
+    <div data-testid="changelog-page" className="max-w-xl">
       <div className="flex items-baseline justify-between gap-block">
         <PageTitle>What&apos;s new</PageTitle>
         <button
