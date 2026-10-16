@@ -177,17 +177,9 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props
             <NeighbourCard dir="newer" target={newer} onGo={onGo} />
             <NeighbourCard dir="older" target={older} onGo={onGo} />
           </div>
-          <div className="mb-cluster flex items-center justify-center md:gap-block">
-            <button
-              type="button"
-              aria-label="Newer update"
-              data-testid="changelog-newer"
-              disabled={!newer}
-              onClick={() => newer && onGo?.(newer.id)}
-              className="hidden size-hit items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-40 md:flex"
-            >
-              <ArrowLeftIcon className="size-4" />
-            </button>
+          {/* Desktop moves only through the cards above (and the arrow
+              keys); the dots and hint are phone-only, for swiping. */}
+          <div data-testid="changelog-dots" className="mb-cluster flex items-center justify-center md:hidden">
             <div className="flex items-center justify-center">
             {dots.map((i) => {
               const on = i === index;
@@ -207,19 +199,8 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props
               );
             })}
             </div>
-            <button
-              type="button"
-              aria-label="Older update"
-              data-testid="changelog-older"
-              disabled={!older}
-              onClick={() => older && onGo?.(older.id)}
-              className="hidden size-hit items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-40 md:flex"
-            >
-              <ArrowRightIcon className="size-4" />
-            </button>
           </div>
           <p className="md:hidden">{isCoarse() ? 'Swipe for newer or older' : 'Use the left and right arrow keys'}</p>
-          <p data-testid="changelog-hint-desktop" className="hidden md:block">Click an arrow or use the left and right arrow keys</p>
         </div>
       )}
     </div>

@@ -196,24 +196,13 @@ describe('ChangelogEntryPage navigation', () => {
     expect(onGo).toHaveBeenCalledWith('e2');
   });
 
-  it('desktop newer and older buttons navigate and disable at the ends', () => {
-    const onGo = vi.fn();
-    const { unmount } = render(<ChangelogEntryPage entry={many[5]} entries={many} onGo={onGo} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Newer update' }));
-    expect(onGo).toHaveBeenLastCalledWith('e4');
-    fireEvent.click(screen.getByRole('button', { name: 'Older update' }));
-    expect(onGo).toHaveBeenLastCalledWith('e6');
-    expect(screen.getByTestId('changelog-hint-desktop')).toHaveTextContent('Click an arrow or use the left and right arrow keys');
-    unmount();
-    onGo.mockClear();
-    const first = render(<ChangelogEntryPage entry={many[0]} entries={many} onGo={onGo} />);
-    expect(screen.getByRole('button', { name: 'Newer update' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Older update' })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Newer update' }));
-    expect(onGo).not.toHaveBeenCalled();
-    first.unmount();
-    render(<ChangelogEntryPage entry={many[11]} entries={many} onGo={onGo} />);
-    expect(screen.getByRole('button', { name: 'Older update' })).toBeDisabled();
+  it('desktop moves only through the cards: no arrow buttons, dots and hint are phone-only', () => {
+    render(<ChangelogEntryPage entry={many[5]} entries={many} />);
+    expect(screen.queryByRole('button', { name: 'Newer update' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Older update' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('changelog-hint-desktop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('changelog-dots')).toHaveClass('md:hidden');
+    expect(screen.getByTestId('changelog-cards')).toHaveClass('md:grid');
   });
 
   it('desktop cards preview the neighbours, navigate, and show end states', () => {
