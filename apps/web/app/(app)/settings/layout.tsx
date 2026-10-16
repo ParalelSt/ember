@@ -8,7 +8,8 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div>
       <SettingsHeader />
-      <div className="flex flex-col md:flex-row gap-stack lg:gap-section">
+      {/* Start two columns at lg: the app sidebar leaves too little room at md. */}
+      <div className="flex flex-col lg:flex-row gap-stack lg:gap-section">
         <SettingsTabs />
         <SettingsContent>{children}</SettingsContent>
       </div>

@@ -7,13 +7,14 @@ import { useOfflineStore } from '@/stores/useOfflineStore';
 const state = vi.hoisted(() => ({ path: '/settings/profile', admin: false }));
 vi.mock('next/link', () => ({ default: ({ children, href, ...rest }: ComponentProps<'a'>) => <a {...rest} href={href} onClick={e => { e.preventDefault(); state.path = String(href); }}>{children}</a> }));
 vi.mock('next/navigation', () => ({ usePathname: () => state.path }));
-vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { email: 'mia@example.com' }, name: 'Mia', avatarUrl: '/avatar.png', isAdmin: state.admin }) }));
 vi.mock('@/components/settings/AppUpdateCard', () => ({ AppUpdateCard: () => null }));
 vi.mock('@/components/settings/BuildStamp', () => ({ BuildStamp: () => null }));
 import SettingsLayout from '@/app/(app)/settings/layout';
 
 beforeEach(() => {
+  window.innerWidth = 1280;
+  window.dispatchEvent(new Event('resize'));
   state.path = '/settings/profile'; state.admin = false;
   useThemeStore.setState({ doc: { v: 1, preset: 'forest' } });
   useOfflineStore.setState({ hydrated: false, totalBytes: 0 });
