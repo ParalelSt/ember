@@ -54,3 +54,15 @@ it('renders the backup nav entry and page for an admin', async () => {
   expect(screen.getByRole('link', { name: 'Backups' })).toHaveAttribute('href', '/admin/backups');
   expect(screen.getByText('Backup controls')).toBeInTheDocument();
 });
+
+it('keeps the desktop frame: Admin over the tabs, tabs beside the page from lg', async () => {
+  const { container } = render(await AdminLayout({ children: <div>Admin content</div> }));
+  const nav = container.querySelector('nav')!;
+  expect(nav).toHaveClass('md:block', 'lg:w-48');
+  const row = nav.parentElement!;
+  expect(row).toHaveClass('flex', 'flex-col', 'lg:flex-row', 'gap-stack', 'lg:gap-section');
+  expect(row.lastElementChild).toHaveTextContent('Admin content');
+  expect(screen.getByRole('heading', { level: 1, name: 'Admin' })).toHaveClass('md:block', 'mb-stack');
+  // On a phone the section's own bar replaces the tabs.
+  expect(screen.getByRole('link', { name: 'Back to Admin' })).toHaveAttribute('href', '/admin');
+});

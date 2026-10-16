@@ -124,9 +124,8 @@ describe('AdminCarPage', () => {
     expect(screen.getByText('Nothing heard from the app in the last 48 hours.')).toBeTruthy();
   });
 
-  it('is linked from the admin tabs', async () => {
-    const { readFileSync } = await import('node:fs');
-    const tabs = readFileSync(`${process.cwd()}/components/admin/AdminTabs.tsx`, 'utf8');
-    expect(tabs).toContain("{ href: '/admin/car', label: 'Car and Android Auto' }");
+  it('is linked from the admin tabs and phone tiles', async () => {
+    const { ADMIN_SECTIONS } = await import('@/components/admin/sections');
+    expect(ADMIN_SECTIONS.find((s) => s.id === 'car')).toMatchObject({ href: '/admin/car', label: 'Car and Android Auto' });
   });
 });

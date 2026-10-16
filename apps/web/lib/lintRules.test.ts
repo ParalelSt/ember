@@ -156,7 +156,6 @@ function countRawSpacing(file: string): number {
 // empties it.
 const SPACING_BASELINE: Record<string, number> = {
   'app/(app)/admin/invites/page.tsx': 8,
-  'app/(app)/admin/layout.tsx': 3,
   'app/(app)/admin/tracks/page.tsx': 14,
   'app/(app)/admin/users/page.tsx': 8,
   'app/(app)/library/loading.tsx': 5,

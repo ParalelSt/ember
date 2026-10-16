@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ComponentProps } from 'react';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 
 vi.mock('next/link', () => ({ default: ({ children, ...rest }: ComponentProps<'a'>) => <a {...rest}>{children}</a> }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/admin/users' }));
@@ -15,5 +15,16 @@ describe('AdminTabs', () => {
     expect(nav).toHaveClass('lg:w-48');
     expect(nav).not.toHaveClass('md:w-48');
     expect(nav.querySelector('ul')).toHaveClass('flex', 'lg:flex-col', 'overflow-x-auto', 'lg:overflow-visible');
+  });
+
+  // Phones get the section tiles and a back arrow instead (AdminHome,
+  // AdminHeader); md and up keep exactly these tabs.
+  it('is hidden on a phone and shown from md up, with every section', () => {
+    const { container } = render(<AdminTabs />);
+    expect(container.querySelector('nav')).toHaveClass('hidden', 'md:block');
+    expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual([
+      'Users', 'Invites', 'Tracks', 'Pranks', 'Backups', 'Car and Android Auto',
+    ]);
+    expect(screen.getByRole('link', { name: 'Users' })).toHaveClass('bg-card', 'text-foreground');
   });
 });

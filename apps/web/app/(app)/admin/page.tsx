@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import { AdminHome } from '@/components/admin/AdminHome';
 
 export default function AdminIndex() {
-  redirect('/admin/users');
+  return <AdminHome />;
 }
