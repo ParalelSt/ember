@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { formatTime } from '@/lib/format';
+import { guessFromFilename } from '@/lib/uploadName';
 
 /** Add a song from your own files. It lands on the server and becomes
  *  searchable for everyone, that's the point: the library grows with the
@@ -82,11 +83,7 @@ export function UploadTrackDialog({
     // Pre-fill from the filename so the common case is one click. A field
     // the member typed in is theirs; one still holding the previous file's
     // guess takes this file's.
-    const base = f.name.replace(/\.[^.]+$/, '');
-    const dash = base.split(/\s+-\s+/);
-    const guess = dash.length >= 2
-      ? { artist: dash[0].trim(), title: dash.slice(1).join(' - ').trim() }
-      : { artist: '', title: base };
+    const guess = guessFromFilename(f.name);
     const last = prefilled.current;
     const next = { title: last.title, artist: last.artist };
     if (!title || title === last.title) {
