@@ -20,6 +20,8 @@ import type { AdminUser } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { UserCards } from '@/components/admin/UserCards';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export default function AdminUsersPage() {
   const { user: actor, signOut } = useAuth();
@@ -33,6 +35,7 @@ export default function AdminUsersPage() {
   const [pendingDelete, setPendingDelete] = useState<AdminUser | null>(null);
   const [pendingReset, setPendingReset] = useState<AdminUser | null>(null);
   const [pendingSignOut, setPendingSignOut] = useState<AdminUser | null>(null);
+  const isDesktop = useIsDesktop();
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -42,49 +45,82 @@ export default function AdminUsersPage() {
     );
   }, [users, search]);
 
+  // The desktop rows and the phone cards share these, so both do exactly
+  // the same thing.
+  const rename = (u: AdminUser, name: string) => updateUser.mutate(
+    { id: u.id, patch: { name } },
+    {
+      onSuccess: () => toast.success('Saved'),
+      onError: (e) => toast.error(`Couldn't save: ${(e as Error).message}`),
+    },
+  );
+  const toggleAdmin = (u: AdminUser, isAdmin: boolean) => updateUser.mutate(
+    { id: u.id, patch: { isAdmin } },
+    {
+      onSuccess: () => toast.success(isAdmin ? `Promoted ${u.email}` : `Demoted ${u.email}`),
+      onError: (e) => toast.error(`Couldn't update: ${(e as Error).message}`),
+    },
+  );
+
   return (
     <section>
-      <div className="flex items-center justify-between gap-4 mb-4">
-        <SectionHeader title={`Users · ${users.length}`} />
-        <Input
-          placeholder="Search by email or name…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs"
-        />
-      </div>
+      {isDesktop ? (
+        <>
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <SectionHeader title={`Users · ${users.length}`} />
+            <Input
+              placeholder="Search by email or name…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="max-w-xs"
+            />
+          </div>
 
-      {isLoading && <EmptyState>Loading…</EmptyState>}
-      {!isLoading && filtered.length === 0 && (
-        <EmptyState>No users match.</EmptyState>
-      )}
+          {isLoading && <EmptyState>Loading…</EmptyState>}
+          {!isLoading && filtered.length === 0 && (
+            <EmptyState>No users match.</EmptyState>
+          )}
 
-      <div className="flex flex-col gap-2">
-        {filtered.map((u) => (
-          <UserRow
-            key={u.id}
-            user={u}
-            isSelf={u.id === actor?.id}
-            onRename={(name) => updateUser.mutate(
-              { id: u.id, patch: { name } },
-              {
-                onSuccess: () => toast.success('Saved'),
-                onError: (e) => toast.error(`Couldn't save: ${(e as Error).message}`),
-              },
-            )}
-            onToggleAdmin={(isAdmin) => updateUser.mutate(
-              { id: u.id, patch: { isAdmin } },
-              {
-                onSuccess: () => toast.success(isAdmin ? `Promoted ${u.email}` : `Demoted ${u.email}`),
-                onError: (e) => toast.error(`Couldn't update: ${(e as Error).message}`),
-              },
-            )}
-            onDelete={() => setPendingDelete(u)}
-            onResetPassword={() => setPendingReset(u)}
-            onSignOutEverywhere={() => setPendingSignOut(u)}
+          <div className="flex flex-col gap-2">
+            {filtered.map((u) => (
+              <UserRow
+                key={u.id}
+                user={u}
+                isSelf={u.id === actor?.id}
+                onRename={(name) => rename(u, name)}
+                onToggleAdmin={(isAdmin) => toggleAdmin(u, isAdmin)}
+                onDelete={() => setPendingDelete(u)}
+                onResetPassword={() => setPendingReset(u)}
+                onSignOutEverywhere={() => setPendingSignOut(u)}
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col gap-block md:hidden">
+          <Input
+            type="search"
+            aria-label="Search users"
+            placeholder="Search by email or name…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
-        ))}
-      </div>
+          <p className="text-xs text-muted-foreground">
+            {users.length} {users.length === 1 ? 'user' : 'users'}
+          </p>
+          {isLoading && <EmptyState>Loading…</EmptyState>}
+          {!isLoading && filtered.length === 0 && <EmptyState>No users match.</EmptyState>}
+          <UserCards
+            users={filtered}
+            actorId={actor?.id}
+            onRename={rename}
+            onToggleAdmin={toggleAdmin}
+            onDelete={setPendingDelete}
+            onResetPassword={setPendingReset}
+            onSignOutEverywhere={setPendingSignOut}
+          />
+        </div>
+      )}
 
       <ConfirmDialog
         open={pendingDelete !== null}
