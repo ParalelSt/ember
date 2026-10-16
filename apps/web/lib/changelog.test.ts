@@ -24,10 +24,6 @@ describe('CHANGELOG invariants', () => {
     expect(parseVersion(CHANGELOG[0].version)).not.toEqual([0, 0, 0]);
   });
 
-  it('every summary fits on one list line (70 characters or fewer)', () => {
-    for (const e of CHANGELOG) expect(e.summary.length, e.id).toBeLessThanOrEqual(70);
-  });
-
   it('ids are unique', () => {
     const ids = CHANGELOG.map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);

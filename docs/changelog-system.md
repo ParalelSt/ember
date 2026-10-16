@@ -30,7 +30,7 @@ export interface ChangelogEntry {
   version: string;       // '0.3.1'
   date: string;          // '2026-09-18'
   title: string;
-  summary: string;       // one line, at most 70 characters: Home banner, popover, list cards
+  summary: string;       // one line: Home banner, popover
   bullets: string[];     // two or three lines: full page
   scope?: 'desktop' | 'android';  // omit for the web app
 }

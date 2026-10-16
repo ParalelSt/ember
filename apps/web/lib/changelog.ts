@@ -25,7 +25,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.30',
     date: '2026-10-15',
     title: 'Keeps playing through dead zones',
-    summary: 'A weak connection no longer stops the music; Android typing is easier.',
+    summary: 'A weak or dead connection no longer stops the music, and text boxes stay above the keyboard on Android.',
     bullets: [
       'When the signal drops or stops carrying anything, Ember finishes the song and keeps going with the songs already saved on your phone, then picks up by itself when the connection is back.',
       'Upcoming songs are now saved on mobile data too, so a weak signal never stops the music. The separate mobile data switch is gone.',
@@ -38,7 +38,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.29',
     date: '2026-10-10',
     title: 'Updates when you open the app',
-    summary: 'The desktop and Android apps check for updates as they open.',
+    summary: 'The desktop and Android apps check for an update as they open, and you can always say Not now.',
     bullets: [
       'When a new version is out, Ember asks as it opens, before any music starts. Pick Update now, or Not now to go straight in and get asked again next time.',
       'After Update now, Ember restarts in 7 seconds. Not now still works during the countdown, so a game or call is never interrupted.',
@@ -65,7 +65,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.27',
     date: '2026-10-10',
     title: 'Sign in by scanning',
-    summary: 'Sign in a computer or TV by scanning a QR code with your phone.',
+    summary: 'Sign in a computer or TV by scanning its QR code with Ember on your phone.',
     bullets: [
       'The sign-in page now leads with a QR code. On your phone, tap Scan QR code in the menu or in Settings > Devices, then tap Approve in the sheet that slides up.',
       'You land on Settings > Devices with the new device marked New. No camera? Type the short code shown under the QR there.',
@@ -102,7 +102,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.25',
     date: '2026-10-08',
     title: 'The Android app updates itself',
-    summary: 'Ember for Android now updates itself, like the desktop app.',
+    summary: 'From app 0.4.19 on, Ember for Android gets new versions by itself, like the desktop app.',
     bullets: [
       'It checks for a new version when you open it and every few hours, and downloads it only when you are online, on Wi-Fi or mobile data.',
       'It never installs while music is playing or while you are in the car. The car screen says when an update is ready.',
@@ -115,7 +115,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.24',
     date: '2026-10-08',
     title: 'Transfer, step by step',
-    summary: 'Bring your liked songs from Spotify, Apple Music and more on Transfer.',
+    summary: 'Bring your liked songs over from Spotify, Apple Music or anywhere else, not just YouTube Music, on a new Transfer page.',
     bullets: [
       'Open Transfer from Liked songs or from Settings, under Library. Pick where your songs are now and where they go, then follow the steps, each with a picture of the screen to tap.',
       'Before it starts you see how many songs there are and about how long it takes, and songs you already like are left out.',
@@ -139,7 +139,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.24',
     date: '2026-10-08',
     title: 'Fixes',
-    summary: 'Android keeps you signed in, and car screens stop asking you to turn.',
+    summary: 'The Android app keeps you signed in, and car screens no longer ask you to turn your phone.',
     bullets: [
       'Android: signing in just before the app is closed no longer leaves you signed out when it opens again.',
       'Android car screens show the app instead of "Rotate your phone to portrait".',
@@ -152,7 +152,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.23',
     date: '2026-10-06',
     title: 'Fixes',
-    summary: 'The Linux app uses your system sound and is gentler on the server.',
+    summary: 'The Linux app now plays through your system\'s sound, and the app stops hammering the server when it is busy.',
     bullets: [
       'Linux app: plays through PipeWire or PulseAudio, so it follows your Bluetooth headphones and shows up as Ember in the volume mixer. It also gets the right icon.',
       'When the server says it is busy, the app waits and tries again later instead of asking over and over.',
@@ -163,7 +163,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.22',
     date: '2026-10-06',
     title: 'A new tabs page',
-    summary: 'The tab fills the screen, with practice tools in one toolbar.',
+    summary: 'The tab fills the screen, practice tools sit in one toolbar, and a missing tab is two taps away.',
     bullets: [
       'A floating pill keeps play, the bar you are on, slow down and loop under your thumb.',
       'The practice toolbar shows Speed, Loop, Click, Count-in and Delay with their values; tap one to change it. Count-in is new.',
@@ -199,7 +199,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.21',
     date: '2026-10-06',
     title: 'Queue history',
-    summary: 'The queue now shows the songs you already played.',
+    summary: 'The queue shows the songs you already played, above the one playing now.',
     bullets: [
       'Songs played since you opened the app sit above Now playing, faded. Tap one to go back to it; the rest of the queue stays.',
       'The song playing now is a highlighted card with a thin progress line, and the queue opens right on it.',
@@ -211,7 +211,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.21',
     date: '2026-10-06',
     title: 'Fixes',
-    summary: 'A round of older fixes for keyboard use, carlists and layouts.',
+    summary: 'A round of older fixes: keyboard use, carlists, layouts, transfers and the server.',
     bullets: [
       'Play buttons, sliders and controls work from the keyboard and are named for screen readers.',
       'Carlist guests\' songs and skips keep reaching the host on any page, and starting a carlist clears your old queue.',
@@ -224,7 +224,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.20',
     date: '2026-10-06',
     title: 'One menu in the phone player',
-    summary: 'The phone player\'s controls now sit behind one button.',
+    summary: 'Everything the phone player can do now sits behind one button, so the cover gets more room.',
     bullets: [
       'Tap ⋯ at the top of the phone player for Like, Add to playlist, Up next, Lyrics, Guitar tabs, Devices, Equalizer, Copy link and Go to artist or album.',
       'Devices shows the speaker or TV you are playing on, and Equalizer shows whether it is on.',
@@ -236,7 +236,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.20',
     date: '2026-10-06',
     title: 'Sharing playlists, simpler',
-    summary: 'Share a playlist from its title, and see who shared it with you.',
+    summary: 'Share a playlist from the faces under its title, see who shared it with you, and look before you join.',
     bullets: [
       'Tap the faces under a playlist title (or "+ Invite") to share it. Copy invite link turns sharing on in one step.',
       'A playlist someone shared with you shows "Shared by" and their face, on the playlist and in your library.',
@@ -249,7 +249,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.20',
     date: '2026-10-06',
     title: 'Seamless repeat',
-    summary: 'Repeat one restarts the song at once, and Settings shows your version.',
+    summary: 'Repeat one starts the song again right away, and Settings shows your app version.',
     bullets: [
       'Repeat one no longer pauses to load the song again in the browser and the desktop app.',
       'Settings shows the desktop or phone app version next to the web build, so it is easy to tell what you are running.',
@@ -260,7 +260,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.19',
     date: '2026-10-05',
     title: 'Carlist, steadier',
-    summary: 'Carlists survive a weak signal and end by themselves when unused.',
+    summary: 'A carlist survives a weak signal, skips once when several people press Skip, and ends by itself when nobody uses it.',
     bullets: [
       'A few seconds without signal no longer replaces the carlist with "Carlist not found".',
       'When several people press Skip on the same song, only that song is skipped.',
@@ -272,7 +272,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.19',
     date: '2026-10-05',
     title: 'Fixes',
-    summary: 'A big round of fixes across search, playlists, tabs and the apps.',
+    summary: 'A big round of fixes across search, playlists, tabs, uploads and the apps, plus privacy fixes.',
     bullets: [
       'Liking and unliking quickly sticks, "Searching too fast" clears by itself, and a YouTube outage no longer looks like "No tracks" or "not found" on artist pages.',
       'Playlists: the "already in" marks stay right, a new song never lands at the top by mistake, and deleted playlists no longer crowd the menu.',
@@ -298,7 +298,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.18',
     date: '2026-10-04',
     title: 'Carlist, easier to share',
-    summary: 'One Carlist button, a QR code to join, and Play next or Add to end.',
+    summary: 'One Carlist button, a QR code to join, and a choice between Play next and Add to end.',
     bullets: [
       'Your library has one Carlist button: start or join from its menu, and while you are in a carlist it shows "Live" with the code and takes you straight back.',
       'The host can show a QR code or copy a link, and opening it puts friends in the carlist right away. Typing the code still works.',
@@ -311,7 +311,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.18',
     date: '2026-10-04',
     title: 'Smoother playback',
-    summary: 'Previous takes you back, and age-restricted songs are skipped cleanly.',
+    summary: 'Previous takes you back to what you played, age-restricted songs are skipped cleanly, and the desktop app copes with slow connections.',
     bullets: [
       'Previous now goes back to the song you actually played before, even after tapping a song further down the queue.',
       'Age-restricted YouTube songs are skipped right away and labelled "Age-restricted on YouTube" instead of failing with an error.',
@@ -341,7 +341,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.17',
     date: '2026-10-04',
     title: 'Playlists in the menu',
-    summary: 'Menu playlists no longer get squashed, and you can pin favourites.',
+    summary: 'Playlists in the menu no longer get squashed, and you can pin your favourites to the top.',
     bullets: [
       'Every playlist keeps a readable size, and a long list scrolls with faded edges instead of squeezing the names.',
       'Hold a playlist on your phone (or right-click on a computer) to pin it. Pinned playlists stay on top, the rest are ordered by what you opened last, and your pins follow you to every device.',
@@ -352,7 +352,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.16',
     date: '2026-10-01',
     title: 'Know when a song cannot play',
-    summary: 'When a song is gone or will not load, the player bar says why.',
+    summary: 'When a song is gone from YouTube or will not load, the player bar says which one and why, then carries on with the next.',
     bullets: [
       'The mini player shows “Skipped: <song>” and the reason (removed, made private, blocked in your country) for a few seconds, then the song playing again. Several in a row become “Skipped 3 songs”. The full-screen player and the desktop bar say the same.',
       "The queue lists the songs that could not play at the top, under “Couldn't play”, each with its reason. In playlists and albums those songs are greyed with an UNAVAILABLE label.",
@@ -366,7 +366,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.15',
     date: '2026-09-29',
     title: 'Better in the car',
-    summary: 'Android Auto gets Home, Liked, Playlists and Library tabs.',
+    summary: 'Android Auto gets Home, Liked, Playlists and Library tabs with covers for your uploads, and the steering-wheel buttons work even after Android closed the app.',
     bullets: [
       'In Android Auto: new Home and Library tabs, long lists in pages, covers for uploaded songs, and a heart to like the song that plays. Offline, your downloaded songs are there.',
       'Shuffle and Repeat in the car show whether they are on, and shuffle from the car now shows in the app too.',
@@ -379,7 +379,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.15',
     date: '2026-09-29',
     title: 'Choose where the music plays',
-    summary: 'A Devices button lists your speakers and cast devices.',
+    summary: 'A Devices button lists your speakers, headphones and cast devices, and the full-screen player on phones is tidier.',
     bullets: [
       'Devices shows your speakers, headphones and cast devices and switches between them. On Android it also opens Android’s own output switcher, on iPhone the AirPlay and Bluetooth picker. In the desktop app the song keeps playing through the switch and your choice is remembered.',
       'The full-screen player shows where the music is playing from, keeps song actions in a ⋯ menu, and puts Devices, Tabs, EQ and Queue in one labelled row under the controls.',
@@ -391,7 +391,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.15',
     date: '2026-09-29',
     title: 'Cast to your TV',
-    summary: 'Play Ember on a Chromecast, Google speaker, Android TV or AirPlay.',
+    summary: 'Play Ember on a Chromecast, Google speaker or Android TV from Chrome or the Android app, and over AirPlay from Safari.',
     bullets: [
       'Pick a TV or speaker under Devices, and the song carries on there from where it was. Next, loop and radio keep working, and the TV shows the song, artist and cover.',
       'The equalizer and volume leveling are off while casting. The desktop app does not cast.',
@@ -402,7 +402,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.15',
     date: '2026-09-29',
     title: 'Louder and steadier volume',
-    summary: 'Phones always play at full volume, and Normalize volume is fixed.',
+    summary: 'Phones always play at full volume, and Normalize volume no longer makes things quieter.',
     bullets: [
       'On phones, the app now always plays at full level and your phone’s volume buttons set the loudness. On a computer the volume slider reaches full volume without party mode.',
       'Normalize volume keeps a typical song as loud as before, turns only extra-loud songs down a little, and brings quiet songs up, including on Android. Level changes fade instead of jumping.',
@@ -414,7 +414,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.14',
     date: '2026-09-28',
     title: 'Clear the search box',
-    summary: 'Search now has a clear button, and phones get a back arrow.',
+    summary: 'A clear button (X) now appears in the search box while you type, and on phones a back arrow closes search.',
     bullets: [
       'Type in the search box and an X shows up next to the mic: tap it to empty the box and keep typing.',
       'On phones, search opens full screen with a back arrow on the left to close it. The X inside the box only clears, so there is never a second X.',
@@ -425,7 +425,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.13',
     date: '2026-09-26',
     title: 'Collaborative playlists',
-    summary: 'Share a playlist with friends so they can edit its songs.',
+    summary: 'Share a playlist with friends on this server so they can add, remove and reorder its songs.',
     bullets: [
       'Open a playlist\'s menu and pick Collaborate: turn it on, add people by name, or send an invite link that adds whoever opens it. Turn the link off or make a new one any time.',
       'Shared playlists show up in your library marked "Shared by" the owner, and every song shows who added it.',
@@ -437,7 +437,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.13',
     date: '2026-09-26',
     title: 'Tabs without the rough ones',
-    summary: 'No more made-up guitar tabs: missing ones now link to Songsterr.',
+    summary: 'Ember no longer writes guitar tabs from the recording. A song with no tab now lists its versions on Songsterr and the places to find one.',
     bullets: [
       'Generate a tab is gone: those tabs were too rough to play from. Tabs it made before are no longer shown.',
       'A song with no tab lists its versions on Songsterr to open there, or, when Songsterr has none, Ultimate Guitar and Guitar Pro files to search.',
@@ -449,7 +449,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.13',
     date: '2026-09-26',
     title: 'Equalizer',
-    summary: 'Shape the sound with a preset or five bands, on every device.',
+    summary: 'Shape the sound with a preset or five bands, and it follows your account to every device.',
     bullets: [
       'Settings > Plugins and the full-screen player have an equalizer: Flat, Bass boost, Treble boost, Vocal, Acoustic, Electronic and Loudness, or your own curve on five bands.',
       'Boosts never clip: the song is turned down by as much as the curve goes up.',
@@ -461,7 +461,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.13',
     date: '2026-09-26',
     title: 'Automatic backups',
-    summary: 'The server now backs up every account, playlist and like each night.',
+    summary: 'The server now backs up every account, playlist and like every night, and the owner can download a copy at any time.',
     bullets: [
       'A backup of the whole database is made every night at 04:00, and the last 7 are kept.',
       'Admin > Backups lists them with a Download button for each, has Back up now, and warns when the disk is getting full.',
@@ -473,7 +473,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.12',
     date: '2026-09-26',
     title: 'Steadier playback, safer accounts',
-    summary: 'A round of playback fixes, plus security fixes that protect accounts.',
+    summary: 'A round of playback fixes on the web, desktop and Android apps, plus security fixes that keep each account\'s things private.',
     bullets: [
       'Queue: tapping a song in the queue no longer throws the rest away, turning shuffle off keeps added and removed songs right, and quick skips no longer land on the same song.',
       'Desktop app (0.4.9): seeking far ahead no longer freezes the window, the end of the queue shows paused, and a song after a dropped connection plays again.',
@@ -487,7 +487,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.11',
     date: '2026-09-24',
     title: 'Guitar tab practice',
-    summary: 'Loop a section, slow it down, and click along with a metronome.',
+    summary: 'Loop a section, slow it down, click along with a metronome that follows the tab, and line the tab up by any amount.',
     bullets: [
       'Practice on the tab page: loop a section or a range of bars (pick them with two clicks on the tab), and slow the song down to 50% without changing its pitch. The tab and the metronome follow. Slowing down works in the browser for now.',
       'A metronome that follows the tab\'s tempo, tempo changes included. If the tab\'s tempo is wrong, set your own.',
@@ -502,7 +502,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.10',
     date: '2026-09-24',
     title: 'Every song at the same volume',
-    summary: 'Songs now play at about the same loudness.',
+    summary: 'Songs now play at about the same loudness, so you do not have to reach for the volume when a quiet one comes on.',
     bullets: [
       'Each song is measured once after it is first played, and loud ones are turned down (quiet ones up) to match.',
       'The song itself is never changed. Turn it off in Settings > Plugins > Normalize volume.',
@@ -514,7 +514,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.9',
     date: '2026-09-24',
     title: 'Web app fixes',
-    summary: 'Big uploads work, and expired sign-ins take you to sign in.',
+    summary: 'Big uploads work, an expired sign-in takes you to sign in, Search shows what is trending, and long names wrap.',
     bullets: [
       'Uploading a song file bigger than about 12 MB works again, up to the 50 MB limit.',
       'When your sign-in has expired, the app takes you to the sign-in page instead of showing errors, and brings you back to where you were.',
@@ -532,7 +532,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.8',
     date: '2026-09-24',
     title: 'Server fixes',
-    summary: 'Fewer songs greyed out by mistake, and imports that finish.',
+    summary: 'Fewer songs greyed out by mistake, imports that finish, clearer search errors, and Android controls that stay clear of the phone\'s buttons.',
     bullets: [
       'When YouTube briefly limits the server, songs no longer turn grey as if they were gone for good.',
       'A playlist or likes import no longer gets stuck on one odd song or a short network hiccup.',
@@ -547,7 +547,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.7',
     date: '2026-09-24',
     title: 'App fixes',
-    summary: 'The Android and desktop apps handle broken songs and no signal better.',
+    summary: 'The Android and desktop apps handle the awkward moments better: broken songs, the car, calls, Back, and no connection.',
     bullets: [
       'On Android and in the car, a song that will not play is skipped and the next one starts, instead of the music stopping. Without a connection, the app still plays what is saved on the phone, as before.',
       'In the car, tapping a song plays the rest of the list you tapped it in, not another tab.',
@@ -564,7 +564,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.6',
     date: '2026-09-24',
     title: 'Playback fixes',
-    summary: 'Repeat, shuffle and seeking now behave on desktop and Android.',
+    summary: 'Repeat, shuffle and seeking behave the way you expect, on the desktop app and on Android.',
     bullets: [
       'Repeat one on the desktop app plays the song again, with sound, instead of sitting silent at 0:00.',
       'The loop button on Android now really loops (one song or the whole list), and the Repeat button in the car or the notification shows on it.',
@@ -581,7 +581,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.5',
     date: '2026-09-24',
     title: 'Security fixes',
-    summary: 'Security fixes: Ember checks more carefully who is asking.',
+    summary: 'Security fixes: Ember checks more carefully who is asking before it lets anything change.',
     bullets: [
       'The server now confirms your sign-in with the database on every request, and only the server can change shared song details, uploads, admin rights and carlists.',
       'The database admin screen is no longer reachable from the internet, and its password now lives only in the host\'s settings, not in the code.',
@@ -594,7 +594,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.4',
     date: '2026-09-24',
     title: 'Keeps playing when the internet drops',
-    summary: 'Keeps playing when the internet drops by saving the next few songs.',
+    summary: 'Keeps playing when the internet drops: Ember saves the next couple of songs as you listen, so a dropped connection does not stop the music.',
     bullets: [
       'While a song plays, Ember quietly saves it and the next two on your device. They play from there, even online, so they start at once and use no data.',
       'Offline, songs that were not saved are skipped and an Offline badge shows in the player. When nothing saved is left, the music pauses and picks up again once you are back online.',
@@ -607,7 +607,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.3',
     date: '2026-09-24',
     title: 'Copy songs between playlists',
-    summary: 'Pick songs in a playlist and copy them anywhere, skipping duplicates.',
+    summary: 'Pick songs in a playlist or Liked songs and copy them anywhere, with duplicates skipped.',
     bullets: [
       'Select: tap Select above the songs, then tick them one by one or Select all.',
       'Sort any playlist by title, artist, date added or duration, either way round. Each playlist remembers its sort on your device.',
@@ -620,7 +620,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.2',
     date: '2026-09-24',
     title: 'Songs start reliably in the desktop app again',
-    summary: 'Fewer songs stall or fail to start, especially on slow connections.',
+    summary: 'Fewer songs stall or fail to start, especially on slower connections.',
     bullets: [
       'Fewer stalls on slower connections: the desktop app now waits for the song a little longer before it gives up.',
       'A song now loads once instead of twice when you press play, skip or it moves on to the next one.',
@@ -634,7 +634,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.7.1',
     date: '2026-09-24',
     title: 'A cleaner top bar on desktop',
-    summary: 'The page scrolls under a search bar that floats clear of it.',
+    summary: 'The page scrolls under the search bar, which now floats clear of what is under it.',
     bullets: [
       'On a computer, the page now slides away under the search bar as you scroll, and the scroll bar runs from the very top of the window.',
       'Whatever scrolls under the search bar fades out a little below it, so it never looks cut off.',
@@ -660,7 +660,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.5.1',
     date: '2026-09-23',
     title: 'Long songs load again on desktop',
-    summary: 'The desktop app no longer gives up on long songs.',
+    summary: 'The desktop app no longer gives up with "Couldn\'t load" on long songs.',
     bullets: [
       'Some songs, mostly long ones, failed to start in the desktop app while they played fine in a browser. They now start straight away, from one download instead of dozens of small ones.',
       'If a song does get stuck while loading, the app tries once more on its own before telling you.',
@@ -672,7 +672,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.5.0',
     date: '2026-09-23',
     title: 'Bring your liked songs over',
-    summary: 'Move your liked songs from Spotify and more into Ember, under Library.',
+    summary: 'Move the songs you liked on Spotify, YouTube Music, Apple Music or anywhere else into Ember, from Settings, under Library.',
     bullets: [
       'Ember asks two plain questions, where your music is now and what you already have, and then shows only the steps for your answer.',
       'YouTube Music: sign in with Google using a short code, from any phone or computer. Ember reads your likes once, keeps the songs, and gives the permission back straight away.',
@@ -689,7 +689,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.4.0',
     date: '2026-09-22',
     title: 'Voice search in the apps',
-    summary: 'The search mic now works in the Android and desktop apps.',
+    summary: 'The mic in the search box now works in the Android app and on the desktop, using your device\'s own speech recognition.',
     bullets: [
       'Tap the mic and speak; the words fill the search box as you say them, and the search runs when you stop.',
       'Android uses the phone\'s own recognizer, macOS uses Apple\'s (on the device where it can), Windows uses Microsoft\'s and needs the Online speech recognition setting turned on.',
@@ -701,7 +701,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.4.0',
     date: '2026-09-20',
     title: 'Guitar tabs, properly',
-    summary: 'Ember finds guitar tabs for your songs and follows along as they play.',
+    summary: 'Ember finds guitar tabs for your songs by itself, lines them up with the recording, and shows them on a page that follows along as the song plays.',
     bullets: [
       'Open a song and Ember looks for its tab online by itself: Songsterr tabs, with real rhythm and every instrument in one tab, and Ultimate Guitar text tabs. Whatever it finds is kept for everyone on your server.',
       'A tab lines itself up with the recording, so it sits where the band actually plays, even when they drift; every tab found for a song sits in one list you can open and pick from, and Ember draws the one that matches best.',
@@ -721,7 +721,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.3.11',
     date: '2026-09-20',
     title: 'Search without losing your place',
-    summary: 'Search now opens under the search box, so the player keeps working.',
+    summary: 'Search now opens under the search box instead of taking over the screen, so the player and the rest of the app keep working while it is open.',
     bullets: [
       'On a computer there is a search box at the top of every page, and the results drop down under it.',
       'Nothing behind it is blocked any more: pause, skip, change the volume or open a playlist without closing search first.',
@@ -734,7 +734,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.3.10',
     date: '2026-09-20',
     title: 'Play straight from search',
-    summary: 'Search results get a play button, and the playing song is highlighted.',
+    summary: 'Search results and recent searches now have a play button, and the song playing shows in the accent colour.',
     bullets: [
       'Every row in the search box has a play button at its right end: point at a row, or tab to it, and press play.',
       'The song playing keeps its button showing, so the same press pauses it and presses again to carry on.',
@@ -746,7 +746,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.3.6',
     date: '2026-09-19',
     title: 'Trending fits better',
-    summary: 'The Trending shelf now mixes the US, UK, German and Serbian charts.',
+    summary: 'The Trending shelf now mixes the US, UK, German and Serbian charts instead of the worldwide one.',
     bullets: [
       'The worldwide chart leaned heavily toward one country’s taste; the shelf now blends several countries’ charts instead.',
       'A host can pick their own mix with TRENDING_COUNTRIES.',
@@ -757,7 +757,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.3.5',
     date: '2026-09-19',
     title: 'Spotify imports work again',
-    summary: 'Spotify playlist links import again with no setup, in the background.',
+    summary: 'Spotify playlist links import again with no setup, in the background, and unsure songs wait for you to check.',
     bullets: [
       'Paste any public Spotify playlist link: the first 100 songs import, no keys needed.',
       'Start an import from the new-playlist button: it runs in the background, with its progress in the sidebar.',
@@ -770,7 +770,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.3.4',
     date: '2026-09-19',
     title: 'Real trending songs',
-    summary: 'The Trending shelf now shows YouTube Music\'s real daily chart.',
+    summary: "The Trending shelf on Home now shows YouTube Music's actual daily chart, refreshed every few hours.",
     bullets: [
       "Trending right now on Home is today's YouTube Music chart, in chart order.",
       'It refreshes every few hours, and keeps showing the last chart if YouTube is slow to answer.',
@@ -782,7 +782,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.3.3',
     date: '2026-09-19',
     title: 'Search fits smaller screens',
-    summary: 'Song titles in the search pop-up no longer get cut short.',
+    summary: 'Song titles in the search pop-up no longer get cut short on smaller or zoomed screens.',
     bullets: [
       'The search pop-up now sizes its rows to its own width, not the window.',
       'Song titles show in full on smaller screens and at higher Windows zoom levels.',
@@ -793,7 +793,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.3.2',
     date: '2026-09-19',
     title: 'Profile pictures load everywhere',
-    summary: 'Fixed pictures showing as broken in the admin list and after changes.',
+    summary: 'Fixed pictures showing as a broken image in the admin user list and right after changing your picture.',
     bullets: [
       'Your picture no longer shows as a broken image in the admin user list.',
       'Your picture shows right away after you change it, from any device.',
@@ -804,7 +804,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.3.1',
     date: '2026-09-18',
     title: 'Cleaner collection pages',
-    summary: 'More breathing room around the play buttons on collection pages.',
+    summary: 'More breathing room around the play buttons on your collection pages.',
     bullets: [
       'Liked songs, playlists, albums, artists and tracks get more room around the play buttons.',
       'Every one of those pages now shares the same even spacing.',
