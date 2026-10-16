@@ -3,7 +3,6 @@
 import { Children, isValidElement, useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { SectionHeader } from '@/components/page/SectionHeader';
-import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons';
 import { rowEnds, rowStep } from '@/lib/home';
 import { useDragScroll } from '@/hooks/useDragScroll';
 import { cn } from '@/lib/utils';
@@ -28,7 +27,7 @@ export const WIDE_TILE_CLASS = 'w-[180px] shrink-0';
 
 /** The desktop row: it starts and ends on the content area's edges (the
  *  page gutter), scrolls sideways with no bar showing, and is moved by the
- *  header's arrows, a trackpad or a mouse drag. Every desktop row, whatever
+ *  mouse wheel, a trackpad, a mouse drag or its edge fades. Every desktop row, whatever
  *  it holds, uses WIDE_TILE_CLASS tiles and this one gap. */
 export const WIDE_SCROLL_CLASS = 'flex gap-block overflow-x-auto overscroll-x-contain scrollbar-none';
 
@@ -96,37 +95,53 @@ export function WideRowHeader({ title, showAllHref, arrows }: RowHeaderProps & {
   );
 }
 
-function ArrowButton({ dir, enabled, onClick }: { dir: -1 | 1; enabled: boolean; onClick: () => void }) {
-  const Icon = dir < 0 ? ChevronLeftIcon : ChevronRightIcon;
+/** A soft fade over one end of a desktop row, there only while more
+ *  tiles wait on that side (the owner's "wheel" pick, homedesk2: no arrow
+ *  buttons). Clicking it slides the row one step. */
+function FadeEdge({ dir, enabled, onClick }: { dir: -1 | 1; enabled: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
+      tabIndex={-1}
       aria-label={dir < 0 ? 'Scroll left' : 'Scroll right'}
       disabled={!enabled}
       onClick={onClick}
+      data-row-fade={dir < 0 ? 'left' : 'right'}
       className={cn(
-        'grid size-[30px] place-items-center rounded-full bg-foreground/10 text-foreground transition-[opacity,background-color]',
-        'hover:bg-foreground/20 focus-visible:opacity-100',
-        // Shown while the row is hovered, always on a touch screen (no
-        // hover there), and gone at the end it cannot scroll past.
-        'opacity-0 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100',
-        'disabled:invisible',
+        'absolute inset-y-0 z-10 w-16 from-background to-transparent transition-opacity disabled:invisible disabled:opacity-0',
+        dir < 0 ? 'left-0 bg-linear-to-r' : 'right-0 bg-linear-to-l',
       )}
-    >
-      <Icon className="size-4" />
-    </button>
+    />
   );
 }
 
-/** The desktop row: tiles in a sideways scroller whose header arrows move
- *  it by about 80% of its width, each arrow there only while there is
- *  something on its side. */
+/** The desktop row: tiles in a sideways scroller with no buttons. Over the
+ *  row the mouse wheel moves it sideways (the page scrolls again once the
+ *  row is at that end), a mouse drag or trackpad moves it too, and a soft
+ *  fade marks each side that has more; clicking a fade moves the row by
+ *  about 80% of its width. */
 function WideRowShelf({ title, showAllHref, tiles, className }: { title: string; showAllHref?: string; tiles: ReactNode[]; className?: string }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [ends, setEnds] = useState({ canLeft: false, canRight: false });
   const count = tiles.length;
   // Mouse drag scrolls the row; the click that ends a drag opens nothing.
   useDragScroll(rowRef);
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    // A vertical wheel turn over the row scrolls it sideways while it can
+    // still go that way; at the end the page takes the wheel again.
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if ((e.deltaY > 0 && el.scrollLeft < max - 1) || (e.deltaY < 0 && el.scrollLeft > 1)) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
   useEffect(() => {
     const el = rowRef.current;
     if (!el) return;
@@ -151,23 +166,18 @@ function WideRowShelf({ title, showAllHref, tiles, className }: { title: string;
     else el.scrollLeft += left;
   };
   return (
-    <section className={cn('group/row mb-section', className)} aria-label={title}>
-      <WideRowHeader
-        title={title}
-        showAllHref={showAllHref}
-        arrows={
-          <>
-            <ArrowButton dir={-1} enabled={ends.canLeft} onClick={() => move(-1)} />
-            <ArrowButton dir={1} enabled={ends.canRight} onClick={() => move(1)} />
-          </>
-        }
-      />
-      <div ref={rowRef} role="list" data-row-shelf="wide" className={WIDE_SCROLL_CLASS}>
-        {tiles.map((tile, i) => (
-          <div key={isValidElement(tile) && tile.key != null ? tile.key : i} role="listitem" className={WIDE_TILE_CLASS}>
-            {tile}
-          </div>
-        ))}
+    <section className={cn('mb-section', className)} aria-label={title}>
+      <WideRowHeader title={title} showAllHref={showAllHref} />
+      <div className="relative">
+        <div ref={rowRef} role="list" data-row-shelf="wide" className={WIDE_SCROLL_CLASS}>
+          {tiles.map((tile, i) => (
+            <div key={isValidElement(tile) && tile.key != null ? tile.key : i} role="listitem" className={WIDE_TILE_CLASS}>
+              {tile}
+            </div>
+          ))}
+        </div>
+        <FadeEdge dir={-1} enabled={ends.canLeft} onClick={() => move(-1)} />
+        <FadeEdge dir={1} enabled={ends.canRight} onClick={() => move(1)} />
       </div>
     </section>
   );

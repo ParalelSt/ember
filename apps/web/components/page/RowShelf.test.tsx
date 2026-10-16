@@ -105,24 +105,46 @@ describe('RowShelf, desktop (the owner\'s "arrows" and "t180" picks)', () => {
     expect(screen.getByRole('heading', { level: 2 })).toHaveClass('text-2xl', 'font-bold', 'line-clamp-2');
   });
 
-  it('puts < and > in the header, left of Show all, and Show all only when there is more', () => {
+  it('has no arrow buttons in the header, and Show all only when there is more', () => {
     const { rerender } = render(<RowShelf variant="desktop" title="Popular now" showAllHref="/?focus=trending">{tiles(ROW_MAX)}</RowShelf>);
     expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
     rerender(<RowShelf variant="desktop" title="Popular now" showAllHref="/?focus=trending">{tiles(ROW_MAX + 1)}</RowShelf>);
     expect(screen.getAllByRole('listitem')).toHaveLength(ROW_MAX);
     const controls = screen.getByRole('link', { name: 'Show all' }).parentElement!;
-    expect([...controls.children].map((c) => c.getAttribute('aria-label') ?? c.textContent)).toEqual([
-      'Scroll left',
-      'Scroll right',
-      'Show all',
-    ]);
+    expect([...controls.children].map((c) => c.getAttribute('aria-label') ?? c.textContent)).toEqual(['Show all']);
   });
 
-  it('shows the arrows on row hover, always on touch screens', () => {
+  it('marks each side with more tiles by a soft fade over the row edge, not a button in the header', () => {
     render(<RowShelf variant="desktop" title="Popular now">{tiles(3)}</RowShelf>);
-    expect(screen.getByRole('region', { name: 'Popular now' })).toHaveClass('group/row');
     const right = screen.getByRole('button', { name: 'Scroll right' });
-    expect(right).toHaveClass('opacity-0', 'group-hover/row:opacity-100', '[@media(hover:none)]:opacity-100');
+    expect(right).toHaveAttribute('data-row-fade', 'right');
+    expect(right).toHaveClass('absolute', 'right-0', 'bg-linear-to-l', 'from-background');
+    expect(right).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('heading', { level: 2 }).closest('section')!.querySelector('[data-row-fade]')!.parentElement).toContainElement(screen.getByRole('list'));
+  });
+
+  it('turns a vertical mouse wheel over the row into sideways scrolling until the end', () => {
+    render(<RowShelf variant="desktop" title="Popular now">{tiles(10)}</RowShelf>);
+    const list = screen.getByRole('list');
+    size(list, { client: 500, scroll: 1960, left: 0 });
+    const wheel = (deltaY: number) => {
+      const e = new WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true });
+      list.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    expect(wheel(120)).toBe(true);
+    expect(list.scrollLeft).toBe(120);
+    // At the start, scrolling up is left for the page.
+    size(list, { client: 500, scroll: 1960, left: 0 });
+    expect(wheel(-120)).toBe(false);
+    // At the end, scrolling down is left for the page too.
+    size(list, { client: 500, scroll: 1960, left: 1460 });
+    expect(wheel(120)).toBe(false);
+    // A sideways trackpad swipe is the browser's own.
+    size(list, { client: 500, scroll: 1960, left: 400 });
+    const side = new WheelEvent('wheel', { deltaX: 80, deltaY: 10, bubbles: true, cancelable: true });
+    list.dispatchEvent(side);
+    expect(side.defaultPrevented).toBe(false);
   });
 
   it('scrolls by about 80% of the row width and hides each arrow at its end', () => {
