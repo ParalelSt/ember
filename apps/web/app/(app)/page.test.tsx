@@ -28,6 +28,7 @@ const state = vi.hoisted(() => ({
   toggle: vi.fn(),
   playCollection: vi.fn(),
   collectionPlaying: null as string | null,
+  charts: undefined as undefined | { popular: unknown; genres: { slug: string; title: string; color: string; artworkUrls: string[]; count: number; fetchedAt: string | null; stale: boolean }[] },
 }));
 
 vi.mock('next/navigation', () => ({
@@ -41,6 +42,7 @@ vi.mock('@/hooks/useLibrary', () => ({
   useQueryLikes: () => ({ data: state.liked }),
   useQueryTrending: () => ({ data: state.trending, isLoading: false }),
   useQueryRecommended: () => ({ data: state.recommended, isLoading: false }),
+  useQueryCharts: () => ({ data: state.charts }),
 }));
 vi.mock('@/hooks/useCollections', () => ({
   useCollections: () => ({
@@ -111,8 +113,14 @@ beforeEach(() => {
     current: null,
     isPlaying: false,
     collectionPlaying: null,
+    charts: undefined,
   });
 });
+
+const genre = (slug: string, title: string) => ({
+  slug, title, color: '#123456', artworkUrls: [`/art/${slug}1.jpg`, `/art/${slug}2.jpg`], count: 50, fetchedAt: '2026-10-16T08:00:00Z', stale: false,
+});
+const someCharts = () => ({ popular: {}, genres: [genre('balkan', 'Balkan'), genre('rock', 'Rock'), genre('pop', 'Pop')] });
 
 describe('Home on a phone', () => {
   it('has no big Home title, and starts with the quick grid of Liked songs and your playlists', () => {
@@ -476,5 +484,50 @@ describe('Show all and back', () => {
     } finally {
       scroller.remove();
     }
+  });
+});
+
+describe('Charts by genre on Home', () => {
+  const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name });
+
+  it('adds the row after Popular now, a tile per chart linking to its page', () => {
+    state.charts = someCharts();
+    render(<HomePage />);
+    expect(headings()).toEqual([
+      'Recently played',
+      'Because you played "hist song 0"',
+      'Popular now',
+      'Charts by genre',
+      'Your playlists',
+      'Friends are listening to',
+    ]);
+    const row = within(screen.getByRole('region', { name: 'Charts by genre' }));
+    expect(row.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/chart/balkan', '/chart/rock', '/chart/pop']);
+    expect(row.getByRole('link', { name: 'Rock chart' }).textContent).toContain('Top 50');
+    // A sideways row on the gutter like the others.
+    expect(row.getByRole('list')).toHaveClass('flex', 'overflow-x-auto', '-mx-page', 'px-page');
+  });
+
+  it('brings the Charts chip, which keeps the chart row only', () => {
+    state.charts = someCharts();
+    render(<HomePage />);
+    fireEvent.click(chip('Charts'));
+    expect(headings()).toEqual(['Charts by genre']);
+    expect(screen.queryByRole('list', { name: 'Your collections' })).toBeNull();
+  });
+
+  it('has no row and no chip while there are no genre charts', () => {
+    state.charts = { popular: {}, genres: [] };
+    render(<HomePage />);
+    expect(screen.queryByRole('region', { name: 'Charts by genre' })).toBeNull();
+    expect(within(screen.getByRole('toolbar', { name: 'Filter Home' })).queryByRole('button', { name: 'Charts' })).toBeNull();
+  });
+
+  it('uses the wide row on a desktop', () => {
+    state.desktop = true;
+    state.charts = someCharts();
+    render(<HomePage />);
+    const region = screen.getByRole('region', { name: 'Charts by genre' });
+    expect(region.querySelector('[data-row-shelf="wide"]')).not.toBeNull();
   });
 });

@@ -18,6 +18,11 @@ describe('contextTitle', () => {
     expect(contextTitle({ type: 'radio' })).toEqual({ kicker: 'Playing from', name: 'Radio' });
   });
 
+  it('names a chart and a mix', () => {
+    expect(contextTitle({ type: 'chart', chartSlug: 'rock', chartTitle: 'Rock' })).toEqual({ kicker: 'Playing from chart', name: 'Rock' });
+    expect(contextTitle({ type: 'mix', mixKey: 'balkan', mixTitle: 'Balkan' })).toEqual({ kicker: 'Playing from mix', name: 'Balkan' });
+  });
+
   it('quotes the search, and says only "search" without one', () => {
     expect(contextTitle({ type: 'search', query: ' boogie ' })).toEqual({ kicker: 'Playing from search', name: '"boogie"' });
     expect(contextTitle({ type: 'search' })).toEqual({ kicker: 'Playing from search', name: null });

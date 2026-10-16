@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { TrackShelf } from '@/components/track/TrackShelf';
 import { TrackCard } from '@/components/track/TrackCard';
 import {
+  useQueryCharts,
   useQueryHistory,
   useQueryLikes,
   useQueryRecommended,
@@ -39,6 +40,8 @@ import {
 } from '@/lib/home';
 import { playlistCover } from '@/lib/collections';
 import { publicName } from '@/lib/collab';
+import { ChartTile } from '@/components/charts/ChartTile';
+import { CHART_INK } from '@/lib/genres/taxonomy';
 
 interface Section {
   key: string;
@@ -112,6 +115,8 @@ export default function HomePage() {
   const { data: history = [] } = useQueryHistory();
   const { data: liked = [] } = useQueryLikes();
   const { data: trending = [], isLoading: trendingLoading } = useQueryTrending();
+  const { data: charts } = useQueryCharts();
+  const genreCharts = charts?.genres ?? [];
   const seedTrack = history[0];
   const { data: recommended = [], isLoading: recommendedLoading } = useQueryRecommended(seedTrack?.sourceId);
 
@@ -138,6 +143,7 @@ export default function HomePage() {
   if (recommended.length > 0 || recommendedLoading) available.add('recommended');
   if (trending.length > 0 || trendingLoading) available.add('trending');
   if (playlists.length > 0) available.add('playlists');
+  if (genreCharts.length > 0) available.add('charts');
   const chips = homeChips(available);
   const view = phoneHomeView(filter, available);
   const myName = publicName(user);
@@ -175,6 +181,24 @@ export default function HomePage() {
               {...(isDesktop
                 ? { onPlay: () => void collection.play(p.ref, p.title), playing: collection.isPlaying(p.ref) }
                 : null)}
+            />
+          ))}
+        </RowShelf>
+      );
+    }
+    if (key === 'charts') {
+      return (
+        <RowShelf key={key} title="Charts by genre" variant={isDesktop ? 'desktop' : 'phone'}>
+          {genreCharts.map((c) => (
+            <ChartTile
+              key={c.slug}
+              title={c.title}
+              href={`/chart/${encodeURIComponent(c.slug)}`}
+              color={c.color}
+              ink={CHART_INK}
+              artworkUrls={c.artworkUrls}
+              count={c.count}
+              variant={isDesktop ? 'desktop' : 'phone'}
             />
           ))}
         </RowShelf>

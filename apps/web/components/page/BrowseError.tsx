@@ -14,7 +14,7 @@ export function BrowseError({
   onRetry,
 }: {
   error: unknown;
-  kind: 'Artist' | 'Album';
+  kind: 'Artist' | 'Album' | 'Chart' | 'Mix';
   onRetry: () => void;
 }) {
   const status = (error as { status?: number } | null)?.status;

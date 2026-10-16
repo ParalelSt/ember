@@ -127,6 +127,9 @@ const CHART_BY_SLUG = new Map<string, ChartDef>(CHARTS.map((c) => [c.slug, c]));
 
 export const UNKNOWN_CHART_COLOR = '#4a4a4a';
 
+/** Text on a chart tile: every chart colour is dark enough for white. */
+export const CHART_INK = '#ffffff';
+
 export function chartDef(slug: string): ChartDef | null {
   return CHART_BY_SLUG.get(slug) ?? null;
 }

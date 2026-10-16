@@ -52,6 +52,8 @@ export function sameContext(a: PlaybackContext | null | undefined, b: PlaybackCo
   if (!a || !b || a.type !== b.type) return false;
   if (a.type === 'playlist' && b.type === 'playlist') return a.playlistId === b.playlistId;
   if (a.type === 'album' && b.type === 'album') return a.albumId === b.albumId;
+  if (a.type === 'chart' && b.type === 'chart') return a.chartSlug === b.chartSlug;
+  if (a.type === 'mix' && b.type === 'mix') return a.mixKey === b.mixKey;
   return true;
 }
 export function countLabel(n: number, noun = 'song'): string {

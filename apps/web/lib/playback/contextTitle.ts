@@ -25,6 +25,10 @@ export function contextTitle(context: PlaybackContext | null | undefined): Conte
       return { kicker: 'Playing from', name: 'Recently played' };
     case 'uploads':
       return { kicker: 'Playing from', name: 'Uploads' };
+    case 'chart':
+      return { kicker: 'Playing from chart', name: context.chartTitle || null };
+    case 'mix':
+      return { kicker: 'Playing from mix', name: context.mixTitle || null };
     case 'radio':
       return { kicker: 'Playing from', name: 'Radio' };
     case 'search': {

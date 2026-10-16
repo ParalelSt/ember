@@ -92,6 +92,17 @@ describe('sameContext', () => {
     expect(sameContext(liked1, undefined)).toBe(false);
     expect(sameContext(null, undefined)).toBe(false);
   });
+
+  it('tells charts and mixes apart by their slug and key', () => {
+    const rock = { type: 'chart', chartSlug: 'rock', chartTitle: 'Rock' } as const;
+    const pop = { type: 'chart', chartSlug: 'pop', chartTitle: 'Pop' } as const;
+    const mixA = { type: 'mix', mixKey: 'rock-metal', mixTitle: 'Rock & Metal' } as const;
+    const mixB = { type: 'mix', mixKey: 'pop', mixTitle: 'Pop' } as const;
+    expect(sameContext(rock, { ...rock })).toBe(true);
+    expect(sameContext(rock, pop)).toBe(false);
+    expect(sameContext(mixA, { ...mixA })).toBe(true);
+    expect(sameContext(mixA, mixB)).toBe(false);
+  });
 });
 
 describe('countLabel', () => {

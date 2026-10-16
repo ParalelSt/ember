@@ -46,3 +46,23 @@ export function chartTitle(slug: string, fallback: string): string {
   if (slug === POPULAR_SLUG) return POPULAR_TITLE;
   return chartDef(slug)?.title ?? fallback;
 }
+
+/** The meta line under a chart page's title: its song count, then how
+ *  fresh it is. "Updated 3 hours ago" only once it is past its day, so a
+ *  normal day just says it updates daily. */
+export function chartMeta(chart: Pick<ChartPayload, 'tracks' | 'fetchedAt' | 'stale'>, since: (iso: string) => string): string[] {
+  const out = [`${chart.tracks.length} ${chart.tracks.length === 1 ? 'song' : 'songs'}`];
+  if (chart.stale) {
+    const ago = chart.fetchedAt ? since(chart.fetchedAt) : '';
+    if (ago) out.push(`Updated ${ago}`);
+  } else {
+    out.push('Updated daily');
+  }
+  return out;
+}
+
+/** The name "Save as playlist" gives a snapshot of a chart or a mix:
+ *  "Rock chart, 16 Oct". */
+export function snapshotName(title: string, kind: 'chart' | 'mix', date: string): string {
+  return `${title} ${kind}${date ? `, ${date}` : ''}`;
+}
