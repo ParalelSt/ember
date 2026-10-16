@@ -102,7 +102,9 @@ describe('ChangelogEntryPage', () => {
   it('shows every bullet, the date and scope, and a back link to the list', () => {
     render(<ChangelogEntryPage entry={entries[1]} />);
     expect(screen.getByRole('heading', { level: 1, name: 'First' })).toBeInTheDocument();
-    expect(screen.getByText('0.3.0 · 2026-09-18 · Desktop app')).toBeInTheDocument();
+    expect(screen.getByText('2026-09-18 · Desktop app')).toBeInTheDocument();
+    expect(screen.getByTestId('changelog-version')).toHaveTextContent('0.3.0');
+    expect(screen.getByText('first summary')).toBeInTheDocument();
     expect(screen.getByText('one')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: "Back to What's new" })).toHaveAttribute('href', '/whats-new');
   });
@@ -111,5 +113,63 @@ describe('ChangelogEntryPage', () => {
     render(<ChangelogEntryPage entry={undefined} />);
     expect(screen.getByTestId('changelog-missing')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: "Back to What's new" })).toBeInTheDocument();
+  });
+});
+
+describe('ChangelogEntryPage navigation', () => {
+  const many: ChangelogEntry[] = Array.from({ length: 12 }, (_, i) => ({
+    id: `e${i}`, version: `0.1.${20 - i}`, date: '2026-09-01', title: `T${i}`, summary: 's', bullets: ['b'],
+  }));
+  const swipe = (el: HTMLElement, dx: number, dy: number) => {
+    fireEvent.touchStart(el, { touches: [{ clientX: 200, clientY: 200 }] });
+    fireEvent.touchEnd(el, { changedTouches: [{ clientX: 200 + dx, clientY: 200 + dy }] });
+  };
+
+  it('arrow keys go to the newer and older neighbours', () => {
+    const onGo = vi.fn();
+    render(<ChangelogEntryPage entry={many[5]} entries={many} onGo={onGo} />);
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(onGo).toHaveBeenLastCalledWith('e4');
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(onGo).toHaveBeenLastCalledWith('e6');
+  });
+
+  it('does nothing past either end', () => {
+    const onGo = vi.fn();
+    render(<ChangelogEntryPage entry={many[0]} entries={many} onGo={onGo} />);
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(onGo).not.toHaveBeenCalled();
+  });
+
+  it('a clear horizontal swipe navigates, a vertical or short one does not', () => {
+    const onGo = vi.fn();
+    render(<ChangelogEntryPage entry={many[5]} entries={many} onGo={onGo} />);
+    const root = screen.getByTestId('changelog-entry-page');
+    swipe(root, -100, 10);
+    expect(onGo).toHaveBeenLastCalledWith('e6');
+    swipe(root, 100, 10);
+    expect(onGo).toHaveBeenLastCalledWith('e4');
+    onGo.mockClear();
+    swipe(root, 20, 0);
+    swipe(root, 80, 120);
+    expect(onGo).not.toHaveBeenCalled();
+  });
+
+  it('shows a window of 7 dots with the current one marked, and tapping navigates', () => {
+    const onGo = vi.fn();
+    render(<ChangelogEntryPage entry={many[5]} entries={many} onGo={onGo} />);
+    const dots = screen.getAllByTestId('changelog-dot');
+    expect(dots).toHaveLength(7);
+    expect(dots.filter((d) => d.dataset.current === 'true')).toHaveLength(1);
+    fireEvent.click(dots[0]);
+    expect(onGo).toHaveBeenCalledWith('e2');
+  });
+
+  it('Got it marks read and returns to the list', () => {
+    const onGotIt = vi.fn();
+    render(<ChangelogEntryPage entry={many[1]} entries={many} onGotIt={onGotIt} />);
+    expect(screen.getByText('Seen everything in this update?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+    expect(onGotIt).toHaveBeenCalledTimes(1);
   });
 });

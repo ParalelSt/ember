@@ -6,6 +6,8 @@ vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: ComponentProps<'a'>) => <a href={href} {...rest}>{children}</a>,
 }));
 
+vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn() }) }));
+
 // The real page, hook and store; only the network is faked.
 const updateChangelog = vi.fn();
 vi.mock('@/lib/api', () => ({
