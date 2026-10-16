@@ -38,7 +38,9 @@ describe('BackToTop', () => {
     const { button } = setup();
     expect(button.className).toContain('absolute');
     expect(button.className).not.toContain('fixed');
-    expect(button.className).toContain('bottom-cluster');
+    expect(button.className).toContain('bottom-stack');
+    expect(button.className).toContain('right-block');
+    expect(button.className).toContain('md:right-6');
     expect(button.className).toContain('md:bottom-block');
   });
 });
