@@ -231,7 +231,7 @@ const CARD_BASE = 'block w-full min-w-0 rounded-2xl border border-border bg-card
 /** Desktop preview of the newer/older neighbour; dimmed and inert at the ends. */
 function NeighbourCard({ dir, target, onGo }: { dir: 'newer' | 'older'; target?: ChangelogEntry; onGo?: (id: string) => void }) {
   const isNewer = dir === 'newer';
-  const align = isNewer ? '' : 'text-right';
+  const align = isNewer ? 'text-left' : 'text-right';
   const label = (text: string) => (
     <small className={`flex items-center gap-cluster text-xs font-bold uppercase tracking-widest text-ember ${isNewer ? '' : 'justify-end'}`}>
       {isNewer && target && <ArrowLeftIcon className="size-3.5" />}
