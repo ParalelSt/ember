@@ -17,6 +17,7 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 import { Label } from '@/components/ui/label';
 import { FloatingActionButton } from '@/components/ui/floating-action-button';
 import { AdminSheet } from '@/components/admin/AdminSheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export default function AdminInvitesPage() {
@@ -27,8 +28,7 @@ export default function AdminInvitesPage() {
   const [newEmail, setNewEmail] = useState('');
   const [search, setSearch] = useState('');
   const [pendingDelete, setPendingDelete] = useState<AdminInvite | null>(null);
-  // Phone: Add invite is a floating + that opens this sheet, in place of
-  // the form across the top (which stays from md up).
+  // Both layouts share the email state and add action.
   const [addOpen, setAddOpen] = useState(false);
   const isDesktop = useIsDesktop();
 
@@ -62,9 +62,10 @@ export default function AdminInvitesPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
         />
+        {isDesktop && <Button variant="ember" onClick={() => setAddOpen(true)}><PlusIcon className="size-4" />Add invite</Button>}
       </div>
 
-      <form onSubmit={onAdd} className="hidden md:flex gap-2 mb-6">
+      {!isDesktop && <form onSubmit={onAdd} className="hidden md:flex gap-2 mb-6">
         <Input
           type="email"
           placeholder="email@example.com"
@@ -80,7 +81,7 @@ export default function AdminInvitesPage() {
           <PlusIcon className="h-4 w-4" />
           Add
         </Button>
-      </form>
+      </form>}
 
       {isLoading && <EmptyState>Loading…</EmptyState>}
       {!isLoading && filtered.length === 0 && (
@@ -113,6 +114,25 @@ export default function AdminInvitesPage() {
           </div>
         ))}
       </div>
+
+      {isDesktop && (
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>Add invite</DialogTitle></DialogHeader>
+            <form onSubmit={onAdd} className="flex flex-col gap-block">
+              <div className="flex flex-col gap-cluster">
+                <Label htmlFor="desktop-invite-email">Email</Label>
+                <Input id="desktop-invite-email" type="email" placeholder="email@example.com" autoFocus
+                  value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+              </div>
+              <div className="flex justify-end gap-cluster">
+                <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+                <Button type="submit" variant="ember" disabled={addInvite.isPending || !newEmail.trim()}>Add invite</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {!isDesktop && (
         <>

@@ -1,7 +1,17 @@
+import type { PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import AdminBackupsPage from './BackupsPanel';
 import type { AdminBackupsStatus } from '@/lib/api';
+
+vi.mock('@/components/ui/dialog', () => ({
+  Dialog: ({ open, children }: PropsWithChildren<{ open?: boolean }>) => open ? <div>{children}</div> : null,
+  DialogContent: ({ children }: PropsWithChildren) => <div role="dialog">{children}</div>,
+  DialogHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  DialogFooter: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
+  DialogDescription: ({ children }: PropsWithChildren) => <p>{children}</p>,
+}));
 
 const GB = 1024 * 1024 * 1024;
 
@@ -78,6 +88,8 @@ describe('AdminBackupsPage', () => {
   it('Back up now runs the mutation and is disabled while it runs', () => {
     const { rerender } = render(<AdminBackupsPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+    expect(state.mutate).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Back up now' }));
     expect(state.mutate).toHaveBeenCalledTimes(1);
 
     state.pending = true;
@@ -155,4 +167,12 @@ describe('AdminBackupsPage header button and phone floating pill', () => {
     expect(fab).toHaveTextContent('Backing up…');
     expect(fab).toBeDisabled();
   });
+});
+
+it('desktop Cancel dismisses confirmation without making a backup', () => {
+  render(<AdminBackupsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Back up now' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+  expect(state.mutate).not.toHaveBeenCalled();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });

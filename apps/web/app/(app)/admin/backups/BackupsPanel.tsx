@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { AlertIcon, DownloadIcon } from '@/components/icons';
@@ -16,6 +18,7 @@ export default function BackupsPanel() {
   const { data, isLoading, error } = useQueryAdminBackups();
   const backupNow = useExecuteBackupNow();
   const isDesktop = useIsDesktop();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const onBackupNow = () => {
     backupNow.mutate(undefined, {
@@ -38,7 +41,7 @@ export default function BackupsPanel() {
             <Button
               variant="ember"
               className="hidden md:inline-flex"
-              onClick={onBackupNow}
+              onClick={() => setConfirmOpen(true)}
               disabled={backupNow.isPending || isLoading}
             >
               {backupNow.isPending ? 'Backing up…' : 'Back up now'}
@@ -160,6 +163,12 @@ export default function BackupsPanel() {
             </a>
           </div>
         </>
+      )}
+
+      {isDesktop && (
+        <ConfirmDialog open={confirmOpen} onOpenChange={setConfirmOpen}
+          title="Back up now?" description="This saves the whole database on this machine. It takes a few seconds."
+          confirmLabel="Back up now" onConfirm={onBackupNow} />
       )}
 
       {!isDesktop && (

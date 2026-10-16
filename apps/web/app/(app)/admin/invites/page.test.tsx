@@ -41,14 +41,15 @@ beforeEach(() => {
 });
 
 describe('AdminInvitesPage on desktop', () => {
-  it('keeps the add form across the top and no floating button', async () => {
+  it('opens a header dialog and submits the invite', async () => {
     const { container } = render(<AdminInvitesPage />);
-    const form = container.querySelector('form')!;
-    expect(form).toHaveClass('md:flex');
+    expect(container.querySelector('form')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add invite' }));
+    const form = screen.getByRole('dialog');
     expect(container.querySelector('[data-fab]')).toBeNull();
     fireEvent.change(within(form).getByPlaceholderText('email@example.com'), { target: { value: 'new@example.com' } });
     await act(async () => {
-      fireEvent.click(within(form).getByRole('button', { name: 'Add' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Add invite' }));
     });
     expect(state.add).toHaveBeenCalledWith('new@example.com');
   });
@@ -101,4 +102,22 @@ describe('AdminInvitesPage on a phone', () => {
     render(<AdminInvitesPage />);
     expect(screen.getByText('No invites yet, add one with the + button.')).toBeInTheDocument();
   });
+});
+
+it('desktop Cancel closes the invite dialog without submitting', () => {
+  render(<AdminInvitesPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add invite' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(state.add).not.toHaveBeenCalled();
+});
+
+it('desktop keeps the invite dialog open when adding fails', async () => {
+  state.add.mockRejectedValueOnce(new Error('Unavailable'));
+  render(<AdminInvitesPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add invite' }));
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.com' } });
+  await act(async () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add invite' })));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(screen.getByLabelText('Email')).toHaveValue('new@example.com');
 });
