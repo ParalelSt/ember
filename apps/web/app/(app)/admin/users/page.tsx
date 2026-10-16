@@ -3,11 +3,8 @@
 import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PasswordResetDialog } from '@/components/ui/password-reset-dialog';
-import { Avatar } from '@/components/primitives/Avatar';
-import { KeyIcon, LogOutIcon, TrashIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
   useExecuteDeleteAdminUser,
@@ -17,9 +14,9 @@ import {
   useQueryAdminUsers,
 } from '@/hooks/useAdmin';
 import type { AdminUser } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { UserTable } from '@/components/admin/UserTable';
 import { UserCards } from '@/components/admin/UserCards';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 
@@ -66,7 +63,7 @@ export default function AdminUsersPage() {
     <section>
       {isDesktop ? (
         <>
-          <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="flex items-center justify-between gap-block mb-block flex-wrap">
             <SectionHeader title={`Users · ${users.length}`} />
             <Input
               placeholder="Search by email or name…"
@@ -81,20 +78,15 @@ export default function AdminUsersPage() {
             <EmptyState>No users match.</EmptyState>
           )}
 
-          <div className="flex flex-col gap-2">
-            {filtered.map((u) => (
-              <UserRow
-                key={u.id}
-                user={u}
-                isSelf={u.id === actor?.id}
-                onRename={(name) => rename(u, name)}
-                onToggleAdmin={(isAdmin) => toggleAdmin(u, isAdmin)}
-                onDelete={() => setPendingDelete(u)}
-                onResetPassword={() => setPendingReset(u)}
-                onSignOutEverywhere={() => setPendingSignOut(u)}
-              />
-            ))}
-          </div>
+          <UserTable
+            users={filtered}
+            actorId={actor?.id}
+            onRename={rename}
+            onToggleAdmin={toggleAdmin}
+            onDelete={setPendingDelete}
+            onResetPassword={setPendingReset}
+            onSignOutEverywhere={setPendingSignOut}
+          />
         </>
       ) : (
         <div className="flex flex-col gap-block md:hidden">
@@ -187,112 +179,5 @@ export default function AdminUsersPage() {
         }}
       />
     </section>
-  );
-}
-
-interface RowProps {
-  user: AdminUser;
-  isSelf: boolean;
-  onRename: (name: string) => void;
-  onToggleAdmin: (isAdmin: boolean) => void;
-  onDelete: () => void;
-  onResetPassword: () => void;
-  onSignOutEverywhere: () => void;
-}
-
-function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassword, onSignOutEverywhere }: RowProps) {
-  const [name, setName] = useState(user.name);
-
-  const commitRename = () => {
-    const next = name.trim();
-    if (next === (user.name ?? '')) return;
-    onRename(next);
-  };
-
-  return (
-    <div className="grid grid-cols-[40px_1fr] gap-y-cluster gap-x-row items-center px-3 py-2 rounded-lg bg-card md:grid-cols-[40px_minmax(0,1.4fr)_minmax(0,1fr)_auto_auto_auto_auto] md:gap-3">
-      <Avatar
-        src={user.avatarUrl}
-        name={user.name}
-        email={user.email}
-        className="h-8 w-8 bg-ember text-ember-foreground text-xs"
-      />
-      <div className="min-w-0">
-        <div className="truncate text-sm font-semibold">{user.email}</div>
-        <div className="text-xs text-muted-foreground">{new Date(user.created).toLocaleDateString()}</div>
-      </div>
-      <Input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onBlur={commitRename}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        placeholder="Display name"
-        maxLength={50}
-        className="h-8 text-sm col-span-2 md:col-span-1"
-      />
-      {/* Below md the row is two columns (avatar / everything else), so the
-          admin toggle and the action buttons are grouped into one full-width
-          flex row, spread to the edges. md:contents on both wrappers drops
-          them from layout at md and up, letting the label and each button
-          fall back into their own columns of the original 7-column grid. */}
-      <div className="col-span-2 flex items-center justify-between md:contents">
-        <label
-          className={cn(
-            'flex items-center gap-2 text-sm px-2 select-none',
-            isSelf && 'text-muted-foreground cursor-not-allowed',
-          )}
-          title={isSelf ? "Can't demote yourself" : ''}
-        >
-          <input
-            type="checkbox"
-            checked={user.isAdmin}
-            disabled={isSelf}
-            onChange={(e) => onToggleAdmin(e.target.checked)}
-            className="h-4 w-4 accent-ember"
-          />
-          Admin
-        </label>
-        <div className="flex items-center gap-inset md:contents">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onResetPassword}
-            title="Reset password"
-            aria-label={`Reset password for ${user.email}`}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          >
-            <KeyIcon className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onSignOutEverywhere}
-            title="Sign out everywhere"
-            aria-label={`Sign ${user.email} out everywhere`}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          >
-            <LogOutIcon className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onDelete}
-            disabled={isSelf}
-            title={isSelf ? "Can't delete yourself" : 'Delete user'}
-            className={cn(
-              'h-8 w-8 text-muted-foreground hover:text-destructive',
-              isSelf && 'opacity-30 cursor-not-allowed',
-            )}
-          >
-            <TrashIcon className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }

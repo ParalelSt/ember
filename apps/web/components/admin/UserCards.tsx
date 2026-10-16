@@ -130,7 +130,7 @@ export function UserCards({ users, actorId, ...actions }: Props) {
   );
 }
 
-function RenameForm({ user, onSave, onCancel }: { user: AdminUser; onSave: (name: string) => void; onCancel: () => void }) {
+export function RenameForm({ user, onSave, onCancel }: { user: AdminUser; onSave: (name: string) => void; onCancel: () => void }) {
   const [name, setName] = useState(user.name);
   const next = name.trim();
   return (

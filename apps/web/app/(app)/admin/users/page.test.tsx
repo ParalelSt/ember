@@ -1,4 +1,4 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import AdminUsersPage from './page';
@@ -8,13 +8,34 @@ import type { AdminUser } from '@/lib/api';
 // node_modules copy (see app/(app)/dizajn/page.test.tsx); render plain
 // elements so this test is about the page's own wiring.
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  Dialog: ({ open, children }: PropsWithChildren<{ open?: boolean }>) => open ? <div>{children}</div> : null,
   DialogContent: ({ children }: PropsWithChildren) => <div>{children}</div>,
   DialogFooter: ({ children }: PropsWithChildren) => <div>{children}</div>,
   DialogHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
   DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
   DialogDescription: ({ children }: PropsWithChildren) => <p>{children}</p>,
 }));
+
+// Keep page wiring tests independent of the hoisted Base UI React copy.
+vi.mock('@/components/ui/dropdown-menu', async () => {
+  const React = await import('react');
+  const Context = React.createContext({ open: false, setOpen: (_open: boolean) => {} });
+  return {
+    DropdownMenu: ({ children }: PropsWithChildren) => {
+      const [open, setOpen] = React.useState(false);
+      return <Context.Provider value={{ open, setOpen }}>{children}</Context.Provider>;
+    },
+    DropdownMenuTrigger: ({ children, ...props }: ComponentProps<'button'>) => {
+      const { open, setOpen } = React.useContext(Context);
+      return <button {...props} onClick={() => setOpen(!open)}>{children}</button>;
+    },
+    DropdownMenuContent: ({ children }: PropsWithChildren) => React.useContext(Context).open ? <div role="menu">{children}</div> : null,
+    DropdownMenuItem: ({ children, disabled, onClick }: ComponentProps<'button'>) => {
+      const { setOpen } = React.useContext(Context);
+      return <button role="menuitem" disabled={disabled} aria-disabled={disabled || undefined} onClick={e => { onClick?.(e); setOpen(false); }}>{children}</button>;
+    },
+  };
+});
 
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { id: 'admin1', email: 'admin@ember.test' } }),
@@ -66,7 +87,8 @@ describe('AdminUsersPage', () => {
 
   it('signs a member out everywhere after confirming', async () => {
     render(<AdminUsersPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Sign robin@ember.test out everywhere' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for robin@ember.test' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Sign out everywhere' }));
     expect(screen.getByText('Sign robin@ember.test out everywhere?')).toBeInTheDocument();
     expect(signOutEverywhere).not.toHaveBeenCalled();
     await act(async () => {
@@ -171,5 +193,51 @@ describe('AdminUsersPage on a phone', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Delete user' }));
     expect(deleteUser).not.toHaveBeenCalled();
     expect(screen.queryByText('Delete admin@ember.test?')).toBeNull();
+  });
+});
+
+describe('desktop users table', () => {
+  it('has the supported columns, role tags, fallback name and search', () => {
+    render(<AdminUsersPage />);
+    expect(screen.getAllByRole('columnheader').map(h => h.textContent)).toEqual(['User', 'Email', 'Role', 'Joined', 'Actions']);
+    expect(screen.getByText('No name')).toBeInTheDocument();
+    expect(screen.queryByText('Last active')).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText('Search by email or name…'), { target: { value: 'robin' } });
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+  });
+  it('promotes a member and disables self role and delete actions', () => {
+    render(<AdminUsersPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for robin@ember.test' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Make admin' }));
+    expect(updateUser).toHaveBeenCalledWith({ id: 'u1', patch: { isAdmin: true } }, expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for admin@ember.test' }));
+    expect(screen.getByRole('menuitem', { name: 'Remove admin' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: 'Delete user' })).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+describe('desktop user actions reuse phone handlers', () => {
+  const pick = (name: string) => {
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for robin@ember.test' }));
+    fireEvent.click(screen.getByRole('menuitem', { name }));
+  };
+  it('renames from the dialog', () => {
+    render(<AdminUsersPage />);
+    pick('Rename');
+    fireEvent.change(screen.getByLabelText('Display name for robin@ember.test'), { target: { value: ' Robin H ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(updateUser).toHaveBeenCalledWith({ id: 'u1', patch: { name: 'Robin H' } }, expect.anything());
+  });
+  it('opens password reset', () => {
+    render(<AdminUsersPage />);
+    pick('Reset password');
+    expect(screen.getByText('Reset password for robin@ember.test')).toBeInTheDocument();
+  });
+  it('confirms before deleting', async () => {
+    render(<AdminUsersPage />);
+    pick('Delete user');
+    expect(deleteUser).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Delete user' })));
+    expect(deleteUser).toHaveBeenCalledWith('u1');
   });
 });
