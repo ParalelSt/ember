@@ -39,6 +39,13 @@ describe('Phosphor icons', () => {
     expect(container.querySelectorAll('svg[viewBox="0 0 256 256"] path')).toHaveLength(2);
   });
 
+  it('renders the shield-warning and camera fill icons (Settings > Devices)', () => {
+    const { container } = render(<><icons.ShieldWarningIcon /><icons.CameraIcon /></>);
+    expect(container.querySelector('.phosphor-shield-warning')).not.toBeNull();
+    expect(container.querySelector('.phosphor-camera')).not.toBeNull();
+    expect(container.querySelectorAll('svg[viewBox="0 0 256 256"] path')).toHaveLength(2);
+  });
+
   it('supports sizing, styles, attributes and refs while ignoring Lucide stroke props', () => {
     let node: SVGSVGElement | null = null;
     const { container } = render(<icons.HomeIcon size={32} width={40} height="2em"
