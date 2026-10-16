@@ -98,5 +98,7 @@ export {
   Loader2Icon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  FolderSimplePlusIcon,
+  CloudArrowDownIcon,
 } from './phosphor';
 export { FlameIcon } from './EmberLogo';

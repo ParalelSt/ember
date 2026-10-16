@@ -1,5 +1,5 @@
 import type { Icon } from '@/components/icons';
-import { ArrowDownIcon, ArrowUpIcon, ClockIcon } from '@/components/icons';
+import { ArrowDownIcon, ClockIcon, CloudArrowDownIcon, FolderSimplePlusIcon } from '@/components/icons';
 import type { LibraryBadgeKind } from '@/lib/library';
 
 export type { LibraryBadgeKind };
@@ -25,9 +25,9 @@ export interface LibraryBadge {
 }
 
 export const LIBRARY_BADGES: Record<LibraryBadgeKind, LibraryBadge> = {
-  recent: { icon: ClockIcon, color: '#7a47e6', tile: 'linear-gradient(145deg, #7a47e6, #1c1040)' },
-  uploads: { icon: ArrowUpIcon, color: '#2f74ea', tile: 'linear-gradient(145deg, #2f74ea, #0b2358)' },
-  downloaded: { icon: ArrowDownIcon, color: '#18a870', tile: 'linear-gradient(145deg, #18a870, #07291d)' },
+  recent: { icon: ClockIcon, color: '#f2514a', tile: 'linear-gradient(145deg, #f2514a, #3a0b1c)' },
+  uploads: { icon: FolderSimplePlusIcon, color: '#e8912d', tile: 'linear-gradient(145deg, #e8912d, #3d1f06)' },
+  downloaded: { icon: CloudArrowDownIcon, color: '#d9547a', tile: 'linear-gradient(145deg, #d9547a, #33101f)' },
 };
 
 /** The glyph colour on a badge and on a plain tile. */

@@ -32,6 +32,13 @@ describe('Phosphor icons', () => {
     expect(container.querySelector('.phosphor-caret-left')).toBeNull();
   });
 
+  it('renders the folder-simple-plus and cloud-arrow-down fill icons', () => {
+    const { container } = render(<><icons.FolderSimplePlusIcon /><icons.CloudArrowDownIcon /></>);
+    expect(container.querySelector('.phosphor-folder-simple-plus')).not.toBeNull();
+    expect(container.querySelector('.phosphor-cloud-arrow-down')).not.toBeNull();
+    expect(container.querySelectorAll('svg[viewBox="0 0 256 256"] path')).toHaveLength(2);
+  });
+
   it('supports sizing, styles, attributes and refs while ignoring Lucide stroke props', () => {
     let node: SVGSVGElement | null = null;
     const { container } = render(<icons.HomeIcon size={32} width={40} height="2em"
