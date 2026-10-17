@@ -155,7 +155,8 @@ object AppUpdater {
         log = buildLog()
         restore()
         UpdatePresence.onChange = { main.post { evaluate(false) } }
-        runCatching { UpdateCheckJob.schedule(app) }.onFailure { log.warn("update.schedule", "periodic check not scheduled: ${it.message}") }
+        if (UpdateRules.isTestBuild(app.packageName)) runCatching { UpdateCheckJob.cancel(app) }
+        else runCatching { UpdateCheckJob.schedule(app) }.onFailure { log.warn("update.schedule", "periodic check not scheduled: ${it.message}") }
     }
 
     fun isReady(): Boolean = ready != null && status != Status.INSTALLING
@@ -270,6 +271,7 @@ object AppUpdater {
     /** Ask the server, download what is newer, then see whether it may
      *  install. [done] runs when all of that has finished (the job's end). */
     fun check(manual: Boolean, reason: String, done: (() -> Unit)? = null) {
+        if (!UpdateRules.backgroundCheckAllowed(app.packageName, manual)) { done?.let { main.post(it) }; return }
         if (status == Status.INSTALLING || !busy.compareAndSet(false, true)) { done?.let { main.post(it) }; return }
         work.execute {
             try {
@@ -319,7 +321,7 @@ object AppUpdater {
             JSONObject().put("version", feed.version).put("current", current).put("reason", reason).put("size", feed.size))
         val have = ready
         if (have != null && have.version == feed.version && have.file.exists()) { set(Status.READY, latest = feed.version); return }
-        if (!manual && prefs().getString(KEY_REJECTED, null) == feed.version) {
+        if (UpdateRules.skipRejected(prefs().getString(KEY_REJECTED, null), feed.version, manual)) {
             log.info("update.skip", "update ${feed.version} was refused before, not downloading again")
             set(Status.FAILED, latest = feed.version, error = "This update can't be installed over this app")
             return
