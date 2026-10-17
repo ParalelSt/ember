@@ -17,6 +17,21 @@ object UpdateRules {
     const val IDLE_GRACE_MS = 2 * 60 * 1000L
     const val PACKAGE = "app.ember.music"
 
+    /** The separate "Ember Test" app (applicationIdSuffix ".test"). */
+    fun isTestBuild(packageName: String?): Boolean = packageName?.endsWith(".test") == true
+
+    /** Whether a check nobody asked for (the 6-hourly job, the app-start
+     *  check) may run. The test build never updates in the background: a
+     *  release APK is another package, so it could never install anyway.
+     *  A person's own tap (manual) and the launch gate always may. */
+    fun backgroundCheckAllowed(packageName: String?, manual: Boolean): Boolean =
+        manual || !isTestBuild(packageName)
+
+    /** A non-manual check does not download a version that was already
+     *  refused for good; a newer version is a different string. */
+    fun skipRejected(rejectedVersion: String?, offered: String, manual: Boolean): Boolean =
+        !manual && rejectedVersion != null && rejectedVersion == offered
+
     // ── Versions ────────────────────────────────────────────────────────
 
     /** "0.4.18" or "v0.4.18" to [0, 4, 18]; null when it is not x.y.z. */

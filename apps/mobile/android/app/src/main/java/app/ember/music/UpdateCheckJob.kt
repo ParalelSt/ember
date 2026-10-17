@@ -16,6 +16,11 @@ class UpdateCheckJob : JobService() {
     companion object {
         const val JOB_ID = 72_011
 
+        /** The test build has no periodic check: drop one scheduled earlier. */
+        fun cancel(context: Context) {
+            (context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as? JobScheduler)?.cancel(JOB_ID)
+        }
+
         /** Idempotent: an already scheduled job is left alone, so its clock
          *  does not restart on every app start. */
         fun schedule(context: Context) {
@@ -31,6 +36,7 @@ class UpdateCheckJob : JobService() {
     }
 
     override fun onStartJob(params: JobParameters): Boolean {
+        if (UpdateRules.isTestBuild(packageName)) { cancel(applicationContext); return false }
         AppUpdater.init(applicationContext)
         AppUpdater.check(manual = false, reason = "periodic") { jobFinished(params, false) }
         return true
