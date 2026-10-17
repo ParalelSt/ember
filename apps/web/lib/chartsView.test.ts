@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chartColor, chartMeta, chartTitle, POPULAR_COLOR, snapshotName } from '@/lib/chartsView';
+import { chartColor, chartMeta, chartTitle, POPULAR_COLOR, snapshotName, tileCovers } from '@/lib/chartsView';
 import { CHARTS, UNKNOWN_CHART_COLOR } from '@/lib/genres/taxonomy';
 
 const tracks = (n: number) => Array.from({ length: n }, () => ({}) as never);
@@ -24,5 +24,13 @@ describe('chartsView', () => {
   it('names a saved snapshot after the list and the day', () => {
     expect(snapshotName('Rock', 'chart', '16 Oct')).toBe('Rock chart, 16 Oct');
     expect(snapshotName('Balkan', 'mix', '')).toBe('Balkan mix');
+  });
+});
+
+describe('tileCovers', () => {
+  it('takes the first distinct covers, up to four', () => {
+    const t = (artworkUrl: string | null) => ({ artworkUrl });
+    expect(tileCovers([t(null), t('a'), t('a'), t('b'), t('c'), t('d'), t('e')])).toEqual(['a', 'b', 'c', 'd']);
+    expect(tileCovers([])).toEqual([]);
   });
 });

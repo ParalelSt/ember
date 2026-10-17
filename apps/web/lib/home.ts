@@ -96,18 +96,16 @@ export function rowStep(clientWidth: number): number {
   return Math.max(1, Math.round(clientWidth * 0.8));
 }
 
-/** The phone Home's rows below the quick grid. `mixes` and `charts` are the
- *  planned genre rows (docs/superpowers/plans, genre charts and mixes): they
- *  have a place in the order and a chip already, and appear once the page
- *  has content for them. */
-export type HomeRowKey = 'mixes' | 'history' | 'recommended' | 'trending' | 'charts' | 'playlists' | 'friends';
+/** The phone Home's rows below the quick grid. `charts` is "Popular now":
+ *  the Top songs tile (the mixed chart) then one tile per genre chart. It
+ *  appears once either has content, and the Charts chip keeps it. */
+export type HomeRowKey = 'mixes' | 'history' | 'recommended' | 'charts' | 'playlists' | 'friends';
 
 /** The owner's order B: mixes and discovery early, your playlists late. */
 export const PHONE_ORDER: readonly HomeRowKey[] = [
   'mixes',
   'history',
   'recommended',
-  'trending',
   'charts',
   'playlists',
   'friends',
