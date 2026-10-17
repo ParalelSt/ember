@@ -94,7 +94,23 @@ object GateRules {
 
     // ── The server's answer ─────────────────────────────────────────────
 
-    data class Offer(val version: String, val mandatory: Boolean, val reason: String?, val size: Long?)
+    /** [notes]: up to [MAX_NOTES] short lines of the release's real notes,
+     *  empty when the release has none worth showing. */
+    data class Offer(val version: String, val mandatory: Boolean, val reason: String?, val size: Long?, val notes: List<String> = emptyList())
+
+    const val MAX_NOTES = 3
+    private const val MAX_NOTE_CHARS = 80
+    private val BULLET = Regex("^(?:[-*\\u2022+]|\\d+[.)])\\s+")
+    private val BARE_VERSION = Regex("^(?:ember\\s*)?v?\\d+\\.\\d+\\.\\d+$", RegexOption.IGNORE_CASE)
+
+    /** The feed's `notes` (plain text, one item per line) as at most three
+     *  short bullets. The feed falls back to the release name ("Ember
+     *  0.4.24") when a release has no notes; that is not a note. */
+    fun noteBullets(raw: String?): List<String> = raw.orEmpty().lines()
+        .map { it.trim().replace(BULLET, "").trim() }
+        .filter { it.length >= 4 && !BARE_VERSION.matches(it) && !it.endsWith(":") }
+        .map { if (it.length > MAX_NOTE_CHARS) it.take(MAX_NOTE_CHARS - 3).trimEnd() + "..." else it }
+        .take(MAX_NOTES)
 
     /** GET /api/app/update's body as an offer, or null for anything that is
      *  not a newer version this app can install. */
@@ -105,7 +121,8 @@ object GateRules {
         if (u.optString("action") != "install") return null
         val reason = if (u.isNull("reason")) null else u.optString("reason").takeIf { it.isNotBlank() }
         val size = if (u.isNull("size")) null else u.optLong("size", -1).takeIf { it > 0 }
-        return Offer(version, u.optBoolean("mandatory", false), reason, size)
+        val notes = if (u.isNull("notes")) emptyList() else noteBullets(u.optString("notes"))
+        return Offer(version, u.optBoolean("mandatory", false), reason, size, notes)
     }
 
     fun checkPath(version: String?): String =
@@ -284,8 +301,15 @@ object GateRules {
 
     data class Copy(
         val title: String,
+        /** "Ember 0.4.24", under the title in the brand header. */
+        val versionLine: String,
         val reason: String?,
-        val detail: String,
+        /** The reason of a required update sits in the red banner. */
+        val reasonBanner: Boolean,
+        /** Under the bar or the header: the size so far, or the countdown. */
+        val detail: String?,
+        /** The real release notes, on the offer only. */
+        val notes: List<String>,
         val cancel: String,
         val primary: String,
         val buttons: Boolean,
@@ -303,39 +327,49 @@ object GateRules {
 
     fun megabytes(bytes: Long?): String? = bytes?.takeIf { it > 0 }?.let { "${(it + 524_288) / 1_048_576} MB" }
 
+    /** "18 of 43 MB" while the size and the share done are known, else
+     *  just "43 MB" or "42%", else nothing. */
+    fun amount(percent: Int?, size: Long?): String? {
+        val total = megabytes(size)
+        if (percent == null) return null
+        if (total == null) return "$percent%"
+        val done = (size!! * percent / 100 + 524_288) / 1_048_576
+        return "$done of $total"
+    }
+
     /** What the dialog says, or null for no dialog (the splash). */
     fun copy(m: Machine, silent: Boolean): Copy? {
         val o = m.offer ?: return null
         val cancel = if (m.mandatory) "Quit Ember" else "Not now"
         val reason = reasonLine(m.mandatory, o.reason, m.recovery)
+        val banner = m.mandatory
+        val ver = "Ember ${o.version}"
         return when (val p = m.phase) {
             is Phase.Downloading -> {
-                val title = when { m.mandatory -> "Ember needs an update"; m.recovery -> "Getting a fix"; else -> "Updating Ember" }
-                val size = megabytes(o.size)
-                val amount = when {
-                    p.percent != null && size != null -> "${p.percent}% of $size"
-                    p.percent != null -> "${p.percent}%"
-                    else -> size
+                val title = when { m.mandatory -> "Update required"; m.recovery -> "Getting a fix"; m.updateNow -> "Updating Ember"; else -> "Update available" }
+                if (!m.updateNow) {
+                    Copy(title, ver, reason, banner, null, o.notes, cancel, "Update now", true, true, null)
+                } else {
+                    val detail = amount(p.percent, o.size) ?: megabytes(o.size)
+                    Copy(title, ver, reason, banner, detail, emptyList(), cancel, "Updating...", true, false, p.percent ?: -1)
                 }
-                val detail = listOfNotNull("Version ${o.version}", amount).joinToString(" · ")
-                Copy(title, reason, detail, cancel, if (m.updateNow) "Updating..." else "Update now", true, !m.updateNow, p.percent ?: -1)
             }
             is Phase.Countdown -> Copy(
-                "Restarting in ${p.seconds}s", reason,
-                if (p.held) "Waiting until Ember is on screen again" else "Version ${o.version} is ready",
-                cancel, "Update now", true, true, null,
+                "Update ready", ver, reason, banner,
+                if (p.held) "Waiting until Ember is on screen again" else "Restarting in ${p.seconds}s",
+                emptyList(), cancel, "Update now", true, true, null,
             )
             is Phase.Installing -> Copy(
-                "Installing update", null,
+                "Installing update", ver, null, false,
                 if (silent) "Ember closes for a moment. Tap the notification to open it again."
                 else "Android will ask you to confirm",
-                cancel, "Update now", false, false, null,
+                emptyList(), cancel, "Update now", false, false, null,
             )
             is Phase.Permission -> Copy(
-                "Allow Ember to install updates", reason, "Needed once so updates can install",
-                cancel, "Allow", true, true, null,
+                "Allow Ember to install updates", ver, reason, banner, "Needed once so updates can install",
+                emptyList(), cancel, "Allow", true, true, null,
             )
-            is Phase.Failed -> Copy("Couldn't update", null, "Opening Ember. We'll try again next time.", cancel, "Update now", false, false, null)
+            is Phase.Failed -> Copy("Couldn't update", ver, null, false, "Opening Ember. We'll try again next time.", emptyList(), cancel, "Update now", false, false, null)
             else -> null
         }
     }

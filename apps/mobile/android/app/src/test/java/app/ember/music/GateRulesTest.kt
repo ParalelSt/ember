@@ -264,35 +264,120 @@ class GateRulesTest {
         val m = Machine(false, true)
         assertNull(GateRules.copy(m, silent = true))
         shown(m)
+        // The offer: brand header, no bar, no size line, equal buttons.
         var c = GateRules.copy(m, true)!!
-        assertEquals("Updating Ember", c.title)
-        assertEquals("Version 0.4.23 · 17 MB", c.detail)
+        assertEquals("Update available", c.title)
+        assertEquals("Ember 0.4.23", c.versionLine)
+        assertNull(c.progress)
+        assertNull(c.detail)
         assertEquals("Not now", c.cancel)
         assertEquals("Update now", c.primary)
-        assertEquals(-1, c.progress)
-        m.handle(Input.Progress(42))
-        assertEquals("Version 0.4.23 · 42% of 17 MB", GateRules.copy(m, true)!!.detail)
-        m.handle(Input.Downloaded)
-        c = GateRules.copy(m, true)!!
-        assertEquals("Restarting in 7s", c.title)
-        assertEquals("Version 0.4.23 is ready", c.detail)
+        assertTrue(c.primaryEnabled)
+        // Tapping Update now: the bar, and "18 of 43 MB" style size text.
         m.handle(Input.UpdateNow)
+        m.handle(Input.Progress(42))
         c = GateRules.copy(m, true)!!
+        assertEquals("Updating Ember", c.title)
+        assertEquals(42, c.progress)
+        assertEquals("Updating...", c.primary)
+        assertFalse(c.primaryEnabled)
+        assertEquals("7 of 17 MB", c.detail)
+        assertTrue(c.notes.isEmpty())
+        // Ready (downloaded before any tap): a plain counting line.
+        val r = Machine(false, true)
+        shown(r)
+        r.handle(Input.Downloaded)
+        c = GateRules.copy(r, true)!!
+        assertEquals("Update ready", c.title)
+        assertEquals("Restarting in 7s", c.detail)
+        assertNull(c.progress)
+        r.handle(Input.UpdateNow)
+        c = GateRules.copy(r, true)!!
         assertEquals("Installing update", c.title)
         assertFalse(c.buttons)
-        assertEquals("Android will ask you to confirm", GateRules.copy(m, false)!!.detail)
+        assertEquals("Android will ask you to confirm", GateRules.copy(r, false)!!.detail)
     }
 
-    @Test fun `a required update has a one-line reason and Quit Ember`() {
+    @Test fun `the size text uses real numbers and degrades without them`() {
+        assertEquals("18 of 43 MB", GateRules.amount(42, 43_000_000L * 1_048_576 / 1_000_000))
+        assertEquals("42%", GateRules.amount(42, null))
+        assertNull(GateRules.amount(null, 18_000_000))
+        val m = Machine(false, true)
+        shown(m, offer(size = null))
+        m.handle(Input.UpdateNow)
+        assertNull(GateRules.copy(m, true)!!.detail)
+        m.handle(Input.Progress(42))
+        assertEquals("42%", GateRules.copy(m, true)!!.detail)
+    }
+
+    @Test fun `a required update has a banner reason and Quit Ember`() {
         val m = Machine(false, true)
         shown(m, offer(mandatory = true, reason = "min-version"))
         val c = GateRules.copy(m, true)!!
-        assertEquals("Ember needs an update", c.title)
+        assertEquals("Update required", c.title)
         assertEquals("This version no longer works with the server.", c.reason)
+        assertTrue(c.reasonBanner)
         assertEquals("Quit Ember", c.cancel)
         val f = Machine(false, true)
         shown(f, offer(mandatory = true, reason = "flagged"))
         assertEquals("This update fixes a serious problem.", GateRules.copy(f, true)!!.reason)
+        f.handle(Input.Downloaded)
+        val ready = GateRules.copy(f, true)!!
+        assertEquals("Update ready", ready.title)
+        assertTrue(ready.reasonBanner)
+    }
+
+    @Test fun `an optional update has no banner`() {
+        val m = Machine(false, true)
+        shown(m)
+        val c = GateRules.copy(m, true)!!
+        assertNull(c.reason)
+        assertFalse(c.reasonBanner)
+    }
+
+    @Test fun `notes show only on the offer and only when the release has real ones`() {
+        val m = Machine(false, true)
+        shown(m, offer().copy(notes = listOf("Faster start", "Lyrics no longer skip ahead")))
+        assertEquals(listOf("Faster start", "Lyrics no longer skip ahead"), GateRules.copy(m, true)!!.notes)
+        m.handle(Input.UpdateNow)
+        assertTrue(GateRules.copy(m, true)!!.notes.isEmpty())
+        val none = Machine(false, true)
+        shown(none)
+        assertTrue(GateRules.copy(none, true)!!.notes.isEmpty())
+    }
+
+    @Test fun `release notes become at most three short bullets`() {
+        val raw = "- Faster start\n* Lyrics no longer skip ahead\n\u2022 Downloads resume\n1. A fourth one\n"
+        assertEquals(listOf("Faster start", "Lyrics no longer skip ahead", "Downloads resume"), GateRules.noteBullets(raw))
+        // The feed's fallbacks (release name or tag) are not notes.
+        assertTrue(GateRules.noteBullets("Ember 0.4.24").isEmpty())
+        assertTrue(GateRules.noteBullets("v0.4.24").isEmpty())
+        assertTrue(GateRules.noteBullets("").isEmpty())
+        assertTrue(GateRules.noteBullets(null).isEmpty())
+        assertEquals(listOf("Fixes"), GateRules.noteBullets("What's new:\nFixes"))
+        val long = GateRules.noteBullets("x".repeat(200)).single()
+        assertEquals(80, long.length)
+        assertTrue(long.endsWith("..."))
+    }
+
+    @Test fun `the answer's notes reach the offer`() {
+        val json = JSONObject(
+            """{"update":{"version":"0.4.24","action":"install","mandatory":false,"reason":null,"size":18000000,
+               "notes":"- Faster start\n- Lyrics fixed"}}""")
+        assertEquals(listOf("Faster start", "Lyrics fixed"), GateRules.parseAnswer(json, "0.4.23")!!.notes)
+        val bare = JSONObject("""{"update":{"version":"0.4.24","action":"install","notes":"Ember 0.4.24"}}""")
+        assertTrue(GateRules.parseAnswer(bare, "0.4.23")!!.notes.isEmpty())
+    }
+
+    @Test fun `the dialog draws the brand header, banner, bar and equal buttons`() {
+        val src = java.io.File("src/main/java/app/ember/music/LaunchGateActivity.kt").readText()
+        assertTrue(src.contains("R.drawable.ic_gate_flame"))
+        assertTrue(src.contains("R.drawable.ic_gate_warning"))
+        assertTrue(src.contains("WHAT'S NEW"))
+        assertTrue(src.contains("0xf9, 0x5a, 0x55"))
+        assertTrue(src.contains("LinearLayout.LayoutParams(0, dp(40), 1f)"))
+        assertTrue(src.contains("dp(20).toFloat()"))
+        assertTrue(java.io.File("src/main/res/drawable/ic_gate_flame.xml").readText().contains("M143.38,17.85"))
     }
 
     @Test fun `recovery and permission copy`() {
