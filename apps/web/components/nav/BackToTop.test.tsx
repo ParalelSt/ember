@@ -40,8 +40,7 @@ describe('BackToTop', () => {
     expect(button.className).not.toContain('fixed');
     expect(button.className).toContain('bottom-stack');
     expect(button.className).toContain('right-block');
-    expect(button.className).toContain('md:right-(--back-to-top-right)');
-    expect(button.className).toContain('md:bottom-block');
+    expect(button.className).toContain('md:hidden');
   });
 });
 

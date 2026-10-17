@@ -60,21 +60,17 @@ describe('app shell, desktop top bar', () => {
     // First thing in the scroller: nothing above it pushes it down.
     expect(scroller().firstElementChild).toBe(bar);
     expect(bar.contains(screen.getByTestId('search-box'))).toBe(true);
-    // The scroller is the column's only in-flow child: it starts at the
-    // column's top. (Back to top floats over it, out of flow.)
+    // The scroller is the column's only child: it starts at the column's
+    // top.
     const column = scroller().parentElement!;
-    const backToTop = screen.getByRole('button', { name: 'Back to top' });
-    expect([...column.children].filter((c) => c !== backToTop)).toEqual([scroller()]);
+    expect([...column.children]).toEqual([scroller()]);
   });
 
-  // Bughunt V12: Back to top floats against the scroller's own column, so
-  // it keeps one step above the scroller's edge with or without the player
-  // bar, and every page ends with room for it.
-  it('pins Back to top to the scroller column and leaves room for it under the page', () => {
+  // The owner dropped Back to top on desktop (2026-10-17); every page still
+  // ends with room under its last row.
+  it('has no Back to top on desktop and leaves room under the page', () => {
     renderShell();
-    const column = scroller().parentElement!;
-    expect(column).toHaveClass('relative');
-    expect(column.contains(screen.getByRole('button', { name: 'Back to top' }))).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Back to top' })).toBeNull();
     const page = screen.getByRole('heading', { name: 'Home' }).parentElement!;
     expect(page).toHaveClass('pb-section');
   });

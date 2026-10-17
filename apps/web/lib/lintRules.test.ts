@@ -476,7 +476,7 @@ describe('safe-area insets', () => {
     uses('components/tabs/TabSourceSheet.tsx', 'safe-area-bottom');
     // Back to top sits in the scroller's column, above the bars that spend
     // the inset, so it spends none of its own (bughunt V12).
-    uses('components/nav/BackToTop.tsx', "'bottom-stack md:bottom-block'");
+    uses('components/nav/BackToTop.tsx', "'bottom-stack',");
     uses('components/ui/sonner.tsx', 'mobileOffset={{ bottom: "calc(var(--safe-bottom) + 16px)" }}');
     uses('components/ui/sonner.tsx', 'offset={{ bottom: "calc(var(--safe-bottom) + 24px)" }}');
     expect(occurrences('body:has([data-copy-bar]) [data-back-to-top] { bottom: 6.25rem; }')).toBe(1);

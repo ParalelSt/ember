@@ -53,13 +53,12 @@ export function BackToTop({ scrollRef }: Props) {
       // globals.css lifts it over the Copy to… bar while that is showing.
       data-back-to-top
       className={cn(
-        'absolute right-block z-40 md:right-(--back-to-top-right) size-10 rounded-full bg-ember hover:bg-ember-soft text-ember-foreground shadow-glow',
+        'absolute right-block z-40 size-10 md:hidden rounded-full bg-ember hover:bg-ember-soft text-ember-foreground shadow-glow',
         'flex items-center justify-center',
         'transition-all duration-200',
-        // Phone: 16px from the right, 24px above the player (owner pick
-        // backtop1). Desktop: centered in the empty space right of the
-        // page content (owner, 2026-10-17), see --back-to-top-right in globals.css.
-        'bottom-stack md:bottom-block',
+        // Phone only: 16px from the right, 24px above the player (owner
+        // pick backtop1). The owner dropped it on desktop (2026-10-17).
+        'bottom-stack',
         visible
           ? 'opacity-100 translate-y-0 pointer-events-auto'
           : 'opacity-0 translate-y-2 pointer-events-none',

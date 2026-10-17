@@ -117,7 +117,8 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
             {/* Inside this `relative` column, so it floats a fixed step above
                 the scroller's own bottom edge whether or not the player bar
                 is showing (bughunt V12). */}
-            <BackToTop scrollRef={scrollerRef} />
+            {/* Phones only: the owner dropped Back to top on desktop. */}
+          {!isDesktop && <BackToTop scrollRef={scrollerRef} />}
             {/* A transfer in the background: its floating pill and its
                 "Transfer done" card, over whatever page is open. */}
             <TransferStatus />
