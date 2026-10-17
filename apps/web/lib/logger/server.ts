@@ -1,5 +1,5 @@
 import 'server-only';
-import { promises as fs } from 'node:fs';
+import { promises as fs, appendFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { LogLevel, ServerLogEntry } from './types';
 import { requestContext, type ServerLogContext } from './context';
@@ -108,7 +108,32 @@ function writeEntry(
   void appendLine(entry).catch((e) => console.warn('[serverLogger] append failed', e));
 }
 
+/** Same line as info(), written before it returns: for the moment the
+ *  process is being stopped and an async append might never finish. */
+function infoSync(category: string, message: string, data?: unknown): void {
+  const entry: ServerLogEntry = {
+    ts: Date.now(),
+    kind: 'error',
+    level: 'info',
+    category,
+    message,
+    sessionId: 'server',
+    side: 'server',
+    reqId: '',
+    route: '',
+  };
+  if (data !== undefined) entry.data = safeJson(data);
+  try {
+    mkdirSync(logDir(), { recursive: true });
+    appendFileSync(path.join(logDir(), todayFile()), JSON.stringify(entry) + '\n', 'utf8');
+  } catch (e) {
+    console.warn('[serverLogger] sync append failed', e);
+  }
+}
+
 export const serverLogger = {
+  infoSync,
+
   /** Fire-and-forget append. Failures fall back to console.warn, we never
    *  let logging break a request. */
   error(category: string, message: string, data?: unknown, err?: unknown, ctx?: ServerLogContext): void {

@@ -15,6 +15,46 @@ export async function register() {
     spawnReport: spawnCrashReport,
   });
 
+  // Start/stop record and heartbeat (lib/serverLife.ts), so an outage and its
+  // length show up in the digest. Never allowed to stop the boot.
+  try {
+    const { startServerLife } = await import('@/lib/serverLife');
+    const { logDir } = await import('@/lib/logger/server');
+    let version = 'unknown';
+    try {
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      version = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')).version ?? version;
+    } catch {
+      // Version is a nicety.
+    }
+    await startServerLife({
+      dir: logDir(),
+      version,
+      log: {
+        info: serverLogger.info,
+        warn: serverLogger.warn,
+        infoSync: serverLogger.infoSync,
+      },
+    });
+  } catch (e) {
+    console.warn('[serverLife] could not start', e);
+  }
+
+  // yt-dlp self-update (lib/ytdlp): once a day, and sooner after a run of
+  // YouTube 403s (the stream route reports those). YTDLP_AUTO_UPGRADE=0 opts out.
+  const { upgradeEnabled } = await import('@/lib/ytdlp/upgradePolicy');
+  if (upgradeEnabled()) {
+    const { ytdlpUpgradeJob } = await import('@/lib/ytdlp/upgradeRunner');
+    const job = ytdlpUpgradeJob();
+    // Checked every 30 minutes (the marker file keeps it to once a day across
+    // restarts); the first look is 5 minutes after boot.
+    const first = setTimeout(() => void job.tick().catch(() => {}), 5 * 60 * 1000);
+    first.unref?.();
+    const upgradeTimer = setInterval(() => void job.tick().catch(() => {}), 30 * 60 * 1000);
+    upgradeTimer.unref?.();
+  }
+
   // Ahead of the CLEANUP_DISABLED guard below: the missing-key warning
   // must fire on every boot, including sandboxes and tests that disable
   // cleanup, not just deployments that run the daily job.
