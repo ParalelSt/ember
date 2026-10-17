@@ -57,8 +57,8 @@ export function BackToTop({ scrollRef }: Props) {
         'flex items-center justify-center',
         'transition-all duration-200',
         // Phone: 16px from the right, 24px above the player (owner pick
-        // backtop1). Desktop: by the right edge of the page content, a
-        // little past it (backtop2), see --back-to-top-right in globals.css.
+        // backtop1). Desktop: centered in the empty space right of the
+        // page content (owner, 2026-10-17), see --back-to-top-right in globals.css.
         'bottom-stack md:bottom-block',
         visible
           ? 'opacity-100 translate-y-0 pointer-events-auto'
