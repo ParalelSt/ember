@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { noteYtdlpDownloadFailure } from '@/lib/ytdlp/upgradeRunner';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -369,6 +370,8 @@ export const GET = withRequestLog('youtube/stream/[videoId]', async (request: Ne
         // and update.sh now does it). Live streaming frequently still works in
         // that state, so fall through to it rather than failing the play.
         downloadFailure = e instanceof Error ? e.message : 'the download failed';
+        // A run of 403s asks the host to upgrade its yt-dlp (lib/ytdlp).
+        noteYtdlpDownloadFailure(downloadFailure);
         serverLogger.error(
           'stream',
           'download failed, falling back to live stream (is yt-dlp up to date?)',
