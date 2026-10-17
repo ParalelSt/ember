@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -58,8 +59,13 @@ class LaunchGateActivity : ComponentActivity() {
 
     private lateinit var scrim: View
     private lateinit var title: TextView
+    private lateinit var version: TextView
+    private lateinit var banner: LinearLayout
+    private lateinit var bannerText: TextView
     private lateinit var reason: TextView
     private lateinit var detail: TextView
+    private lateinit var notesBox: LinearLayout
+    private lateinit var noteRows: LinearLayout
     private lateinit var bar: ProgressBar
     private lateinit var buttons: LinearLayout
     private lateinit var cancel: Button
@@ -282,9 +288,12 @@ class LaunchGateActivity : ComponentActivity() {
     private fun pill(fill: Int, stroke: Int, textColor: Int) = Button(this).apply {
         isAllCaps = false
         setTextColor(textColor)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         stateListAnimator = null
-        minHeight = dp(44)
+        minHeight = 0
+        minimumHeight = 0
+        setPadding(dp(12), 0, dp(12), 0)
         background = GradientDrawable().apply {
             cornerRadius = dp(999).toFloat()
             setColor(fill)
@@ -293,39 +302,94 @@ class LaunchGateActivity : ComponentActivity() {
     }
 
     private fun buildViews() {
-        val white = Color.rgb(0xf5, 0xf5, 0xf7)
-        val muted = Color.rgb(0xb4, 0xb4, 0xbd)
-        title = text(19f, white, bold = true)
-        reason = text(14f, white)
-        detail = text(14f, muted)
+        // The Ember card: the update popup's look, picked by the owner.
+        val ink = Color.rgb(0xfa, 0xfa, 0xfa)
+        val muted = Color.rgb(0xb3, 0xb3, 0xb8)
+        val red = Color.rgb(0xf9, 0x5a, 0x55)
+        val track = Color.rgb(0x2a, 0x2a, 0x2e)
+        val onRed = Color.rgb(0x16, 0x0b, 0x0a)
+
+        val tile = FrameLayout(this).apply {
+            background = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(red) }
+            addView(ImageView(context).apply { setImageResource(R.drawable.ic_gate_flame) },
+                FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+        }
+        title = text(16f, ink).apply {
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        }
+        androidx.core.view.ViewCompat.setAccessibilityHeading(title, true)
+        version = text(13f, muted)
+        val heading = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(title)
+            addView(version, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(1) })
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(tile, LinearLayout.LayoutParams(dp(40), dp(40)))
+            addView(heading, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(12) })
+        }
+
         bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
-            progressTintList = ColorStateList.valueOf(white)
+            progressTintList = ColorStateList.valueOf(red)
+            progressBackgroundTintList = ColorStateList.valueOf(track)
+            indeterminateTintList = ColorStateList.valueOf(red)
         }
-        cancel = pill(Color.TRANSPARENT, Color.rgb(0x3a, 0x3a, 0x42), white).apply {
+        detail = text(13f, muted)
+
+        bannerText = text(13f, Color.rgb(0xff, 0xb4, 0xb1))
+        banner = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(10), dp(9), dp(10), dp(9))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(Color.argb(0x1f, 0xf9, 0x5a, 0x55))
+                setStroke(dp(1), Color.argb(0x59, 0xf9, 0x5a, 0x55))
+            }
+            addView(ImageView(context).apply { setImageResource(R.drawable.ic_gate_warning) },
+                LinearLayout.LayoutParams(dp(16), dp(16)).apply { topMargin = dp(1); marginEnd = dp(8) })
+            addView(bannerText, LinearLayout.LayoutParams(0, -2, 1f))
+        }
+        reason = text(13f, ink)
+
+        noteRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        notesBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text(11f, muted).apply {
+                text = "WHAT'S NEW"
+                letterSpacing = 0.1f
+            })
+            addView(noteRows, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        }
+
+        cancel = pill(Color.TRANSPARENT, Color.rgb(0x3a, 0x3a, 0x42), ink).apply {
             setOnClickListener { feed(if (machine?.mandatory == true) Input.Quit else Input.NotNow) }
         }
-        primary = pill(white, white, Color.rgb(0x18, 0x18, 0x1c)).apply {
+        primary = pill(red, red, onRed).apply {
             setOnClickListener { feed(Input.UpdateNow) }
         }
         buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(cancel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(5) })
-            addView(primary, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(5) })
+            addView(cancel, LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginEnd = dp(4) })
+            addView(primary, LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginStart = dp(4) })
         }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(24), dp(24), dp(24))
+            setPadding(dp(20), dp(20), dp(20), dp(20))
             background = GradientDrawable().apply {
-                cornerRadius = dp(16).toFloat()
-                setColor(Color.rgb(0x1f, 0x1f, 0x24))
-                setStroke(dp(1), Color.rgb(0x2e, 0x2e, 0x35))
+                cornerRadius = dp(20).toFloat()
+                setColor(Color.rgb(0x1f, 0x1f, 0x22))
+                setStroke(dp(1), Color.rgb(0x2a, 0x2a, 0x2e))
             }
-            addView(title)
-            addView(reason, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+            addView(header)
+            addView(banner, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+            addView(reason, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+            addView(bar, LinearLayout.LayoutParams(-1, dp(4)).apply { topMargin = dp(14) })
             addView(detail, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-            addView(bar, LinearLayout.LayoutParams(-1, dp(6)).apply { topMargin = dp(14) })
-            addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+            addView(notesBox, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+            addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
         }
         scrim = FrameLayout(this).apply {
             setBackgroundColor(Color.argb(0x8c, 0, 0, 0))
@@ -339,6 +403,24 @@ class LaunchGateActivity : ComponentActivity() {
         })
     }
 
+    /** One red-dot bullet per real release note. */
+    private fun showNotes(notes: List<String>) {
+        noteRows.removeAllViews()
+        notesBox.visibility = if (notes.isEmpty()) View.GONE else View.VISIBLE
+        val muted = Color.rgb(0xb3, 0xb3, 0xb8)
+        for (n in notes) {
+            val dot = View(this).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(0xf9, 0x5a, 0x55)) }
+            }
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(dot, LinearLayout.LayoutParams(dp(5), dp(5)).apply { topMargin = dp(7); marginStart = dp(2); marginEnd = dp(9) })
+                addView(text(13f, muted).apply { text = n }, LinearLayout.LayoutParams(0, -2, 1f))
+            }
+            noteRows.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3) })
+        }
+    }
+
     private fun render() {
         val m = machine ?: return
         if (!::scrim.isInitialized) return
@@ -350,9 +432,14 @@ class LaunchGateActivity : ComponentActivity() {
         val wasHidden = scrim.visibility != View.VISIBLE
         scrim.visibility = View.VISIBLE
         title.text = c.title
+        version.text = c.versionLine
+        bannerText.text = c.reason.orEmpty()
+        banner.visibility = if (c.reason != null && c.reasonBanner) View.VISIBLE else View.GONE
         reason.text = c.reason.orEmpty()
-        reason.visibility = if (c.reason == null) View.GONE else View.VISIBLE
-        detail.text = c.detail
+        reason.visibility = if (c.reason != null && !c.reasonBanner) View.VISIBLE else View.GONE
+        detail.text = c.detail.orEmpty()
+        detail.visibility = if (c.detail == null) View.GONE else View.VISIBLE
+        showNotes(c.notes)
         bar.visibility = if (c.progress == null) View.GONE else View.VISIBLE
         bar.isIndeterminate = c.progress == -1
         if (c.progress != null && c.progress >= 0) bar.progress = c.progress

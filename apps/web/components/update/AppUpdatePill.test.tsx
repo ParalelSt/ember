@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { AppUpdatePill } from './AppUpdatePill';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { AppUpdatePill, SWIPE_DISMISS_PX } from './AppUpdatePill';
 import { AppUpdateCard } from '@/components/settings/AppUpdateCard';
 
 /** The Android app's update, as the page shows it: the floating pill over
@@ -48,23 +48,96 @@ describe('AppUpdatePill', () => {
     expect(screen.queryByTestId('app-update-pill')).toBeNull();
   });
 
-  it('goes from downloading to ready, and a tap installs', async () => {
-    const { plugin, push } = fakePlugin({ status: 'downloading', latest: '0.4.19', progress: 0.25 });
+  it('shows a ring around the icon while downloading, at the real progress', async () => {
+    const { push } = fakePlugin({ status: 'downloading', latest: '0.4.19', progress: 0.25 });
     render(<AppUpdatePill />);
     expect(await screen.findByText('Downloading update 0.4.19')).toBeInTheDocument();
     expect(screen.getByText('25%')).toBeInTheDocument();
+    const ring = () => within(screen.getByTestId('app-update-ring')).getByRole('progressbar');
+    expect(ring()).toHaveAttribute('aria-valuenow', '25');
+    push({ status: 'downloading', latest: '0.4.19', progress: 0.6 });
+    expect(ring()).toHaveAttribute('aria-valuenow', '60');
+    push({ status: 'ready', latest: '0.4.19', waiting: 'tap' });
+    expect(screen.queryByTestId('app-update-ring')).toBeNull();
+  });
+
+  it('is a card, and a ready update has an Install button that installs', async () => {
+    const { plugin, push } = fakePlugin({ status: 'downloading', latest: '0.4.19', progress: 0.25 });
+    render(<AppUpdatePill />);
+    await screen.findByText('Downloading update 0.4.19');
+    expect(screen.getByTestId('app-update-pill').className).toContain('rounded-2xl');
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
     push({ status: 'ready', latest: '0.4.19', waiting: 'tap' });
     expect(screen.getByText('Update 0.4.19 ready')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Tap to install'));
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }));
     expect(plugin.install).toHaveBeenCalledOnce();
   });
 
-  it('opens the install setting when installs are not allowed', async () => {
+  it('has no Install button when it cannot install now (in the car)', async () => {
+    fakePlugin({ status: 'ready', latest: '0.4.19', waiting: 'car' });
+    render(<AppUpdatePill />);
+    expect(await screen.findByText("Installs when you're parked")).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
+  });
+
+  it('asks for the install permission in a small card with Allow and Later', async () => {
     const { plugin } = fakePlugin({ status: 'ready', latest: '0.4.19', waiting: 'permission', needsPermission: true });
     render(<AppUpdatePill />);
-    fireEvent.click(await screen.findByText('Allow Ember to install updates'));
+    const card = await screen.findByTestId('app-update-permission');
+    expect(card).toHaveTextContent('Allow Ember to install updates');
+    expect(card).toHaveTextContent(/Android asks once/);
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }));
     expect(plugin.openInstallSettings).toHaveBeenCalledOnce();
     expect(plugin.install).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+    expect(screen.queryByTestId('app-update-pill')).toBeNull();
+    expect(plugin.openInstallSettings).toHaveBeenCalledOnce();
+  });
+
+  it('the permission card can also be closed with the X', async () => {
+    fakePlugin({ status: 'ready', latest: '0.4.19', waiting: 'permission' });
+    render(<AppUpdatePill />);
+    fireEvent.click(await screen.findByLabelText('Hide update notice'));
+    expect(screen.queryByTestId('app-update-pill')).toBeNull();
+  });
+
+  describe('swipe to dismiss', () => {
+    const swipe = (el: HTMLElement, dx: number, dy = 0) => {
+      fireEvent.touchStart(el, { touches: [{ clientX: 100, clientY: 50 }] });
+      fireEvent.touchMove(el, { touches: [{ clientX: 100 + dx, clientY: 50 + dy }] });
+      fireEvent.touchEnd(el);
+    };
+
+    it('a sideways swipe past the threshold puts it away like the X', async () => {
+      fakePlugin({ status: 'downloading', latest: '0.4.19', progress: 0.5 });
+      render(<AppUpdatePill />);
+      swipe(await screen.findByTestId('app-update-pill'), SWIPE_DISMISS_PX + 10);
+      expect(screen.queryByTestId('app-update-pill')).toBeNull();
+    });
+
+    it('works to the left too', async () => {
+      fakePlugin({ status: 'ready', latest: '0.4.19', waiting: 'tap' });
+      render(<AppUpdatePill />);
+      swipe(await screen.findByTestId('app-update-pill'), -(SWIPE_DISMISS_PX + 10));
+      expect(screen.queryByTestId('app-update-pill')).toBeNull();
+    });
+
+    it('a short swipe springs back and a vertical drag does nothing', async () => {
+      fakePlugin({ status: 'downloading', latest: '0.4.19', progress: 0.5 });
+      render(<AppUpdatePill />);
+      const el = await screen.findByTestId('app-update-pill');
+      swipe(el, SWIPE_DISMISS_PX - 30);
+      expect(screen.getByTestId('app-update-pill')).toBeInTheDocument();
+      swipe(el, 10, 200);
+      expect(screen.getByTestId('app-update-pill')).toBeInTheDocument();
+    });
+
+    it('cannot swipe away the installing notice', async () => {
+      fakePlugin({ status: 'installing', latest: '0.4.19' });
+      render(<AppUpdatePill />);
+      swipe(await screen.findByTestId('app-update-pill'), 300);
+      expect(screen.getByTestId('app-update-pill')).toBeInTheDocument();
+    });
   });
 
   it('shows Updating while installing, with no way to hide it', async () => {

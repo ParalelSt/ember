@@ -99,7 +99,7 @@ Details, per-version behaviour and the release checklist: [docs/APPS.md](../../d
 **On launch.** The home screen icon opens a launch gate first
 (`LaunchGateActivity`, decisions in `GateRules.kt`): before the WebView or the
 player exist it asks `/api/app/update` (2 s budget), and with an update out
-shows "Not now" / "Update now", downloads, counts down "Restarting in 7s" and
+shows the Ember card ("Update available", up to 3 real release notes, "Not now" / "Update now"), downloads with a bar and "18 of 43 MB", then "Update ready" with "Restarting in 7s" and
 installs. A required update has "Quit Ember" instead of "Not now". Never in a
 car, never with music already playing, never for anything but a launcher tap.
 Android does not reopen an app that updated itself, so the new version posts
