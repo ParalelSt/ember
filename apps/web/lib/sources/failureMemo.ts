@@ -81,6 +81,15 @@ export function forgetFailure(videoId: string): void {
   memo.delete(videoId);
 }
 
+/** After a yt-dlp upgrade: forget every transient failure, and the
+ *  "unavailable" ones whose message was a 403 (a stale yt-dlp said those, not
+ *  YouTube). Real removals stay remembered. */
+export function forgetUpgradeFixable(): void {
+  for (const [videoId, entry] of memo) {
+    if (entry.kind === 'transient' || /\b403\b|forbidden/i.test(entry.message)) memo.delete(videoId);
+  }
+}
+
 /** Track ids (`youtube:<videoId>`) currently remembered as unavailable, for
  *  filtering radio and recommendations. */
 export function unavailableTrackIds(now = Date.now()): Set<string> {
