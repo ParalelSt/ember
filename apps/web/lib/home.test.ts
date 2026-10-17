@@ -88,15 +88,16 @@ describe('quickPicks', () => {
 });
 
 describe('filter chips and order B', () => {
-  const today = new Set<HomeRowKey>(['history', 'recommended', 'trending', 'playlists', 'friends']);
+  const today = new Set<HomeRowKey>(['history', 'recommended', 'charts', 'playlists', 'friends']);
 
-  it('shows only the chips with content today: All and Playlists', () => {
-    expect(homeChips(today).map((c) => c.label)).toEqual(['All', 'Playlists']);
+  it('shows only the chips with content: All, Playlists and Charts (no Mixes yet)', () => {
+    expect(homeChips(today).map((c) => c.label)).toEqual(['All', 'Playlists', 'Charts']);
     expect(homeChips(new Set(['history'])).map((c) => c.label)).toEqual(['All']);
   });
 
-  it('adds Mixes and Charts by themselves once those rows exist', () => {
-    const later = new Set<HomeRowKey>([...today, 'mixes', 'charts']);
+  it('adds Mixes by itself once that row exists, and Charts only while its row has content', () => {
+    const later = new Set<HomeRowKey>([...today, 'mixes']);
+    expect(homeChips(new Set<HomeRowKey>(['history', 'playlists'])).map((c) => c.label)).toEqual(['All', 'Playlists']);
     expect(homeChips(later).map((c) => c.label)).toEqual(['All', 'Playlists', 'Mixes', 'Charts']);
   });
 
@@ -104,13 +105,17 @@ describe('filter chips and order B', () => {
     expect(phoneHomeView('all', today)).toEqual({
       filter: 'all',
       quickGrid: true,
-      rows: ['history', 'recommended', 'trending', 'playlists', 'friends'],
+      rows: ['history', 'recommended', 'charts', 'playlists', 'friends'],
     });
   });
 
-  it('puts Your mixes right after the grid and Charts after Popular now once they exist', () => {
-    const later = new Set<HomeRowKey>([...today, 'mixes', 'charts']);
-    expect(phoneHomeView('all', later).rows).toEqual(['mixes', 'history', 'recommended', 'trending', 'charts', 'playlists', 'friends']);
+  it('puts Your mixes right after the grid, and the Popular now tile row after Because you played', () => {
+    const later = new Set<HomeRowKey>([...today, 'mixes']);
+    expect(phoneHomeView('all', later).rows).toEqual(['mixes', 'history', 'recommended', 'charts', 'playlists', 'friends']);
+  });
+
+  it('the Charts chip keeps the Popular now tile row only, with no quick grid', () => {
+    expect(phoneHomeView('charts', today)).toEqual({ filter: 'charts', quickGrid: false, rows: ['charts'] });
   });
 
   it('Playlists keeps the quick grid and the playlist rows only', () => {

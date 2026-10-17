@@ -66,3 +66,13 @@ export function chartMeta(chart: Pick<ChartPayload, 'tracks' | 'fetchedAt' | 'st
 export function snapshotName(title: string, kind: 'chart' | 'mix', date: string): string {
   return `${title} ${kind}${date ? `, ${date}` : ''}`;
 }
+
+/** The first covers of a chart's songs, distinct, for a chart tile. */
+export function tileCovers(tracks: readonly Pick<Track, 'artworkUrl'>[], n = 4): string[] {
+  const out: string[] = [];
+  for (const t of tracks) {
+    if (t.artworkUrl && !out.includes(t.artworkUrl)) out.push(t.artworkUrl);
+    if (out.length >= n) break;
+  }
+  return out;
+}

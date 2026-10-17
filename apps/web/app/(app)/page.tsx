@@ -44,6 +44,8 @@ import { publicName } from '@/lib/collab';
 import { ChartTile } from '@/components/charts/ChartTile';
 import { CHART_INK, mixLook } from '@/lib/genres/taxonomy';
 import { MixCard } from '@/components/mixes/MixCard';
+import { Skeleton } from '@/components/ui/skeleton';
+import { POPULAR_COLOR, POPULAR_SLUG, tileCovers } from '@/lib/chartsView';
 
 interface Section {
   key: string;
@@ -145,9 +147,8 @@ export default function HomePage() {
   const available = new Set<HomeRowKey>(['friends']);
   if (history.length > 0) available.add('history');
   if (recommended.length > 0 || recommendedLoading) available.add('recommended');
-  if (trending.length > 0 || trendingLoading) available.add('trending');
   if (playlists.length > 0) available.add('playlists');
-  if (genreCharts.length > 0) available.add('charts');
+  if (trending.length > 0 || trendingLoading || genreCharts.length > 0) available.add('charts');
   if (mixes.length > 0) available.add('mixes');
   const chips = homeChips(available);
   const view = phoneHomeView(filter, available);
@@ -213,8 +214,23 @@ export default function HomePage() {
       );
     }
     if (key === 'charts') {
+      const wide = isDesktop ? 'desktop' : 'phone';
       return (
-        <RowShelf key={key} title="Charts by genre" variant={isDesktop ? 'desktop' : 'phone'}>
+        // Every chart gets a tile: no ROW_MAX cut and no Show all.
+        <RowShelf key={key} title="Popular now" variant={wide} limit={Infinity}>
+          {trending.length > 0 ? (
+            <ChartTile
+              title="Top songs"
+              href={`/chart/${POPULAR_SLUG}`}
+              color={POPULAR_COLOR}
+              ink={CHART_INK}
+              artworkUrls={tileCovers(trending)}
+              count={trending.length}
+              variant={wide}
+            />
+          ) : trendingLoading ? (
+            <Skeleton data-chart-loading className="aspect-square w-full rounded-[8px]" />
+          ) : null}
           {genreCharts.map((c) => (
             <ChartTile
               key={c.slug}
@@ -224,7 +240,7 @@ export default function HomePage() {
               ink={CHART_INK}
               artworkUrls={c.artworkUrls}
               count={c.count}
-              variant={isDesktop ? 'desktop' : 'phone'}
+              variant={wide}
             />
           ))}
         </RowShelf>
