@@ -40,7 +40,13 @@ else
 fi
 if [ "$SHELLS" = 1 ]; then
   run rust    bash -c 'cd apps/desktop/src-tauri && cargo test --quiet'
-  run android bash -c 'cd apps/mobile/android && ./gradlew --quiet testDebugUnitTest'
+  # cap sync writes the plugin files Gradle reads (they are not in git), and
+  # Android Studio's JDK is used when JAVA_HOME has none, like build-apk.sh.
+  run android bash -c '
+    STUDIO_JBR="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+    [ -n "${JAVA_HOME:-}" ] || { [ -d "$STUDIO_JBR" ] && export JAVA_HOME="$STUDIO_JBR"; }
+    cd apps/mobile && EMBER_APP_URL=http://localhost:3000 npx cap sync android >/dev/null &&
+    cd android && ./gradlew --quiet testDebugUnitTest'
 fi
 
 FAILED=0
