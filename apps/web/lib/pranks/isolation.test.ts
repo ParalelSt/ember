@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 const WEB = path.resolve(__dirname, '..', '..');
 const POCKETBASE = path.resolve(WEB, '..', '..', 'pocketbase');
-const SCAN = ['app', 'components', 'hooks', 'lib', 'stores', 'types', 'instrumentation.ts', 'proxy.ts'];
+const SCAN = ['app', 'components', 'hooks', 'lib', 'stores', 'types', 'instrumentation.ts', 'instrumentation-node.ts', 'proxy.ts'];
 
 function walk(p: string, out: string[] = []): string[] {
   if (!fs.existsSync(p)) return out;
