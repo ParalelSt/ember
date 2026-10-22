@@ -205,7 +205,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/track/TrackRow.tsx': 7,
   'components/track/TrackShelf.tsx': 10,
   'components/track/menus/ReplaceTrackDialog.tsx': 7,
-  'components/track/menus/TrackSearchPicker.tsx': 9,
+  'components/track/menus/TrackSearchPicker.tsx': 8,
   'components/track/menus/UploadTrackDialog.tsx': 4,
 };
 
