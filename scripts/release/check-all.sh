@@ -45,7 +45,7 @@ if [ "$SHELLS" = 1 ]; then
   run android bash -c '
     STUDIO_JBR="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
     [ -n "${JAVA_HOME:-}" ] || { [ -d "$STUDIO_JBR" ] && export JAVA_HOME="$STUDIO_JBR"; }
-    [ -n "${ANDROID_HOME:-}" ] || { [ -d "$HOME/Library/Android/sdk" ] && export ANDROID_HOME="$HOME/Library/Android/sdk"; }
+    for sdk in "$HOME/Library/Android/sdk" /opt/homebrew/share/android-commandlinetools; do [ -n "${ANDROID_HOME:-}" ] || { [ -d "$sdk" ] && export ANDROID_HOME="$sdk"; }; done
     cd apps/mobile && EMBER_APP_URL=http://localhost:3000 npx cap sync android >/dev/null &&
     cd android && ./gradlew --quiet testDebugUnitTest'
 fi
