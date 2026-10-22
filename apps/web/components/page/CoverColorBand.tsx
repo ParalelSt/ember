@@ -3,6 +3,7 @@
 import { useCoverColor } from '@/hooks/useCoverColor';
 import { LIBRARY_BADGES, LIKED_GRADIENT, NEUTRAL_COVER } from '@/components/library/libraryIcons';
 import type { CollectionCoverProps } from '@/components/primitives/CollectionCover';
+import { readableArtUrl } from '@/lib/artProxy';
 
 /** The desktop header's soft band in the cover's own color: it runs to the
  *  content column's edges and a gutter above the header, then fades out by
@@ -13,7 +14,7 @@ export function CoverColorBand({ cover }: { cover: CollectionCoverProps }) {
     : cover.icon === 'upload' ? LIBRARY_BADGES.uploads.tile.match(/#[0-9a-f]{6}/i)?.[0]
     : NEUTRAL_COVER.background;
   const image = cover.icon ? null : cover.mosaic && cover.mosaic.length >= 4 ? cover.mosaic[0] : cover.src;
-  const color = useCoverColor(image, fallback);
+  const color = useCoverColor(image ? readableArtUrl(image) : null, fallback);
   return <div
     data-testid="cover-color-band"
     aria-hidden="true"
