@@ -1,4 +1,4 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import type { MenuAction } from '@/components/ui/action-sheet';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { Track } from '@/types/track';
@@ -6,21 +6,21 @@ import type { Track } from '@/types/track';
 const playTrack = vi.fn();
 const toastSuccess = vi.fn();
 
+// The menu itself (dropdown or phone sheet) is AddToPlaylistMenu's; here it
+// just lists the actions TrackMenu hands it.
 vi.mock('./AddToPlaylistMenu', () => ({
-  AddToPlaylistMenu: ({ more }: { more?: ReactNode }) => (
+  AddToPlaylistMenu: ({ actions }: { actions?: MenuAction[] }) => (
     <div>
-      <button type="button">{more ? 'More' : 'Add to playlist'}</button>
-      <div role="menu">{more}</div>
+      <button type="button">{actions?.length ? 'More' : 'Add to playlist'}</button>
+      <div role="menu">
+        {actions?.map((a) => (
+          <div key={a.key} role="menuitem" onClick={a.onSelect}>
+            {a.label}
+          </div>
+        ))}
+      </div>
     </div>
   ),
-}));
-vi.mock('@/components/ui/dropdown-menu', () => ({
-  DropdownMenuItem: ({ children, onClick }: PropsWithChildren<{ onClick?: () => void }>) => (
-    <div role="menuitem" onClick={onClick}>
-      {children}
-    </div>
-  ),
-  DropdownMenuSeparator: () => <hr />,
 }));
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => ({ playTrack }) }));
 vi.mock('sonner', () => ({ toast: { success: (m: string) => toastSuccess(m) } }));

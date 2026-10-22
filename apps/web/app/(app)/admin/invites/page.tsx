@@ -17,7 +17,7 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 import { Label } from '@/components/ui/label';
 import { FloatingActionButton } from '@/components/ui/floating-action-button';
 import { AdminSheet } from '@/components/admin/AdminSheet';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export default function AdminInvitesPage() {
@@ -125,10 +125,10 @@ export default function AdminInvitesPage() {
                 <Input id="desktop-invite-email" type="email" placeholder="email@example.com" autoFocus
                   value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
               </div>
-              <div className="flex justify-end gap-cluster">
-                <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
                 <Button type="submit" variant="ember" disabled={addInvite.isPending || !newEmail.trim()}>Add invite</Button>
-              </div>
+              </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>

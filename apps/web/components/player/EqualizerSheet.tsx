@@ -16,7 +16,7 @@ export function EqualizerSheet({ open, onOpenChange }: Props) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0">
         <SheetHeader className="px-block pt-block pb-0">
-          <SheetTitle className="text-base">Sound</SheetTitle>
+          <SheetTitle className="text-base">Equalizer</SheetTitle>
         </SheetHeader>
         <EqualizerPanel className="px-block pb-stack" />
       </SheetContent>

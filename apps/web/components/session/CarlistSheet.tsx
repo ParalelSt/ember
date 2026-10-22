@@ -59,7 +59,6 @@ export function CarlistSheet({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        showCloseButton={false}
         data-testid="carlist-sheet"
         className="gap-0 p-0 sm:max-w-md"
       >

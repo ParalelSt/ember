@@ -2,6 +2,7 @@
 
 import { useCallback, useLayoutEffect, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { TrackRow } from '@/components/track/TrackRow';
 import { CouldntPlaySection, couldntPlayEntries } from '@/components/player/CouldntPlaySection';
 import { usePlayer } from '@/components/player/PlayerProvider';
@@ -36,6 +37,7 @@ interface Props {
 }
 
 export function QueueSheet({ open, onOpenChange }: Props) {
+  const isDesktop = useIsDesktop();
   const queue = usePlayerStore((s) => s.queue);
   const index = usePlayerStore((s) => s.index);
   const played = usePlayerStore((s) => s.played);
@@ -110,7 +112,14 @@ export function QueueSheet({ open, onOpenChange }: Props) {
           (data-[side=right]:w-3/4) outranks a plain w-96, which left the
           queue at three quarters of a phone, too narrow for "Couldn't play"'s
           reason lines. 90% of a phone, as in the owner's pick. */}
-      <SheetContent side="right" className="data-[side=right]:w-96 max-w-[90vw] flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0">
+      {/* A phone gets a tall sheet up from the bottom with a grab handle,
+          like its other popups (owner's popups1 pick); desktop keeps the
+          side panel. */}
+      <SheetContent
+        side={isDesktop ? 'right' : 'bottom'}
+        className="data-[side=right]:w-96 max-w-[90vw] data-[side=bottom]:h-[92dvh] data-[side=bottom]:max-w-none data-[side=bottom]:rounded-t-2xl flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0"
+      >
+        {!isDesktop && <div className="mx-auto mt-cluster h-1 w-10 shrink-0 rounded-full bg-sidebar-foreground/20" aria-hidden />}
         <SheetHeader className="px-4 py-4 border-b border-sidebar-border">
           <SheetTitle className="text-base">Queue</SheetTitle>
         </SheetHeader>

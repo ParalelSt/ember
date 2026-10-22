@@ -69,6 +69,18 @@ describe('JoinSessionDialog: typing the code is the fallback', () => {
 // name pushed the Start a session dialog past the screen's edge. The select
 // and its column must be allowed to shrink to the dialog.
 describe('StartSessionDialog', () => {
+  it('has a Cancel next to Go live, like every other dialog (popups1)', () => {
+    const onOpenChange = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <StartSessionDialog open onOpenChange={onOpenChange} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole('button', { name: 'Go live' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it('lets the playlist select shrink to the dialog instead of its longest option', () => {
     const LONG = 'BUGHUNT Supercalifragilisticexpialidocious playlist with an extremely long name';
     playlists.data = [{ id: 'p1', name: LONG }];

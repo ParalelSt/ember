@@ -328,6 +328,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       actions={
         <PlaylistMenu
           role={isOwner ? 'owner' : 'member'}
+          name={playlist?.name}
           onCollaborate={() => setCollabOpen(true)}
           onRename={() => setRenameOpen(true)}
           onDelete={() => setConfirmDeleteOpen(true)}

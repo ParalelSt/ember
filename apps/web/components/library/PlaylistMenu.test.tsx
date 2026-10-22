@@ -14,6 +14,15 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   ),
 }));
 
+const screenSize = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => screenSize.desktop }));
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ open, children }: PropsWithChildren<{ open: boolean }>) => (open ? <div>{children}</div> : null),
+  SheetContent: ({ children }: PropsWithChildren) => <div role="dialog">{children}</div>,
+  SheetHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  SheetTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
+}));
+
 const { PlaylistMenu } = await import('./PlaylistMenu');
 
 function setup(role: 'owner' | 'member') {
@@ -41,5 +50,25 @@ describe('PlaylistMenu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /Leave playlist/ }));
     expect(handlers.onLeave).toHaveBeenCalledTimes(1);
     expect(handlers.onDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlaylistMenu on a phone (popups1: a sheet from the bottom)', () => {
+  it('opens a sheet named after the playlist, and a row runs and closes it', () => {
+    screenSize.desktop = false;
+    const handlers = { onCollaborate: vi.fn(), onRename: vi.fn(), onDelete: vi.fn(), onLeave: vi.fn() };
+    render(<PlaylistMenu role="owner" name="Gym Songs" {...handlers} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Playlist options' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Gym Songs');
+    expect(screen.getAllByRole('button').map((b) => b.textContent?.trim()).filter(Boolean)).toEqual([
+      'Collaborate',
+      'Rename',
+      'Delete playlist',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: /Rename/ }));
+    expect(handlers.onRename).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    screenSize.desktop = true;
   });
 });

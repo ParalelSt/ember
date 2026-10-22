@@ -89,6 +89,9 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
           </select>
         </div>
         <DialogFooter>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+            Cancel
+          </Button>
           <Button onClick={() => void start()} disabled={busy} variant="ember">
             {busy ? 'Starting…' : 'Go live'}
           </Button>

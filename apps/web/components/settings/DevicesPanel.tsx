@@ -17,6 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { useCanScan } from '@/hooks/useQrScan';
 import { formatSince } from '@/lib/format';
@@ -79,6 +81,7 @@ export function DevicesPanel() {
   const ownId = useSyncExternalStore(noSubscribe, rememberedQrSignIn, () => null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const isDesktop = useIsDesktop();
   const [revoking, setRevoking] = useState(false);
   const [revokeError, setRevokeError] = useState('');
   // The device just approved: kept here for as long as the page is open
@@ -166,6 +169,44 @@ export function DevicesPanel() {
   // Scanning needs a camera (a phone or tablet); elsewhere typing the code
   // is the only way, so it is simply open.
   const showCode = codeOpen || !canScan;
+
+  // The same words and buttons in the desktop dialog and the phone sheet.
+  const confirmBody = (
+    Title: typeof DialogTitle | typeof SheetTitle,
+    Description: typeof DialogDescription | typeof SheetDescription,
+  ) => (
+    <>
+      <Title className="flex items-center gap-cluster text-lg font-bold text-destructive">
+        <WarningIcon className="size-6" />
+        Sign out everywhere?
+      </Title>
+      <Description>
+        This ends every session of your account, this device too. You will need to sign in again.
+      </Description>
+      <ul aria-label="Devices that will be signed out" className="flex flex-wrap gap-cluster">
+        <Chip kind={hereKind}>This device</Chip>
+        {rows.map((s) => (
+          <Chip key={s.id} kind={describeDevice(s.device).kind}>
+            {describeDevice(s.device).name}
+          </Chip>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground">And anywhere else your account is signed in.</p>
+      {revokeError && (
+        <div role="alert" className="text-sm text-destructive">
+          {revokeError}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-cluster">
+        <Button variant="outline" className="h-11" disabled={revoking} onClick={() => setConfirming(false)}>
+          Cancel
+        </Button>
+        <Button variant="destructive" className="h-11" disabled={revoking} onClick={() => void revokeAll()}>
+          Sign out all
+        </Button>
+      </div>
+    </>
+  );
 
   return (
     <section className="max-w-2xl lg:max-w-5xl">
@@ -339,44 +380,31 @@ export function DevicesPanel() {
       </div>
       </div>
 
-      <Sheet open={confirming} onOpenChange={(open) => !revoking && setConfirming(open)}>
-        <SheetContent
-          side="bottom"
-          showCloseButton={false}
-          data-testid="sign-out-everywhere-sheet"
-          className="mx-auto max-h-[85vh] w-full max-w-lg gap-block overflow-y-auto rounded-t-2xl p-page"
-        >
-          <SheetTitle className="flex items-center gap-cluster text-lg font-bold text-destructive">
-            <WarningIcon className="size-6" />
-            Sign out everywhere?
-          </SheetTitle>
-          <SheetDescription>
-            This ends every session of your account, this device too. You will need to sign in again.
-          </SheetDescription>
-          <ul aria-label="Devices that will be signed out" className="flex flex-wrap gap-cluster">
-            <Chip kind={hereKind}>This device</Chip>
-            {rows.map((s) => (
-              <Chip key={s.id} kind={describeDevice(s.device).kind}>
-                {describeDevice(s.device).name}
-              </Chip>
-            ))}
-          </ul>
-          <p className="text-xs text-muted-foreground">And anywhere else your account is signed in.</p>
-          {revokeError && (
-            <div role="alert" className="text-sm text-destructive">
-              {revokeError}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-cluster">
-            <Button variant="outline" className="h-11" disabled={revoking} onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" className="h-11" disabled={revoking} onClick={() => void revokeAll()}>
-              Sign out all
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
+      {/* Desktop: a dialog in the middle like every other confirm (it used to
+          be this bottom sheet there too, cut off by the screen edge); a
+          phone keeps the sheet. */}
+      {isDesktop ? (
+        <Dialog open={confirming} onOpenChange={(open) => !revoking && setConfirming(open)}>
+          <DialogContent
+            showCloseButton={false}
+            data-testid="sign-out-everywhere-sheet"
+            className="gap-block p-page sm:max-w-lg"
+          >
+            {confirmBody(DialogTitle, DialogDescription)}
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <Sheet open={confirming} onOpenChange={(open) => !revoking && setConfirming(open)}>
+          <SheetContent
+            side="bottom"
+            showCloseButton={false}
+            data-testid="sign-out-everywhere-sheet"
+            className="mx-auto max-h-[85vh] w-full max-w-lg gap-block overflow-y-auto rounded-t-2xl p-page"
+          >
+            {confirmBody(SheetTitle, SheetDescription)}
+          </SheetContent>
+        </Sheet>
+      )}
     </section>
   );
 }

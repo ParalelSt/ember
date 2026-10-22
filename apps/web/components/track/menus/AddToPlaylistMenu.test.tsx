@@ -22,6 +22,15 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   ),
 }));
 vi.mock('@/components/track/menus/CreatePlaylistDialog', () => ({ CreatePlaylistDialog: () => null }));
+// Desktop by default; the phone tests flip it.
+const screenSize = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => screenSize.desktop }));
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ open, children }: PropsWithChildren<{ open: boolean }>) => (open ? <div>{children}</div> : null),
+  SheetContent: ({ children }: PropsWithChildren) => <div role="dialog">{children}</div>,
+  SheetHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  SheetTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
+}));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), message: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
@@ -47,6 +56,7 @@ const track = { id: 'youtube:x', source: 'youtube', sourceId: 'x', title: 'Song'
 
 beforeEach(() => {
   vi.clearAllMocks();
+  screenSize.desktop = true;
   lib.containing.mockImplementation(() => ({ data: [] }));
   lib.addMutateAsync.mockResolvedValue({ ok: true });
 });
@@ -138,5 +148,59 @@ describe('AddToPlaylistMenu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Mine' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Couldn\'t add "Song", please try again.'));
     expect(toast.message).not.toHaveBeenCalled();
+  });
+});
+
+describe('AddToPlaylistMenu on a phone (popups1: a sheet from the bottom)', () => {
+  const queue = vi.fn();
+  const actions = [{ key: 'queue', label: 'Add to queue', icon: () => null, onSelect: queue }];
+  beforeEach(() => {
+    screenSize.desktop = false;
+  });
+
+  it('opens a sheet with the song on top, its actions and Add to playlist', () => {
+    render(<AddToPlaylistMenu track={track} actions={actions} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    const sheet = screen.getByRole('dialog');
+    expect(sheet).toHaveTextContent('Song');
+    expect(sheet).toHaveTextContent('A');
+    expect(screen.getByRole('button', { name: /Add to queue/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Mine/ })).toBeNull();
+  });
+
+  it('an action runs and the sheet closes', () => {
+    render(<AddToPlaylistMenu track={track} actions={actions} />);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByRole('button', { name: /Add to queue/ }));
+    expect(queue).toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('Add to playlist opens the list, with Back, Added marks and adding', async () => {
+    lib.containing.mockImplementation(() => ({ data: ['p2'] }));
+    render(<AddToPlaylistMenu track={track} actions={actions} />);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByTestId('sheet-add-to-playlist'));
+    expect(screen.getByRole('button', { name: /New playlist/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Road trip/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('button', { name: /Add to queue/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('sheet-add-to-playlist'));
+    fireEvent.click(screen.getByRole('button', { name: /Mine/ }));
+    await waitFor(() => expect(lib.addMutateAsync).toHaveBeenCalledWith({ id: 'p1', track }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('with no actions (the + button, the full-screen player) it opens straight on the list', () => {
+    render(<AddToPlaylistMenu track={track} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add to playlist' }));
+    expect(screen.getByRole('button', { name: /Mine/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+  });
+
+  it('opened from outside (hidden trigger) it shows the list too', () => {
+    render(<AddToPlaylistMenu track={track} open onOpenChange={() => {}} hiddenTrigger />);
+    expect(screen.getByRole('button', { name: /Mine/ })).toBeInTheDocument();
   });
 });

@@ -27,6 +27,19 @@ vi.mock('@/components/ui/sheet', () => ({
   SheetDescription: ({ children }: { children: ReactNode }) => <p>{children}</p>,
 }));
 
+vi.mock('@/components/ui/dialog', () => ({
+  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) => (open ? <div>{children}</div> : null),
+  DialogContent: ({ children, 'data-testid': testId }: { children: ReactNode; 'data-testid'?: string }) => (
+    <div role="dialog" data-kind="centered" data-testid={testId}>{children}</div>
+  ),
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
+  DialogDescription: ({ children }: { children: ReactNode }) => <p>{children}</p>,
+}));
+// The sign-out confirm: a sheet on a phone (default here), a centered
+// dialog on desktop.
+const screenSize = vi.hoisted(() => ({ desktop: false }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => screenSize.desktop }));
+
 const { DevicesPanel } = await import('./DevicesPanel');
 const { useUiStore } = await import('@/stores/useUiStore');
 
@@ -291,6 +304,20 @@ describe('DevicesPanel: danger zone', () => {
     expect(screen.queryByTestId('sign-out-everywhere-sheet')).toBeNull();
     expect(calls.some((c) => c.url.endsWith('/revoke-all'))).toBe(false);
     expect(h.signOut).not.toHaveBeenCalled();
+  });
+
+  it('on desktop the confirm is a dialog in the middle, not a sheet cut off at the bottom (popups1)', async () => {
+    screenSize.desktop = true;
+    try {
+      await mount();
+      fireEvent.click(screen.getByRole('button', { name: 'Sign out everywhere' }));
+      const box = screen.getByTestId('sign-out-everywhere-sheet');
+      expect(box).toHaveAttribute('data-kind', 'centered');
+      expect(within(box).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+      expect(within(box).getByRole('button', { name: 'Sign out all' })).toBeInTheDocument();
+    } finally {
+      screenSize.desktop = false;
+    }
   });
 
   it('Sign out all signs out everywhere and here', async () => {

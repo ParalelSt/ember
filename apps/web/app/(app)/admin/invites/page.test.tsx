@@ -6,7 +6,7 @@ import type { AdminInvite } from '@/lib/api';
 vi.mock('@/components/ui/dialog', () => ({
   Dialog: ({ open, children }: PropsWithChildren<{ open?: boolean }>) => (open ? <div>{children}</div> : null),
   DialogContent: ({ children }: PropsWithChildren) => <div role="dialog">{children}</div>,
-  DialogFooter: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  DialogFooter: ({ children }: PropsWithChildren) => <div data-testid="dialog-footer">{children}</div>,
   DialogHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
   DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
   DialogDescription: ({ children }: PropsWithChildren) => <p>{children}</p>,
@@ -52,6 +52,14 @@ describe('AdminInvitesPage on desktop', () => {
       fireEvent.click(within(form).getByRole('button', { name: 'Add invite' }));
     });
     expect(state.add).toHaveBeenCalledWith('new@example.com');
+  });
+
+  it('the dialog\'s Cancel and Add invite sit in the usual footer (popups1)', () => {
+    render(<AdminInvitesPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add invite' }));
+    const footer = screen.getByTestId('dialog-footer');
+    expect(within(footer).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(within(footer).getByRole('button', { name: 'Add invite' })).toBeInTheDocument();
   });
 
   it('says to add one above when there are none', () => {

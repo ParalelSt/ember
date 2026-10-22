@@ -15,13 +15,29 @@ const player = vi.hoisted(() => ({ playAt: vi.fn(), playTrack: vi.fn(), playBack
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => player }));
 vi.mock('@/components/ui/sheet', () => ({
   Sheet: ({ children }: PropsWithChildren) => <div>{children}</div>,
-  SheetContent: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  SheetContent: ({ children, side }: PropsWithChildren<{ side?: string }>) => <div data-testid="queue-sheet" data-side={side}>{children}</div>,
   SheetHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
   SheetTitle: ({ children }: PropsWithChildren) => <div>{children}</div>,
 }));
+const screenSize = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => screenSize.desktop }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/', useRouter: () => ({ push: vi.fn() }) }));
 
-beforeEach(() => usePlayerStore.setState({ played: [], position: 0, duration: 0 }));
+beforeEach(() => {
+  screenSize.desktop = true;
+  usePlayerStore.setState({ played: [], position: 0, duration: 0 });
+});
+
+describe('QueueSheet placement (popups1)', () => {
+  it('is a side panel on desktop and a tall sheet up from the bottom on a phone', () => {
+    const { unmount } = render(<QueueSheet open onOpenChange={() => {}} />);
+    expect(screen.getByTestId('queue-sheet')).toHaveAttribute('data-side', 'right');
+    unmount();
+    screenSize.desktop = false;
+    render(<QueueSheet open onOpenChange={() => {}} />);
+    expect(screen.getByTestId('queue-sheet')).toHaveAttribute('data-side', 'bottom');
+  });
+});
 afterEach(() => resetUnplayableStore());
 
 describe('QueueSheet', () => {
