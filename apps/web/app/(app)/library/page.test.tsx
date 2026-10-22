@@ -106,6 +106,13 @@ beforeEach(() => {
 });
 
 describe('Library page, md and up', () => {
+  it('has a New playlist button beside Upload that opens the create dialog', () => {
+    render(<LibraryPage />);
+    expect(screen.queryByRole('dialog', { name: 'New playlist' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'New playlist' }));
+    expect(screen.getByRole('dialog', { name: 'New playlist' })).toBeInTheDocument();
+  });
+
   it('keeps the desktop shelves exactly: title, carlist and upload buttons, Your collections, Playlists', () => {
     render(<LibraryPage />);
     expect(screen.getByRole('heading', { name: 'Your library' })).toBeInTheDocument();

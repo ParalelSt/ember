@@ -39,7 +39,7 @@ export function LibraryEmptyCard({ onCreate, importHref }: LibraryEmptyCardProps
     <section
       data-library-empty
       aria-labelledby="library-empty-title"
-      className="mt-row flex flex-col items-center gap-cluster rounded-[18px] border border-border bg-card px-[18px] py-[20px] text-center"
+      className="mt-section flex flex-col items-center gap-cluster rounded-[18px] border border-border bg-card px-[18px] py-[20px] text-center"
     >
       <Illustration />
       <h2 id="library-empty-title" className="mt-[6px] text-[19px] font-extrabold tracking-[-0.02em]">

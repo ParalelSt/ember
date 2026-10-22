@@ -5,7 +5,7 @@ import { HeaderIconButton } from '@/components/page/HeaderIconButton';
 import { CollectionShelf } from '@/components/library/CollectionShelf';
 import { UploadTrackDialog } from '@/components/track/menus/UploadTrackDialog';
 import { CarlistButton } from '@/components/session/CarlistButton';
-import { UploadIcon } from '@/components/icons';
+import { PlusIcon, UploadIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useCollections } from '@/hooks/useCollections';
 import { useOfflineStore } from '@/stores/useOfflineStore';
@@ -61,6 +61,7 @@ export default function LibraryPage() {
   const isOnline = useOnline();
   const pins = useOfflineStore((s) => s.pins);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const { createOpen, setCreateOpen, handleCreate } = useCreatePlaylistFlow();
   // A phone gets the owner's Spotify-style list (components/library/
   // PhoneLibrary); md and up keep the shelves below. A media query, not md:
   // classes, so only one of the two is ever in the page.
@@ -106,12 +107,16 @@ export default function LibraryPage() {
         <PageTitle>Your library</PageTitle>
         <div className="flex shrink-0 items-center gap-cluster">
           <CarlistButton />
-          <HeaderIconButton onClick={() => setUploadOpen(true)} aria-label="Upload songs">
+          <HeaderIconButton onClick={() => setUploadOpen(true)} aria-label="Upload songs" title="Upload songs">
             <UploadIcon className="size-5" />
+          </HeaderIconButton>
+          <HeaderIconButton onClick={() => setCreateOpen(true)} aria-label="New playlist" title="New playlist">
+            <PlusIcon className="size-5" />
           </HeaderIconButton>
         </div>
       </div>
       <UploadTrackDialog open={uploadOpen} onOpenChange={setUploadOpen} />
+      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} />
 
       <CollectionShelf
         title="Your collections"
