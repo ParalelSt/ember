@@ -123,28 +123,14 @@ describe('RowShelf, desktop (the owner\'s "arrows" and "t180" picks)', () => {
     expect(screen.getByRole('heading', { level: 2 }).closest('section')!.querySelector('[data-row-fade]')!.parentElement).toContainElement(screen.getByRole('list'));
   });
 
-  it('turns a vertical mouse wheel over the row into sideways scrolling until the end', () => {
+  it('leaves a vertical mouse wheel over the row to the page', () => {
     render(<RowShelf variant="desktop" title="Popular now">{tiles(10)}</RowShelf>);
     const list = screen.getByRole('list');
     size(list, { client: 500, scroll: 1960, left: 0 });
-    const wheel = (deltaY: number) => {
-      const e = new WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true });
-      list.dispatchEvent(e);
-      return e.defaultPrevented;
-    };
-    expect(wheel(120)).toBe(true);
-    expect(list.scrollLeft).toBe(120);
-    // At the start, scrolling up is left for the page.
-    size(list, { client: 500, scroll: 1960, left: 0 });
-    expect(wheel(-120)).toBe(false);
-    // At the end, scrolling down is left for the page too.
-    size(list, { client: 500, scroll: 1960, left: 1460 });
-    expect(wheel(120)).toBe(false);
-    // A sideways trackpad swipe is the browser's own.
-    size(list, { client: 500, scroll: 1960, left: 400 });
-    const side = new WheelEvent('wheel', { deltaX: 80, deltaY: 10, bubbles: true, cancelable: true });
-    list.dispatchEvent(side);
-    expect(side.defaultPrevented).toBe(false);
+    const e = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true });
+    list.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+    expect(list.scrollLeft).toBe(0);
   });
 
   it('scrolls by about 80% of the row width and hides each arrow at its end', () => {

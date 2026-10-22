@@ -26,8 +26,8 @@ export const ROW_SCROLL_CLASS =
 export const WIDE_TILE_CLASS = 'w-[180px] shrink-0';
 
 /** The desktop row: it starts and ends on the content area's edges (the
- *  page gutter), scrolls sideways with no bar showing, and is moved by the
- *  mouse wheel, a trackpad, a mouse drag or its edge fades. Every desktop row, whatever
+ *  page gutter), scrolls sideways with no bar showing, and is moved by a
+ *  trackpad, Shift+wheel, a mouse drag or its edge fades. Every desktop row, whatever
  *  it holds, uses WIDE_TILE_CLASS tiles and this one gap. */
 export const WIDE_SCROLL_CLASS = 'flex gap-block overflow-x-auto overscroll-x-contain scrollbar-none';
 
@@ -115,33 +115,18 @@ function FadeEdge({ dir, enabled, onClick }: { dir: -1 | 1; enabled: boolean; on
   );
 }
 
-/** The desktop row: tiles in a sideways scroller with no buttons. Over the
- *  row the mouse wheel moves it sideways (the page scrolls again once the
- *  row is at that end), a mouse drag or trackpad moves it too, and a soft
- *  fade marks each side that has more; clicking a fade moves the row by
- *  about 80% of its width. */
+/** The desktop row: tiles in a sideways scroller with no buttons. A plain
+ *  mouse wheel over the row scrolls the page, never the row (turning it
+ *  sideways made the home page hard to scroll); a mouse drag, a sideways
+ *  trackpad swipe or Shift+wheel moves the row, and a soft fade marks each
+ *  side that has more; clicking a fade moves the row by about 80% of its
+ *  width. */
 function WideRowShelf({ title, showAllHref, tiles, className }: { title: string; showAllHref?: string; tiles: ReactNode[]; className?: string }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [ends, setEnds] = useState({ canLeft: false, canRight: false });
   const count = tiles.length;
   // Mouse drag scrolls the row; the click that ends a drag opens nothing.
   useDragScroll(rowRef);
-  useEffect(() => {
-    const el = rowRef.current;
-    if (!el) return;
-    // A vertical wheel turn over the row scrolls it sideways while it can
-    // still go that way; at the end the page takes the wheel again.
-    const onWheel = (e: WheelEvent) => {
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-      const max = el.scrollWidth - el.clientWidth;
-      if ((e.deltaY > 0 && el.scrollLeft < max - 1) || (e.deltaY < 0 && el.scrollLeft > 1)) {
-        e.preventDefault();
-        el.scrollLeft += e.deltaY;
-      }
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
   useEffect(() => {
     const el = rowRef.current;
     if (!el) return;
