@@ -96,7 +96,7 @@ export function parseNotes(text) {
   return notes;
 }
 
-const EM_DASH = '—';
+const EM_DASH = '\u2014';
 // The owner never wants pranks named in What's new (they are surprises).
 const SECRET_WORDS = /\bpranks?\b|\bjoke\b/i;
 

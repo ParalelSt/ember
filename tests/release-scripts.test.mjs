@@ -82,7 +82,7 @@ test('notes that break the house rules are refused, each with the reason', () =>
   const ids = changelogIds(read(FILES.changelog));
   assert.ok(ids.length > 10);
   assert.deepEqual(notesProblems(parseNotes(NOTES), ids), []);
-  const bad = parseNotes(`id: ${ids[0]}\ntitle: New — thing\nsummary: A prank for you.\n`);
+  const bad = parseNotes(`id: ${ids[0]}\ntitle: New \u2014 thing\nsummary: A prank for you.\n`);
   const problems = notesProblems(bad, ids).join(' | ');
   assert.match(problems, /already in the changelog/);
   assert.match(problems, /em dashes/);

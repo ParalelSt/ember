@@ -34,7 +34,7 @@ run() {
 run web       bash -c 'cd apps/web && npx vitest run'
 run guards    bash -c 'node tests/no-em-dashes.test.mjs && node tests/release-scripts.test.mjs'
 if [ -x "$PY" ]; then
-  run python  "$PY" -m pytest tests -q
+  run python  "$PY" -m unittest discover -s tests -p 'test_*.py'
 else
   echo "skip  python (no .venv found in $ROOT or $MAIN)"
 fi

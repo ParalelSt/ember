@@ -125,7 +125,8 @@ function releaseOnHead() {
 function preview() {
   const rel = releaseOnHead();
   say('\n──── Commits going to main ────');
-  say(git('log', '--format=  %h %s', 'origin/main..HEAD') || '  (none)');
+  const commits = git('log', '--format=%h %s', 'origin/main..HEAD');
+  say(commits ? commits.split('\n').map((l) => `  ${l}`).join('\n') : '  (none)');
   say("\n──── What's new ────");
   const changelog = git('show', 'HEAD:' + FILES.changelog);
   const start = changelog.indexOf('export const CHANGELOG');
