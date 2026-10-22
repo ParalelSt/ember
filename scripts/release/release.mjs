@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 /** Make an Ember release from the branch you are on.
  *
- *    npm run release -- prepare notes.md            web only
- *    npm run release -- prepare notes.md --shells   web + desktop/Android/iOS
- *    npm run release -- preview                     show what would go out
- *    npm run release -- push                        push main (+ tag), asks first
+ *    npm run release                  prepare, from .release-notes.md
+ *    npm run release -- prepare notes.md [--shells | --no-shells]
+ *    npm run release -- preview       show what would go out
+ *    npm run release -- push          push main (+ tag), asks first
+ *    npm run release -- push --confirmed   no question: only after the
+ *                                          owner said yes to the preview
+ *
+ *  New shells (desktop, Android, iOS) are included by themselves when
+ *  apps/desktop or apps/mobile changed since the last vX tag; --shells or
+ *  --no-shells decides it by hand. Without a notes file, a draft is written
+ *  to .release-notes.md (npm run notes-draft) to edit first.
  *
  *  prepare: checks the branch is clean and contains origin/main, bumps every
  *  version, writes the What's new entry and UPDATE_NOTES.md from the notes
@@ -66,10 +73,30 @@ function preflight() {
   }
 }
 
+/** Did the desktop or phone apps change since the last app release? */
+function shellsChanged() {
+  const tag = (() => {
+    try {
+      return git('describe', '--tags', '--abbrev=0', '--match', 'v*', 'origin/main');
+    } catch {
+      return null;
+    }
+  })();
+  if (!tag) return true;
+  return git('diff', '--name-only', tag, 'HEAD', '--', 'apps/desktop', 'apps/mobile') !== '';
+}
+
 function prepare(args) {
-  const notesPath = args.find((a) => !a.startsWith('--'));
-  const withShells = args.includes('--shells');
-  if (!notesPath) fail('Usage: npm run release -- prepare <notes.md> [--shells] [--skip-tests]');
+  const defaultNotes = path.join(ROOT, '.release-notes.md');
+  let notesPath = args.find((a) => !a.startsWith('--'));
+  if (!notesPath) {
+    if (!fs.existsSync(defaultNotes)) {
+      spawnSync('node', [path.join(ROOT, 'scripts/ember/notes-draft.mjs')], { cwd: ROOT, stdio: 'inherit' });
+      fail('Edit .release-notes.md first, then run npm run release again.');
+    }
+    notesPath = defaultNotes;
+  }
+  const withShells = args.includes('--shells') || (!args.includes('--no-shells') && shellsChanged());
   preflight();
 
   const notes = parseNotes(fs.readFileSync(path.resolve(process.cwd(), notesPath), 'utf8'));
@@ -107,10 +134,11 @@ function prepare(args) {
     }
   }
 
-  git('add', '-A', ...Object.values(FILES));
+  git('add', '-A', ...Object.values(FILES).filter((f) => fs.existsSync(path.join(ROOT, f))));
   git('commit', '-q', '-m', commitSubject(web, shells, notes.title));
   say(`\n✓ Committed ${git('log', '--oneline', '-1')}`);
   preview();
+  if (notesPath === defaultNotes) fs.rmSync(defaultNotes);
   say('\nNothing is pushed yet. When it looks right: npm run release -- push');
 }
 
@@ -136,15 +164,17 @@ function preview() {
   if (rel.shells) say(`\nTag v${rel.shells} will be pushed too: GitHub then builds the desktop and Android apps.`);
 }
 
-async function push() {
+async function push(confirmed) {
   const rel = releaseOnHead();
   preflight();
   preview();
-  if (!process.stdin.isTTY) fail('push asks for a typed confirmation, so run it in a terminal.');
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const answer = (await rl.question('\nType "push" to send this to main, anything else stops: ')).trim();
-  rl.close();
-  if (answer !== 'push') fail('Stopped. Nothing was pushed.');
+  if (!confirmed) {
+    if (!process.stdin.isTTY) fail('Show this preview to the owner; after his yes: npm run release -- push --confirmed');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = (await rl.question('\nType "push" to send this to main, anything else stops: ')).trim();
+    rl.close();
+    if (answer !== 'push') fail('Stopped. Nothing was pushed.');
+  }
 
   git('push', 'origin', 'HEAD:main');
   say('✓ main pushed');
@@ -152,7 +182,8 @@ async function push() {
     git('tag', `v${rel.shells}`);
     git('push', 'origin', `v${rel.shells}`);
     say(`✓ tag v${rel.shells} pushed, the app builds are starting on GitHub`);
-    if (spawnSync('gh', ['--version'], { stdio: 'ignore' }).status === 0) {
+    if (confirmed) say('Follow the app build with: gh run watch');
+    else if (spawnSync('gh', ['--version'], { stdio: 'ignore' }).status === 0) {
       say('Following the build (Ctrl+C stops watching, not the build)...');
       spawnSync('bash', ['-c', 'sleep 15; gh run watch "$(gh run list --workflow native-build.yml --limit 1 --json databaseId -q ".[0].databaseId")" --exit-status'], {
         cwd: ROOT,
@@ -164,13 +195,15 @@ async function push() {
 }
 
 const [command, ...rest] = process.argv.slice(2);
-if (command === 'prepare') prepare(rest);
+if (!command || command.startsWith('--')) prepare(process.argv.slice(2));
+else if (command === 'prepare') prepare(rest);
 else if (command === 'preview') preview();
-else if (command === 'push') await push();
+else if (command === 'push') await push(rest.includes('--confirmed'));
 else {
   say('Usage:');
-  say('  npm run release -- prepare <notes.md> [--shells] [--skip-tests]');
+  say('  npm run release                    (uses .release-notes.md)');
+  say('  npm run release -- prepare <notes.md> [--shells | --no-shells] [--skip-tests]');
   say('  npm run release -- preview');
-  say('  npm run release -- push');
-  process.exit(command ? 1 : 0);
+  say('  npm run release -- push [--confirmed]');
+  process.exit(1);
 }

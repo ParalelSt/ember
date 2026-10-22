@@ -59,6 +59,11 @@ describe('proxy [bughunt W05]: unauthenticated /api/* gets 401 JSON, not a redir
     }
   });
 
+  it('leaves /api/version open for npm run host-check, and nothing next to it', async () => {
+    expect((await proxy(req('/api/version'))).status).toBe(200);
+    expect((await proxy(req('/api/versions-secret'))).status).toBe(401);
+  });
+
   it('keeps any other /api/android/ route behind sign-in', async () => {
     const res = await proxy(req('/api/android/something-else'));
     expect(res.status).toBe(401);

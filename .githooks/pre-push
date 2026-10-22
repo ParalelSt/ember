@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Checks what a push adds for secrets, em dashes and pranks in What's new.
+# Installed by `npm run hooks`. Skip once, only when sure: git push --no-verify
+exec node "$(git rev-parse --show-toplevel)/scripts/ember/prepush.mjs" "$@"

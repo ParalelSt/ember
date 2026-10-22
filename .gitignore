@@ -134,3 +134,5 @@ tests/phone-bar-sizes-ui.test.mjs
 # ones work (bughunt O1); never commit or stash them.
 *.update-prev
 .release-logs/
+.release-notes.md
+.shots/
