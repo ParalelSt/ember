@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { Button } from '@/components/ui/button';
 import { TrackList, type TrackActions } from '@/components/track/TrackList';
 import { CheckIcon, SelectIcon, ShuffleIcon, SortIcon } from '@/components/icons';
 import { ReorderList } from '@/components/track/ReorderList';
@@ -9,7 +8,7 @@ import { formatCount } from '@/lib/format';
 import type { SortState } from '@/lib/playlistCopy';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
-import { ActionBar } from '@/components/page/ActionBar';
+import { ACTION_CIRCLE, ACTION_CIRCLE_ON, ActionBar } from '@/components/page/ActionBar';
 import { DownloadButton, type DownloadButtonProps } from '@/components/library/DownloadButton';
 import type { CollectionCoverProps } from '@/components/primitives/CollectionCover';
 import { cn } from '@/lib/utils';
@@ -99,9 +98,7 @@ export interface CollectionPageProps {
 }
 
 /** Presentational only: the header, action bar and track list shared by
- *  every collection page, laid out as one stack: the header with the
- *  action bar in its text column, then
- *  `stack` 24, then the list. Play/shuffle/download logic lives in the hooks
+ *  every collection page: header, gutter-aligned actions, then the list. Play/shuffle/download logic lives in the hooks
  *  the caller passes in (`playback`, `download`); this component just
  *  wires their output to buttons. */
 export function CollectionPage({
@@ -156,26 +153,22 @@ export function CollectionPage({
           onCoverClick={onCoverClick}
           coverLabel={coverLabel}
           coverBusy={coverBusy}
-        >
+        />
           {hasActions && <ActionBar>
             {!hideActions && (
               <>
-                <PlayButton onClick={playback.play} disabled={!tracks.length} />
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <PlayButton onClick={playback.play} disabled={!tracks.length} className="size-13" />
+                <button
+                  type="button"
                   onClick={playback.shuffle}
                   disabled={!tracks.length}
                   aria-pressed={playback.shuffleOn}
-                  className={cn(
-                    'h-12 w-12 rounded-full',
-                    playback.shuffleOn ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
-                  )}
+                  className={cn(ACTION_CIRCLE, playback.shuffleOn && ACTION_CIRCLE_ON)}
                   aria-label={playback.active ? (playback.shuffleOn ? 'Shuffle off' : 'Shuffle') : 'Shuffle play'}
                   title={playback.active ? (playback.shuffleOn ? 'Shuffling' : 'Shuffle') : 'Shuffle play'}
                 >
                   <ShuffleIcon className="h-5 w-5" />
-                </Button>
+                </button>
               </>
             )}
             {download && <DownloadButton {...download} />}
@@ -196,7 +189,6 @@ export function CollectionPage({
             )}
             {actions}
           </ActionBar>}
-        </CollectionHeader>
         {banner}
         {list ?? (tracks.length === 0 ? (
           <EmptyState>{emptyMessage}</EmptyState>
@@ -205,7 +197,7 @@ export function CollectionPage({
             {(sort || canSelect || canReorder || editingOrder) && (
               <div
                 data-testid="list-toolbar"
-                className="flex min-h-12 items-center justify-between gap-row border-b border-border px-row pb-cluster"
+                className="flex min-h-12 items-center justify-between gap-row border-b border-border pb-cluster"
               >
                 {selecting ? (
                   <div className="flex min-w-0 items-center gap-cluster">

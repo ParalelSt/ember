@@ -47,7 +47,7 @@ export interface TrackRowProps {
   onRemove?: () => void;
   /** aria-label for the remove button; search recents names the track. */
   removeLabel?: string;
-  /** Extra controls before the heart (the add-to-playlist / share menu). */
+  /** Extra controls beside the heart (the More menu). */
   trailing?: ReactNode;
   /** The server has confirmed this track can no longer be streamed. Greys
    *  the row, badges the title, disables its play cell, and turns a click
@@ -67,13 +67,9 @@ export interface TrackRowProps {
    *  downloaded-file URL, for offline rows). Undefined falls back to the
    *  track's own `artworkUrl`; null renders as no art. */
   artworkSrc?: string | null;
-  /** The search overlay's row shape. The play/pause control moves to the
-   *  trailing end of the row (revealed on hover or keyboard focus, always
-   *  shown on the current row, always shown on a phone, which has neither),
-   *  the `list` density drops its leading play column with it, and the
-   *  current row is marked by its TITLE in the ember accent rather than the
-   *  whole line. Default off, so every other caller keeps the leading play
-   *  cell and the whole-row tint it has always had. */
+  /** Search overlay shape: desktop play control at the trailing end and
+   *  the current title in the ember accent. List rows on phones play from
+   *  the row surface; compact rows retain their touch play control. */
   trailingPlayControl?: boolean;
   /** Select mode (copying songs to another playlist): the play column
    *  turns into a tick box, a click anywhere on the row toggles it, and
@@ -149,7 +145,6 @@ export function TrackRow({
     <Artwork
       src={resolvedArtworkUrl}
       size="xs"
-      onClick={compact || selecting ? undefined : playOrToast}
       className={cn(
         'rounded shrink-0 bg-art',
         !resolvedArtworkUrl && 'grid place-items-center text-foreground/20',
@@ -206,7 +201,7 @@ export function TrackRow({
       size="icon"
       data-testid="track-row-play"
       className={cn(
-        'size-hit md:size-8 transition-opacity',
+        compact ? 'size-hit md:size-8 transition-opacity' : 'hidden @3xl:inline-flex size-8 transition-opacity',
         active
           ? 'text-ember hover:text-ember'
           : 'text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-md:opacity-100',
@@ -294,27 +289,26 @@ export function TrackRow({
       data-testid="track-row"
       data-unavailable={unavailable ? 'true' : undefined}
       data-selected={selecting ? String(selected) : undefined}
-      onClick={selecting ? onSelect : undefined}
-      onDoubleClick={selecting ? undefined : playOrToast}
+      tabIndex={selecting || onPlay ? 0 : undefined}
+      role="group"
+      aria-label={track.title}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        if (selecting) onSelect?.();
+        else playOrToast?.();
+      }}
+      onClick={(e) => {
+        if (e.detail > 1 || (e.target as HTMLElement).closest('button, a, input, [role="checkbox"], [role="menuitem"]')) return;
+        if (selecting) onSelect?.();
+        else playOrToast?.();
+      }}
       className={cn(
-        // The 5-column desktop shape (adds the album + duration columns)
-        // only kicks in once the row's own container is wide enough, not
-        // once the *window* is: a viewport breakpoint (md:) would still
-        // pick the desktop shape inside a narrow container on a wide
-        // window (the search overlay caps at max-w-xl, ~576px, well past
-        // sm:768px on any laptop or desktop display), squeezing title and
-        // album into equal, too-narrow halves. @3xl is 48rem/768px on the
-        // container-query scale, the same number the old md: breakpoint
-        // used, just measured against the row's own space. Below it, the
-        // 3-column "phone" shape (this one, unqualified) is used, same as
-        // it always was on a narrow phone screen.
-        'group grid gap-3 items-center px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors',
-        // `trailingPlayControl` moves the control to the far end, so the
-        // leading 40px column goes with it and the title starts at the
-        // row's edge.
+        'group grid gap-3 items-center py-2 rounded-md cursor-pointer hover:bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        selecting ? 'grid-cols-[40px_minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)_auto]',
         trailingPlayControl
-          ? 'grid-cols-[minmax(0,1fr)_auto] @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_60px_auto]'
-          : 'grid-cols-[40px_minmax(0,1fr)_auto] @3xl:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto]',
+          ? (showAlbum ? '@3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_60px_auto]' : '@3xl:grid-cols-[minmax(0,1fr)_60px_auto]')
+          : (showAlbum ? '@3xl:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto]' : '@3xl:grid-cols-[40px_minmax(0,1fr)_60px_auto]'),
         active && !trailingPlayControl && 'text-ember',
         unavailable && 'opacity-60',
         selecting && selected && 'bg-ember/10 hover:bg-ember/15',
@@ -325,7 +319,7 @@ export function TrackRow({
         <Checkbox checked={selected} onChange={onSelect} label={`Select ${track.title}`} className="justify-self-center" />
       )}
       {!trailingPlayControl && !selecting && (
-        <div className="relative grid place-items-center h-8 w-8 justify-self-center">
+        <div className="relative hidden @3xl:grid place-items-center h-8 w-8">
           {showRank && !active && (
             <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 group-focus-within:opacity-0 transition-opacity">
               {index + 1}
@@ -335,7 +329,7 @@ export function TrackRow({
             variant="ghost"
             size="icon"
             className={cn('h-8 w-8', showRank && !active && 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity')}
-            onClick={() => (active ? onToggle?.() : onPlay?.())}
+            onClick={(e) => { e.stopPropagation(); if (active) onToggle?.(); else playOrToast?.(); }}
             disabled={unavailable}
             aria-label={unavailable ? 'Unavailable' : active && playing ? 'Pause' : 'Play'}
           >
@@ -358,7 +352,7 @@ export function TrackRow({
         >
           <div
             data-testid="track-row-title"
-            onClick={selecting ? undefined : playOrToast}
+
             className={cn('truncate text-sm font-semibold', emberTitle, unavailable && 'col-span-2 text-muted-foreground @md:col-span-1')}
           >
             {track.title}
@@ -400,13 +394,7 @@ export function TrackRow({
         </div>
       </div>
 
-      {/* Both desktop-only cells are always rendered so the 5-column grid
-          keeps its shape; the flags decide what goes in them. Same @3xl
-          switch as the grid-cols above: a plain `hidden md:block` (window
-          width) could show these while the grid itself (now keyed off the
-          container) is still in its 3-column shape, leaving them as
-          unaccounted-for extra grid items. */}
-      <div data-testid="track-row-album-cell" className="hidden @3xl:block truncate text-sm text-muted-foreground">{showAlbum ? track.album : ''}</div>
+      {showAlbum && <div data-testid="track-row-album-cell" className="hidden @3xl:block truncate text-sm text-muted-foreground">{track.album}</div>}
       <div className="hidden @3xl:block text-sm text-muted-foreground text-right tabular-nums">{showTime ? duration : ''}</div>
 
       {selecting ? (
@@ -419,8 +407,8 @@ export function TrackRow({
       ) : (
         <div className="flex items-center gap-1">
           {playControl}
-          {trailing}
           {like}
+          {trailing}
           {replace}
           {remove}
         </div>

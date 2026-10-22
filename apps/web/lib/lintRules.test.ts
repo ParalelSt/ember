@@ -202,7 +202,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/session/SessionDialogs.tsx': 4,
   'components/settings/PrivacyToggles.tsx': 8,
   'components/track/TrackCard.tsx': 4,
-  'components/track/TrackRow.tsx': 8,
+  'components/track/TrackRow.tsx': 7,
   'components/track/TrackShelf.tsx': 10,
   'components/track/menus/ReplaceTrackDialog.tsx': 7,
   'components/track/menus/TrackSearchPicker.tsx': 9,

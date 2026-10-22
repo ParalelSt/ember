@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { EditIcon, LogOutIcon, MoreIcon, PeopleIcon, TrashIcon } from '@/components/icons';
 import type { PlaylistRole } from '@/types/track';
+import { ACTION_CIRCLE } from '@/components/page/ActionBar';
 
 export interface PlaylistMenuProps {
   role: PlaylistRole;
@@ -28,7 +29,7 @@ export function PlaylistMenu({ role, onCollaborate, onRename, onDelete, onLeave 
       <DropdownMenuTrigger
         data-testid="playlist-menu"
         aria-label="Playlist options"
-        className="inline-flex size-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-card hover:text-foreground aria-expanded:bg-card aria-expanded:text-foreground"
+        className={ACTION_CIRCLE}
       >
         <MoreIcon className="size-5" />
       </DropdownMenuTrigger>

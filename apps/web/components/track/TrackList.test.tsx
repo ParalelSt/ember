@@ -136,9 +136,9 @@ describe('TrackList', () => {
     expect(container.firstElementChild?.className).toContain('@container');
   });
 
-  it('shows ranks only when asked', () => {
+  it('shows ranks by default and allows callers to hide them', () => {
     const { rerender } = render(<TrackList tracks={tracks} {...actions()} />);
-    expect(screen.queryByText('1')).toBeNull();
+    expect(screen.getByText('1')).toBeInTheDocument();
 
     rerender(<TrackList tracks={tracks} showRank {...actions()} />);
     expect(screen.getByText('1')).toBeInTheDocument();
@@ -226,4 +226,14 @@ describe('TrackList (unavailable rows)', () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
+});
+
+
+it('labels the columns actually shown, including selection dates', () => {
+  const { rerender } = render(<TrackList tracks={tracks} {...actions()} />);
+  expect(screen.getByTestId('track-list-heading')).toHaveTextContent('#TitleAlbum');
+  expect(screen.getByLabelText('Duration')).toBeInTheDocument();
+  rerender(<TrackList tracks={tracks} showAlbum={false} selection={{ selecting: true, isSelected: () => false, toggle: vi.fn() }} {...actions()} />);
+  expect(screen.getByTestId('track-list-heading')).not.toHaveTextContent('Album');
+  expect(screen.getByTestId('track-list-heading')).toHaveTextContent('Added');
 });

@@ -89,15 +89,15 @@ describe('TrackRow (list density)', () => {
     expect(onPlay).toHaveBeenCalledTimes(1);
   });
 
-  it('plays on a double click of the row', () => {
+  it('plays on a single click of the row', () => {
     const onPlay = vi.fn();
     const { container } = render(<TrackRow track={track} onPlay={onPlay} />);
-    fireEvent.doubleClick(container.firstElementChild!);
+    fireEvent.click(container.firstElementChild!);
     expect(onPlay).toHaveBeenCalledTimes(1);
   });
 
   it('stops an artist link click from reaching whatever contains the row', () => {
-    // The row itself only listens for double clicks, so the guard is
+    // The row itself only listens for single clicks, so the guard is
     // checked against an enclosing click handler.
     const onPlay = vi.fn();
     const outer = vi.fn();
@@ -176,7 +176,7 @@ describe('TrackRow (list density)', () => {
   it('switches columns by container width (@3xl), not viewport width', () => {
     render(<TrackRow track={track} />);
     const row = screen.getByTestId('track-row');
-    expect(row.className).toContain('grid-cols-[40px_minmax(0,1fr)_auto]');
+    expect(row.className).toContain('grid-cols-[minmax(0,1fr)_auto]');
     expect(row.className).toContain('@3xl:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto]');
     expect(row.className).not.toContain(' md:grid-cols');
   });
@@ -365,7 +365,7 @@ describe('TrackRow (trailingPlayControl)', () => {
     const { container, rerender } = render(<TrackRow track={track} onPlay={vi.fn()} />);
     expect(screen.queryByTestId('track-row-play')).toBeNull();
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
-    expect(container.firstElementChild?.className).toContain('grid-cols-[40px_minmax(0,1fr)_auto]');
+    expect(container.firstElementChild?.className).toContain('grid-cols-[minmax(0,1fr)_auto]');
 
     rerender(<TrackRow track={track} active playing onPlay={vi.fn()} />);
     expect(container.firstElementChild?.className).toContain('text-ember');
@@ -421,7 +421,7 @@ describe('TrackRow (trailingPlayControl)', () => {
 
       it('uses the phone touch size and the desktop row size', () => {
         render(row());
-        expect(reveal(screen.getByTestId('track-row-play'))).toContain('size-hit md:size-8');
+        expect(reveal(screen.getByTestId('track-row-play'))).toContain(density === 'compact' ? 'size-hit md:size-8' : 'hidden @3xl:inline-flex');
       });
 
       it('plays this track, then pauses and resumes it once it is the current one', () => {
@@ -549,5 +549,25 @@ describe('TrackRow added by (collaborative playlists)', () => {
   it('nothing on a plain playlist', () => {
     render(<TrackRow track={track} />);
     expect(screen.queryByTestId('track-row-added-by')).toBeNull();
+  });
+});
+
+
+describe('playlist row access', () => {
+  it('plays from the row surface and keyboard without firing for nested controls', () => {
+    const onPlay = vi.fn();
+    const onLike = vi.fn();
+    render(<TrackRow track={track} onPlay={onPlay} liked={false} onLike={onLike} trailing={<button>More</button>} />);
+    const row = screen.getByTestId('track-row');
+    expect(row).toHaveAttribute('tabindex', '0');
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: 'Enter' });
+    fireEvent.keyDown(row, { key: ' ' });
+    expect(onPlay).toHaveBeenCalledTimes(3);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Like' }));
+    expect(onPlay).toHaveBeenCalledTimes(3);
+    expect(onLike).toHaveBeenCalledTimes(1);
   });
 });

@@ -14,9 +14,6 @@ vi.mock('./AddToPlaylistMenu', () => ({
     </div>
   ),
 }));
-vi.mock('../ShareButton', () => ({
-  ShareButton: ({ className }: { className?: string }) => <button type="button" className={className}>Share</button>,
-}));
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuItem: ({ children, onClick }: PropsWithChildren<{ onClick?: () => void }>) => (
     <div role="menuitem" onClick={onClick}>
@@ -101,15 +98,31 @@ describe('TrackMenu and reordering', () => {
 describe('TrackMenu on a song that is gone', () => {
   const gone: Track = { ...track, unavailableAt: '2026-10-01T10:00:00Z', unavailableReason: 'removed' };
 
-  it('drops the menu, and Share on a phone (the room goes to the UNAVAILABLE pill)', () => {
+  it('keeps Share in More without offering queue for an unavailable song', () => {
     render(<TrackMenu track={gone} />);
-    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'More' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: /Add to queue/ })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Share' })).toHaveClass('max-md:hidden');
+    expect(screen.getByRole('menuitem', { name: 'Share' })).toBeInTheDocument();
   });
 
   it('a song that plays keeps Share everywhere', () => {
     render(<TrackMenu track={track} />);
-    expect(screen.getByRole('button', { name: 'Share' })).not.toHaveClass('max-md:hidden');
+    expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Share' })).toBeInTheDocument();
   });
+});
+
+
+it('shares the song URL through the same clipboard action as ShareButton', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { clipboard: { writeText } });
+  render(<TrackMenu track={track} />);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Share' }));
+  expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/track/${track.sourceId}`);
+  vi.unstubAllGlobals();
+});
+
+it('does not offer sharing for sources without a stable share URL', () => {
+  render(<TrackMenu track={{ ...track, source: 'jamendo' }} />);
+  expect(screen.queryByRole('menuitem', { name: 'Share' })).toBeNull();
 });

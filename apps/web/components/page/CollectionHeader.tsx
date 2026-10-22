@@ -1,16 +1,17 @@
 import { Fragment, type ReactNode } from 'react';
 import { CollectionCover, type CollectionCoverProps } from '@/components/primitives/CollectionCover';
 import { Eyebrow } from '@/components/page/Eyebrow';
+import { CoverColorBand } from './CoverColorBand';
 import { cn } from '@/lib/utils';
 
 export type CollectionHeaderVariant = 'collection' | 'album' | 'artist';
 
 // Every page family shipped its own hero geometry, so the variant keeps the
 // exact cover size, radius and text-column behaviour each one had:
-// collection (playlists, Liked, Recent, Uploads) 176 -> 192px rounded card,
+// collection (playlists, Liked, Recent, Uploads) 192 -> 232px rounded card,
 // album (and the track page) 176 -> 224px, artist 144 -> 176px circle.
 export const HEADER_VARIANTS: Record<CollectionHeaderVariant, { cover: string; radius: string; text: string }> = {
-  collection: { cover: 'size-art-hero md:size-art-lg', radius: 'rounded-2xl', text: 'min-w-0 w-full md:w-auto' },
+  collection: { cover: 'size-art-lg md:size-[232px]', radius: 'rounded-2xl', text: 'min-w-0 w-full md:w-auto' },
   album: { cover: 'size-art-hero md:size-art-xl', radius: 'rounded-md', text: 'min-w-0 w-full md:w-auto' },
   artist: { cover: 'size-art-hero-sm md:size-art-hero', radius: 'rounded-full', text: 'min-w-0 w-full md:w-auto' },
 };
@@ -70,7 +71,8 @@ export function CollectionHeader({
   const coverClassName = cn('h-full w-full', v.radius);
 
   return (
-    <div className={HEADER_CLASSES.root} data-testid="collection-header">
+    <div className={cn(HEADER_CLASSES.root, 'relative isolate')} data-testid="collection-header">
+      {variant === 'collection' && <CoverColorBand cover={cover} />}
       {onCoverClick ? (
         <button
           type="button"

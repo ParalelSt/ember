@@ -15,18 +15,21 @@ describe('CollectionSkeleton', () => {
         <CollectionHeader eyebrow="Playlist" title="Mix" meta={['3 songs']} cover={cover} />
       </>,
     );
-    expect(screen.getByTestId('skeleton-header').className).toBe(screen.getByTestId('collection-header').className);
+    for (const cls of HEADER_CLASSES.root.split(' ')) {
+      expect(screen.getByTestId('collection-header')).toHaveClass(cls);
+    }
     expect(screen.getByTestId('skeleton-header').className).toBe(HEADER_CLASSES.root);
   });
 
   it('spaces title, meta and action placeholders with the header stack classes', () => {
     render(<CollectionSkeleton />);
     const text = screen.getByTestId('skeleton-header').children[1] as HTMLElement;
-    const [eyebrow, title, meta, actions] = Array.from(text.children) as HTMLElement[];
+    const [eyebrow, title, meta] = Array.from(text.children) as HTMLElement[];
     expect(eyebrow.className).not.toMatch(/\bmt-/);
     expect(title.className).toContain(HEADER_CLASSES.title);
     expect(meta.className).toContain(HEADER_CLASSES.meta);
-    expect(actions.className).toContain(HEADER_CLASSES.actions);
+    const actions = screen.getByTestId('skeleton-actions');
+    expect(screen.getByTestId('skeleton-header').contains(actions)).toBe(false);
     expect(actions.className).toContain('gap-cluster');
   });
 
@@ -39,7 +42,7 @@ describe('CollectionSkeleton', () => {
       const { container: hd, unmount: u2 } = render(
         <CollectionHeader eyebrow="E" title="T" meta={[]} cover={cover} variant={variant} />,
       );
-      const hdCover = (hd.querySelector('[data-testid="collection-header"]') as HTMLElement).children[0] as HTMLElement;
+      const hdCover = hd.querySelector('[data-testid="collection-header"] > .shrink-0') as HTMLElement;
       const { cover: size, radius } = HEADER_VARIANTS[variant];
       for (const cls of `shrink-0 ${size} ${radius}`.split(' ')) {
         expect(hdCover.className.split(/\s+/)).toContain(cls);

@@ -63,7 +63,7 @@ describe('CollectionPage', () => {
     expect(follows(meta, bar)).toBe(true);
     expect(follows(bar, firstRow)).toBe(true);
     // Beside: the action bar lives inside the header's text column.
-    expect(header.contains(bar)).toBe(true);
+    expect(header.contains(bar)).toBe(false);
     expect(header.contains(firstRow)).toBe(false);
     expect(follows(screen.getByText('Slow Static'), screen.getByText('Harbor Lights'))).toBe(true);
   });
@@ -74,9 +74,9 @@ describe('CollectionPage', () => {
     const stack = header.parentElement!;
     expect(stack.className).toContain('gap-stack');
     expect(stack.className).toContain('flex-col');
-    expect(stack.children).toHaveLength(2);
+    expect(stack.children).toHaveLength(3);
     expect(stack.children[0]).toBe(header);
-    expect(stack.children[1].contains(screen.getByText('Slow Static'))).toBe(true);
+    expect(stack.children[2].contains(screen.getByText('Slow Static'))).toBe(true);
     expect(screen.getByTestId('action-bar').className).toContain('gap-cluster');
     expect(screen.getByTestId('action-bar').className).not.toMatch(/(^|\s)m[tbxy]?-/);
   });
@@ -115,6 +115,17 @@ describe('CollectionPage', () => {
     screen.getByRole('button', { name: 'Shuffle play' }).click();
     expect(play).toHaveBeenCalledTimes(1);
     expect(shuffle).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws Shuffle as a soft circle that gets a thin Ember border while on', () => {
+    const { rerender } = render(<CollectionPage {...props()} />);
+    const off = screen.getByRole('button', { name: 'Shuffle play' });
+    expect(off).toHaveClass('size-11', 'rounded-full', 'bg-secondary', 'border-transparent');
+    expect(off).not.toHaveClass('border-ember');
+    rerender(<CollectionPage {...props({ playback: { play: noop, shuffle: noop, shuffleOn: true, active: true } })} />);
+    const on = screen.getByRole('button', { name: 'Shuffle off' });
+    expect(on).toHaveAttribute('aria-pressed', 'true');
+    expect(on).toHaveClass('border-ember', 'text-ember');
   });
 });
 
@@ -204,7 +215,7 @@ describe('CollectionPage select mode and sort', () => {
     expect(screen.queryByTestId('bar')).toBeNull();
   });
 
-  it('outside select mode a double click still plays and the row menu is there', () => {
+  it('outside select mode a single click still plays and the row menu is there', () => {
     const onPlay = vi.fn();
     render(
       <SelectablePage
@@ -215,11 +226,11 @@ describe('CollectionPage select mode and sort', () => {
         }}
       />,
     );
-    fireEvent.doubleClick(screen.getAllByTestId('track-row')[0]);
+    fireEvent.click(screen.getAllByTestId('track-row')[0]);
     expect(onPlay).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'More beta' })).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('select-toggle'));
-    fireEvent.doubleClick(screen.getAllByTestId('track-row')[0]);
+    fireEvent.click(screen.getAllByTestId('track-row')[0]);
     expect(onPlay).toHaveBeenCalledTimes(1);
     // The menu gives way to the date added.
     expect(screen.queryByRole('button', { name: 'More beta' })).toBeNull();

@@ -43,6 +43,7 @@ export function AddToPlaylistMenu({
   hiddenTrigger,
   more,
   triggerClassName,
+  allowAdd = true,
 }: {
   track: Track;
   onRematch?: () => void;
@@ -51,6 +52,7 @@ export function AddToPlaylistMenu({
   hiddenTrigger?: boolean;
   more?: ReactNode;
   triggerClassName?: string;
+  allowAdd?: boolean;
 }) {
   const { user } = useAuth();
   const { data: playlists = [] } = useQueryPlaylists();
@@ -68,7 +70,7 @@ export function AddToPlaylistMenu({
   const { data: containingIds } = useQueryPlaylistsContaining(track.id, open);
   const containing = new Set(containingIds ?? []);
 
-  if (!user) return null;
+  if (!user && !more) return null;
 
   const add = async (id: string, playlistName: string) => {
     setOpen(false);
@@ -109,6 +111,7 @@ export function AddToPlaylistMenu({
           'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors',
           hiddenTrigger && 'pointer-events-none opacity-0',
           triggerClassName,
+  allowAdd = true,
         )}
         onClick={(e) => e.stopPropagation()}
         aria-label={more ? 'More' : 'Add to playlist'}
@@ -122,9 +125,9 @@ export function AddToPlaylistMenu({
         {more && (
           <>
             {more}
-            <DropdownMenuGroup>
+            {user && allowAdd && <DropdownMenuGroup>
               <DropdownMenuLabel>Add to playlist</DropdownMenuLabel>
-            </DropdownMenuGroup>
+            </DropdownMenuGroup>}
           </>
         )}
         {onRematch && (
@@ -139,6 +142,7 @@ export function AddToPlaylistMenu({
           </DropdownMenuItem>
         )}
         {onRematch && <DropdownMenuSeparator className="md:hidden" />}
+        {user && allowAdd && <>
         <DropdownMenuItem onClick={openCreate} className="text-ember font-semibold">
           <PlusIcon className="h-3.5 w-3.5" /> New playlist
         </DropdownMenuItem>
@@ -161,6 +165,7 @@ export function AddToPlaylistMenu({
             </DropdownMenuItem>
           );
         })}
+        </>}
       </DropdownMenuContent>
       <CreatePlaylistDialog
         open={createOpen}

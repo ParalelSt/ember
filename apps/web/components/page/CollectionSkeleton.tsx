@@ -31,12 +31,16 @@ export function CollectionSkeleton({ variant = 'collection', rows = 5 }: Collect
           <Skeleton className="h-3 w-16" />
           <Skeleton className={cn('h-8 w-2/3', HEADER_CLASSES.title)} />
           <Skeleton className={cn('h-3 w-1/3', HEADER_CLASSES.meta)} />
-          <div className={cn('flex items-center gap-cluster', HEADER_CLASSES.actions)}>
+          {variant !== 'collection' && <div className={cn('flex items-center gap-cluster', HEADER_CLASSES.actions)}>
             <Skeleton className="size-12 rounded-full" />
             <Skeleton className="size-12 rounded-full" />
-          </div>
+          </div>}
         </div>
       </div>
+      {variant === 'collection' && <div data-testid="skeleton-actions" className="flex items-center gap-cluster">
+        <Skeleton className="size-12 rounded-full" />
+        <Skeleton className="size-12 rounded-full" />
+      </div>}
       <div className="flex flex-col gap-1">
         {Array.from({ length: rows }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 py-2">

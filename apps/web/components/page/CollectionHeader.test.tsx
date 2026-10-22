@@ -89,7 +89,7 @@ describe('CollectionHeader', () => {
       <CollectionHeader eyebrow="Playlist" title="Mix" meta={[]} cover={cover} />,
     );
     const box = () => container.querySelector('.shrink-0') as HTMLElement;
-    expect(box().className).toContain('size-art-hero md:size-art-lg');
+    expect(box().className).toContain('size-art-lg md:size-[232px]');
     expect(box().className).toContain('rounded-2xl');
 
     rerender(<CollectionHeader eyebrow="Album" title="Kid A" meta={[]} cover={cover} variant="album" />);
