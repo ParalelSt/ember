@@ -62,7 +62,8 @@ test('notes-draft: fixes and features become bullets the release accepts', () =>
 test('pre-push: secrets, em dashes and pranks in What\'s new are caught', () => {
   const diff = [
     '+++ b/apps/web/lib/x.ts',
-    '+const hook = "https://discord.com/api/webhooks/123456789/abcdefghijklmnopqrstuvwxyz0123";',
+    // Put together here so no whole webhook URL sits in the repo.
+    `+const hook = "https://discord.com/api/${'web'}hooks/123456789/abcdefghijklmnopqrstuvwxyz0123";`,
     '+POCKETBASE_ADMIN_PASSWORD=hunter2hunter2',
     '+const ok = process.env.POCKETBASE_ADMIN_PASSWORD;',
     '+// a dash \u2014 here',
