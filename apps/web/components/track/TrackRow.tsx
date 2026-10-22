@@ -395,7 +395,7 @@ export function TrackRow({
       </div>
 
       {showAlbum && <div data-testid="track-row-album-cell" className="hidden @3xl:block truncate text-sm text-muted-foreground">{track.album}</div>}
-      <div className="hidden @3xl:block text-sm text-muted-foreground text-right tabular-nums">{showTime ? duration : ''}</div>
+      <div className="hidden @3xl:block text-sm text-muted-foreground text-center tabular-nums">{showTime ? duration : ''}</div>
 
       {selecting ? (
         // Where the menu and heart were: the duration on a narrow row (its

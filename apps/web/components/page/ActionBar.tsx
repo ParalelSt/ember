@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 
-/** The quiet round buttons beside Play (Shuffle, the playlist's ...): a 44px
- *  circle on the soft secondary fill (the owner's "soft circles" pick). The
+/** The quiet round buttons beside Play (Shuffle, the playlist's ...): a 48px
+ *  circle, the same size as Play on the soft secondary fill (the owner's "soft circles" pick). The
  *  thin border is transparent until a toggle is on (ACTION_CIRCLE_ON), so
  *  switching never shifts the row. */
 export const ACTION_CIRCLE =
-  'inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-transparent bg-secondary text-foreground transition-colors hover:bg-accent disabled:opacity-50 aria-expanded:bg-accent';
+  'inline-flex size-12 shrink-0 items-center justify-center rounded-full border border-transparent bg-secondary text-foreground transition-colors hover:bg-accent disabled:opacity-50 aria-expanded:bg-accent';
 
 /** A toggle in ACTION_CIRCLE while on: Ember icon and a thin Ember border. */
 export const ACTION_CIRCLE_ON = 'border-ember text-ember hover:text-ember';

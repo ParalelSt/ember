@@ -94,16 +94,18 @@ export function TrackList({
     // @3xl grid switch.
     <div className="@container flex flex-col">
       <div className={cn(
-        'flex flex-col @3xl:grid @3xl:gap-x-row',
+        // -mx-row with each row's px-row: the content stays on the page
+        // gutter while the hover tint gets room either side of it.
+        '-mx-row flex flex-col @3xl:grid @3xl:gap-x-row',
         trailingPlayControl
           ? (showAlbum ? '@3xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_60px_auto]' : '@3xl:grid-cols-[minmax(0,1fr)_60px_auto]')
           : (showAlbum ? '@3xl:grid-cols-[40px_minmax(0,2fr)_minmax(0,1fr)_60px_auto]' : '@3xl:grid-cols-[40px_minmax(0,1fr)_60px_auto]'),
       )}>
-        <div data-testid="track-list-heading" className="hidden @3xl:grid @3xl:grid-cols-subgrid col-span-full items-center border-b border-border py-cluster text-xs text-muted-foreground">
+        <div data-testid="track-list-heading" className="hidden @3xl:grid @3xl:grid-cols-subgrid col-span-full items-center border-b border-border px-row py-cluster text-xs text-muted-foreground">
           {!trailingPlayControl && <span>{selection?.selecting ? 'Select' : '#'}</span>}
           <span>Title</span>
           {showAlbum && <span>Album</span>}
-          <span aria-label="Duration" className="justify-self-end"><ClockIcon className="size-4" /></span>
+          <span aria-label="Duration" className="justify-self-center"><ClockIcon className="size-4" /></span>
           <span className="text-right">{selection?.selecting ? 'Added' : ''}</span>
         </div>
       {tracks.map((t, i) => {
@@ -111,7 +113,7 @@ export function TrackList({
         return (
         <TrackRow
           key={t.id}
-          className="@3xl:col-span-full @3xl:grid-cols-subgrid"
+          className="px-row @3xl:col-span-full @3xl:grid-cols-subgrid"
           track={t}
           index={i}
           density="list"

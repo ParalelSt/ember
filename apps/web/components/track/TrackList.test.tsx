@@ -237,3 +237,13 @@ it('labels the columns actually shown, including selection dates', () => {
   expect(screen.getByTestId('track-list-heading')).not.toHaveTextContent('Album');
   expect(screen.getByTestId('track-list-heading')).toHaveTextContent('Added');
 });
+
+it('pads the heading and every row the same, and centers the clock over the times', () => {
+  render(<TrackList tracks={tracks} {...actions()} />);
+  const heading = screen.getByTestId('track-list-heading');
+  expect(heading).toHaveClass('px-row');
+  // The list pulls out by the same amount, so text stays on the page gutter.
+  expect(heading.parentElement).toHaveClass('-mx-row');
+  for (const row of screen.getAllByTestId('track-row')) expect(row).toHaveClass('px-row');
+  expect(screen.getByLabelText('Duration')).toHaveClass('justify-self-center');
+});

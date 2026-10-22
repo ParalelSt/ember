@@ -120,7 +120,7 @@ describe('CollectionPage', () => {
   it('draws Shuffle as a soft circle that gets a thin Ember border while on', () => {
     const { rerender } = render(<CollectionPage {...props()} />);
     const off = screen.getByRole('button', { name: 'Shuffle play' });
-    expect(off).toHaveClass('size-11', 'rounded-full', 'bg-secondary', 'border-transparent');
+    expect(off).toHaveClass('size-12', 'rounded-full', 'bg-secondary', 'border-transparent');
     expect(off).not.toHaveClass('border-ember');
     rerender(<CollectionPage {...props({ playback: { play: noop, shuffle: noop, shuffleOn: true, active: true } })} />);
     const on = screen.getByRole('button', { name: 'Shuffle off' });

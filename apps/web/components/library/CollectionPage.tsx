@@ -157,7 +157,7 @@ export function CollectionPage({
           {hasActions && <ActionBar>
             {!hideActions && (
               <>
-                <PlayButton onClick={playback.play} disabled={!tracks.length} className="size-13" />
+                <PlayButton onClick={playback.play} disabled={!tracks.length} />
                 <button
                   type="button"
                   onClick={playback.shuffle}
