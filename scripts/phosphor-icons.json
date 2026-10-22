@@ -604,5 +604,11 @@
     "app": "CameraIcon",
     "name": "camera",
     "weight": "fill"
+  },
+  {
+    "lucide": "Ban",
+    "app": "BlockIcon",
+    "name": "prohibit",
+    "weight": "fill"
   }
 ]

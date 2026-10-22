@@ -1,3 +1,4 @@
+import { listBlocked, withoutBlocked } from '@/lib/blockedTracks';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { pbQuote } from '@/lib/genres/store';
 import { fromMixRecord, type MixRecord } from '@/lib/mixes/store';
@@ -14,9 +15,10 @@ import type { MixesPayload } from '@/lib/mixesView';
 export const GET = withRequestLog('mixes', async () => {
   try {
     const { pb, user } = await requireUser();
-    const [records, dead] = await Promise.all([
+    const [records, dead, blocked] = await Promise.all([
       pb.collection('mixes').getFullList<MixRecord>({ filter: `user = ${pbQuote(user.id)}`, sort: 'position' }),
       listUnavailableIds(),
+      listBlocked(pb, user.id),
     ]);
     const mixes = records.map(fromMixRecord);
     let building = false;
@@ -32,7 +34,7 @@ export const GET = withRequestLog('mixes', async () => {
       building,
       mixes: mixes.map((m) => ({
         key: m.key, title: m.title, subtitle: m.subtitle, cover: m.cover, builtAt: m.builtAt,
-        count: m.tracks.filter((t) => !dead.has(t.id)).length,
+        count: withoutBlocked(m.tracks.filter((t) => !dead.has(t.id)), blocked).length,
       })),
     };
     return Response.json(body);

@@ -13,6 +13,9 @@ import { resetInAppHistory } from '@/lib/inAppHistory';
 // in those two components is stubbed.
 
 const nav = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn(), pathname: '/' }));
+vi.mock('@/hooks/useBlockedTracks', () => ({
+  useBlockedTracks: () => ({ isBlocked: () => false, block: vi.fn(), unblock: vi.fn() }),
+}));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: nav.push, back: nav.back }),
   usePathname: () => nav.pathname,

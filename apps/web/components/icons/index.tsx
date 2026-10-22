@@ -55,6 +55,7 @@ export {
   ListPlusIcon,
   AlbumIcon,
   FlagIcon,
+  BlockIcon,
   EqualizerIcon,
   CastIcon,
   AirplayIcon,

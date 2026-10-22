@@ -45,6 +45,10 @@ vi.mock('@/components/player/PlayerProvider', () => ({
 }));
 const auth = vi.hoisted(() => ({ user: null as unknown }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: auth.user }) }));
+const blocking = vi.hoisted(() => ({ block: vi.fn(async () => {}), unblock: vi.fn(async () => {}) }));
+vi.mock('@/hooks/useBlockedTracks', () => ({
+  useBlockedTracks: () => ({ isBlocked: () => false, block: blocking.block, unblock: blocking.unblock }),
+}));
 vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, toggle: () => {} }) }));
 vi.mock('@/lib/offlineNative', () => ({ useTrackArtSrc: () => null }));
 vi.mock('@/lib/useBackDismiss', () => ({ useBackDismiss: () => {} }));
@@ -228,11 +232,19 @@ describe('NowPlaying: the More sheet', () => {
     openMore();
     expect(within(sheet()).getByText('Copper Sky')).toBeInTheDocument();
     expect(within(sheet()).getByText('Coastline')).toBeInTheDocument();
-    expect(rows()).toEqual(['add', 'queue', 'tabs', 'eq', 'share', 'artist', 'album', 'report']);
+    expect(rows()).toEqual(['add', 'queue', 'tabs', 'eq', 'share', 'artist', 'album', 'block', 'report']);
     expect(sheet().querySelectorAll('[role="group"]')).toHaveLength(0);
     expect(row('share')).toHaveTextContent('Copy link');
     // Like, Lyrics and Devices are on the player, not in the sheet.
     expect(within(sheet()).queryByText(/^(Like|Liked|Lyrics|Devices)$/)).toBeNull();
+  });
+
+  it('Block song blocks the song playing (owner request 2026-10-22)', () => {
+    auth.user = { id: 'u1' };
+    render(<NowPlaying />);
+    openMore();
+    fireEvent.click(row('block'));
+    expect(blocking.block).toHaveBeenCalledWith(expect.objectContaining({ id: TRACK.id }));
   });
 
   it('signed out, keeps what needs no account', () => {

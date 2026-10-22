@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { listBlocked, withoutBlocked } from '@/lib/blockedTracks';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { pbQuote } from '@/lib/genres/store';
 import { fromMixRecord, type MixRecord } from '@/lib/mixes/store';
@@ -22,10 +23,11 @@ export const GET = withRequestLog('mixes/[key]', async (_request: NextRequest, c
       });
     if (!record) return jsonError('Mix not found', 404);
     const mix = fromMixRecord(record);
-    const dead = await listUnavailableIds();
+    const [dead, blocked] = await Promise.all([listUnavailableIds(), listBlocked(pb, user.id)]);
     const body: MixPayload = {
       key: mix.key, title: mix.title, subtitle: mix.subtitle, cover: mix.cover, builtAt: mix.builtAt,
-      tracks: mix.tracks.filter((t) => !dead.has(t.id)),
+      // Never a song this person blocked.
+      tracks: withoutBlocked(mix.tracks.filter((t) => !dead.has(t.id)), blocked),
     };
     return Response.json(body);
   } catch (e) {

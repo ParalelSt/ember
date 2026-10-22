@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { LikeButton } from '@/components/primitives/LikeButton';
 import {
-  AlbumIcon, ArtistIcon, ChevronDownIcon, DevicesIcon, EqualizerIcon, FlagIcon, LinkIcon, ListPlusIcon,
+  AlbumIcon, ArtistIcon, BlockIcon, ChevronDownIcon, DevicesIcon, EqualizerIcon, FlagIcon, LinkIcon, ListPlusIcon,
   LyricsIcon, MoreIcon, MusicIcon, QueueIcon, RepeatIcon, RepeatOneIcon, ShareIcon, ShuffleIcon, TabsIcon,
 } from '@/components/icons';
+import { toast } from 'sonner';
+import { useBlockedTracks } from '@/hooks/useBlockedTracks';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Artwork } from '@/components/primitives/Artwork';
 import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
@@ -200,6 +202,7 @@ export function NowPlaying() {
   // Lyrics and Devices stay on the player itself. Each row opens the sheet or
   // page it always did.
   const canAdd = !!(current && user && !isUnavailable(current));
+  const blocking = useBlockedTracks();
   const items: MoreItem[] = [];
   if (canAdd) items.push({ key: 'add', label: 'Add to playlist', Icon: ListPlusIcon, onSelect: () => setAddOpen(true) });
   if (current) items.push({ key: 'queue', label: 'Up next', Icon: QueueIcon, onSelect: () => setQueueOpen(true) });
@@ -224,6 +227,28 @@ export function NowPlaying() {
   if (current?.albumId) {
     const href = `/album/${encodeURIComponent(current.albumId)}`;
     items.push({ key: 'album', label: 'Go to album', Icon: AlbumIcon, onSelect: () => closeThenGo(href) });
+  }
+  if (current && user) {
+    // A radio song you never want again: out of radio, mixes and
+    // suggestions, and out of the radio songs already queued.
+    const track = current;
+    const blocked = blocking.isBlocked(track);
+    items.push({
+      key: 'block',
+      label: blocked ? 'Unblock song' : 'Block song',
+      Icon: BlockIcon,
+      onSelect: () => {
+        if (blocked) {
+          void blocking.unblock(track).then(() => toast.success(`Unblocked "${track.title}"`));
+          return;
+        }
+        void blocking.block(track).then(() =>
+          toast.success(`Blocked "${track.title}". It won't come up in radio, mixes or suggestions.`, {
+            action: { label: 'Undo', onClick: () => void blocking.unblock(track) },
+          }),
+        );
+      },
+    });
   }
   if (current && hasLyrics) {
     items.push({ key: 'report', label: 'Report wrong lyrics', Icon: FlagIcon, onSelect: () => setReportOpen(true) });

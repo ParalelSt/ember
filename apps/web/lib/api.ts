@@ -399,6 +399,10 @@ export const api = {
       body: { action: 'undo', to },
     }),
   //, Recent searches (server-backed so they sync across devices),
+  listBlockedTracks: () => req<{ tracks: Track[] }>('/blocked-tracks'),
+  blockTrack: (track: Track) => req<{ ok: true }>('/blocked-tracks', { method: 'POST', body: { track } }),
+  unblockTrack: (trackId: string) =>
+    req<{ ok: true }>(`/blocked-tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
   listRecentSearches: () => req<{ tracks: Track[] }>('/recent-searches'),
   addRecentSearch: (track: Track) =>
     req<{ ok: true }>('/recent-searches', { method: 'POST', body: { track } }),

@@ -23,7 +23,16 @@ vi.mock('./AddToPlaylistMenu', () => ({
   ),
 }));
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => ({ playTrack }) }));
-vi.mock('sonner', () => ({ toast: { success: (m: string) => toastSuccess(m) } }));
+vi.mock('sonner', () => ({ toast: { success: (m: string, o?: unknown) => toastSuccess(m, o) } }));
+vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
+const blocking = vi.hoisted(() => ({ ids: new Set<string>(), block: vi.fn(async () => {}), unblock: vi.fn(async () => {}) }));
+vi.mock('@/hooks/useBlockedTracks', () => ({
+  useBlockedTracks: () => ({
+    isBlocked: (t: { id: string }) => blocking.ids.has(t.id),
+    block: blocking.block,
+    unblock: blocking.unblock,
+  }),
+}));
 
 const { TrackMenu } = await import('./TrackMenu');
 const { usePlayerStore } = await import('@/stores/usePlayerStore');
@@ -44,6 +53,9 @@ const make = (id: string): Track => ({
 const track = make('youtube:abcdefghijk');
 
 beforeEach(() => {
+  blocking.ids.clear();
+  blocking.block.mockClear();
+  blocking.unblock.mockClear();
   playTrack.mockReset();
   toastSuccess.mockReset();
   usePlayerStore.setState({ queue: [], index: -1, baseCount: 0 });
@@ -62,7 +74,7 @@ describe('TrackMenu add to queue', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /Add to queue/ }));
     expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual(['a', track.id, 'b']);
     expect(usePlayerStore.getState().baseCount).toBe(3);
-    expect(toastSuccess).toHaveBeenCalledWith('Added "Song" to the queue');
+    expect(toastSuccess).toHaveBeenCalledWith('Added "Song" to the queue', undefined);
     expect(playTrack).not.toHaveBeenCalled();
   });
 
@@ -125,4 +137,25 @@ it('shares the song URL through the same clipboard action as ShareButton', async
 it('does not offer sharing for sources without a stable share URL', () => {
   render(<TrackMenu track={{ ...track, source: 'jamendo' }} />);
   expect(screen.queryByRole('menuitem', { name: 'Share' })).toBeNull();
+});
+
+describe('TrackMenu block (owner request 2026-10-22)', () => {
+  it('Block song blocks it and offers Undo', async () => {
+    render(<TrackMenu track={track} />);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Block song' }));
+    expect(blocking.block).toHaveBeenCalledWith(track);
+    await vi.waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+    const [message, options] = toastSuccess.mock.calls[0] as [string, { action: { label: string; onClick: () => void } }];
+    expect(message).toMatch(/won't come up in radio, mixes or suggestions/);
+    options.action.onClick();
+    expect(blocking.unblock).toHaveBeenCalledWith(track);
+  });
+
+  it('a blocked song offers Unblock song instead', () => {
+    blocking.ids.add(track.id);
+    render(<TrackMenu track={track} />);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unblock song' }));
+    expect(blocking.unblock).toHaveBeenCalledWith(track);
+    expect(blocking.block).not.toHaveBeenCalled();
+  });
 });

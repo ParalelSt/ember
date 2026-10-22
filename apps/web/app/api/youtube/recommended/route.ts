@@ -1,4 +1,7 @@
 import type { NextRequest } from 'next/server';
+import { verifiedUserId } from '@/lib/auth';
+import { listBlocked, withoutBlocked } from '@/lib/blockedTracks';
+import { createAdminClient } from '@/lib/pocketbase/server';
 import { getRecommended } from '@/lib/sources/youtube';
 import { fromError } from '@/lib/upsertTrack';
 import { listUnavailableIds } from '@/lib/trackAvailability';
@@ -28,7 +31,13 @@ export const GET = withRequestLog('youtube/recommended', async (request: NextReq
     // database, or found gone by this process (a radio song nobody saved has
     // no row to flag, and is exactly the kind radio keeps suggesting).
     const gone = unavailableTrackIds();
-    const tracks = raw.filter((t) => !dead.has(t.id) && !gone.has(t.id));
+    const playable = raw.filter((t) => !dead.has(t.id) && !gone.has(t.id));
+    // Nor a song the person asking blocked (web radio, the phone app's own
+    // radio and the song pickers all come through here). Signed out: no list.
+    const userId = await verifiedUserId().catch(() => null);
+    // A list that cannot be read never costs the suggestions themselves.
+    const blocked = userId ? await createAdminClient().then((pb) => listBlocked(pb, userId)).catch(() => []) : [];
+    const tracks = withoutBlocked(playable, blocked);
     return Response.json({ tracks });
   } catch (e) {
     return fromError(e);
