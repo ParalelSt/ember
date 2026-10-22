@@ -133,6 +133,27 @@ describe('RowShelf, desktop (the owner\'s "arrows" and "t180" picks)', () => {
     expect(list.scrollLeft).toBe(0);
   });
 
+  it('a sideways swipe over the row scrolls it until the end', () => {
+    render(<RowShelf variant="desktop" title="Popular now">{tiles(10)}</RowShelf>);
+    const list = screen.getByRole('list');
+    const swipe = (deltaX: number, deltaY = 0) => {
+      const e = new WheelEvent('wheel', { deltaX, deltaY, bubbles: true, cancelable: true });
+      list.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    size(list, { client: 500, scroll: 1960, left: 0 });
+    expect(swipe(120, 10)).toBe(true);
+    expect(list.scrollLeft).toBe(120);
+    size(list, { client: 500, scroll: 1960, left: 400 });
+    expect(swipe(-100)).toBe(true);
+    expect(list.scrollLeft).toBe(300);
+    // At either end the swipe is left alone.
+    size(list, { client: 500, scroll: 1960, left: 0 });
+    expect(swipe(-120)).toBe(false);
+    size(list, { client: 500, scroll: 1960, left: 1460 });
+    expect(swipe(120)).toBe(false);
+  });
+
   it('scrolls by about 80% of the row width and hides each arrow at its end', () => {
     render(<RowShelf variant="desktop" title="Popular now">{tiles(10)}</RowShelf>);
     const list = screen.getByRole('list');

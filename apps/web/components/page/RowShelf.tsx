@@ -117,8 +117,8 @@ function FadeEdge({ dir, enabled, onClick }: { dir: -1 | 1; enabled: boolean; on
 
 /** The desktop row: tiles in a sideways scroller with no buttons. A plain
  *  mouse wheel over the row scrolls the page, never the row (turning it
- *  sideways made the home page hard to scroll); a mouse drag, a sideways
- *  trackpad swipe or Shift+wheel moves the row, and a soft fade marks each
+ *  sideways made the home page hard to scroll); a sideways swipe (trackpad,
+ *  tilt wheel, Shift+wheel) or a mouse drag moves the row, and a soft fade marks each
  *  side that has more; clicking a fade moves the row by about 80% of its
  *  width. */
 function WideRowShelf({ title, showAllHref, tiles, className }: { title: string; showAllHref?: string; tiles: ReactNode[]; className?: string }) {
@@ -127,6 +127,24 @@ function WideRowShelf({ title, showAllHref, tiles, className }: { title: string;
   const count = tiles.length;
   // Mouse drag scrolls the row; the click that ends a drag opens nothing.
   useDragScroll(rowRef);
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    // A sideways swipe (trackpad, tilt wheel, Shift+wheel) moves the row
+    // while it can go that way. Done here rather than left to the browser so
+    // it works the same everywhere and a swipe at the row's end never turns
+    // into the browser's back/forward gesture. Up and down is the page's.
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if ((e.deltaX > 0 && el.scrollLeft < max - 1) || (e.deltaX < 0 && el.scrollLeft > 1)) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaX;
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
   useEffect(() => {
     const el = rowRef.current;
     if (!el) return;
