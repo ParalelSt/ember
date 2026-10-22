@@ -728,7 +728,7 @@ export function TransferFlow({
                       >
                         <UploadIcon className="h-5 w-5 text-muted-foreground" />
                         <span className="text-sm">{file ? file.name : 'Choose a file'}</span>
-                        <span className="text-xs text-muted-foreground">Spotify's zip, YourLibrary.json, or a .csv</span>
+                        <span className="text-xs text-muted-foreground">The zip from Spotify, YourLibrary.json, or a .csv</span>
                       </button>
                     </div>
                   )}

@@ -22,7 +22,7 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 }));
 vi.mock('@/hooks/useLibrary', () => ({ useQueryPlaylists: () => ({ data: [] }) }));
 vi.mock('@/hooks/useNavPlaylists', () => ({
-  useNavPlaylists: (items: unknown[]) => ({ items, onOpen: vi.fn(), onTogglePin: vi.fn() }),
+  useNavPlaylists: (items: unknown[]) => ({ items, onOpen: vi.fn(), onTogglePin: vi.fn(), holdProps: {} }),
 }));
 vi.mock('@/hooks/useChangelog', () => ({ useChangelog: () => ({ hasNew: false }) }));
 vi.mock('@/hooks/useCreatePlaylistFlow', () => ({
