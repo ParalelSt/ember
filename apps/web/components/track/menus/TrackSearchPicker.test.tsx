@@ -113,3 +113,37 @@ describe('TrackSearchPicker in a height-capped dialog', () => {
     expect(list.parentElement!.parentElement).toHaveClass('min-h-0');
   });
 });
+
+describe('TrackSearchPicker Add and Added pills', () => {
+  it('Add adds; with onRemove an Added pill takes the song out again', async () => {
+    api.search.mockResolvedValue({ tracks: [inPlaylist[0], fresh] });
+    const onAdd = vi.fn();
+    const onRemove = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <TrackSearchPicker added={[inPlaylist[0]]} onAdd={onAdd} onRemove={onRemove} />
+      </QueryClientProvider>,
+    );
+    fireEvent.change(screen.getByPlaceholderText('Search for songs to add…'), { target: { value: 'oasis' } });
+    const added = await screen.findByRole('button', { name: 'Remove Wonderwall' }, { timeout: 2000 });
+    expect(added).toHaveAttribute('aria-pressed', 'true');
+    expect(added).toHaveTextContent('Added');
+    fireEvent.click(added);
+    expect(onRemove).toHaveBeenCalledWith(inPlaylist[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Live Forever' }));
+    expect(onAdd).toHaveBeenCalledWith(fresh);
+  });
+
+  it('without onRemove the Added pill is only a marker', async () => {
+    api.search.mockResolvedValue({ tracks: [inPlaylist[0]] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <TrackSearchPicker added={[inPlaylist[0]]} onAdd={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    fireEvent.change(screen.getByPlaceholderText('Search for songs to add…'), { target: { value: 'oasis' } });
+    expect(await screen.findByRole('button', { name: 'Added' }, { timeout: 2000 })).toBeDisabled();
+  });
+});

@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
 import { ImportLinkForm } from '@/components/track/menus/ImportLinkForm';
-import { LinkIcon, PlusIcon, TrashIcon } from '@/components/icons';
+import { CollectionCover } from '@/components/primitives/CollectionCover';
 import { formatCount } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
@@ -21,8 +21,8 @@ import type { Track } from '@/types/track';
 type Mode = 'empty' | 'import';
 
 const TABS: { id: Mode; label: string }[] = [
-  { id: 'empty', label: 'Start empty' },
-  { id: 'import', label: 'Import from a link' },
+  { id: 'empty', label: 'Start new' },
+  { id: 'import', label: 'Import a link' },
 ];
 
 interface Props {
@@ -39,10 +39,12 @@ interface Props {
   onImported?: (playlistId: string) => void;
 }
 
-/** In-app "New playlist" dialog. Two tabs (the approved /dizajn "Tabs"
- *  choice): "Start empty" is the name field and track picker, seeded with
- *  songs at creation time; "Import from a link" brings over a Spotify or
- *  YouTube Music playlist, which then fills in on the server. */
+/** In-app "New playlist" dialog, all on one page (the owner's newplaylist1
+ *  pick): a Start new / Import a link switch; Start new is a live cover that
+ *  fills in with the songs added (one cover, then a 2x2 mosaic from four),
+ *  the name beside it, then search and suggestions, and Create says how many
+ *  songs come along. Import a link brings over a Spotify or YouTube Music
+ *  playlist, which then fills in on the server. */
 export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTracks, onImported }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('empty');
@@ -87,13 +89,15 @@ export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTrac
     router.push(`/playlist/${playlistId}`);
   };
 
+  const covers = selected.map((t) => t.artworkUrl).filter((u): u is string => !!u);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col" data-testid="create-playlist-dialog">
+      <DialogContent className="sm:max-w-xl max-h-[90vh] flex flex-col gap-block" data-testid="create-playlist-dialog">
         <DialogHeader>
           <DialogTitle>New playlist</DialogTitle>
         </DialogHeader>
-        <div role="tablist" aria-label="New playlist" className="flex gap-stack border-b border-border">
+        <div role="tablist" aria-label="New playlist" className="grid grid-cols-2 rounded-full bg-background p-inset">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -102,11 +106,10 @@ export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTrac
               aria-selected={mode === t.id}
               onClick={() => setMode(t.id)}
               className={cn(
-                '-mb-px flex items-center gap-cluster border-b-2 pb-cluster text-sm font-medium transition-colors',
-                mode === t.id ? 'border-ember text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+                'h-9 rounded-full text-sm font-semibold transition-colors',
+                mode === t.id ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {t.id === 'import' ? <LinkIcon className="h-3.5 w-3.5" /> : <PlusIcon className="h-3.5 w-3.5" />}
               {t.label}
             </button>
           ))}
@@ -116,58 +119,41 @@ export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTrac
           <ImportLinkForm onCancel={() => onOpenChange(false)} onCreated={imported} />
         ) : (
           <form onSubmit={submit} className="flex min-h-0 flex-col gap-block">
-            <Input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Playlist name (e.g. Metal)"
-              maxLength={120}
-              required
-            />
-
-            {selected.length > 0 && (
-              <div className="flex flex-col gap-cluster">
-                <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
-                  {formatCount(selected.length, 'track')} to add
-                </div>
-                <div className="-mx-inset flex max-h-32 flex-col gap-inset overflow-y-auto px-inset">
-                  {selected.map((t) => (
-                    <div key={t.id} className="flex items-center gap-cluster rounded-md px-cluster py-inset hover:bg-accent/60">
-                      <span className="min-w-0 flex-1 truncate text-sm">
-                        <span className="font-medium">{t.title}</span>
-                        <span className="text-muted-foreground">, {t.artist}</span>
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => removeTrack(t)}
-                        aria-label="Remove"
-                      >
-                        <TrashIcon className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+            <div className="flex items-center gap-block">
+              <CollectionCover
+                src={covers[0] ?? null}
+                mosaic={covers}
+                icon={null}
+                className="size-22 shrink-0 rounded-xl shadow-lg"
+              />
+              <div className="flex min-w-0 flex-1 flex-col gap-cluster">
+                <Input
+                  autoFocus
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Name your playlist"
+                  aria-label="Playlist name"
+                  maxLength={120}
+                  required
+                  className="h-11 rounded-xl text-base"
+                />
+                <span data-testid="added-count" className="text-xs text-muted-foreground">
+                  {selected.length ? `${formatCount(selected.length, 'song')} added` : 'Songs you add show in the cover'}
+                </span>
               </div>
-            )}
+            </div>
 
-            <TrackSearchPicker added={selected} seeds={selected} onAdd={addTrack} />
+            <TrackSearchPicker added={selected} seeds={selected} onAdd={addTrack} onRemove={removeTrack} />
 
-            <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            <DialogFooter className="border-t border-border pt-row">
+              <Button type="button" variant="ghost" className="rounded-full" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={busy || !name.trim()}
-                variant="ember"
-              >
+              <Button type="submit" disabled={busy || !name.trim()} variant="ember" className="rounded-full px-stack">
                 {busy
                   ? 'Creating…'
                   : selected.length
-                    ? `Create + add ${selected.length}`
+                    ? `Create with ${formatCount(selected.length, 'song')}`
                     : 'Create'}
               </Button>
             </DialogFooter>

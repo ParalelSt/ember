@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { SearchIcon, PlusIcon, RefreshIcon, PlayIcon, PauseIcon } from '@/components/icons';
+import { CheckIcon, SearchIcon, PlusIcon, RefreshIcon, PlayIcon, PauseIcon } from '@/components/icons';
 import { TrackRow } from '@/components/track/TrackRow';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { exclusionKeys, identityKeys, isExcluded, MAX_EXCLUDE_KEYS } from '@/lib/trackIdentity';
@@ -26,6 +26,9 @@ interface Props {
    *  generic/trending recommendations from the YouTube endpoint. */
   seeds?: Track[];
   onAdd: (track: Track) => void;
+  /** Given, an "Added" pill takes the song back out again (the New playlist
+   *  dialog); without it the pill is just a disabled marker. */
+  onRemove?: (track: Track) => void;
   /** Replaces the Add button (a carlist asks Play next or Add to end).
    *  `isAdded`: the track is in `added` already. */
   renderAdd?: (track: Track, isAdded: boolean) => ReactNode;
@@ -36,7 +39,7 @@ interface Props {
  *  CreatePlaylistDialog and on the playlist detail page. Behaves like the
  *  main /search page (debounced, same `api.search`), with a recommendations
  *  fallback when the input is empty. */
-export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, className }: Props) {
+export function TrackSearchPicker({ added = [], seeds = [], onAdd, onRemove, renderAdd, className }: Props) {
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
@@ -92,7 +95,7 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, cl
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search for songs to add…"
-          className="pl-10"
+          className="h-10 rounded-full pl-10"
         />
       </div>
 
@@ -166,15 +169,19 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, cl
                   {renderAdd ? (
                     renderAdd(t, isAdded)
                   ) : (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onAdd(t)}
-                      disabled={isAdded}
-                      className={cn('h-8 shrink-0 gap-1', isAdded && 'text-muted-foreground')}
+                    <button
+                      type="button"
+                      onClick={() => (isAdded ? onRemove?.(t) : onAdd(t))}
+                      disabled={isAdded && !onRemove}
+                      aria-pressed={isAdded}
+                      aria-label={isAdded ? (onRemove ? `Remove ${t.title}` : 'Added') : `Add ${t.title}`}
+                      className={cn(
+                        'inline-flex h-8 shrink-0 items-center gap-inset rounded-full border px-row text-xs font-semibold transition-colors',
+                        isAdded ? 'border-transparent bg-ember/15 text-ember' : 'border-border hover:bg-accent',
+                      )}
                     >
-                      {isAdded ? 'Added' : (<><PlusIcon className="h-3.5 w-3.5" /> Add</>)}
-                    </Button>
+                      {isAdded ? (<><CheckIcon className="h-3.5 w-3.5" /> Added</>) : (<><PlusIcon className="h-3.5 w-3.5" /> Add</>)}
+                    </button>
                   )}
                 </>
               }

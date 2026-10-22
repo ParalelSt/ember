@@ -16,10 +16,22 @@ vi.mock('@/components/ui/button', () => ({
   Button: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
 }));
 vi.mock('@/components/ui/input', () => ({ Input: (props: ComponentProps<'input'>) => <input {...props} /> }));
-vi.mock('@/components/track/menus/TrackSearchPicker', () => ({ TrackSearchPicker: () => <div data-testid="picker" /> }));
+vi.mock('@/components/track/menus/TrackSearchPicker', () => ({
+  TrackSearchPicker: ({ onAdd, onRemove }: { onAdd: (t: unknown) => void; onRemove: (t: unknown) => void }) => (
+    <div data-testid="picker">
+      <button type="button" onClick={() => onAdd(SONG)}>pick song</button>
+      <button type="button" onClick={() => onRemove(SONG)}>unpick song</button>
+    </div>
+  ),
+}));
 vi.mock('@/lib/logger/client', () => ({ logger: { breadcrumb: vi.fn() } }));
 const api = vi.hoisted(() => ({ importInspect: vi.fn(), importStart: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api }));
+
+const SONG = vi.hoisted(() => ({
+  id: 'youtube:a', source: 'youtube', sourceId: 'a', title: 'Song', artist: 'A', artistId: null,
+  album: null, albumId: null, durationSec: 1, artworkUrl: 'https://i.ytimg.com/vi/a/hq.jpg', streamUrl: '',
+}));
 
 const { CreatePlaylistDialog } = await import('./CreatePlaylistDialog');
 
@@ -44,19 +56,19 @@ beforeEach(() => {
 });
 
 describe('CreatePlaylistDialog tabs', () => {
-  it('opens on "Start empty": the name field and the song picker', () => {
+  it('opens on "Start new": the cover, the name field and the song picker', () => {
     setup();
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Start empty', 'Import from a link']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Start new', 'Import a link']);
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByPlaceholderText('Playlist name (e.g. Metal)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Playlist name')).toBeInTheDocument();
     expect(screen.getByTestId('picker')).toBeInTheDocument();
     expect(screen.queryByLabelText('Playlist link')).toBeNull();
   });
 
-  it('"Start empty" still creates with the typed name', async () => {
+  it('"Start new" still creates with the typed name', async () => {
     const p = setup();
-    fireEvent.change(screen.getByPlaceholderText('Playlist name (e.g. Metal)'), { target: { value: ' Metal ' } });
+    fireEvent.change(screen.getByLabelText('Playlist name'), { target: { value: ' Metal ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
     await waitFor(() => expect(p.onCreate).toHaveBeenCalledWith('Metal', []));
     await waitFor(() => expect(p.onOpenChange).toHaveBeenCalledWith(false));
@@ -65,8 +77,8 @@ describe('CreatePlaylistDialog tabs', () => {
   it('"Import from a link": a pasted link is looked up and previewed', async () => {
     api.importInspect.mockResolvedValue({ source: 'spotify', id: 'x', name: 'Late night drive', coverUrl: null, items, truncated: false });
     setup();
-    fireEvent.click(screen.getByRole('tab', { name: /Import from a link/ }));
-    expect(screen.getByRole('tab', { name: /Import from a link/ })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: /Import a link/ }));
+    expect(screen.getByRole('tab', { name: /Import a link/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
     await screen.findByTestId('link-preview');
@@ -81,7 +93,7 @@ describe('CreatePlaylistDialog tabs', () => {
   it('a Spotify playlist cut at 100 says so', async () => {
     api.importInspect.mockResolvedValue({ source: 'spotify', id: 'x', name: 'Long', coverUrl: null, items, truncated: true });
     setup();
-    fireEvent.click(screen.getByRole('tab', { name: /Import from a link/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Import a link/ }));
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
     expect(await screen.findByTestId('first-100-note')).toHaveTextContent('First 100 songs.');
   });
@@ -90,7 +102,7 @@ describe('CreatePlaylistDialog tabs', () => {
     api.importInspect.mockResolvedValue({ source: 'spotify', id: 'x', name: 'Late night drive', coverUrl: null, items, truncated: false });
     api.importStart.mockResolvedValue({ playlistId: 'p1', job: { source: 'spotify', total: 42 } });
     const p = setup();
-    fireEvent.click(screen.getByRole('tab', { name: /Import from a link/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Import a link/ }));
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
     fireEvent.click(await screen.findByRole('button', { name: 'Create, import 42 songs' }));
     await waitFor(() => expect(api.importStart).toHaveBeenCalledWith(LINK));
@@ -102,7 +114,7 @@ describe('CreatePlaylistDialog tabs', () => {
   it('a link Ember cannot read is never sent; a failed look-up shows the reason', async () => {
     api.importInspect.mockRejectedValue(new Error("Couldn't find that playlist."));
     setup();
-    fireEvent.click(screen.getByRole('tab', { name: /Import from a link/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Import a link/ }));
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: 'https://example.com/x' } });
     expect(screen.getByText(/not a playlist link/)).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 450));
@@ -111,7 +123,7 @@ describe('CreatePlaylistDialog tabs', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't find that playlist.");
   });
 
-  it('reopening starts on "Start empty" again', () => {
+  it('reopening starts on "Start new" again', () => {
     const qc = new QueryClient();
     const props = { onOpenChange: vi.fn(), onCreate: vi.fn() };
     const { rerender } = render(
@@ -119,7 +131,7 @@ describe('CreatePlaylistDialog tabs', () => {
         <CreatePlaylistDialog open {...props} />
       </QueryClientProvider>,
     );
-    fireEvent.click(screen.getByRole('tab', { name: /Import from a link/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Import a link/ }));
     for (const open of [false, true]) {
       rerender(
         <QueryClientProvider client={qc}>
@@ -127,6 +139,6 @@ describe('CreatePlaylistDialog tabs', () => {
         </QueryClientProvider>,
       );
     }
-    expect(screen.getByRole('tab', { name: 'Start empty' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Start new' })).toHaveAttribute('aria-selected', 'true');
   });
 });
