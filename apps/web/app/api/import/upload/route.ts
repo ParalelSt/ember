@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { rateLimitResponse } from '@/lib/rateLimit';
+import { rateLimitResponse, releaseRateLimitHit } from '@/lib/rateLimit';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { createImportJob } from '@/lib/import/store';
 import { kickImportRunner } from '@/lib/import/runnerInstance';
@@ -61,37 +61,47 @@ export const POST = withRequestLog('import/upload', async (request: NextRequest)
     // The Transfer page fires a preview for every source it reads, which would
     // otherwise burn the 5-per-hour limit before the user ever presses
     // Import (see the branch above, which returns before this line).
-    const limited = rateLimitResponse(`import-upload:${user.id}`, { windowMs: 3_600_000, max: 5 });
+    const limitKey = `import-upload:${user.id}`;
+    const limited = rateLimitResponse(limitKey, { windowMs: 3_600_000, max: 5 });
     if (limited) return limited;
+    // The hit is spent up front, so two starts at once cannot both slip
+    // under the cap, and given back when nothing was queued: a refused or
+    // failed start is not one of the five (autofix 2026-10-18, where
+    // retries after refusals locked a person out for an hour).
+    let queued = false;
+    try {
+      // A YourLibrary.json cannot be split by hand, so it starts with the
+      // first 10 000 (the parser already cut it); anything else is refused.
+      if (parsed.truncated && parsed.kind !== 'spotify-export') return jsonError(OVER_CAP_MESSAGE, 413);
+      if (!parsed.items.length) return jsonError('There are no songs in that.', 422);
 
-    // A YourLibrary.json cannot be split by hand, so it starts with the
-    // first 10 000 (the parser already cut it); anything else is refused.
-    if (parsed.truncated && parsed.kind !== 'spotify-export') return jsonError(OVER_CAP_MESSAGE, 413);
-    if (!parsed.items.length) return jsonError('There are no songs in that.', 422);
-
-    const destination: JobKind = read.destination === 'playlist' ? 'playlist' : 'liked';
-    let items = parsed.items;
-    let existing = 0;
-    if (destination === 'liked' && read.skipLiked) {
-      const { fresh, liked } = splitAlreadyLiked(parsed.items, await likedIndexFor(admin, user.id));
-      if (!fresh.length) return jsonError(ALL_LIKED_MESSAGE, 422);
-      items = fresh;
-      existing = liked.length;
+      const destination: JobKind = read.destination === 'playlist' ? 'playlist' : 'liked';
+      let items = parsed.items;
+      let existing = 0;
+      if (destination === 'liked' && read.skipLiked) {
+        const { fresh, liked } = splitAlreadyLiked(parsed.items, await likedIndexFor(admin, user.id));
+        if (!fresh.length) return jsonError(ALL_LIKED_MESSAGE, 422);
+        items = fresh;
+        existing = liked.length;
+      }
+      const { job, playlistId } = await createImportJob(admin, {
+        userId: user.id,
+        source: jobSourceFor(parsed.kind),
+        sourceId: parsed.kind,
+        sourceUrl: '',
+        name: destination === 'liked' ? parsed.label : parsed.label.replace(/^Liked songs from /, ''),
+        coverUrl: null,
+        kind: destination,
+        order: parsed.order,
+        items,
+        ...(existing ? { existing } : {}),
+      });
+      queued = true;
+      kickImportRunner();
+      return Response.json({ job, playlistId }, { status: 201 });
+    } finally {
+      if (!queued) releaseRateLimitHit(limitKey);
     }
-    const { job, playlistId } = await createImportJob(admin, {
-      userId: user.id,
-      source: jobSourceFor(parsed.kind),
-      sourceId: parsed.kind,
-      sourceUrl: '',
-      name: destination === 'liked' ? parsed.label : parsed.label.replace(/^Liked songs from /, ''),
-      coverUrl: null,
-      kind: destination,
-      order: parsed.order,
-      items,
-      ...(existing ? { existing } : {}),
-    });
-    kickImportRunner();
-    return Response.json({ job, playlistId }, { status: 201 });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);

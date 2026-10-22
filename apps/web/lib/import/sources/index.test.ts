@@ -12,6 +12,7 @@ import {
   UTF16_MESSAGE,
   ZIP_MESSAGE,
 } from '@/lib/import/sources/index';
+import { makeZip } from '@/lib/import/sources/testZip';
 
 const FIXTURES = path.resolve(__dirname, '../../../../../tests/fixtures/imports/transfer');
 const bytes = (name: string) => new Uint8Array(readFileSync(path.join(FIXTURES, name)));
@@ -34,9 +35,29 @@ describe('decodeText', () => {
     expect(decodeText(bytes('utf16.sample.csv'))).toEqual({ error: UTF16_MESSAGE });
   });
 
-  it('turns a zip away with the one thing the person can do about it', () => {
-    const zip = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00]);
-    expect(decodeText(zip)).toEqual({ error: ZIP_MESSAGE });
+  it('turns a zip with no YourLibrary.json away with the one thing the person can do about it', () => {
+    const broken = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00]);
+    expect(decodeText(broken)).toEqual({ error: ZIP_MESSAGE });
+    const history = makeZip([{ name: 'MyData/StreamingHistory0.json', data: '[]' }]);
+    expect(decodeText(history)).toEqual({ error: ZIP_MESSAGE });
+  });
+
+  it('[autofix 2026-10-18] reads YourLibrary.json straight out of the Spotify zip', () => {
+    const zip = makeZip([
+      { name: 'Spotify Account Data/Read Me First.pdf', data: '%PDF', stored: true },
+      { name: 'Spotify Account Data/YourLibrary.json', data: text('YourLibrary.sample.json') },
+    ]);
+    expect(decodeText(zip)).toBe(text('YourLibrary.sample.json'));
+    const fromZip = parse({ filename: 'my_spotify_data.zip', bytes: zip });
+    const fromJson = parse({ filename: 'YourLibrary.json', bytes: bytes('YourLibrary.sample.json') });
+    expect(fromZip.kind).toBe('spotify-export');
+    expect(fromZip.items).toEqual(fromJson.items);
+  });
+
+  it('does not follow a zip inside the zip', () => {
+    const inner = makeZip([{ name: 'YourLibrary.json', data: '{}' }]);
+    const outer = makeZip([{ name: 'YourLibrary.json', data: inner, stored: true }]);
+    expect(decodeText(outer)).toEqual({ error: ZIP_MESSAGE });
   });
 
   it('refuses bytes that are not text at all', () => {

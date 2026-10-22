@@ -67,6 +67,13 @@ describe('the real limits, said where the path shows up', () => {
     expect(SPOTIFY_LINK_CAP).toContain('100');
   });
 
+  it('[autofix 2026-10-18] the Spotify export steps take the zip as emailed', () => {
+    const exportRoute = serviceById('spotify').routes.find((r) => r.id === 'spotify-export')!;
+    const steps = exportRoute.steps.join(' ');
+    expect(steps).toMatch(/No need to unzip/);
+    expect(steps).not.toMatch(/^Unzip|\. Unzip/);
+  });
+
   it('Apple Music is the privacy copy and nothing else', () => {
     const apple = serviceById('apple');
     expect(apple.routes).toHaveLength(1);

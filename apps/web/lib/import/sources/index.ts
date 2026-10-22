@@ -2,7 +2,8 @@
  *
  *  What arrives is a file nobody checked or a box someone pasted into, so
  *  the shape is worked out from the content rather than trusted from the
- *  name: a zip is turned away with a sentence that says what to do instead,
+ *  name: a Spotify export zip is opened and its YourLibrary.json read, any
+ *  other zip is turned away with a sentence that says what to do instead,
  *  UTF-16 is turned away because a silent mojibake import is worse than a
  *  refusal, JSON goes to the Spotify export reader, a header row goes to the
  *  CSV sniffer and anything else is read as pasted lines.
@@ -17,6 +18,7 @@ import { dedupeItems } from '@/lib/import/sources/dedupe';
 import { parsePaste } from '@/lib/import/sources/paste';
 import { parseSpotifyExport } from '@/lib/import/sources/spotifyExport';
 import { isParseError, type ParseError, type ParsedSource } from '@/lib/import/sources/types';
+import { listZip, readZipEntry } from '@/lib/import/sources/zip';
 
 /** How many songs of a kind the preview names. */
 export const SAMPLE_SIZE = 5;
@@ -27,7 +29,7 @@ export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 export const TOO_LARGE_MESSAGE = 'That file is over 20 MB. Ember reads song lists, not whole libraries of audio.';
 export const ZIP_MESSAGE =
-  'That is a zip. Unzip it and upload the YourLibrary.json inside (Spotify puts it in the my_spotify_data folder).';
+  'That zip has no YourLibrary.json in it. Upload the "Account data" zip Spotify emailed you, or the YourLibrary.json from inside it.';
 export const UTF16_MESSAGE =
   'Ember could not read that file: it is saved as UTF-16. Save it again as UTF-8 (or as CSV UTF-8 from a spreadsheet) and upload it once more.';
 
@@ -50,7 +52,12 @@ const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
 /** Bytes to text, or a sentence saying why not. */
 export function decodeText(bytes: Uint8Array): string | ParseError {
   if (tooLarge(bytes.length)) return { error: TOO_LARGE_MESSAGE };
-  if (ZIP_MAGIC.every((b, i) => bytes[i] === b)) return { error: ZIP_MESSAGE };
+  if (ZIP_MAGIC.every((b, i) => bytes[i] === b)) {
+    const inner = spotifyLibraryFromZip(bytes);
+    // A zip inside the zip is not followed: back to the sentence.
+    if (!inner || ZIP_MAGIC.every((b, i) => inner[i] === b)) return { error: ZIP_MESSAGE };
+    return decodeText(inner);
+  }
   // UTF-16 by its mark, or by the NUL bytes a UTF-16 file is full of. A
   // NUL is legal UTF-8, so a decoder alone would let it through as
   // gibberish.
@@ -64,6 +71,14 @@ export function decodeText(bytes: Uint8Array): string | ParseError {
   } catch {
     return { error: 'Ember could not read that file as text. Save it as UTF-8 and try again.' };
   }
+}
+
+/** The YourLibrary.json inside a Spotify export zip, or a sentence saying
+ *  it is not there. Wherever it sits in the zip: Spotify has used both
+ *  "MyData/" and "Spotify Account Data/" as the folder. */
+function spotifyLibraryFromZip(bytes: Uint8Array): Uint8Array | null {
+  const entry = listZip(bytes)?.find((e) => /(^|\/)YourLibrary\.json$/i.test(e.name));
+  return entry ? readZipEntry(bytes, entry, MAX_UPLOAD_BYTES) : null;
 }
 
 /** Does the first line read as a header row Ember knows? */

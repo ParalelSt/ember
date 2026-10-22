@@ -90,8 +90,8 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         steps: [
           'In Spotify, go to Account, then Privacy settings.',
           'Choose "Download your data" and ask for it. Spotify emails you in a few days.',
-          'Unzip what arrives and find the file called YourLibrary.json.',
-          'Come back here and choose that file below.',
+          'Download the zip from the email. No need to unzip it.',
+          'Come back here and choose that zip below (or the YourLibrary.json inside it).',
         ],
         notes: [MATCHED_BY_NAME],
       },

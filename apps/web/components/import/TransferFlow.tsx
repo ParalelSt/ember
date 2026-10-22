@@ -716,7 +716,7 @@ export function TransferFlow({
                       <input
                         ref={fileInput}
                         type="file"
-                        accept=".json,.csv,.tsv,.txt,application/json,text/csv,text/plain"
+                        accept=".zip,.json,.csv,.tsv,.txt,application/zip,application/json,text/csv,text/plain"
                         aria-label="Song list file"
                         className="hidden"
                         onChange={chooseFile}
@@ -728,7 +728,7 @@ export function TransferFlow({
                       >
                         <UploadIcon className="h-5 w-5 text-muted-foreground" />
                         <span className="text-sm">{file ? file.name : 'Choose a file'}</span>
-                        <span className="text-xs text-muted-foreground">YourLibrary.json, or a .csv</span>
+                        <span className="text-xs text-muted-foreground">Spotify's zip, YourLibrary.json, or a .csv</span>
                       </button>
                     </div>
                   )}

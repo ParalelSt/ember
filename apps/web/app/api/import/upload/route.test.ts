@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { NextRequest } from 'next/server';
 import { MAX_UPLOAD_BYTES } from '@/lib/import/sources/index';
+import { makeZip } from '@/lib/import/sources/testZip';
 
 // The upload route with the store and the runner faked: what is checked here
 // is the gate (auth, rate limit, size), what the parser was handed, and the
@@ -20,11 +21,13 @@ vi.mock('@/lib/auth', () => ({
 }));
 const rateLimitKeys: string[] = [];
 const rateLimitMock = vi.fn(() => null as Response | null);
+const released: string[] = [];
 vi.mock('@/lib/rateLimit', () => ({
   rateLimitResponse: (key: string) => {
     rateLimitKeys.push(key);
     return rateLimitMock();
   },
+  releaseRateLimitHit: (key: string) => released.push(key),
 }));
 vi.mock('@/lib/upsertTrack', () => ({
   jsonError: (error: string, status: number) => Response.json({ error }, { status }),
@@ -81,6 +84,7 @@ beforeEach(() => {
   likedSongs.list = [];
   rateLimitMock.mockReturnValue(null);
   rateLimitKeys.length = 0;
+  released.length = 0;
   newImports.length = 0;
   createImportJob.mockClear();
   kick.mockClear();
@@ -122,10 +126,26 @@ describe('POST /api/import/upload, the gate', () => {
     expect((await body(res)).error).toContain('song column');
   });
 
-  it('a zip is refused with the one thing to do about it', async () => {
+  it('a zip with no YourLibrary.json is refused with the one thing to do about it', async () => {
     const res = await POST(fileRequest('my_spotify_data.zip', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0])), {});
     expect(res.status).toBe(422);
-    expect((await body(res)).error).toContain('Unzip it');
+    expect((await body(res)).error).toContain('YourLibrary.json');
+  });
+
+  it('[autofix 2026-10-18] the Spotify zip as emailed is read and queued', async () => {
+    const zip = makeZip([{ name: 'Spotify Account Data/YourLibrary.json', data: fixture('YourLibrary.sample.json') }]);
+    const res = await POST(fileRequest('my_spotify_data.zip', Buffer.from(zip)), {});
+    expect(res.status).toBe(201);
+    expect(newImports[0]).toMatchObject({ sourceId: 'spotify-export' });
+    expect(released).toEqual([]);
+  });
+
+  it('[autofix 2026-10-18] a start that queues nothing gives its hour slot back', async () => {
+    likedSongs.list = [];
+    createImportJob.mockRejectedValueOnce(new Error('pb down'));
+    expect((await POST(jsonRequest({ text: 'Daft Punk - One More Time' }), {})).status).toBe(500);
+    expect((await POST(jsonRequest({ text: 'title,artist\n' }), {})).status).toBe(422);
+    expect(released).toEqual(['import-upload:u1', 'import-upload:u1']);
   });
 
   it('a UTF-16 file is refused rather than read as gibberish', async () => {
