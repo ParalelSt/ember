@@ -28,9 +28,6 @@ export const INPUT_KEYS: readonly ThemeInputKey[] = [
   'sidebar',
 ];
 
-/** The three the editor shows first; the other five auto-fill from them. */
-export const BASIC_KEYS = ['background', 'accent', 'text'] as const satisfies readonly ThemeInputKey[];
-
 export const PRESET_IDS = ['ember', 'midnight', 'forest', 'nebula', 'mono'] as const;
 export type PresetId = (typeof PRESET_IDS)[number];
 
