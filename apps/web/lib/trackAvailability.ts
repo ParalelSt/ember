@@ -2,14 +2,13 @@ import 'server-only';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { serverLogger } from '@/lib/logger/server';
 import type { UnavailableReason } from '@/lib/sources/youtube';
+import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
 
 interface AvailabilityRow {
   id: string;
   unavailable_at?: string;
   unavailable_reason?: string;
 }
-
-const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
 export interface UnavailableMark {
   reason: UnavailableReason;

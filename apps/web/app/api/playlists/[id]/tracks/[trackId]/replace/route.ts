@@ -5,6 +5,7 @@ import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { notFound, playlistAccess } from '@/lib/playlistAccess';
+import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
 
 export const POST = withRequestLog('playlists/[id]/tracks/[trackId]/replace', async (
   request: NextRequest,
@@ -50,7 +51,3 @@ export const POST = withRequestLog('playlists/[id]/tracks/[trackId]/replace', as
     return fromError(e);
   }
 });
-
-function esc(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}

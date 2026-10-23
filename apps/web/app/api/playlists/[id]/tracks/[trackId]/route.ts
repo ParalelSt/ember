@@ -3,6 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { notFound, playlistAccess } from '@/lib/playlistAccess';
+import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
 
 export const DELETE = withRequestLog('playlists/[id]/tracks/[trackId]', async (
   _req: NextRequest,
@@ -33,7 +34,3 @@ export const DELETE = withRequestLog('playlists/[id]/tracks/[trackId]', async (
     return fromError(e);
   }
 });
-
-function esc(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}

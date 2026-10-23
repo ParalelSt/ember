@@ -7,12 +7,11 @@ import { itemFromRecord, itemRecord, jobFromRecord, pbDate, pbMillis, readyItem 
 import { syntheticLikedAt, transferBase, type SourceOrder } from '@/lib/import/likedAt';
 import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, JobKind, SourceItem } from '@/lib/import/types';
 import type { ItemResult, JobCounts, JobPatch, JobStore, PendingItem, RunnerJob } from '@/lib/import/runner';
+import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
 
 // PocketBase side of imports. Every write goes through the admin client:
 // the collections have no create/update rules (ensure_imports.pb.js), so
 // only the server moves a job along.
-
-const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
 function status(e: unknown): number | undefined {
   return (e as { status?: number } | undefined)?.status;

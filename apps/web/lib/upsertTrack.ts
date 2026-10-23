@@ -4,6 +4,7 @@ import type { ClientResponseError, RecordModel } from 'pocketbase';
 import type { Track } from '@/types/track';
 import { serverLogger } from '@/lib/logger/server';
 import { createCatalogClient } from '@/lib/pocketbase/server';
+import { escapeFilterValue as escape } from '@/lib/pocketbase/filterValue';
 
 /** Upserts a Track into the shared `tracks` collection by `external_id`.
  *  Returns the PocketBase record id so callers can use it in relations
@@ -135,11 +136,6 @@ function isUniqueConflict(e: unknown): boolean {
   // unique index trips. Treat any 400 from this insert as conflict, we already
   // know the only constrained field is external_id.
   return (e as ClientResponseError | undefined)?.status === 400;
-}
-
-// PB filter strings interpolate raw, escape user-controlled text.
-function escape(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 export function jsonError(message: string, status = 500) {
