@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { memo, useCallback, useLayoutEffect, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { TrackRow } from '@/components/track/TrackRow';
 import { CouldntPlaySection, couldntPlayEntries } from '@/components/player/CouldntPlaySection';
@@ -35,7 +35,10 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-export function QueueSheet({ open, onOpenChange }: Props) {
+/** Memoized: the player bar and the full-screen player that hold it
+ *  re-render on every playhead report, and an open queue can be thousands of
+ *  rows. Its own store reads (and NowProgress) still update it. */
+export const QueueSheet = memo(function QueueSheet({ open, onOpenChange }: Props) {
   const queue = usePlayerStore((s) => s.queue);
   const index = usePlayerStore((s) => s.index);
   const played = usePlayerStore((s) => s.played);
@@ -207,4 +210,4 @@ export function QueueSheet({ open, onOpenChange }: Props) {
       </SheetContent>
     </Sheet>
   );
-}
+});
