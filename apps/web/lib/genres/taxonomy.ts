@@ -229,11 +229,6 @@ export function chartOrder(slug: string): number {
   return i < 0 ? CHARTS.length : i;
 }
 
-/** The charts of one family (a family can have two: Rock, Hard Rock & Metal). */
-export function chartsOfFamily(family: FamilySlug): ChartDef[] {
-  return CHARTS.filter((c) => c.family === family);
-}
-
 // ---------------------------------------------------------------------------
 // Raw tags (Last.fm, MusicBrainz) to families.
 
