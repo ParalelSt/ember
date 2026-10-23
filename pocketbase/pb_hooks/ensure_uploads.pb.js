@@ -105,6 +105,11 @@ onAfterBootstrap((e) => {
       // installs get this from ensure_uploads_artwork instead.
       { name: "artwork_ext", type: "text", required: false, options: { max: 4 } },
       { name: "size_bytes", type: "number", required: false, options: { min: 0 } },
+      // Bumped when a cover is changed by hand (ensure_uploads_cover_version
+      // adds it to existing installs). Made here too: PocketBase runs the
+      // hook files in no fixed order, so that hook can run first on a fresh
+      // install, find no uploads, and leave the field out until a restart.
+      { name: "artwork_v", type: "number", required: false, options: { min: 0 } },
     ],
   });
   // A failed first-time create must not stop PocketBase from booting: warn

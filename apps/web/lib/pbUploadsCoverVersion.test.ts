@@ -53,3 +53,33 @@ describe('ensure_uploads_cover_version.pb.js', () => {
     expect(() => boot({ schema: { fields: [] } }, true)).not.toThrow();
   });
 });
+
+// PocketBase 0.22 runs the hook files in no fixed order (it reads them into a
+// Go map), so on a fresh install this hook can run before ensure_uploads has
+// made the collection and skip. ensure_uploads must then create the field
+// itself, or a cover changed by hand keeps its old, year-cached URL until the
+// next restart.
+describe('ensure_uploads.pb.js on a fresh install', () => {
+  it('creates uploads with artwork_v already in it', () => {
+    let hook: (() => void) | null = null;
+    let created: { schema: { name: string; type: string }[] } | null = null;
+    const dao = {
+      findCollectionByNameOrId: (name: string) => {
+        if (name === 'users') return { id: 'users_id' };
+        throw new Error('missing');
+      },
+      saveCollection: (c: typeof created) => (created = c),
+    };
+    vm.runInNewContext(
+      readFileSync(join(__dirname, '..', '..', '..', 'pocketbase', 'pb_hooks', 'ensure_uploads.pb.js'), 'utf8'),
+      {
+        onAfterBootstrap: (fn: () => void) => (hook = fn),
+        $app: { dao: () => dao },
+        Collection: function Collection(this: object, o: object) { Object.assign(this, o); },
+        console: { log: () => {}, warn: () => {} },
+      },
+    );
+    hook!();
+    expect(created!.schema.find((f) => f.name === 'artwork_v')).toMatchObject({ type: 'number', required: false });
+  });
+});
