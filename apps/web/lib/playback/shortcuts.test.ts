@@ -109,3 +109,12 @@ describe('shortcutFor: volume', () => {
     expect(press({ key: 'ArrowUp', repeat: true })).toMatchObject({ type: 'volumeBy', delta: 0.05 });
   });
 });
+
+describe('shortcutFor and a key already handled', () => {
+  it('ignores a key something under the focus already preventDefaulted', () => {
+    const state = { hasCurrent: true, volume: 0.5 };
+    expect(shortcutFor({ key: 'ArrowRight', defaultPrevented: true }, state)).toEqual({ type: 'ignore' });
+    expect(shortcutFor({ key: ' ', code: 'Space', defaultPrevented: true }, state)).toEqual({ type: 'ignore' });
+    expect(shortcutFor({ key: 'ArrowRight', defaultPrevented: false }, state)).toEqual({ type: 'seekBy', sec: 5 });
+  });
+});

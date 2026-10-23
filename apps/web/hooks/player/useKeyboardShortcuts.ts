@@ -23,7 +23,7 @@ export function useKeyboardShortcuts({
     const onKey = (e: KeyboardEvent) => {
       const st = usePlayerStore.getState();
       const action = shortcutFor(
-        { key: e.key, code: e.code, repeat: e.repeat, target: e.target as TypingTarget | null },
+        { key: e.key, code: e.code, repeat: e.repeat, target: e.target as TypingTarget | null, defaultPrevented: e.defaultPrevented },
         {
           hasCurrent: Boolean(st.queue[st.index]),
           volume: st.volume,

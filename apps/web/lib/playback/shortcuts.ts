@@ -27,6 +27,10 @@ export interface ShortcutEvent {
   code?: string;
   repeat?: boolean;
   target?: TypingTarget | null;
+  /** Something under the focus already handled the key (base-ui's Tabs and
+   *  RadioGroup move between their items on an arrow and preventDefault
+   *  without stopping it): it is not the player's. */
+  defaultPrevented?: boolean;
 }
 
 /** The parts of an event target that decide whether the user is typing. */
@@ -57,6 +61,7 @@ export function isTypingTarget(el: TypingTarget | null | undefined): boolean {
 }
 
 export function shortcutFor(event: ShortcutEvent, state: ShortcutState): ShortcutAction | null {
+  if (event.defaultPrevented) return { type: 'ignore' };
   if (isTypingTarget(event.target)) return { type: 'ignore' };
   if (!state.hasCurrent) return { type: 'ignore' };
 

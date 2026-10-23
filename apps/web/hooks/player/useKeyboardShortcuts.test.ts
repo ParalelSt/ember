@@ -160,3 +160,25 @@ describe('useKeyboardShortcuts', () => {
     expect(backend!.play).not.toHaveBeenCalled();
   });
 });
+
+describe('useKeyboardShortcuts and keys a control already handled', () => {
+  it('leaves an arrow key alone that a control under the focus took (tabs, a list), no seek, no volume change', () => {
+    const { backend } = setup();
+    const tab = document.createElement('div');
+    tab.setAttribute('role', 'tab');
+    tab.tabIndex = 0;
+    document.body.appendChild(tab);
+    // What base-ui's Tabs / RadioGroup do with an arrow key: move between
+    // their items and preventDefault, without stopping the event.
+    tab.addEventListener('keydown', (e) => e.preventDefault());
+
+    press({ key: 'ArrowRight' }, tab);
+    press({ key: 'ArrowUp' }, tab);
+    press({ key: ' ', code: 'Space' }, tab);
+
+    expect(backend!.seek).not.toHaveBeenCalled();
+    expect(backend!.play).not.toHaveBeenCalled();
+    expect(backend!.pause).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().volume).toBe(0.5);
+  });
+});
