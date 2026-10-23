@@ -90,12 +90,6 @@
     "weight": "fill"
   },
   {
-    "lucide": "Flame",
-    "app": "FlameIcon",
-    "name": "fire",
-    "weight": "fill"
-  },
-  {
     "lucide": "ChevronDown",
     "app": "ChevronDownIcon",
     "name": "caret-down",
