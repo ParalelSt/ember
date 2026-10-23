@@ -80,3 +80,22 @@ describe('playhead reports', () => {
     expect(clockRendered).toHaveBeenLastCalledWith(10);
   });
 });
+
+describe('playhead reports and the saved queue', () => {
+  it('are not each written to localStorage with the whole queue', () => {
+    const queue = Array.from({ length: 500 }, (_, i) => makeTrack({ id: `youtube:${i}`, title: `Song ${i}` }));
+    usePlayerStore.setState({ queue, index: 0 });
+    render(
+      <PlayerProvider>
+        <ListPage />
+      </PlayerProvider>,
+    );
+    const write = vi.spyOn(localStorage, 'setItem');
+    // 37 reports inside one second of wall clock: the playhead is saved at
+    // most once a second (usePositionPersistence noteTime).
+    for (let s = 1; s <= 10; s += 0.25) act(() => events!.onTime(s));
+    expect(write.mock.calls.filter(([key]) => key === 'ember.player.v1').length).toBeLessThanOrEqual(1);
+    expect(usePlayerStore.getState().position).toBe(10);
+    write.mockRestore();
+  });
+});
