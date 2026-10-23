@@ -6,6 +6,8 @@
  *  without a DOM. The network call is injected: the app passes the
  *  XMLHttpRequest one (lib/uploadXhr), tests pass a fake. */
 
+import { ALLOWED_TYPES } from './uploadTypes';
+
 /** Same cap as the server (lib/uploads MAX_UPLOAD_BYTES, MAX_UPLOAD_MB=50):
  *  checked here too so a too-big song fails at once instead of after
  *  sending 50 MB. The server still decides. */
@@ -14,14 +16,10 @@ export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 /** Songs going up at once. */
 export const UPLOAD_CONCURRENCY = 2;
 
-/** The audio the server accepts (lib/uploads ALLOWED_TYPES), by type and by
- *  extension: phones often hand over a file with no type at all. */
+/** The audio the server accepts (lib/uploadTypes ALLOWED_TYPES), by type and
+ *  by extension: phones often hand over a file with no type at all. */
 export const UPLOAD_ACCEPT = 'audio/*,.mp3,.m4a,.flac,.ogg,.opus,.wav,.webm';
 const AUDIO_EXTS = ['mp3', 'm4a', 'flac', 'ogg', 'opus', 'wav', 'webm'];
-const AUDIO_TYPES = [
-  'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/aac', 'audio/flac', 'audio/x-flac',
-  'audio/ogg', 'audio/opus', 'audio/wav', 'audio/x-wav', 'audio/webm',
-];
 
 export type UploadStatus = 'waiting' | 'uploading' | 'done' | 'failed';
 
@@ -72,7 +70,10 @@ export function rejectReason(file: File): string | null {
   if (file.size > MAX_UPLOAD_BYTES) return `Too large: the limit is ${MAX_UPLOAD_MB} MB`;
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   const type = (file.type || '').toLowerCase();
-  if (type ? AUDIO_TYPES.includes(type) || (type.startsWith('audio/') && AUDIO_EXTS.includes(ext)) : AUDIO_EXTS.includes(ext)) {
+  // A type the browser names must be one the server takes (it refuses any
+  // other with a 415 once the whole file is sent); with none, the server
+  // goes by the bytes, so the extension decides here.
+  if (type ? Object.hasOwn(ALLOWED_TYPES, type) : AUDIO_EXTS.includes(ext)) {
     return null;
   }
   return 'Not a supported audio file';

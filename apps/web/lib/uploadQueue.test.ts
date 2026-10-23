@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ALLOWED_TYPES } from './uploadTypes';
 import {
   MAX_UPLOAD_BYTES,
   createUploadQueue,
@@ -205,5 +206,14 @@ describe('rejectReason', () => {
     Object.defineProperty(edge, 'size', { value: MAX_UPLOAD_BYTES + 1 });
     expect(rejectReason(edge)).toMatch(/50 MB/);
     expect(rejectReason(song('a.txt', 1, 'text/plain'))).toBe('Not a supported audio file');
+  });
+
+  it('refuses at once an audio type the server would refuse after the upload (415)', () => {
+    expect(rejectReason(song('a.wav', 1, 'audio/wave'))).toBe('Not a supported audio file');
+    expect(rejectReason(song('a.mp3', 1, 'audio/x-mpeg'))).toBe('Not a supported audio file');
+  });
+
+  it('takes every type the server takes', () => {
+    for (const type of Object.keys(ALLOWED_TYPES)) expect(rejectReason(song('a.bin', 1, type))).toBeNull();
   });
 });

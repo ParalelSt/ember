@@ -21,22 +21,9 @@ export const UPLOAD_DIR = path.join(MUSIC_DIR, 'uploads');
 
 export const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_MB ?? 50) * 1024 * 1024;
 
-/** Accepted audio types → canonical extension. Anything else is rejected:
- *  this directory is served back to every member, so it holds audio only. */
-export const ALLOWED_TYPES: Record<string, string> = {
-  'audio/mpeg': '.mp3',
-  'audio/mp3': '.mp3',
-  'audio/mp4': '.m4a',
-  'audio/x-m4a': '.m4a',
-  'audio/aac': '.m4a',
-  'audio/flac': '.flac',
-  'audio/x-flac': '.flac',
-  'audio/ogg': '.ogg',
-  'audio/opus': '.opus',
-  'audio/wav': '.wav',
-  'audio/x-wav': '.wav',
-  'audio/webm': '.webm',
-};
+/** Accepted audio types -> canonical extension (shared with the browser's
+ *  own check, see lib/uploadTypes). */
+export { ALLOWED_TYPES } from './uploadTypes';
 
 export const MIME_BY_EXT: Record<string, string> = {
   '.mp3': 'audio/mpeg',
