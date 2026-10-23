@@ -16,8 +16,10 @@ export const DELETE = withRequestLog('blocked-tracks/[trackId]', async (_req: Ne
         .collection('blocked_tracks')
         .getFirstListItem(pb.filter('user = {:user} && track = {:track}', { user: user.id, track: trackRow.id }));
       await pb.collection('blocked_tracks').delete(row.id);
-    } catch {
-      // not blocked: nothing to do
+    } catch (e) {
+      // Not a known song, or not blocked: nothing to do. Any other failure
+      // left it blocked and must not answer as if it was undone.
+      if ((e as { status?: number } | undefined)?.status !== 404) throw e;
     }
     return Response.json({ ok: true });
   } catch (e) {
