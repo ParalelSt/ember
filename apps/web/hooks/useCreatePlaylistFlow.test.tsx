@@ -90,6 +90,25 @@ describe('useCreatePlaylistFlow', () => {
     expect(onCreated).not.toHaveBeenCalled();
   });
 
+  it('a song that fails to go in does not say the playlist was not created', async () => {
+    api.addToPlaylist
+      .mockResolvedValueOnce({ ok: true })
+      .mockRejectedValueOnce(Object.assign(new Error('offline'), { status: 0 }))
+      .mockRejectedValueOnce(Object.assign(new Error('already in this playlist'), { status: 409 }));
+    const onCreated = vi.fn();
+    const { result } = renderHook(() => useCreatePlaylistFlow(onCreated), { wrapper });
+
+    await act(async () => { await result.current.handleCreate('Road Trip', [makeTrack('t1'), makeTrack('t2'), makeTrack('t3')]); });
+
+    // Every song was tried, the one that failed is named, and the playlist
+    // (which exists) is opened, so nobody makes it a second time.
+    expect(api.addToPlaylist).toHaveBeenCalledTimes(3);
+    expect(toast.error).toHaveBeenCalledWith('Created "Road Trip", but 1 track couldn\'t be added. Please try adding it again.');
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(onCreated).toHaveBeenCalledTimes(1);
+    expect(router.push).toHaveBeenCalledWith('/playlist/p1');
+  });
+
   it('starts with the create dialog closed and exposes a setter', () => {
     const { result } = renderHook(() => useCreatePlaylistFlow(), { wrapper });
     expect(result.current.createOpen).toBe(false);

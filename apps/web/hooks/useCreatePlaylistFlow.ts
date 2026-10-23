@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useExecuteAddToPlaylist, useExecuteCreatePlaylist } from '@/hooks/useLibrary';
 import { formatCount } from '@/lib/format';
+import { isAlreadyInPlaylist } from '@/lib/playlistAdd';
 import type { Track } from '@/types/track';
 
 export interface UseCreatePlaylistFlowResult {
@@ -25,20 +26,47 @@ export function useCreatePlaylistFlow(onCreated?: () => void): UseCreatePlaylist
   const [createOpen, setCreateOpen] = useState(false);
 
   const handleCreate = async (name: string, tracks: Track[]) => {
+    let playlist;
     try {
-      const playlist = await createPlaylist.mutateAsync(name);
-      for (const t of tracks) {
-        await addToPlaylist.mutateAsync({ id: playlist.id, track: t });
-      }
-      toast.success(
-        tracks.length ? `Created "${playlist.name}" with ${formatCount(tracks.length, 'track')}` : `Created "${playlist.name}"`,
-      );
-      onCreated?.();
-      router.push(`/playlist/${playlist.id}`);
+      playlist = await createPlaylist.mutateAsync(name);
     } catch (e) {
       toast.error(`Couldn't create playlist: ${(e as Error).message}`);
+      return;
     }
+    // The playlist exists from here on, whatever happens to its songs.
+    const failed = await addTracks(playlist.id, tracks, (v) => addToPlaylist.mutateAsync(v));
+    createdToast(playlist.name, tracks.length, failed);
+    onCreated?.();
+    router.push(`/playlist/${playlist.id}`);
   };
 
   return { createOpen, setCreateOpen, handleCreate };
+}
+
+/** Adds `tracks` to a playlist that was just made, one after another, and
+ *  answers how many could not be added (one already there counts as in). */
+export async function addTracks(
+  id: string,
+  tracks: Track[],
+  add: (v: { id: string; track: Track }) => Promise<unknown>,
+): Promise<number> {
+  let failed = 0;
+  for (const track of tracks) {
+    try {
+      await add({ id, track });
+    } catch (e) {
+      if (!isAlreadyInPlaylist(e)) failed += 1;
+    }
+  }
+  return failed;
+}
+
+/** "Created ..." once the playlist exists: with its songs, or saying how
+ *  many of them did not make it (so nobody makes it a second time). */
+export function createdToast(name: string, count: number, failed: number) {
+  if (failed > 0) {
+    toast.error(`Created "${name}", but ${formatCount(failed, 'track')} couldn't be added. Please try adding ${failed === 1 ? 'it' : 'them'} again.`);
+  } else {
+    toast.success(count ? `Created "${name}" with ${formatCount(count, 'track')}` : `Created "${name}"`);
+  }
 }

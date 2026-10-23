@@ -21,12 +21,19 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
     </div>
   ),
 }));
-vi.mock('@/components/track/menus/CreatePlaylistDialog', () => ({ CreatePlaylistDialog: () => null }));
+const dialog = vi.hoisted(() => ({ onCreate: null as null | ((name: string, tracks: unknown[]) => Promise<unknown>) }));
+vi.mock('@/components/track/menus/CreatePlaylistDialog', () => ({
+  CreatePlaylistDialog: ({ onCreate }: { onCreate: (name: string, tracks: unknown[]) => Promise<unknown> }) => {
+    dialog.onCreate = onCreate;
+    return null;
+  },
+}));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), message: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
 const lib = vi.hoisted(() => ({
   addMutateAsync: vi.fn(),
+  createMutateAsync: vi.fn(),
   containing: vi.fn((): { data?: string[] } => ({ data: [] })),
 }));
 vi.mock('@/hooks/useLibrary', () => ({
@@ -38,7 +45,7 @@ vi.mock('@/hooks/useLibrary', () => ({
   }),
   useQueryPlaylistsContaining: lib.containing,
   useExecuteAddToPlaylist: () => ({ mutateAsync: lib.addMutateAsync }),
-  useExecuteCreatePlaylist: () => ({ mutateAsync: vi.fn() }),
+  useExecuteCreatePlaylist: () => ({ mutateAsync: lib.createMutateAsync }),
 }));
 
 const { AddToPlaylistMenu } = await import('./AddToPlaylistMenu');
@@ -138,5 +145,16 @@ describe('AddToPlaylistMenu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Mine' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Couldn\'t add "Song", please try again.'));
     expect(toast.message).not.toHaveBeenCalled();
+  });
+});
+
+describe('AddToPlaylistMenu New playlist', () => {
+  it('a song that fails to go into the new playlist does not say the playlist was not created', async () => {
+    lib.createMutateAsync.mockResolvedValue({ id: 'p9', name: 'Fresh' });
+    lib.addMutateAsync.mockRejectedValue(Object.assign(new Error('offline'), { status: 0 }));
+    render(<AddToPlaylistMenu track={track} />);
+    await dialog.onCreate!('Fresh', [track]);
+    expect(toast.error).toHaveBeenCalledWith('Created "Fresh", but 1 track couldn\'t be added. Please try adding it again.');
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringMatching(/Couldn't create/));
   });
 });
