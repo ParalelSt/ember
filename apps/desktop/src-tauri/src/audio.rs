@@ -428,18 +428,6 @@ impl AudioEngine {
         self.load_seq.load(Ordering::SeqCst) == seq
     }
 
-    /// Whether music is playing, or about to once its load lands. The
-    /// updater used to wait for this before installing; installing now only
-    /// happens in the launch gate, before the engine exists (src/gate.rs).
-    #[allow(dead_code)]
-    pub fn is_playing(&self) -> bool {
-        let Ok(g) = self.sink.lock() else { return false };
-        match g.as_ref() {
-            Some(s) => !s.is_paused() && !s.empty(),
-            None => self.load_in_flight() && self.want_play.load(Ordering::SeqCst),
-        }
-    }
-
     /// Whether the newest load is still connecting, buffering or decoding.
     fn load_in_flight(&self) -> bool {
         self.settled_seq.load(Ordering::SeqCst) < self.load_seq.load(Ordering::SeqCst)
