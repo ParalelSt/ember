@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { themeLocksHeld, withThemeLock } from './serverActive';
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -35,5 +35,24 @@ describe('withThemeLock', () => {
     await b;
     await flush();
     expect(themeLocksHeld()).toBe(0);
+  });
+});
+
+describe('withThemeLock across route bundles', () => {
+  it('a switch in one route waits for an edit-save in another', async () => {
+    // PATCH /api/theme and the /api/themes routes each bundle their own copy
+    // of this module in a production build (see lib/sources/failureMemo):
+    // a lock map per copy serialized nothing between them (bughunt N2).
+    const order: string[] = [];
+    let release!: () => void;
+    const save = withThemeLock('u5', () => new Promise<void>((r) => (release = r)).then(() => void order.push('edit-save')));
+    vi.resetModules();
+    const other = await import('./serverActive');
+    const change = other.withThemeLock('u5', async () => void order.push('switch'));
+    await flush();
+    expect(order).toEqual([]);
+    release();
+    await Promise.all([save, change]);
+    expect(order).toEqual(['edit-save', 'switch']);
   });
 });
