@@ -30,6 +30,11 @@ export default function AdminTracksPage() {
 
   const { data, isLoading, isFetching } = useQueryAdminTracks(page, committedSearch);
   const deleteTrack = useExecuteDeleteAdminTrack();
+  // The last page emptied (its last track deleted): step back to the new
+  // last page, or the empty list hides the pager and there is no way back.
+  if (data && data.tracks.length === 0 && page > 1 && data.totalPages < page) {
+    setPage(Math.max(1, data.totalPages));
+  }
 
   const [pendingDelete, setPendingDelete] = useState<AdminTrack | null>(null);
 
