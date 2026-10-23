@@ -164,3 +164,46 @@ describe('orphan cache file sweep (bughunt S06)', () => {
     expect(fs.existsSync(path.join(dir, `${VIDEO_C}.opus`))).toBe(true);
   });
 });
+
+describe('stale-track sweep', () => {
+  it('stops without deleting anything when the likes cannot be read', async () => {
+    const dir = tmpMusicDir();
+    writeCacheFile(dir, `${VIDEO_A}.m4a`);
+    const { runCleanup } = await freshCleanup(dir);
+    const fake = fakePocketBase({
+      tracks: [{ id: 't1', external_id: `youtube:${VIDEO_A}` }],
+      likes: [{ user: 'u1', track: 't1' }],
+    });
+    // A PocketBase hiccup (timeout, 5xx) on the likes read: the liked song
+    // must not look unreferenced, or its row and the like (cascade) go.
+    const pb = {
+      ...fake.pb,
+      collection: (name: string) => {
+        const col = fake.pb.collection(name);
+        if (name !== 'likes') return col;
+        return { ...col, getFullList: async () => Promise.reject(Object.assign(new Error('timeout'), { status: 0 })) };
+      },
+    } as typeof fake.pb;
+
+    await expect(runCleanup(pb)).rejects.toThrow('timeout');
+    expect(fake.rows.get('tracks')).toHaveLength(1);
+    expect(fs.existsSync(path.join(dir, `${VIDEO_A}.m4a`))).toBe(true);
+  });
+
+  it('a collection this install does not have yet just protects nothing', async () => {
+    const dir = tmpMusicDir();
+    const { runCleanup } = await freshCleanup(dir);
+    const fake = fakePocketBase({ tracks: [{ id: 't1', external_id: `youtube:${VIDEO_A}` }], likes: [{ track: 't1' }] });
+    const pb = {
+      ...fake.pb,
+      collection: (name: string) => {
+        const col = fake.pb.collection(name);
+        if (name !== 'recent_searches') return col;
+        return { ...col, getFullList: async () => Promise.reject(Object.assign(new Error('missing'), { status: 404 })) };
+      },
+    } as typeof fake.pb;
+
+    const report = await runCleanup(pb);
+    expect(report.protectedCount).toBe(1);
+  });
+});

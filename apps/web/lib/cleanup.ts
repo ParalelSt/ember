@@ -47,9 +47,13 @@ async function protectedTrackIds(pb: PocketBase): Promise<Set<string>> {
         const v = (r as unknown as Record<string, unknown>)[field];
         if (typeof v === 'string' && v) keep.add(v);
       }
-    } catch {
+    } catch (e) {
       // Collection may not exist on older deployments (sessions/recent_searches
       // arrive with their bootstrap hooks), absence just means nothing to keep.
+      // Any other failure stops the run: a list that could not be read would
+      // leave its songs looking unreferenced, and deleting one takes the
+      // like or playlist entry with it (cascade).
+      if ((e as { status?: number } | null)?.status !== 404) throw e;
     }
   };
   await collect('likes');
