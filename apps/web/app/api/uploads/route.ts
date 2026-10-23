@@ -36,8 +36,11 @@ export const GET = withRequestLog('uploads', async () => {
   try {
     await requireUser();
     const pb = await createAdminClient();
-    const rows = await pb.collection('uploads').getList(1, 200, { sort: '-created' });
-    return Response.json({ tracks: rows.items.map(mapUpload) });
+    // All of them, paged by the SDK: the library used to stop silently at
+    // the newest 200. Uploads are capped per person per hour, so the list
+    // stays small enough for one answer.
+    const rows = await pb.collection('uploads').getFullList({ sort: '-created' });
+    return Response.json({ tracks: rows.map(mapUpload) });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
