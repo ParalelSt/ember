@@ -145,6 +145,13 @@ describe('TrackRow (list density)', () => {
     expect(screen.getByRole('button', { name: 'Menu' })).toBeInTheDocument();
   });
 
+  // A Liked list or a queue can be thousands of rows: each fetched its
+  // cover the moment the list opened, off screen or not.
+  it('loads its cover lazily', () => {
+    const { container } = render(<TrackRow track={track} />);
+    expect(container.querySelector('img')).toHaveAttribute('loading', 'lazy');
+  });
+
   it('renders no artwork box for a track without art', () => {
     const { container } = render(<TrackRow track={{ ...track, artworkUrl: null }} />);
     expect(container.querySelector('img')).toBeNull();
