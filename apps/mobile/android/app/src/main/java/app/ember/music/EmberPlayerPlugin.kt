@@ -63,6 +63,13 @@ internal fun queueContextArgs(data: JSONObject): Bundle = Bundle().apply {
     putInt("baseCount", data.optInt("baseCount", 0).coerceAtLeast(0))
 }
 
+/** setQueue's `tracks` as media items, in order. A malformed entry (not an
+ *  object, no id) fails the whole list: thrown out of the plugin method,
+ *  Capacitor rethrows it on its plugin thread and the app goes down. */
+internal fun queueItemsArg(tracks: JSONArray, baseUrl: String, artAuthority: String?): Result<List<MediaItem>> =
+    runCatching { (0 until tracks.length()).map { TrackItems.toMediaItem(tracks.getJSONObject(it), baseUrl, artAuthority) } }
+        .recoverCatching { throw IllegalArgumentException("tracks must be songs") }
+
 /** The `unplayable` event's name, and its payload: { notices: [...] }, each
  *  { trackId, title, kind, reason, outcome } (lib/playback/unplayable.ts). */
 internal const val EVENT_UNPLAYABLE = "unplayable"
@@ -378,7 +385,10 @@ class EmberPlayerPlugin : Plugin() {
         // Optional (newer web builds): where the song starts, in seconds.
         val startMs = ((call.getDouble("startSec") ?: 0.0).coerceAtLeast(0.0) * 1000).toLong()
         val art = ArtworkUris.authority(context.packageName)
-        val items = (0 until tracks.length()).map { TrackItems.toMediaItem(tracks.getJSONObject(it), ServerConfig.baseUrl(context), art) }
+        val items = queueItemsArg(tracks, ServerConfig.baseUrl(context), art).getOrElse {
+            NativeLog.warn("player", "setQueue rejected: ${it.message}")
+            return call.reject(it.message)
+        }
         // Optional (newer web builds): where the queue came from, so the
         // native prefetch window wraps loop-all where the web player does.
         val queueContext = queueContextArgs(call.data)
