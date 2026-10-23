@@ -218,7 +218,11 @@ launch_ember() {
   local cmd pid where look
   if [ "$RELAUNCH" = systemd ]; then
     # The stop above ended the watchdog cleanly (exit 0), so systemd did not
-    # restart it by itself; start the unit again.
+    # restart it by itself; start the unit again. StartLimitBurst counts
+    # every start, this one too: a few updates (or an update and its
+    # rollback) within the unit's interval would have it refused, with Ember
+    # already stopped. This start is the owner's own, so clear the count.
+    systemctl --user reset-failed "$SYSTEMD_UNIT" 2>/dev/null || true
     systemctl --user start "$SYSTEMD_UNIT"
     where="through systemd"
     look="systemctl --user status ember      (its output: journalctl --user -u ember -f)"
