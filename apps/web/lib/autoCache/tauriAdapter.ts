@@ -23,9 +23,6 @@ import { sessionCookie, toAbsolute } from '@/lib/playback/tauriBackend';
 import { withPrefetchParam, type CacheAdapter, type CacheEntry, type CacheStats } from './adapter';
 import type { FetchResult } from './policy';
 
-/** Kept as a name for the tests and callers that speak of prefetch results. */
-export type PrefetchResult = FetchResult;
-
 /** Matches CAP_BYTES in cache.rs; replaced by the shell's own figure once
  *  `cache_stats` answers. */
 export const TAURI_CACHE_CAP_BYTES = 500 * 1024 * 1024;
