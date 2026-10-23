@@ -20,6 +20,16 @@ describe('codeFields', () => {
     for (const l of body) expect(l).toBe(line);
   });
 
+  it('cuts a single line longer than a field, which Discord would refuse whole', () => {
+    // A long client error message (a JSON parse error quoting the body, a
+    // minified React error) is one line on its own.
+    const long = 'q'.repeat(3000);
+    for (const fields of [codeFields('Evidence', `short\n${long}\nafter`), codeFields('Evidence', long, 6, 5000)]) {
+      expect(fields.length).toBeGreaterThan(0);
+      for (const f of fields) expect(f.value.length).toBeLessThanOrEqual(DISCORD_FIELD_CHARS);
+    }
+  });
+
   it('names continuation fields', () => {
     const line = 'y'.repeat(200);
     const names = codeFields('Errors', Array.from({ length: 30 }, () => line).join('\n')).map((f) => f.name);
