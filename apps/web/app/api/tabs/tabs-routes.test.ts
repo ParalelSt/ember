@@ -78,6 +78,22 @@ describe('POST /api/tabs/files', () => {
     expect(fs.existsSync(path.join(TAB_DIR, String(row.file)))).toBe(true);
   });
 
+  // Past the proxy's buffer a big file arrives cut short: formData() cannot
+  // read it, and the member was told "No file uploaded" instead of the limit.
+  it('a file far over the limit is refused by its declared size, before the body is read', async () => {
+    as(ALICE);
+    const res = await files.POST(
+      req('/api/tabs/files', {
+        method: 'POST',
+        headers: { 'content-type': 'multipart/form-data; boundary=x', 'content-length': String(60 * 1024 * 1024) },
+        body: '--x\r\nContent-Disposition: form-data; name="file"; filename="big.gp5"\r\n\r\ncut short',
+      }),
+      undefined as never,
+    );
+    expect(res.status).toBe(413);
+    expect(store.rows.get('tabs')).toHaveLength(0);
+  });
+
   it('401 without a user, and nothing is written', async () => {
     as(null);
     const res = await files.POST(uploadForm({ title: 'x' }), undefined as never);

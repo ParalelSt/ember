@@ -25,6 +25,10 @@ import { addedByNames, findTabs, formatOf, mapTab, songKeyOf } from '@/lib/tabSt
  *  is null. Visibility is enforced in lib/tabStore.ts. */
 
 const MAX_TEXT = 200;
+/** The multipart framing and the text fields on top of the file. */
+const MULTIPART_MARGIN = 64 * 1024;
+
+const tooLarge = () => jsonError(`File too large, the limit is ${Math.round(MAX_TAB_BYTES / 1024 / 1024)}MB`, 413);
 
 export const GET = withRequestLog('tabs/files', async (request: NextRequest) => {
   try {
@@ -57,14 +61,18 @@ export const POST = withRequestLog('tabs/files', async (request: NextRequest) =>
     const limited = rateLimitResponse(`tab-upload:${user.id}`, { windowMs: 60 * 60 * 1000, max: 40 });
     if (limited) return limited;
 
+    // The declared size first, as for song uploads (api/uploads): past the
+    // proxy's buffer a big file arrives cut short, formData() cannot read
+    // it, and the member would hear "No file uploaded" instead of the limit.
+    const declared = Number(request.headers.get('content-length') ?? 0);
+    if (Number.isFinite(declared) && declared > MAX_TAB_BYTES + MULTIPART_MARGIN) return tooLarge();
+
     const form = await request.formData().catch(() => null);
     const file = form?.get('file');
     if (!form || !(file instanceof File)) return jsonError('No file uploaded', 400);
 
     if (file.size === 0) return jsonError('That file is empty', 400);
-    if (file.size > MAX_TAB_BYTES) {
-      return jsonError(`File too large, the limit is ${Math.round(MAX_TAB_BYTES / 1024 / 1024)}MB`, 413);
-    }
+    if (file.size > MAX_TAB_BYTES) return tooLarge();
 
     const buf = Buffer.from(await file.arrayBuffer());
     const ext = sniffTab(buf);
