@@ -108,30 +108,6 @@ export function sourceChipLabel(tab: TabSummary, instrument?: string): string {
   return `File added by ${addedByLabel(tab)}, ${scope}`;
 }
 
-/** One line per tab in the chip's picker: "Guitar Pro file, Aron, Guitar",
- *  "Text tab, Aron, Guitar", "Songsterr, Tab with rhythm, 3 instruments",
- *  "Ultimate Guitar, Text tab, ver 2, ★ 4.7 (1,371 votes)". */
-export function pickerLabel(tab: TabSummary): string {
-  const parts: string[] = [];
-  if (tab.kind === 'fetched' && tab.source?.site === 'songsterr') {
-    const n = tab.source.instruments?.length ?? 0;
-    parts.push(tab.source.siteLabel, 'Tab with rhythm');
-    if (n > 0) parts.push(`${n} instrument${n === 1 ? '' : 's'}`);
-  } else if (tab.kind === 'fetched' && tab.source) {
-    parts.push(tab.source.siteLabel, tab.source.part === 'bass' ? 'Bass tab' : 'Text tab');
-    if (tab.source.version > 1) parts.push(`ver ${tab.source.version}`);
-    const rating = ratingLabel(tab.source);
-    if (rating) parts.push(rating);
-  }
-  else {
-    const musicXml = tab.format === 'musicxml' || tab.format === 'mxl';
-    parts.push(tab.kind === 'pasted' ? 'Text tab' : musicXml ? 'MusicXML file' : 'Guitar Pro file');
-    parts.push(tab.mine ? 'you' : (tab.addedBy ?? 'someone'));
-    if (tab.instrument) parts.push(tab.instrument);
-  }
-  return parts.join(', ');
-}
-
 /** What the page shows when there is no tab to draw (the tab page's
  *  "Songsterr list" empty state):
  *

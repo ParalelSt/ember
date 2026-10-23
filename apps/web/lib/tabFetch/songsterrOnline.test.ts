@@ -7,7 +7,7 @@ import * as alphaTab from '@coderline/alphatab';
 import type { RecordModel } from 'pocketbase';
 import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 import { findTabs, mapTab, songKeyOf } from '@/lib/tabStore';
-import { pickerLabel, sourceChipLabel } from '@/lib/tabSources';
+import { sourceChipLabel } from '@/lib/tabSources';
 import { PoliteFetcher } from './polite';
 import { findOnline, resetOnline, staleNone } from './online';
 
@@ -226,7 +226,6 @@ describe('a Songsterr row on the page', () => {
     });
     expect(tab.timing).toBeNull();
     expect(sourceChipLabel(tab, 'Rhythm Guitar')).toBe('From Songsterr, Rhythm Guitar, not lined up yet');
-    expect(pickerLabel(tab)).toBe('Songsterr, Tab with rhythm, 3 instruments');
 
     row.timing = { offset_ms: 1350, bpm: 97, confidence: 0.82, bars: [{ bar: 0, ms: 1350 }] };
     expect(sourceChipLabel(mapTab(row, VIEWER), 'Bass')).toBe('From Songsterr, Bass, lined up');
