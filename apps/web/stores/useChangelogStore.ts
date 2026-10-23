@@ -17,6 +17,12 @@ interface ChangelogStoreState {
   setHideNew: (hide: boolean) => Promise<void>;
 }
 
+/** Each write's turn, per field: a reply (or a rollback) only lands while
+ *  no later write to that field has been made, so answers arriving out of
+ *  order never put back an older state. */
+let readTurn = 0;
+let hideTurn = 0;
+
 export const useChangelogStore = create<ChangelogStoreState>((set, get) => ({
   seenVersion: null,
   hideNew: false,
@@ -44,23 +50,25 @@ export const useChangelogStore = create<ChangelogStoreState>((set, get) => ({
 
   markAllRead: async () => {
     const prev = get().seenVersion;
+    const turn = ++readTurn;
     set({ seenVersion: APP_VERSION });
     try {
       const saved = await api.updateChangelog({ seenVersion: APP_VERSION });
-      set({ seenVersion: saved.seenVersion || APP_VERSION, hideNew: saved.hideNew });
+      if (turn === readTurn) set({ seenVersion: saved.seenVersion || APP_VERSION });
     } catch {
-      set({ seenVersion: prev });
+      if (turn === readTurn) set({ seenVersion: prev });
     }
   },
 
   setHideNew: async (hide) => {
     const prev = get().hideNew;
+    const turn = ++hideTurn;
     set({ hideNew: hide });
     try {
       const saved = await api.updateChangelog({ hideNew: hide });
-      set({ hideNew: saved.hideNew });
+      if (turn === hideTurn) set({ hideNew: saved.hideNew });
     } catch {
-      set({ hideNew: prev });
+      if (turn === hideTurn) set({ hideNew: prev });
     }
   },
 }));
