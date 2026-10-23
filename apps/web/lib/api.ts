@@ -411,21 +411,16 @@ export const api = {
   listening: () =>
     req<{ items: { userName: string; playedAt: string; track: Track }[] }>('/listening'),
   deletePlaylist: (id: string) => req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  /** Upload (or replace) a playlist cover image. Multipart, so it bypasses
-   *  the JSON `req` helper. */
-  updatePlaylistArtwork: async (id: string, file: File): Promise<{ playlist: Playlist }> => {
+  /** Upload (or replace) a playlist cover image, multipart. 413 and 415 (too
+   *  large, not an image it takes) are answers the toast says. */
+  updatePlaylistArtwork: (id: string, file: File) => {
     const fd = new FormData();
     fd.append('artwork', file);
-    const res = await fetch(`${API_BASE}/api/playlists/${encodeURIComponent(id)}/artwork`, {
+    return req<{ playlist: Playlist }>(`/playlists/${encodeURIComponent(id)}/artwork`, {
       method: 'PATCH',
       body: fd,
-      credentials: 'include',
+      expected: [413, 415],
     });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-      throw new Error(err.error || `Request failed: ${res.status}`);
-    }
-    return (await res.json()) as { playlist: Playlist };
   },
 
   listLikes: () => req<{ tracks: CollectionTrack[] }>('/likes'),
@@ -449,20 +444,21 @@ export const api = {
     req<{ tabs: TabFile[] }>(
       `/tabs/files?kind=all&trackId=${encodeURIComponent(trackId)}&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
     ),
-  /** Add a Guitar Pro or MusicXML file for a song. Multipart, so it
-   *  bypasses the JSON `req` helper. */
+  /** Add a Guitar Pro or MusicXML file for a song, multipart. 413 and 415
+   *  (too large, not a tab file) are answers the page says. */
   uploadTabFile: async (file: File, meta: { title: string; artist: string; trackId?: string }): Promise<{ tab: TabFile }> => {
     const form = new FormData();
     form.append('file', file);
     form.append('title', meta.title || file.name);
     form.append('artist', meta.artist);
     if (meta.trackId) form.append('trackId', meta.trackId);
-    const res = await fetch(`${API_BASE}/api/tabs/files`, { method: 'POST', body: form, credentials: 'include' });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(body.error ?? 'That file could not be added.');
+    try {
+      return await req<{ tab: TabFile }>('/tabs/files', { method: 'POST', body: form, expected: [413, 415] });
+    } catch (e) {
+      // No sentence from the server (a proxy's page): still one for people.
+      if (e instanceof Error && e.message.startsWith('Request failed')) e.message = 'That file could not be added.';
+      throw e;
     }
-    return (await res.json()) as { tab: TabFile };
   },
   /** Add a text tab someone pasted (POST /api/tabs/text): the server reads
    *  it with the same parser as the preview (lib/tabText.ts) and keeps it
@@ -493,24 +489,19 @@ export const api = {
   listUploads: () => req<{ tracks: Track[] }>('/uploads'),
   deleteUpload: (id: string) =>
     req<{ ok: true }>(`/uploads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  /** Multipart, so it bypasses the JSON `req` helper. `durationSec` is read
-   *  in the browser, the server has no ffprobe to rely on. */
-  uploadTrack: async (
+  /** Multipart. `durationSec` is read in the browser, the server has no
+   *  ffprobe to rely on. 413 and 415 (too large, not audio) are answers. */
+  uploadTrack: (
     file: File,
     meta: { title: string; artist: string; album?: string; durationSec: number },
-  ): Promise<{ track: Track }> => {
+  ) => {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('title', meta.title);
     fd.append('artist', meta.artist);
     if (meta.album) fd.append('album', meta.album);
     fd.append('durationSec', String(Math.round(meta.durationSec)));
-    const res = await fetch(`${API_BASE}/api/uploads`, { method: 'POST', body: fd, credentials: 'include' });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-      throw new Error(err.error || `Upload failed: ${res.status}`);
-    }
-    return (await res.json()) as { track: Track };
+    return req<{ track: Track }>('/uploads', { method: 'POST', body: fd, expected: [413, 415] });
   },
 
   getHistory: () => req<{ tracks: Track[] }>('/history'),
@@ -578,32 +569,18 @@ export const api = {
   deleteSavedTheme: (id: string) =>
     req<{ ok: true; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-  updateProfile: async ({
-    name,
-    avatar,
-    removeAvatar,
-  }: {
-    name?: string;
-    avatar?: File;
-    removeAvatar?: boolean;
-  }): Promise<{
-    ok: true;
-    user: { id: string; email: string; name: string; avatarUrl: string | null };
-  }> => {
+  /** Multipart. 413 and 415 (a picture too large, or not one it takes) are
+   *  answers. `user` is absent when nothing changed. */
+  updateProfile: ({ name, avatar, removeAvatar }: { name?: string; avatar?: File; removeAvatar?: boolean }) => {
     const fd = new FormData();
     if (name !== undefined) fd.set('name', name);
     if (avatar) fd.set('avatar', avatar);
     if (removeAvatar) fd.set('removeAvatar', 'true');
-    const res = await fetch(`${API_BASE}/api/profile`, {
+    return req<{ ok: true; user?: { id: string; email: string; name: string; avatarUrl: string | null } }>('/profile', {
       method: 'PATCH',
       body: fd,
-      credentials: 'include',
+      expected: [413, 415],
     });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-      throw new Error(err.error || `Request failed: ${res.status}`);
-    }
-    return res.json();
   },
 
   admin: {

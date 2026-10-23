@@ -33,8 +33,8 @@ export const PATCH = withRequestLog('profile', async (req: NextRequest) => {
     } else {
       const file = form.get('avatar');
       if (file instanceof File && file.size > 0) {
-        if (file.size > MAX_AVATAR_BYTES) return jsonError('Image must be under 5 MB', 400);
-        if (!ALLOWED_MIMES.has(file.type)) return jsonError('Unsupported image type', 400);
+        if (file.size > MAX_AVATAR_BYTES) return jsonError('Image must be under 5 MB', 413);
+        if (!ALLOWED_MIMES.has(file.type)) return jsonError('Unsupported image type', 415);
         patch.set('avatar', file);
         hasChange = true;
       }

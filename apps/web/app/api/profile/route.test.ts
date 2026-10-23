@@ -26,8 +26,11 @@ vi.mock('@/lib/upsertTrack', () => ({
 vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
 }));
+vi.mock('@/lib/logger/client', () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
 
 const { PATCH } = await import('./route');
+const { api } = await import('@/lib/api');
+const { logger } = await import('@/lib/logger/client');
 
 function request(form: FormData): NextRequest {
   return { formData: async () => form } as unknown as NextRequest;
@@ -64,6 +67,17 @@ describe('PATCH /api/profile', () => {
     const body = await (await PATCH(request(form), undefined as never)).json();
 
     expect(body.user.avatarUrl).toBeNull();
+  });
+
+  it('a picture too large or of a kind it does not take is a 413/415 the app shows as an answer', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => PATCH(request(init.body as FormData), undefined as never)));
+    const heic = new File([new Uint8Array([1])], 'pic.heic', { type: 'image/heic' });
+    await expect(api.updateProfile({ avatar: heic })).rejects.toMatchObject({ status: 415, message: 'Unsupported image type' });
+    const big = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'pic.png', { type: 'image/png' });
+    await expect(api.updateProfile({ avatar: big })).rejects.toMatchObject({ status: 413, message: 'Image must be under 5 MB' });
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('[bughunt W13] answers 400, not a 500, when the body is JSON instead of a form', async () => {

@@ -51,6 +51,49 @@ describe('pages that say "not found" log that answer as a warning', () => {
   });
 });
 
+describe('file uploads answer like every other call', () => {
+  const file = new File([new Uint8Array([1])], 'a.mp3', { type: 'audio/mpeg' });
+
+  it('a 401 drops the dead session and carries its status', async () => {
+    const { onSessionExpired } = await import('./sessionExpired');
+    const expired = vi.fn();
+    const off = onSessionExpired(expired);
+    vi.stubGlobal('fetch', answer(401, { error: 'Unauthorized' }));
+    await expect(api.uploadTrack(file, { title: 't', artist: 'a', durationSec: 1 })).rejects.toMatchObject({ status: 401 });
+    await expect(api.updateProfile({ name: 'x' })).rejects.toMatchObject({ status: 401 });
+    await expect(api.updatePlaylistArtwork('p1', file)).rejects.toMatchObject({ status: 401 });
+    await expect(api.uploadTabFile(file, { title: 't', artist: 'a' })).rejects.toMatchObject({ status: 401 });
+    off();
+    expect(expired).toHaveBeenCalledTimes(4);
+  });
+
+  it('too large and not audio are answers, with the server sentence', async () => {
+    vi.stubGlobal('fetch', answer(415, { error: 'Unsupported audio type: audio/x-foo' }));
+    await expect(api.uploadTrack(file, { title: 't', artist: 'a', durationSec: 1 })).rejects.toMatchObject({
+      status: 415,
+      message: 'Unsupported audio type: audio/x-foo',
+    });
+    vi.stubGlobal('fetch', answer(413, { error: 'File too large, the limit is 5MB' }));
+    await expect(api.uploadTabFile(file, { title: 't', artist: 'a' })).rejects.toMatchObject({ status: 413 });
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('a tab upload with no sentence from the server still says one', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>', { status: 502 })));
+    await expect(api.uploadTabFile(file, { title: 't', artist: 'a' })).rejects.toThrow('That file could not be added.');
+  });
+
+  it('sends the form as multipart, with no JSON content type', async () => {
+    const fetch = answer(201, { track: { id: 'upload:x' } });
+    vi.stubGlobal('fetch', fetch);
+    await api.uploadTrack(file, { title: 't', artist: 'a', durationSec: 1.6 });
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/uploads');
+    expect(init.headers).toBeUndefined();
+    expect((init.body as FormData).get('durationSec')).toBe('2');
+  });
+});
+
 describe('ids in the path are encoded', () => {
   // A playlist or carlist id comes from the page's own URL, so a link can
   // carry anything: "../x" must not step out to another route.

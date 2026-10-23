@@ -27,7 +27,11 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
 }));
 
+vi.mock('@/lib/logger/client', () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
+
 const { PATCH } = await import('./route');
+const { api } = await import('@/lib/api');
+const { logger } = await import('@/lib/logger/client');
 
 describe('PATCH /api/playlists/[id]/artwork', () => {
   it('answers a body that is not multipart with a 400, not a 500', async () => {
@@ -39,5 +43,19 @@ describe('PATCH /api/playlists/[id]/artwork', () => {
     const res = await PATCH(req, { params: Promise.resolve({ id: 'p1' }) });
     expect(res.status).toBe(400);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('a cover too large or not an image it takes is a 413/415 with a sentence, shown as an answer', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      const req = new NextRequest(`http://ember.test${url}`, { method: 'PATCH', body: init.body as FormData });
+      return PATCH(req, { params: Promise.resolve({ id: 'p1' }) });
+    }));
+    const big = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'cover.jpg', { type: 'image/jpeg' });
+    await expect(api.updatePlaylistArtwork('p1', big)).rejects.toMatchObject({ status: 413, message: 'That image is too large: the limit is 5 MB' });
+    const heic = new File([new Uint8Array([1])], 'cover.heic', { type: 'image/heic' });
+    await expect(api.updatePlaylistArtwork('p1', heic)).rejects.toMatchObject({ status: 415 });
+    expect(update).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });
