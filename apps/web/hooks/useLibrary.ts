@@ -330,6 +330,8 @@ export function useExecuteAddToPlaylist() {
     mutationFn: ({ id, track }: { id: string; track: Track }) => api.addToPlaylist(id, track),
     onSuccess: (_d, { id, track }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      // The list's song counts and cover mosaics.
+      qc.invalidateQueries({ queryKey: QK.playlists });
       logger.breadcrumb('library', 'playlist.add', { playlistId: id, trackId: track.id });
     },
     // Added, or found already there (409): either way the menu's marks
@@ -389,6 +391,7 @@ export function useExecuteRemoveFromPlaylist() {
     onSettled: (_d, _e, { id, trackId }) => {
       editEnded(id);
       qc.invalidateQueries({ queryKey: QK.containing(trackId) });
+      qc.invalidateQueries({ queryKey: QK.playlists });
     },
   });
 }
@@ -400,6 +403,7 @@ export function useExecuteReplaceInPlaylist() {
       api.replaceInPlaylist(id, trackId, track),
     onSuccess: (_d, { id, trackId, track }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      qc.invalidateQueries({ queryKey: QK.playlists });
       qc.invalidateQueries({ queryKey: QK.containingAll });
       logger.breadcrumb('library', 'playlist.replace', { playlistId: id, from: trackId, to: track.id });
     },
@@ -451,6 +455,8 @@ export function useExecuteReorderPlaylist() {
     },
     onSettled: (_d, _e, { id }) => {
       editEnded(id);
+      // The first songs' covers (the list's mosaics) may have moved.
+      void qc.invalidateQueries({ queryKey: QK.playlists });
       return qc.invalidateQueries({ queryKey: QK.playlist(id) });
     },
   });
