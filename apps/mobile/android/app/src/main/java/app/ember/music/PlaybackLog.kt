@@ -81,7 +81,26 @@ object LogRedact {
         return if (out.length > MAX_STRING) out.take(MAX_STRING) + "…" else out
     }
 
-    fun data(json: JSONObject?): JSONObject? = json?.let { obj(it, 0) }
+    /** The server refuses an event whose `data` is over 2048 characters, and
+     *  the whole batch with it (lib/logger/nativeLog.ts maxDataBytes). Kept
+     *  under that with room for the `truncated` mark; JSONObject escapes "/",
+     *  so its length is never shorter than what the server measures. */
+    const val MAX_DATA_CHARS = 2000
+
+    fun data(json: JSONObject?): JSONObject? = json?.let { capped(obj(it, 0)) }
+
+    /** Keys in order while they fit; the rest go, and `truncated` says so. */
+    private fun capped(full: JSONObject): JSONObject {
+        if (full.toString().length <= MAX_DATA_CHARS) return full
+        val out = JSONObject()
+        val keys = full.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            out.put(k, full.get(k))
+            if (out.toString().length > MAX_DATA_CHARS) out.remove(k)
+        }
+        return out.put("truncated", true)
+    }
 
     private fun obj(json: JSONObject, depth: Int): JSONObject {
         val out = JSONObject()
