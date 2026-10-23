@@ -17,6 +17,7 @@ import { AppUpdatePill } from '@/components/update/AppUpdatePill';
 import { QrScanHost } from '@/components/auth/QrScanHost';
 import { ApproveSheetHost } from '@/components/auth/ApproveSheetHost';
 import { hydrateOfflineStore } from '@/lib/offline';
+import { logger } from '@/lib/logger/client';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -41,8 +42,12 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   // native EmberOffline plugin's pins/trackFiles; elsewhere it reads OPFS
   // (fills downloaded set + totalBytes, and posts every pinned track's
   // videoId to the SW so it knows which streams to serve from OPFS offline).
+  // It can fail (the app refusing status(), no OPFS in a private window):
+  // downloads then just show as none, so it is a warning, not a report.
   useEffect(() => {
-    void hydrateOfflineStore();
+    void hydrateOfflineStore().catch((e: unknown) =>
+      logger.warn('offline', 'hydrate failed', { message: e instanceof Error ? e.message : String(e) }),
+    );
   }, []);
 
   // LyricsPanel reads --ember-scroller-h to size itself to one viewport-of-
