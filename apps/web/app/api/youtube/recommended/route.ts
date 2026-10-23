@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { verifiedUserId } from '@/lib/auth';
 import { listBlocked, withoutBlocked } from '@/lib/blockedTracks';
-import { createAdminClient } from '@/lib/pocketbase/server';
+import { createCatalogClient } from '@/lib/pocketbase/server';
 import { getRecommended } from '@/lib/sources/youtube';
 import { fromError } from '@/lib/upsertTrack';
 import { listUnavailableIds } from '@/lib/trackAvailability';
@@ -38,7 +38,7 @@ export const GET = withRequestLog('youtube/recommended', async (request: NextReq
     // radio and the song pickers all come through here). Signed out: no list.
     const userId = await verifiedUserId().catch(() => null);
     // A list that cannot be read never costs the suggestions themselves.
-    const blocked = userId ? await createAdminClient().then((pb) => listBlocked(pb, userId)).catch(() => []) : [];
+    const blocked = userId ? await createCatalogClient().then((pb) => listBlocked(pb, userId)).catch(() => []) : [];
     const tracks = withoutBlocked(playable, blocked);
     return Response.json({ tracks });
   } catch (e) {

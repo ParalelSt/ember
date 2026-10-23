@@ -10,7 +10,7 @@ const t = (id: string, title = id): Track => ({
 
 const h = vi.hoisted(() => ({ userId: null as string | null, blocked: [] as unknown[], recs: [] as unknown[] }));
 vi.mock('@/lib/auth', () => ({ verifiedUserId: async () => h.userId }));
-vi.mock('@/lib/pocketbase/server', () => ({ createAdminClient: async () => ({}) }));
+vi.mock('@/lib/pocketbase/server', () => ({ createCatalogClient: async () => ({}) }));
 vi.mock('@/lib/blockedTracks', async (orig) => ({
   ...(await orig<typeof import('@/lib/blockedTracks')>()),
   listBlocked: async () => h.blocked,
