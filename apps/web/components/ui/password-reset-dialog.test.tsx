@@ -13,6 +13,30 @@ describe('PasswordResetDialog', () => {
     const title = screen.getByText(`Reset password for ${email}`);
     expect(title).toHaveClass('pr-stack', 'break-words');
   });
+
+  // The admin page toasts and throws to keep the dialog open; the throw used
+  // to go on as an unhandled rejection (an automatic crash report).
+  it('stays open on a failed save and leaves no unhandled rejection behind', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      const onOpenChange = vi.fn();
+      const onSubmit = vi.fn(async () => {
+        throw new Error('server said no');
+      });
+      render(<PasswordResetDialog open onOpenChange={onOpenChange} targetEmail="a@b.test" isSelfReset={false} onSubmit={onSubmit} />);
+      fireEvent.change(screen.getByPlaceholderText(/New password/), { target: { value: 'long enough pw' } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(onSubmit).toHaveBeenCalledWith('long enough pw');
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
 });
 
 describe('PasswordResetDialog failed save', () => {
