@@ -34,6 +34,7 @@ vi.mock('@/lib/theme/themesRepo', async (importOriginal) => {
 
 const themeRoute = await import('@/app/api/theme/route');
 const oneRoute = await import('@/app/api/themes/[id]/route');
+const listRoute = await import('@/app/api/themes/route');
 
 const MIDNIGHT = PRESET_BY_ID.midnight.inputs;
 const FOREST = PRESET_BY_ID.forest.inputs;
@@ -134,5 +135,18 @@ describe('edit-save vs switch: no lost update (bughunt N2)', () => {
     // The switch to b must be what sticks: the edit-save's write was for
     // theme a, no longer the active theme by the time it lands.
     expect(userRow(ME).theme).toMatchObject({ themeId: b });
+  });
+});
+
+describe('two creates at once at the cap', () => {
+  it('cannot make a 21st theme', async () => {
+    for (let i = 0; i < 19; i++) seedTheme(ME, `Theme ${i}`, MIDNIGHT);
+    const body = { name: 'One more', base: 'midnight', inputs: MIDNIGHT };
+    const [first, second] = await Promise.all([
+      listRoute.POST(req(body), undefined as never),
+      listRoute.POST(req({ ...body, name: 'And another' }), undefined as never),
+    ]);
+    expect([first.status, second.status].sort()).toEqual([201, 409]);
+    expect(fake.rows.get('themes')!.filter((t) => t.owner === ME)).toHaveLength(20);
   });
 });

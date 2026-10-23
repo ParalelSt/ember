@@ -22,7 +22,8 @@ export async function writeActive(pb: PocketBase, userId: string, doc: ThemeDoc)
  *  round trips, and a theme switch landing in between gets overwritten by
  *  the stale write that follows (bughunt N2). Everything below that reads
  *  then conditionally writes users.theme goes through here so the two can
- *  never interleave. */
+ *  never interleave. POST /api/themes runs its cap check and create here
+ *  too, so two creates at once cannot both pass the cap. */
 const locks = new Map<string, Promise<unknown>>();
 
 export function withThemeLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {

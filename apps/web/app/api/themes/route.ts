@@ -5,7 +5,7 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { cleanThemeName, isPresetId, isRecordId, validateInputs, THEME_NAME_MAX } from '@/lib/theme/model';
 import { copyName, THEME_CAP, type SavedTheme, type ThemesList } from '@/lib/theme/saved';
 import { openThemesRepo, toSaved, toShared, type NewThemeRow } from '@/lib/theme/themesRepo';
-import { unreadableResponse } from '@/lib/theme/serverActive';
+import { unreadableResponse, withThemeLock } from '@/lib/theme/serverActive';
 
 /** Saved themes (Settings > Appearance).
  *
@@ -64,10 +64,12 @@ export const POST = withRequestLog('themes', async (request: NextRequest) => {
 
     const refused = unreadableResponse(row.inputs);
     if (refused) return refused;
-    if ((await repo.countMine(user.id)) >= THEME_CAP) {
-      return Response.json({ error: CAP_ERROR }, { status: 409 });
-    }
-    const created = await repo.create(row);
+    // Count and create under the member's theme lock: two POSTs at once
+    // would otherwise both see 19 and make a 21st.
+    const created = await withThemeLock(user.id, async () =>
+      (await repo.countMine(user.id)) >= THEME_CAP ? null : repo.create(row),
+    );
+    if (!created) return Response.json({ error: CAP_ERROR }, { status: 409 });
     return Response.json({ theme: toSaved(created) satisfies SavedTheme }, { status: 201 });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
