@@ -262,7 +262,7 @@ export async function createImportJob(
   // Uploads a Google likes transfer created waiting for a look count from
   // the start, so the banner is right before the runner gets to it.
   const review = rows.filter((r) => r.item.status === 'review').length;
-  const likedAt = kind === 'liked' ? await transferDates(pb, n, rows.length) : null;
+  const likedAt = kind === 'liked' ? await transferDates(pb, n, rows.map((r) => r.item.position)) : null;
 
   const playlist =
     kind === 'liked'
@@ -319,17 +319,22 @@ export async function createImportJob(
 
 /** The like date for every source position of a transfer: what the source
  *  says where it says anything, else one placed below the person's existing
- *  likes, in source order (lib/import/likedAt.ts). */
-async function transferDates(pb: PocketBase, n: NewImport, total: number): Promise<Record<number, number>> {
+ *  likes, in source order (lib/import/likedAt.ts). `positions` are the
+ *  items' own, which can skip numbers (a Spotify link keeps the places of
+ *  the podcast episodes it left out), so they are dated by rank. */
+async function transferDates(pb: PocketBase, n: NewImport, positions: number[]): Promise<Record<number, number>> {
   const given = new Map<number, number>();
   for (const item of n.items ?? []) if (typeof item.likedAt === 'number') given.set(item.position, item.likedAt);
   const out: Record<number, number> = {};
-  if (given.size === total) {
+  if (positions.every((p) => given.has(p))) {
     for (const [position, ms] of given) out[position] = ms;
     return out;
   }
   const base = transferBase(await oldestLikedAt(pb, n.userId), Date.now());
-  for (let i = 0; i < total; i++) out[i] = given.get(i) ?? syntheticLikedAt(base, n.order ?? 'unknown', total, i);
+  const ordered = [...positions].sort((a, b) => a - b);
+  ordered.forEach((p, rank) => {
+    out[p] = given.get(p) ?? syntheticLikedAt(base, n.order ?? 'unknown', ordered.length, rank);
+  });
   return out;
 }
 

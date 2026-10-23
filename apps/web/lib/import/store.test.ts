@@ -372,6 +372,16 @@ describe('a transfer into the likes', () => {
     expect(dates[1]! - dates[0]!).toBe(1000);
   });
 
+  it('dates every song when the source skipped some of its places (a Spotify link with a podcast episode)', async () => {
+    // The embed parser keeps source positions, so a playlist whose second
+    // and fourth entries are episodes arrives as positions 0, 2, 4.
+    const { f } = await transfer({ items: [source(0), source(2), source(4)] }, 3);
+    const dates = likedAt(f);
+    expect(dates.every((d) => d !== null)).toBe(true);
+    expect(dates[0]! - dates[1]!).toBe(1000);
+    expect(dates[1]! - dates[2]!).toBe(1000);
+  });
+
   it('removes the half-made job when an item cannot be written', async () => {
     const f = fakePb();
     const real = f.pb.collection.bind(f.pb) as unknown as (name: string) => Record<string, (...a: never[]) => unknown>;
