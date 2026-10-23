@@ -119,6 +119,19 @@ describe('Transfer: the refusals the import routes word for people are answers',
   });
 });
 
+describe('Carlist: a carlist that ended between two polls is an answer', () => {
+  const song = { id: 'youtube:x', source: 'youtube', sourceId: 'x', title: 'Song', artist: 'A' } as Parameters<typeof api.addToSession>[1];
+  it('add, skip, the host command poll and the playing row all take a 410 as one', async () => {
+    vi.stubGlobal('fetch', answer(410, { error: 'This session has ended.' }));
+    await expect(api.addToSession('s1', song)).rejects.toMatchObject({ status: 410, message: 'This session has ended.' });
+    await expect(api.skipSession('s1', 2)).rejects.toMatchObject({ status: 410 });
+    await expect(api.consumeSessionCommands('s1')).rejects.toMatchObject({ status: 410 });
+    await expect(api.publishSessionNow('s1', 3)).rejects.toMatchObject({ status: 410 });
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(4);
+  });
+});
+
 describe('ids in the path are encoded', () => {
   // A playlist or carlist id comes from the page's own URL, so a link can
   // carry anything: "../x" must not step out to another route.

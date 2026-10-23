@@ -317,11 +317,14 @@ export const api = {
   /** 404 (gone) and 403 (not joined): the carlist page says "Carlist not
    *  found". Asked every 2 s, so a fault here would file a report a poll. */
   getSession: (id: string) => req<SessionState>(`/sessions/${encodeURIComponent(id)}`, { expected: [403, 404] }),
+  // 410 on the calls below: the carlist ended (by its host, or left idle)
+  // between two polls. An answer, not a fault.
   /** `ahead`: songs that play before it (-1: it is the first). */
   addToSession: (id: string, track: Track, position: AddPosition = 'end') =>
     req<{ ok: true; position: AddPosition; ahead: number }>(`/sessions/${encodeURIComponent(id)}/tracks`, {
       method: 'POST',
       body: { track, position },
+      expected: [410],
     }),
   /** `index`: the queue row the skipper sees playing, so a skip that
    *  arrives after the song already changed skips nothing more. */
@@ -329,11 +332,15 @@ export const api = {
     req<{ ok: true; stale?: boolean }>(`/sessions/${encodeURIComponent(id)}/skip`, {
       method: 'POST',
       body: index === undefined ? undefined : { index },
+      expected: [410],
     }),
   consumeSessionCommands: (id: string) =>
-    req<{ commands: { type: string }[] }>(`/sessions/${encodeURIComponent(id)}/commands/consume`, { method: 'POST' }),
+    req<{ commands: { type: string }[] }>(`/sessions/${encodeURIComponent(id)}/commands/consume`, {
+      method: 'POST',
+      expected: [410],
+    }),
   publishSessionNow: (id: string, index: number) =>
-    req<{ ok: true }>(`/sessions/${encodeURIComponent(id)}/now`, { method: 'POST', body: { index } }),
+    req<{ ok: true }>(`/sessions/${encodeURIComponent(id)}/now`, { method: 'POST', body: { index }, expected: [410] }),
   endSession: (id: string) => req<{ ok: true }>(`/sessions/${encodeURIComponent(id)}/end`, { method: 'POST' }),
   saveSession: (id: string, name?: string) =>
     req<{ playlist: { id: string; name: string } }>(`/sessions/${encodeURIComponent(id)}/save`, { method: 'POST', body: { name } }),
