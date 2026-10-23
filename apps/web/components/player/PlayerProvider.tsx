@@ -961,7 +961,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (track) {
       positions.requestStartAt(plan.startAt);
       loadedTrackRef.current = null;
-      loadAndPlay(track, plan.autoplay);
+      // The entry it was on: a song queued twice must not go back to its
+      // first copy (the Android player starts at the index it is handed).
+      loadAndPlay(track, plan.autoplay, undefined, { at: st.index });
     }
   }, [applyVolume, loadAndPlay, positions, setIsPlaying]);
 
@@ -984,7 +986,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Loading it again aborted that load's play(): a pause/play flicker on
     // every change, and two loads (two error toasts) on desktop.
     if (!current || loadedTrackRef.current !== current.id) {
-      loadAndPlay(current, userInteracted.current);
+      // At the store's own entry: a restored queue that lists this song
+      // twice must not start the Android player on the first copy.
+      loadAndPlay(current, userInteracted.current, undefined, { at: usePlayerStore.getState().index });
     }
     // The native Android player records plays itself (car-initiated ones too).
     if (current && userInteracted.current && user && backendKindRef.current !== 'android') recordPlay.mutate(current);
