@@ -41,9 +41,14 @@ export default function SearchPage() {
             key={t.id}
             track={t}
             density="compact"
+            // Same player as the results below, as in the overlay: the row
+            // of the song playing now pauses it rather than starting over.
+            active={trackActions.currentId === t.id}
+            playing={trackActions.isPlaying}
             artworkFallback={RECENTS_FALLBACK}
             artworkSrc={trackActions.artworkSrcFor(t)}
             onPlay={() => trackActions.onPlay(t)}
+            onToggle={trackActions.onToggle}
             onRemove={() => removeRecentTrack.mutate(t.id)}
             removeLabel={`Remove "${t.title}" from recent searches`}
             trailingPlayControl
