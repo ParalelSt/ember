@@ -228,10 +228,3 @@ export function routesFor(service: TransferService, destination: JobKind): Trans
   const offered = service.routes.filter((r) => !r.likedOnly || destination === 'liked');
   return destination === 'liked' ? offered : [...offered.filter((r) => r.playlistFirst), ...offered.filter((r) => !r.playlistFirst)];
 }
-
-/** The one a service falls to when there is nothing to ask: the first way
- *  in that is still on offer. */
-export function soleRoute(service: TransferService, destination: JobKind): TransferRoute | null {
-  const routes = routesFor(service, destination);
-  return routes.length === 1 ? routes[0] : null;
-}

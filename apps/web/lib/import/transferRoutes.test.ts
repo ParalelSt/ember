@@ -6,7 +6,6 @@ import {
   routesFor,
   serviceById,
   serviceOpen,
-  soleRoute,
   SPOTIFY_LINK_CAP,
   TRANSFER_SERVICES,
 } from './transferRoutes';
@@ -118,11 +117,5 @@ describe('what a destination leaves on offer', () => {
     const ytmusic = serviceById('ytmusic');
     expect(routesFor(ytmusic, 'liked').map((r) => r.kind)).toEqual(['google', 'link']);
     expect(routesFor(ytmusic, 'playlist').map((r) => r.kind)).toEqual(['link']);
-  });
-
-  it('one way left is no question: YouTube Music into a playlist, and Apple Music always', () => {
-    expect(soleRoute(serviceById('ytmusic'), 'playlist')?.kind).toBe('link');
-    expect(soleRoute(serviceById('ytmusic'), 'liked')).toBeNull();
-    expect(soleRoute(serviceById('apple'), 'liked')?.id).toBe('apple-export');
   });
 });
