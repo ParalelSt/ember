@@ -82,6 +82,8 @@ export default function SearchPage() {
           <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             autoFocus
+            // The overlay hands "/" and the sidebar's Search to this box.
+            data-search-page-box
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="What do you want to listen to?"
