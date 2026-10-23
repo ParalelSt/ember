@@ -198,6 +198,11 @@ export interface LinkLikedCounts {
   newSample: { title: string; artist: string }[];
 }
 
+/** A pasted link's refusals that are answers (lib/sources/spotify.ts and
+ *  the YouTube Music playlist reader): not a playlist, private, gone, or
+ *  nothing in it to import. */
+const LINK_REFUSALS = [400, 403, 404, 422];
+
 function transferBody(input: {
   file?: File;
   text?: string;
@@ -332,11 +337,14 @@ export const api = {
   endSession: (id: string) => req<{ ok: true }>(`/sessions/${encodeURIComponent(id)}/end`, { method: 'POST' }),
   saveSession: (id: string, name?: string) =>
     req<{ playlist: { id: string; name: string } }>(`/sessions/${encodeURIComponent(id)}/save`, { method: 'POST', body: { name } }),
-  /** Inspect a pasted playlist link for the create dialog's preview. */
+  /** Inspect a pasted playlist link for the create dialog's preview. A link
+   *  that is not a playlist (400), private (403), gone (404) or empty (422)
+   *  is an answer, said in the route's own sentence. */
   importInspect: (url: string, opts: { liked?: boolean } = {}) =>
     req<InspectResult & { liked?: LinkLikedCounts }>('/import/inspect', {
       method: 'POST',
       body: opts.liked ? { url, liked: true } : { url },
+      expected: LINK_REFUSALS,
     }),
   /** Queue the import of a pasted link. The default destination creates the
    *  playlist now; `liked` makes its songs likes and returns no playlist. */
@@ -344,14 +352,20 @@ export const api = {
     req<{ job: ImportJob; playlistId: string | null }>('/import/jobs', {
       method: 'POST',
       body: opts.skipLiked ? { url, destination, skipLiked: true } : { url, destination },
+      expected: LINK_REFUSALS,
     }),
   /** What is in an uploaded file or a pasted list, without starting
-   *  anything. */
+   *  anything. Over 20 MB (413) or nothing readable in it (422) is an
+   *  answer, in the route's own sentence. */
   transferPreview: (input: { file?: File; text?: string }) =>
-    req<{ preview: TransferPreview }>('/import/upload?preview=1', { method: 'POST', body: transferBody(input) }),
+    req<{ preview: TransferPreview }>('/import/upload?preview=1', { method: 'POST', body: transferBody(input), expected: [413, 422] }),
   /** Queue a transfer from an uploaded file or a pasted list. */
   transferStart: (input: { file?: File; text?: string; destination?: JobKind; skipLiked?: boolean }) =>
-    req<{ job: ImportJob; playlistId: string | null }>('/import/upload', { method: 'POST', body: transferBody(input) }),
+    req<{ job: ImportJob; playlistId: string | null }>('/import/upload', {
+      method: 'POST',
+      body: transferBody(input),
+      expected: [413, 422],
+    }),
   /** Is Google sign-in set up on this server? */
   googleLikesConfig: () => req<{ configured: boolean }>('/import/liked/google'),
   /** A new Google sign-in for the YouTube Music likes: the code to type on
@@ -370,11 +384,12 @@ export const api = {
       // answer the dialog says in words.
       { expected: [404] },
     ),
-  /** Queue the transfer of the likes that sign-in read. */
+  /** Queue the transfer of the likes that sign-in read. 404: the sign-in
+   *  is over, said in words. */
   googleLikesStart: (flowId: string) =>
     req<{ job: ImportJob; playlistId: null; truncated: boolean; note: string | null }>(
       `/import/liked/google/${encodeURIComponent(flowId)}/start`,
-      { method: 'POST' },
+      { method: 'POST', expected: [404] },
     ),
   /** Cancel it: the server revokes whatever Google handed out. */
   googleLikesCancel: (flowId: string) =>

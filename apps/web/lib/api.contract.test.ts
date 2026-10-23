@@ -94,6 +94,31 @@ describe('file uploads answer like every other call', () => {
   });
 });
 
+describe('Transfer: the refusals the import routes word for people are answers', () => {
+  const cases: [string, () => Promise<unknown>, number][] = [
+    ['a private YouTube playlist', () => api.importInspect('https://music.youtube.com/playlist?list=PLx'), 403],
+    ['a Spotify link that is not a playlist', () => api.importInspect('https://open.spotify.com/album/x'), 400],
+    ['a playlist that is gone', () => api.importStart('https://open.spotify.com/playlist/x', 'liked'), 404],
+    ['every song already liked', () => api.importStart('https://open.spotify.com/playlist/x', 'liked', { skipLiked: true }), 422],
+    ['a file over 20 MB', () => api.transferPreview({ text: 'x' }), 413],
+    ['no songs in it', () => api.transferStart({ text: 'x' }), 422],
+    ['a Google sign-in that is over, at Start', () => api.googleLikesStart('f'.repeat(24)), 404],
+  ];
+  for (const [name, call, status] of cases) {
+    it(name, async () => {
+      vi.stubGlobal('fetch', answer(status, { error: 'A sentence.' }));
+      await expect(call()).rejects.toMatchObject({ status, message: 'A sentence.' });
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+  }
+
+  it('a failure of the route itself is still a fault', async () => {
+    vi.stubGlobal('fetch', answer(500, { error: 'Internal error' }));
+    await expect(api.importInspect('https://open.spotify.com/playlist/x')).rejects.toMatchObject({ status: 500 });
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('ids in the path are encoded', () => {
   // A playlist or carlist id comes from the page's own URL, so a link can
   // carry anything: "../x" must not step out to another route.
