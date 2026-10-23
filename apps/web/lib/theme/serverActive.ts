@@ -25,14 +25,25 @@ export async function writeActive(pb: PocketBase, userId: string, doc: ThemeDoc)
  *  never interleave. */
 const locks = new Map<string, Promise<unknown>>();
 
-function withThemeLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+export function withThemeLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   const prior = locks.get(userId) ?? Promise.resolve();
   const run = prior.then(fn, fn);
-  locks.set(userId, run.then(
+  const settled = run.then(
     () => {},
     () => {},
-  ));
+  );
+  locks.set(userId, settled);
+  // The last call in line removes the entry, so the map holds only users
+  // with a call in flight instead of everyone who ever changed a theme.
+  void settled.then(() => {
+    if (locks.get(userId) === settled) locks.delete(userId);
+  });
   return run;
+}
+
+/** How many users have a lock entry right now (for tests). */
+export function themeLocksHeld(): number {
+  return locks.size;
 }
 
 /** A switch (PATCH /api/theme): always writes, but still queued behind any
