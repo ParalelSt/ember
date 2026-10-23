@@ -265,6 +265,9 @@ export function NowPlaying() {
   return (
     <div
       data-testid="now-playing"
+      // The player itself: its keyboard shortcuts keep working here
+      // (hooks/player/useKeyboardShortcuts OPEN_MODAL).
+      data-player-view
       role="dialog"
       aria-modal="true"
       aria-hidden={!open}

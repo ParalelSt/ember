@@ -195,3 +195,43 @@ describe('useKeyboardShortcuts and a keyboard-focused button', () => {
     expect(backend!.play).not.toHaveBeenCalled();
   });
 });
+
+describe('useKeyboardShortcuts while a modal is open', () => {
+  const mount = (attrs: Record<string, string>) => {
+    const el = document.createElement('div');
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    document.body.appendChild(el);
+    return el;
+  };
+
+  it('leaves every key to an open dialog or sheet (no play/pause, mute, seek or volume)', () => {
+    for (const attrs of [
+      { 'data-slot': 'dialog-content', 'data-open': '' },
+      { 'data-slot': 'sheet-content', 'data-open': '' },
+      { role: 'dialog', 'aria-modal': 'true' },
+    ]) {
+      const { backend } = setup();
+      const modal = mount(attrs);
+      expect(press({ key: ' ', code: 'Space' })).toBe(true);
+      press({ key: 'm' });
+      press({ key: 'ArrowRight' });
+      press({ key: 'ArrowUp' });
+      expect(backend!.play).not.toHaveBeenCalled();
+      expect(backend!.pause).not.toHaveBeenCalled();
+      expect(backend!.seek).not.toHaveBeenCalled();
+      expect(usePlayerStore.getState().muted).toBe(false);
+      expect(usePlayerStore.getState().volume).toBe(0.5);
+      modal.remove();
+    }
+  });
+
+  it('works again once the dialog is closing or gone, and inside the full-screen player', () => {
+    const { backend } = setup();
+    backend!.paused = true;
+    mount({ 'data-slot': 'dialog-content', 'data-closed': '' });
+    mount({ role: 'dialog', 'aria-modal': 'true', 'aria-hidden': 'true' });
+    mount({ role: 'dialog', 'aria-modal': 'true', 'data-player-view': '' });
+    expect(press({ key: ' ', code: 'Space' })).toBe(false);
+    expect(backend!.play).toHaveBeenCalledTimes(1);
+  });
+});
