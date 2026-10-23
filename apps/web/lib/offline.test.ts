@@ -155,6 +155,17 @@ describe('downloadPlaylist (browser storage)', () => {
     expect(meta.totalBytes).toBe(8);
   });
 
+  it('a cancelled download rejects as aborted, so the app does not say "Downloaded"', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/u1')) cancelDownload('pl1');
+      return audio();
+    });
+
+    await expect(downloadPlaylist(PL, [YT, UP])).rejects.toMatchObject({ name: 'AbortError' });
+    expect(useOfflineStore.getState().downloaded).not.toContain('pl1');
+    expect(useOfflineStore.getState().inFlight.pl1).toBeUndefined();
+  });
+
   it('still fails outright when nothing at all could be saved', async () => {
     await expect(downloadPlaylist(PL, [BAD])).rejects.toThrow();
     expect(useOfflineStore.getState().downloaded).not.toContain('pl1');
@@ -196,7 +207,7 @@ describe('downloadPlaylist (browser storage)', () => {
       cancelDownload('pl1');
       throw new DOMException('Aborted', 'AbortError');
     });
-    await downloadPlaylist(PL, [YT, UP]);
+    await expect(downloadPlaylist(PL, [YT, UP])).rejects.toMatchObject({ name: 'AbortError' });
     expect(useOfflineStore.getState().totalBytes).toBe(0);
 
     fetchMock.mockImplementation(async () => audio());

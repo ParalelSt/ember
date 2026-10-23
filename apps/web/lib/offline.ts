@@ -233,7 +233,8 @@ export interface DownloadResult {
 /** Saves a playlist for offline playback. Resolves with the counts on the
  *  browser-storage path, or null on Android, where the native plugin only
  *  records the pin and downloads (and counts) in the background. A track
- *  that fails is skipped; only a download that saved nothing rejects. */
+ *  that fails is skipped; only a download that saved nothing rejects, and
+ *  a cancelled one rejects with an AbortError. */
 export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Promise<DownloadResult | null> {
   const playable = playableFor(tracks);
   if (playable.length === 0) throw new Error('Playlist is empty');
@@ -399,8 +400,10 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
   } catch (e) {
     store.failDownload(playlist.id);
     if ((e as Error)?.name === 'AbortError') {
-      // Partial state intentionally left for resume.
-      return { saved: completed.length - keptCopies, failed };
+      // Partial state intentionally left for resume. Rejecting (not
+      // resolving with counts) is what tells the caller it was cancelled:
+      // a resolve read as a finished download and toasted "Downloaded".
+      throw e;
     }
     // A failed update puts the earlier download back; only a first
     // download that saved nothing is removed.
