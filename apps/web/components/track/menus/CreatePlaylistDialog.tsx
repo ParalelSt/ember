@@ -29,7 +29,9 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Called with the trimmed name + selected tracks on submit. The dialog
-   *  awaits the promise then closes; clearing happens automatically. */
+   *  awaits the promise then closes; clearing happens automatically. Reject
+   *  (after saying why) to keep it open with the name and songs as they are,
+   *  to try again. */
   onCreate: (name: string, tracks: Track[]) => Promise<unknown> | unknown;
   /** Optional pre-selected tracks (e.g. the currently-playing track when this
    *  dialog is opened from the AddToPlaylistMenu). */
@@ -76,6 +78,8 @@ export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTrac
     try {
       await onCreate(trimmed, selected);
       onOpenChange(false);
+    } catch {
+      // Not made: the caller said why. Open as it is, nothing retyped.
     } finally {
       setBusy(false);
     }

@@ -32,7 +32,8 @@ export function useCreatePlaylistFlow(onCreated?: () => void): UseCreatePlaylist
       playlist = await createPlaylist.mutateAsync(name);
     } catch (e) {
       toast.error(`Couldn't create playlist: ${(e as Error).message}`);
-      return;
+      // The dialog stays open with what was typed (CreatePlaylistDialog).
+      throw e;
     }
     // The playlist exists from here on, whatever happens to its songs.
     const failed = await addTracks(playlist.id, tracks, (v) => addToPlaylist.mutateAsync(v));

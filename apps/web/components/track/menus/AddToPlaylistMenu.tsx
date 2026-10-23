@@ -94,9 +94,10 @@ export function AddToPlaylistMenu({
     let playlist;
     try {
       playlist = await createPlaylist.mutateAsync(name);
-    } catch {
+    } catch (e) {
       toast.error(`Couldn't create the playlist, please try again.`);
-      return;
+      // The dialog stays open with what was typed (CreatePlaylistDialog).
+      throw e;
     }
     // Made: a song that then fails must not read as "not created".
     createdToast(playlist.name, tracks.length, await addTracks(playlist.id, tracks, (v) => addToPlaylist.mutateAsync(v)));

@@ -16,10 +16,21 @@ vi.mock('@/components/ui/button', () => ({
   Button: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
 }));
 vi.mock('@/components/ui/input', () => ({ Input: (props: ComponentProps<'input'>) => <input {...props} /> }));
-vi.mock('@/components/track/menus/TrackSearchPicker', () => ({ TrackSearchPicker: () => <div data-testid="picker" /> }));
+vi.mock('@/components/track/menus/TrackSearchPicker', () => ({
+  TrackSearchPicker: ({ onAdd }: { onAdd: (t: unknown) => void }) => (
+    <div data-testid="picker">
+      <button type="button" onClick={() => onAdd(SONG)}>pick song</button>
+    </div>
+  ),
+}));
 vi.mock('@/lib/logger/client', () => ({ logger: { breadcrumb: vi.fn() } }));
 const api = vi.hoisted(() => ({ importInspect: vi.fn(), importStart: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api }));
+
+const SONG = vi.hoisted(() => ({
+  id: 'youtube:a', source: 'youtube', sourceId: 'a', title: 'Song', artist: 'A', artistId: null,
+  album: null, albumId: null, durationSec: 1, artworkUrl: 'https://i.ytimg.com/vi/a/hq.jpg', streamUrl: '',
+}));
 
 const { CreatePlaylistDialog } = await import('./CreatePlaylistDialog');
 
@@ -128,5 +139,32 @@ describe('CreatePlaylistDialog tabs', () => {
       );
     }
     expect(screen.getByRole('tab', { name: 'Start empty' })).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+describe('CreatePlaylistDialog when creating fails', () => {
+  it('stays open with the typed name and the picked songs, and leaves no unhandled rejection', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const onCreate = vi.fn(async () => {
+        throw new Error('server down');
+      });
+      const p = setup({ onCreate });
+      fireEvent.change(screen.getByPlaceholderText('Playlist name (e.g. Metal)'), { target: { value: 'Road trip' } });
+      fireEvent.click(screen.getByRole('button', { name: 'pick song' }));
+      fireEvent.click(screen.getByRole('button', { name: /Create/ }));
+      await waitFor(() => expect(onCreate).toHaveBeenCalledWith('Road trip', [SONG]));
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(p.onOpenChange).not.toHaveBeenCalled();
+      expect(screen.getByPlaceholderText('Playlist name (e.g. Metal)')).toHaveValue('Road trip');
+      expect(screen.getByText('Song')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Create + add 1' })).not.toBeDisabled();
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 });

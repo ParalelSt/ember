@@ -158,3 +158,13 @@ describe('AddToPlaylistMenu New playlist', () => {
     expect(toast.error).not.toHaveBeenCalledWith(expect.stringMatching(/Couldn't create/));
   });
 });
+
+describe('AddToPlaylistMenu New playlist that could not be made', () => {
+  it('toasts and rejects, so the New playlist dialog stays open with what was typed', async () => {
+    lib.createMutateAsync.mockRejectedValue(new Error('server down'));
+    render(<AddToPlaylistMenu track={track} />);
+    await expect(dialog.onCreate!('Fresh', [track])).rejects.toThrow('server down');
+    expect(toast.error).toHaveBeenCalledWith("Couldn't create the playlist, please try again.");
+    expect(lib.addMutateAsync).not.toHaveBeenCalled();
+  });
+});

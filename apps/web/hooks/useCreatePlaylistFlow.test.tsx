@@ -81,12 +81,14 @@ describe('useCreatePlaylistFlow', () => {
     expect(onCreated.mock.invocationCallOrder[0]).toBeLessThan(router.push.mock.invocationCallOrder[0]);
   });
 
-  it('toasts an error and does not navigate or call onCreated when creation fails', async () => {
+  it('toasts an error, rejects (the dialog stays open with what was typed) and does not navigate or call onCreated when creation fails', async () => {
     api.createPlaylist.mockRejectedValue(new Error('network down'));
     const onCreated = vi.fn();
     const { result } = renderHook(() => useCreatePlaylistFlow(onCreated), { wrapper });
 
-    await act(async () => { await result.current.handleCreate('Road Trip', []); });
+    await act(async () => {
+      await expect(result.current.handleCreate('Road Trip', [])).rejects.toThrow('network down');
+    });
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't create playlist: network down"));
     expect(router.push).not.toHaveBeenCalled();
