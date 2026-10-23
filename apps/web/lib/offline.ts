@@ -112,6 +112,20 @@ async function writeMeta(meta: OfflineMeta): Promise<void> {
   await atomicWriteJson(root, META_FILE, meta);
 }
 
+/** meta.json changes run one at a time: two downloads finishing together
+ *  each read the list before the other wrote it, and the first one's
+ *  playlist dropped off the downloaded list. */
+let metaQueue: Promise<unknown> = Promise.resolve();
+function updateMeta(change: (meta: OfflineMeta) => void): Promise<void> {
+  const run = metaQueue.then(async () => {
+    const meta = await readMeta();
+    change(meta);
+    await writeMeta(meta);
+  });
+  metaQueue = run.catch(() => {});
+  return run;
+}
+
 /** Gives every audio file a browser-storage download holds a blob: URL the
  *  player can load (PlayerProvider reads `webFiles`). The File behind it is a
  *  handle on disk, not the bytes in memory. `fresh` names tracks just written
@@ -359,15 +373,16 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
     };
     await atomicWriteJson(playlistDir, 'manifest.json', finalManifest);
 
-    const meta = await readMeta();
     // Only a finished download was ever counted: the copies a cancelled one
     // left behind (its partial manifest) are not in the total yet.
-    const counted = meta.downloadedPlaylistIds.includes(playlist.id) ? previousBytes : 0;
-    if (!meta.downloadedPlaylistIds.includes(playlist.id)) {
-      meta.downloadedPlaylistIds.push(playlist.id);
-    }
-    meta.totalBytes = Math.max(0, meta.totalBytes + totalBytesThisPlaylist - counted);
-    await writeMeta(meta);
+    let counted = 0;
+    await updateMeta((meta) => {
+      counted = meta.downloadedPlaylistIds.includes(playlist.id) ? previousBytes : 0;
+      if (!meta.downloadedPlaylistIds.includes(playlist.id)) {
+        meta.downloadedPlaylistIds.push(playlist.id);
+      }
+      meta.totalBytes = Math.max(0, meta.totalBytes + totalBytesThisPlaylist - counted);
+    });
 
     store.finishDownload(playlist.id, totalBytesThisPlaylist - counted);
     await indexWebFiles(new Set(completed.map((t) => t.id)));
@@ -434,10 +449,10 @@ export async function removeDownload(playlistId: string): Promise<void> {
   }
   await deleteEntry(playlistsDir, playlistId, { recursive: true });
 
-  const meta = await readMeta();
-  meta.downloadedPlaylistIds = meta.downloadedPlaylistIds.filter((id) => id !== playlistId);
-  meta.totalBytes = Math.max(0, meta.totalBytes - bytesRemoved);
-  await writeMeta(meta);
+  await updateMeta((meta) => {
+    meta.downloadedPlaylistIds = meta.downloadedPlaylistIds.filter((id) => id !== playlistId);
+    meta.totalBytes = Math.max(0, meta.totalBytes - bytesRemoved);
+  });
 
   useOfflineStore.getState().removeDownload(playlistId, bytesRemoved);
   await indexWebFiles();

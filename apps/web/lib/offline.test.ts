@@ -142,6 +142,19 @@ describe('downloadPlaylist (browser storage)', () => {
     expect(await manifestIds()).toEqual(['youtube:a1']);
   });
 
+  it('two playlists downloaded at once both stay on the downloaded list', async () => {
+    const PL2 = { id: 'pl2', name: 'Other', created_at: '', artwork_url: null };
+
+    await Promise.all([downloadPlaylist(PL, [YT]), downloadPlaylist(PL2, [UP])]);
+
+    const meta = JSON.parse(await (await (await root.getFileHandle('meta.json')).getFile()).text()) as {
+      downloadedPlaylistIds: string[];
+      totalBytes: number;
+    };
+    expect(meta.downloadedPlaylistIds.sort()).toEqual(['pl1', 'pl2']);
+    expect(meta.totalBytes).toBe(8);
+  });
+
   it('still fails outright when nothing at all could be saved', async () => {
     await expect(downloadPlaylist(PL, [BAD])).rejects.toThrow();
     expect(useOfflineStore.getState().downloaded).not.toContain('pl1');
