@@ -282,6 +282,30 @@ describe('adding: Play next or Add to end', () => {
     expect(writes).toEqual([]);
   });
 
+  it('two adds at the same moment both land, each in its own place', async () => {
+    const POST = await addRoute();
+    const [a, b] = await Promise.all([
+      POST(req({ track: newTrack }), ctx),
+      POST(req({ track: { ...newTrack, id: 'youtube:aaaaaaaaaaa' } }), ctx),
+    ]);
+    expect([a.status, b.status]).toEqual([201, 201]);
+    const positions = db.session_tracks.map((r) => Number(r.position));
+    expect(new Set(positions).size).toBe(positions.length);
+    expect(order()).toEqual(['t1@1', 't2@2', 't3@3', 't4@4', 't1@5']);
+  });
+
+  it('two Play next at the same moment do not end up sharing a place', async () => {
+    db.sessions[0].now_index = 0;
+    const POST = await addRoute();
+    await Promise.all([
+      POST(req({ track: newTrack, position: 'next' }), ctx),
+      POST(req({ track: { ...newTrack, id: 'youtube:aaaaaaaaaaa' }, position: 'next' }), ctx),
+    ]);
+    const positions = db.session_tracks.map((r) => Number(r.position));
+    expect(new Set(positions).size).toBe(positions.length);
+    expect(positions.sort((x, y) => x - y)).toEqual([1, 2, 3, 4, 5]);
+  });
+
   it('a guest who joined can play next too (everyone is a DJ)', async () => {
     db.session_members.push({ id: 'm2', session: 's1', user: 'u2' });
     caller.id = 'u2';
