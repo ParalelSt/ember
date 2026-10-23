@@ -55,7 +55,9 @@ async function runSweep(): Promise<void> {
         .filter((name) => /^(errors|digest)-\d{4}-\d{2}-\d{2}\.(jsonl|sent|failed)$/.test(name))
         .map(async (name) => {
           const dateMs = parseFileDate(name);
-          if (dateMs && dateMs < cutoffMs) {
+          // By the day's end, not its start: the file from two days ago
+          // still holds entries inside the window until that day is over.
+          if (dateMs && dateMs + 24 * 60 * 60 * 1000 <= cutoffMs) {
             await fs.unlink(path.join(dir, name)).catch(() => {});
           }
         }),

@@ -128,6 +128,28 @@ describe('boot sweep', () => {
     expect(fs.existsSync(path.join(logDir, recentFile))).toBe(true);
   });
 
+  it('keeps the file from two days ago while it still holds entries inside the two-day window', async () => {
+    // 06:00 UTC: the last 48 hours reach back to 06:00 two days ago, so that
+    // day's file still holds the start of the admin's 48-hour native log.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-23T06:00:00Z'));
+    try {
+      const inWindow = entry({ ts: Date.parse('2026-10-21T12:00:00Z') });
+      writeFile('errors-2026-10-21.jsonl', [inWindow]);
+      writeFile('errors-2026-10-20.jsonl', [entry({ ts: Date.parse('2026-10-20T12:00:00Z') })]);
+
+      const logger = await freshLogger();
+      const found = await logger.entriesSince(Date.now() - 48 * 60 * 60 * 1000);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(found).toEqual([inWindow]);
+      expect(fs.existsSync(path.join(logDir, 'errors-2026-10-21.jsonl'))).toBe(true);
+      expect(fs.existsSync(path.join(logDir, 'errors-2026-10-20.jsonl'))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('also sweeps stale digest-*.sent markers, not just error logs (T-fix4)', async () => {
     const oldMarker = `digest-${oldDateDaysAgo(10).toISOString().slice(0, 10)}.sent`;
     const recentMarker = `digest-${new Date().toISOString().slice(0, 10)}.sent`;
