@@ -17,6 +17,9 @@ vi.mock('@/lib/api', () => ({ api }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
 
+const logger = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn(), breadcrumb: vi.fn() }));
+vi.mock('@/lib/logger/client', () => ({ logger }));
+
 function makeTrack(id: string): Track {
   return {
     id,
@@ -107,6 +110,9 @@ describe('useCreatePlaylistFlow', () => {
     expect(toast.success).not.toHaveBeenCalled();
     expect(onCreated).toHaveBeenCalledTimes(1);
     expect(router.push).toHaveBeenCalledWith('/playlist/p1');
+    // The failure is in the log a bug report sends; the 409 is no failure.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith('library', expect.any(String), expect.objectContaining({ playlistId: 'p1', trackId: 't2', message: 'offline' }));
   });
 
   it('starts with the create dialog closed and exposes a setter', () => {

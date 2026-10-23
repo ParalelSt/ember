@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useExecuteAddToPlaylist, useExecuteCreatePlaylist } from '@/hooks/useLibrary';
 import { formatCount } from '@/lib/format';
+import { logger } from '@/lib/logger/client';
 import { isAlreadyInPlaylist } from '@/lib/playlistAdd';
 import type { Track } from '@/types/track';
 
@@ -55,7 +56,13 @@ export async function addTracks(
     try {
       await add({ id, track });
     } catch (e) {
-      if (!isAlreadyInPlaylist(e)) failed += 1;
+      if (isAlreadyInPlaylist(e)) continue;
+      failed += 1;
+      logger.warn('library', 'playlist.create.addFailed', {
+        playlistId: id,
+        trackId: track.id,
+        message: e instanceof Error ? e.message : String(e),
+      });
     }
   }
   return failed;
