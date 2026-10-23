@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
-import { createAdminClient } from '@/lib/pocketbase/server';
+import { readUpload } from '@/lib/uploads/record';
 import { hasUploadArt, resolveUploadPath } from '@/lib/uploads';
 import { COVER_MIME, coverFilename } from '@/lib/uploads/cover';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
@@ -22,8 +22,7 @@ export const GET = withRequestLog('uploads/[id]/art', async (request: Request, c
     // THIS upload's cover (lib/streamToken) is enough.
     if (!streamTokenUser(request, `upload:${id}`, 'art')) await requireUser();
 
-    const pb = await createAdminClient();
-    const row = await pb.collection('uploads').getOne(id).catch(() => null);
+    const row = await readUpload(id);
     if (!row || !hasUploadArt(row)) return new Response('not found', { status: 404 });
 
     const ext = String(row.artwork_ext);

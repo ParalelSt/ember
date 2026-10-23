@@ -16,7 +16,7 @@ vi.mock('@/lib/auth', async (importOriginal) => {
   return { ...actual, requireUser: async () => ({ user: { id: 'u1' } }) };
 });
 vi.mock('@/lib/pocketbase/server', () => ({
-  createAdminClient: async () => ({ collection: () => ({ getOne: async (id: string) => ({ id, filename: `${id}.wav` }) }) }),
+  createCatalogClient: async () => ({ collection: () => ({ getOne: async (id: string) => ({ id, filename: `${id}.wav` }) }) }),
 }));
 vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,

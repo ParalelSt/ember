@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import fs from 'node:fs';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
-import { createAdminClient } from '@/lib/pocketbase/server';
+import { readUpload } from '@/lib/uploads/record';
 import { resolveUploadPath } from '@/lib/uploads';
 import { serveFile } from '@/lib/serveFile';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
@@ -24,8 +24,7 @@ export const GET = withRequestLog('uploads/[id]/stream', async (request: NextReq
       if (limited) return limited;
     }
 
-    const pb = await createAdminClient();
-    const row = await pb.collection('uploads').getOne(id).catch(() => null);
+    const row = await readUpload(id);
     if (!row) return new Response('not found', { status: 404 });
 
     // The filename comes from our own record, but resolve defensively anyway,

@@ -18,7 +18,7 @@ vi.mock('@/lib/auth', async (importOriginal) => {
   return { ...actual, requireUser: async () => { throw new actual.UnauthorizedError(); } };
 });
 vi.mock('@/lib/pocketbase/server', () => ({
-  createAdminClient: async () => ({
+  createCatalogClient: async () => ({
     collection: () => ({ getOne: async (id: string) => ({ id, filename: `${id}.mp3`, artwork_ext: 'png' }) }),
   }),
 }));
