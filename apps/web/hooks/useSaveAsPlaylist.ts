@@ -13,7 +13,16 @@ export function useSaveAsPlaylist() {
   return useMutation({
     mutationFn: async ({ name, tracks }: { name: string; tracks: Track[] }): Promise<Playlist> => {
       const { playlist } = await api.createPlaylist(name);
-      if (tracks.length) await api.bulkAddToPlaylist(playlist.id, tracks);
+      if (tracks.length) {
+        try {
+          await api.bulkAddToPlaylist(playlist.id, tracks);
+        } catch (e) {
+          // An empty playlist nobody asked for would be left behind, and
+          // Try again would make a second one (as CopySongsBar does).
+          await api.deletePlaylist(playlist.id).catch(() => {});
+          throw e;
+        }
+      }
       return playlist;
     },
     onSettled: () => {
