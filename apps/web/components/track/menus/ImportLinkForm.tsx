@@ -83,11 +83,15 @@ export function ImportLinkForm({ onCancel, onCreated }: ImportLinkFormProps) {
     return () => clearTimeout(t);
   }, [url, lookUp]);
 
+  // Only the preview of the link in the box counts: once it is edited, the
+  // old link's preview (and its Create) goes until the new one is read.
+  const preview = state.step === 'preview' && state.preview.url === url.trim() ? state.preview : null;
+
   const create = async () => {
-    if (state.step !== 'preview' || creating) return;
+    if (!preview || creating) return;
     setCreating(true);
     try {
-      const { playlistId, job } = await api.importStart(state.preview.url);
+      const { playlistId, job } = await api.importStart(preview.url);
       logger.breadcrumb('import', 'queued', { source: job.source, total: job.total });
       void qc.invalidateQueries({ queryKey: QK.playlists });
       void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
@@ -101,7 +105,6 @@ export function ImportLinkForm({ onCancel, onCreated }: ImportLinkFormProps) {
   };
 
   const invalid = !!url.trim() && !parseImportUrl(url.trim());
-  const preview = state.step === 'preview' ? state.preview : null;
 
   return (
     <div className="flex min-h-0 flex-col gap-block">
@@ -115,7 +118,7 @@ export function ImportLinkForm({ onCancel, onCreated }: ImportLinkFormProps) {
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return;
             e.preventDefault();
-            if (preview && preview.url === url.trim()) void create();
+            if (preview) void create();
             else if (parseImportUrl(url.trim())) void lookUp(url.trim());
           }}
           placeholder="Paste a Spotify or YouTube Music playlist link"
