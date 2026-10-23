@@ -268,7 +268,8 @@ function syncLikedPin(qc: QueryClient) {
   // Compare against the playable set: pinList drops unavailable tracks,
   // so the raw likes would never match once one liked song is dead.
   if (sameTrackIds(pin.trackIds, playableFor(likes).map((t) => t.id))) return;
-  void pinLiked(likes);
+  // A refusal waits for the next like, which tries the sync again.
+  void pinLiked(likes).catch(() => {});
 }
 
 export function useExecuteRecordPlay() {

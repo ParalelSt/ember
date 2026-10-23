@@ -2,15 +2,15 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { QK, useExecuteRecordPlay } from './useLibrary';
+import { QK, useExecuteRecordPlay, useExecuteToggleLike } from './useLibrary';
 import { useOfflineStore } from '@/stores/useOfflineStore';
-import { RECENT_PIN } from '@/lib/offline';
+import { LIKED_PIN, RECENT_PIN } from '@/lib/offline';
 import type { Track } from '@/types/track';
 
 const auth = vi.hoisted(() => ({ user: { id: 'u1' } as { id: string } | null }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => auth }));
 
-const api = vi.hoisted(() => ({ recordPlay: vi.fn() }));
+const api = vi.hoisted(() => ({ recordPlay: vi.fn(), like: vi.fn(), unlike: vi.fn(), getLikes: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api }));
 
 // Native-only feature: stub the plugin presence check and the pin call, and
@@ -27,6 +27,10 @@ vi.mock('@/lib/offline', async (importOriginal) => {
     ...actual,
     pinList: (...a: Parameters<typeof actual.pinList>) => {
       const out = pinListSpy(...a);
+      return pinRefused.next ? ((pinRefused.next = false), Promise.reject(new Error('plugin gone'))) : out;
+    },
+    pinLiked: (tracks: Parameters<typeof actual.pinLiked>[0]) => {
+      const out = pinListSpy(actual.LIKED_PIN, 'Liked songs', tracks);
       return pinRefused.next ? ((pinRefused.next = false), Promise.reject(new Error('plugin gone'))) : out;
     },
   };
@@ -137,5 +141,28 @@ describe('useExecuteRecordPlay: Recently played pin re-sync', () => {
 
     await waitFor(() => expect(api.recordPlay).toHaveBeenCalled());
     expect(pinListSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('useExecuteToggleLike: Liked songs pin re-sync', () => {
+  it('a re-pin the app refuses after a like is not left as an unhandled error', async () => {
+    useOfflineStore.setState({
+      pins: [{ id: LIKED_PIN, name: 'Liked songs', total: 1, done: 1, failed: 0, downloading: false, trackIds: ['t1'] }],
+    });
+    api.like.mockResolvedValue({});
+    api.getLikes.mockResolvedValue({ tracks: [makeTrack('t2'), makeTrack('t1')] });
+    pinRefused.next = true;
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      const { result } = renderHook(() => ({ mutate: useExecuteToggleLike(), qc: useQueryClient() }), { wrapper });
+      act(() => { result.current.qc.setQueryData(QK.likes, [makeTrack('t1')]); });
+      await act(async () => { result.current.mutate.mutate({ track: makeTrack('t2'), wasLiked: false }); });
+      await waitFor(() => expect(pinListSpy).toHaveBeenCalledWith(LIKED_PIN, 'Liked songs', expect.anything()));
+      await new Promise((r) => setTimeout(r, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 });
