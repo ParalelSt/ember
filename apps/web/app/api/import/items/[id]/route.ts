@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { createAdminClient } from '@/lib/pocketbase/server';
+import { nullIfNotFound } from '@/lib/pocketbase/notFound';
 import { cleanPickedTrack, itemFromRecord, jobFromRecord } from '@/lib/import/records';
 import { pickItem, skipItem, undoItem } from '@/lib/import/store';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
@@ -21,8 +22,8 @@ export const POST = withRequestLog('import/items/[id]', async (request: NextRequ
     const { id } = await ctx.params;
     const body = (await request.json().catch(() => null)) as { action?: unknown; track?: unknown; to?: unknown } | null;
 
-    const itemRec = await pb.collection('import_items').getOne(id).catch(() => null);
-    const jobRec = itemRec ? await pb.collection('import_jobs').getOne(String(itemRec.job)).catch(() => null) : null;
+    const itemRec = await pb.collection('import_items').getOne(id).catch(nullIfNotFound);
+    const jobRec = itemRec ? await pb.collection('import_jobs').getOne(String(itemRec.job)).catch(nullIfNotFound) : null;
     // Admins can read anyone's import, but only its owner changes it.
     if (!itemRec || !jobRec || jobRec.user !== user.id) return jsonError('That song is not in one of your imports.', 404);
     const item = itemFromRecord(itemRec);

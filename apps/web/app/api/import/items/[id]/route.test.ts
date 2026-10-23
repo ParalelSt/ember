@@ -6,10 +6,13 @@ import type { NextRequest } from 'next/server';
 // checked is which store call each action reaches, and the refusals.
 
 const records: Record<string, Record<string, unknown>> = {};
+/** A record whose read fails the way an unreachable PocketBase does. */
+const DOWN = { down: true };
 const userPb = {
   collection: (name: string) => ({
     getOne: async (id: string) => {
       const r = records[`${name}:${id}`];
+      if (r === DOWN) throw Object.assign(new Error('fetch failed'), { status: 0 });
       if (!r) throw Object.assign(new Error('nf'), { status: 404 });
       return r;
     },
@@ -78,5 +81,26 @@ describe('POST /api/import/items/:id, undo', () => {
     item('resolved');
     records['import_jobs:j1'].user = 'someone-else';
     expect((await POST(request({ action: 'undo', to: 'review' }), ctx)).status).toBe(404);
+  });
+});
+
+describe('POST /api/import/items/:id, PocketBase failing', () => {
+  it('answers 5xx, not "not in one of your imports", when the song cannot be read', async () => {
+    records['import_items:i1'] = DOWN;
+    const res = await POST(request({ action: 'skip' }), ctx);
+    expect(res.status).toBe(500);
+  });
+
+  it('answers 5xx when the import cannot be read', async () => {
+    item('review');
+    records['import_jobs:j1'] = DOWN;
+    const res = await POST(request({ action: 'skip' }), ctx);
+    expect(res.status).toBe(500);
+    expect(store.skipItem).not.toHaveBeenCalled();
+  });
+
+  it('still answers 404 for a song that does not exist', async () => {
+    const res = await POST(request({ action: 'skip' }), ctx);
+    expect(res.status).toBe(404);
   });
 });

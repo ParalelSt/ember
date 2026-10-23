@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
+import { nullIfNotFound } from '@/lib/pocketbase/notFound';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
 import { resolveUploadPath } from '@/lib/uploads';
@@ -15,7 +16,7 @@ export const DELETE = withRequestLog('uploads/[id]', async (_request: Request, c
     const { id } = await ctx.params;
 
     const pb = await createAdminClient();
-    const row = await pb.collection('uploads').getOne(id).catch(() => null);
+    const row = await pb.collection('uploads').getOne(id).catch(nullIfNotFound);
     if (!row) return jsonError('Upload not found', 404);
     if (row.uploader !== user.id && !user.isAdmin) {
       return jsonError('Only the person who uploaded this can remove it', 403);

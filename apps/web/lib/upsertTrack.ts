@@ -5,6 +5,7 @@ import type { Track } from '@/types/track';
 import { serverLogger } from '@/lib/logger/server';
 import { createCatalogClient } from '@/lib/pocketbase/server';
 import { escapeFilterValue as escape } from '@/lib/pocketbase/filterValue';
+import { isNotFound } from '@/lib/pocketbase/notFound';
 
 /** Upserts a Track into the shared `tracks` collection by `external_id`.
  *  Returns the PocketBase record id so callers can use it in relations
@@ -125,10 +126,6 @@ function buildBackfillPatch(row: RecordModel, incoming: Track): Record<string, u
   if (!row.album_id && incoming.albumId) p.album_id = incoming.albumId;
   if (!row.artist_id && incoming.artistId) p.artist_id = incoming.artistId;
   return p;
-}
-
-function isNotFound(e: unknown): boolean {
-  return (e as ClientResponseError | undefined)?.status === 404;
 }
 
 function isUniqueConflict(e: unknown): boolean {
