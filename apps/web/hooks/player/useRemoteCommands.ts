@@ -46,12 +46,14 @@ export function useRemoteCommands({
     if (!backendReady) return;
     const b = backendRef.current;
     if (!b) return;
+    // The engine in the ref at the moment of the press: while casting it is
+    // the cast engine, and the local one that registered these is stopped.
     b.setRemoteCommands({
-      play: () => b.play(),
-      pause: () => b.pause(),
+      play: () => backendRef.current?.play(),
+      pause: () => backendRef.current?.pause(),
       next: () => nextRef.current(),
       prev: () => prevRef.current(),
-      seek: (sec) => b.seek(sec),
+      seek: (sec) => backendRef.current?.seek(sec),
     });
     // The three refs are stable ref objects: only a backend being built
     // (backendReady, then an engine swap) re-registers the commands.
