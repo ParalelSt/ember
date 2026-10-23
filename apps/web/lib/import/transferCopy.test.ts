@@ -5,7 +5,6 @@ import {
   plainTransferResult,
   RATE_LIMITED_MESSAGE,
   transferErrorMessage,
-  transferEstimate,
   transferMinutes,
   transferTimeLeft,
   UNKNOWN_MESSAGE,
@@ -94,25 +93,17 @@ describe('plainTransferResult', () => {
   });
 });
 
-describe('transferEstimate', () => {
-  const STAY = 'You can leave this page; the transfer carries on and the Liked songs page shows how far it is.';
-
+describe('transferMinutes boundaries', () => {
   it('says under 5 minutes for a short list', () => {
-    expect(transferEstimate(1)).toBe(`Under 5 minutes. ${STAY}`);
-    expect(transferEstimate(40)).toBe(`Under 5 minutes. ${STAY}`);
-    expect(transferEstimate(239)).toBe(`Under 5 minutes. ${STAY}`);
+    expect(transferMinutes(1)).toBe('Under 5 minutes');
+    expect(transferMinutes(239)).toBe('Under 5 minutes');
   });
 
   it('is 5 minutes at exactly 240 songs (8 songs per 10 seconds) and rounds up in 5 minute steps', () => {
-    expect(transferEstimate(240)).toBe(`About 5 minutes. ${STAY}`);
-    expect(transferEstimate(241)).toBe(`About 10 minutes. ${STAY}`);
-    expect(transferEstimate(300)).toBe(`About 10 minutes. ${STAY}`);
-    expect(transferEstimate(5_000)).toBe(`About 105 minutes. ${STAY}`);
-    expect(transferEstimate(10_000)).toBe(`About 210 minutes. ${STAY}`);
-  });
-
-  it('says nothing for an empty list', () => {
-    expect(transferEstimate(0)).toBe('');
+    expect(transferMinutes(240)).toBe('About 5 minutes');
+    expect(transferMinutes(241)).toBe('About 10 minutes');
+    expect(transferMinutes(5_000)).toBe('About 105 minutes');
+    expect(transferMinutes(10_000)).toBe('About 210 minutes');
   });
 });
 

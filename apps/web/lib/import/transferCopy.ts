@@ -33,12 +33,6 @@ export function transferMinutes(count: number, exact = false): string {
   return `About ${Math.ceil(minutes / 5) * 5} minutes`;
 }
 
-/** The same, as a sentence with what it means for the person. */
-export function transferEstimate(count: number): string {
-  if (count <= 0) return '';
-  return `${transferMinutes(count)}. You can leave this page; the transfer carries on and the Liked songs page shows how far it is.`;
-}
-
 /** What the progress chip says is left: "About 15 minutes left". */
 export function transferTimeLeft(remaining: number, exact = false): string {
   if (remaining <= 0) return 'Almost done';
