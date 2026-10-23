@@ -19,6 +19,14 @@ import {
   worktreeFolder,
 } from '../scripts/ember/logic.mjs';
 import {
+  addBugReport,
+  autoSummary,
+  bodyHash,
+  fingerprint,
+  needsPost,
+  plistText,
+  snowflake,
+  syncMessages,
   emptyState,
   isNoise,
   markSeen,
@@ -217,4 +225,122 @@ test('tracker: upsert updates by id, moves open to fixed and clears stale reason
   assert.equal(s.items[0].reason, undefined);
   assert.equal(s.items[0].summary, 'a');
   assert.deepEqual(normalizeState(null), emptyState());
+});
+
+const GUILD = { id: '1', channels: { 'bug-reports': '2' } };
+let nextId = 1000000000000000000n;
+const bug = (desc, minute = 0, user = 'Bug Report') => ({
+  id: String((nextId += 1n)),
+  timestamp: new Date(Date.UTC(2026, 9, 23, 10, minute)).toISOString(),
+  author: { username: user, bot: true },
+  content: '',
+  embeds: [{ title: 'Bug report from a@b.c', description: desc }],
+});
+
+test('tracker: fingerprint ignores numbers, ids, urls, quotes and spacing', () => {
+  const a = fingerprint('Playlist  "Road 12" jumps at 3:45 https://x.y/z?id=9 id deadbeef12');
+  const b = fingerprint("playlist Road 7 jumps at 10:02 http://other.io/a id cafe9988ab");
+  assert.equal(a, b);
+  assert.notEqual(fingerprint('Search crashes'), fingerprint('Queue crashes'));
+  assert.equal(fingerprint('decade'), 'decade');
+});
+
+test('tracker: the same bug bumps one group instead of adding lines', () => {
+  let s = emptyState();
+  for (let i = 0; i < 12; i++) s = addBugReport(s, bug(`Playlists jump to the top (${i})`, i), GUILD);
+  assert.equal(s.items.length, 1);
+  assert.equal(s.items[0].count, 12);
+  assert.match(renderTracker(s), /\*\*🐞 Bugs, not fixed yet\*\*\n- Playlists jump to the top \(0\) x12 </);
+  assert.equal(autoSummary(bug('x'.repeat(300))).length, 100);
+});
+
+test('tracker: more than 5 new groups from one author in an hour are folded', () => {
+  let s = emptyState();
+  for (let i = 0; i < 9; i++) s = addBugReport(s, bug(`Distinct problem ${'abcdefghi'[i]}x${'q'.repeat(i)}`, i), GUILD);
+  s = addBugReport(s, bug('Other author problem', 10, 'Someone Else'), GUILD);
+  assert.equal(s.items.filter((i) => !i.held).length, 6);
+  const held = s.items.find((i) => i.held);
+  assert.equal(held.count, 4);
+  assert.match(renderTracker(s), /- 4 more reports from Bug Report \(held\)/);
+});
+
+test('tracker: a bug that comes back after a fix is a new group with a note', () => {
+  let s = addBugReport(emptyState(), bug('Queue loses songs'), GUILD);
+  s = upsertItem(s, { id: s.items[0].id, status: 'fixed', version: '0.7.30' });
+  s = addBugReport(s, bug('Queue loses songs', 5), GUILD);
+  assert.equal(s.items.length, 2);
+  assert.equal(s.items[0].status, 'fixed');
+  assert.equal(s.items[1].cameBack, '0.7.30');
+  assert.match(renderTracker(s), /Queue loses songs \(came back after fix in 0\.7\.30\) </);
+  s = addBugReport(s, bug('Queue loses songs', 6), GUILD);
+  assert.equal(s.items[1].count, 2);
+});
+
+test('tracker: the new-bugs section is capped at 15 lines', () => {
+  let s = emptyState();
+  for (let i = 0; i < 20; i++) {
+    s = { ...s, items: [...s.items, { id: String(i), channel: 'bug-reports', status: 'new', summary: `bug ${i}`, link: 'l', count: 1, at: `2026-10-${10 + i}`, lastAt: `2026-10-${10 + i}` }] };
+  }
+  const out = renderTracker(s).split('\n');
+  assert.equal(out.filter((l) => l.startsWith('- bug')).length, 15);
+  assert.ok(out.includes('- and 5 more'));
+});
+
+test('tracker: sections order is bugs, requests, fixed, made, open, rejected', () => {
+  let s = emptyState();
+  const base = { link: 'l', at: '2026-10-01' };
+  s = upsertItem(s, { ...base, id: '1', channel: 'bug-reports', status: 'new', summary: 'b', count: 1 });
+  s = upsertItem(s, { ...base, id: '2', channel: 'ideas', status: 'new', summary: 'r' });
+  s = upsertItem(s, { ...base, id: '3', channel: 'x', status: 'fixed', summary: 'f' });
+  s = upsertItem(s, { ...base, id: '4', channel: 'x', status: 'made', summary: 'm' });
+  s = upsertItem(s, { ...base, id: '5', channel: 'x', status: 'open', summary: 'o' });
+  s = upsertItem(s, { ...base, id: '6', channel: 'x', status: 'rejected', summary: 'j' });
+  const heads = renderTracker(s).split('\n').filter((l) => l.startsWith('**') && !l.includes('tracker'));
+  assert.deepEqual(heads, ['**🐞 Bugs, not fixed yet**', '**🆕 New requests, not sorted**', '**✅ Fixed**', '**✅ Made**', '**🔨 Accepted, not done yet**', '**❌ Rejected**']);
+});
+
+test('tracker: sync only reads after lastId, dedupes, and skips noise', async () => {
+  const channels = { 'bug-reports': '2', ideas: '3' };
+  const t0 = Date.parse('2026-10-23T10:00:00Z');
+  const store = { 2: [], 3: [] };
+  const calls = [];
+  const fetchPage = async (id, after) => {
+    calls.push([id, after]);
+    return store[id].filter((m) => BigInt(m.id) > BigInt(after));
+  };
+  const idea = (text, id) => ({ id: String(id), timestamp: '2026-10-23T10:05:00Z', author: { username: 'o' }, content: text });
+  // First run only sets the starting point.
+  let r = await syncMessages(emptyState(), { channels, fetchPage, guildId: '1', now: t0 });
+  assert.equal(r.state.items.length, 0);
+  assert.equal(r.state.lastId['3'], snowflake(t0));
+  const big = BigInt(snowflake(t0)) + 5000000000000n;
+  store[3].push(idea('Add a sleep timer\nmore detail', big), idea('Daily digest', big + 1n));
+  store[3][1].author.bot = true;
+  store[2].push({ ...bug('Search crashes'), id: String(big + 2n) }, { ...bug('Search crashes'), id: String(big + 3n) });
+  r = await syncMessages(r.state, { channels, fetchPage, guildId: '1', now: t0 });
+  assert.deepEqual(r.state.items.map((i) => [i.channel, i.status, i.summary, i.count ?? 1]), [
+    ['bug-reports', 'new', 'Search crashes', 2],
+    ['ideas', 'new', 'Add a sleep timer', 1],
+  ]);
+  assert.equal(r.state.lastId['3'], String(big + 1n));
+  calls.length = 0;
+  const again = await syncMessages(r.state, { channels, fetchPage, guildId: '1', now: t0 });
+  assert.equal(again.state.items.length, 2);
+  assert.ok(calls.every(([id, after]) => after === r.state.lastId[id]));
+});
+
+test('tracker: an unchanged list is not posted again, the clock line is ignored', () => {
+  const s = upsertItem(emptyState(), { id: '1', channel: 'ideas', status: 'new', summary: 'a', link: 'l', at: '1' });
+  const t1 = renderTracker(s, new Date(2026, 9, 23, 9, 0));
+  assert.ok(needsPost(s, t1));
+  const posted = { ...s, postedHash: bodyHash(t1) };
+  assert.ok(!needsPost(posted, renderTracker(s, new Date(2026, 9, 23, 9, 30))));
+  const changed = upsertItem(posted, { id: '2', channel: 'ideas', status: 'new', summary: 'b', link: 'l', at: '2' });
+  assert.ok(needsPost(changed, renderTracker(changed)));
+});
+
+test('tracker: the launchd agent runs sync every 300 seconds', () => {
+  const p = plistText({ label: 'com.ember.tracker', node: '/n/node', script: '/m/tracker.mjs', log: '/l.log', interval: 300 });
+  assert.match(p, /<integer>300<\/integer>/);
+  assert.match(p, /<string>\/m\/tracker\.mjs<\/string>\s*<string>sync<\/string>/);
 });

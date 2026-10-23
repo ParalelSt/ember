@@ -51,6 +51,16 @@ reads it. State: `~/.ember-tools/tracker.json`.
   Every change posts by itself; `--no-post` skips that. If #tracker does not
   exist yet, the list is kept locally and the tool says so.
 
+Automatic: `tracker sync` adds new messages as "new" (bugs, or requests not
+sorted yet) and posts only when the list changed. Repeated bug reports are
+grouped by a fingerprint of their first line and counted (x12); more than 5
+new bug groups from one author in an hour fold into one "held" line; the bugs
+section shows 15 lines at most. The first sync only sets the starting point
+(use `scan` for older messages). `tracker install` runs sync every 5 minutes
+through launchd (log: `~/.ember-tools/tracker.log`), `tracker status` shows
+whether it is loaded and the last sync, `tracker uninstall` removes it. A lock
+file keeps two runs from overlapping.
+
 ## Once
 
 - `npm run hooks`: every push is then checked for secrets, em dashes and

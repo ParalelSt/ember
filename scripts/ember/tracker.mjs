@@ -10,18 +10,26 @@
  *    npm run tracker -- post                  write the list to #tracker (edits in place)
  *    npm run tracker -- list                  show the list here
  *
+ *    npm run tracker -- sync                  new messages into the list, posts only if it changed
+ *    npm run tracker -- install|uninstall|status   run sync every 5 minutes by itself (launchd)
+ *
  *  fixed/made/rejected/open/release post by themselves; --no-post skips it.
  *  A new item needs the full message link (right click, Copy Message Link);
  *  an id alone works for an item that is already tracked.
  *  State: ~/.ember-tools/tracker.json. Decisions: trackerLogic.mjs. */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { EMBER_CHANNELS, TOOLS_DIR, botToken, discord, fail, parseArgs, say } from './lib.mjs';
+import { EMBER_CHANNELS, MAIN, ROOT, TOOLS_DIR, botToken, discord, fail, parseArgs, say, sh } from './lib.mjs';
 import {
   STATUSES,
   emptyState,
+  bodyHash,
   markSeen,
+  needsPost,
+  plistText,
+  syncMessages,
   messageLink,
   messageText,
   newMessages,
@@ -46,15 +54,51 @@ const channelNames = Object.fromEntries(Object.entries(EMBER_CHANNELS).map(([nam
 const SOURCES = ['bug-reports', 'recommendations', 'fix-recommendations', 'suggestions', 'ideas'];
 
 /** Discord call that reports instead of stopping the tool. */
-async function api(method, pathname, body) {
+async function api(method, pathname, body, tries = 3) {
   const res = await fetch(`https://discord.com/api/v10${pathname}`, {
     method,
     headers: { Authorization: `Bot ${botToken()}`, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = res.status === 204 ? null : await res.json().catch(() => null);
+  if (res.status === 429 && tries > 1) {
+    // Discord says how long to wait.
+    await new Promise((r) => setTimeout(r, Math.min(30, Number(data?.retry_after) || 1) * 1000 + 100));
+    return api(method, pathname, body, tries - 1);
+  }
   return { ok: res.ok, status: res.status, data };
 }
+
+const lockFile = path.join(TOOLS_DIR, 'tracker.lock');
+/** One writer at a time. Waits up to `waitMs` for the lock; false when it stays taken. */
+async function takeLock(waitMs) {
+  fs.mkdirSync(TOOLS_DIR, { recursive: true });
+  const until = Date.now() + waitMs;
+  for (;;) {
+    try {
+      fs.writeFileSync(lockFile, String(process.pid), { flag: 'wx' });
+      return true;
+    } catch {
+      let stale = false;
+      try {
+        const pid = Number(fs.readFileSync(lockFile, 'utf8'));
+        const old = Date.now() - fs.statSync(lockFile).mtimeMs > 10 * 60 * 1000;
+        try {
+          process.kill(pid, 0);
+        } catch {
+          stale = true;
+        }
+        stale ||= old;
+      } catch {
+        stale = true;
+      }
+      if (stale) fs.rmSync(lockFile, { force: true });
+      else if (Date.now() >= until) return false;
+      else await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+}
+const dropLock = () => fs.rmSync(lockFile, { force: true });
 
 async function findTrackerChannel() {
   const bug = await api('GET', `/channels/${EMBER_CHANNELS['bug-reports']}`);
@@ -64,7 +108,7 @@ async function findTrackerChannel() {
   return list.data.find((c) => c.type === 0 && c.name === 'tracker')?.id ?? null;
 }
 
-async function post(state) {
+async function post(state, { force = true } = {}) {
   if (!state.channelId) {
     state.channelId = await findTrackerChannel();
     if (!state.channelId) {
@@ -74,7 +118,9 @@ async function post(state) {
     }
     saveState(state);
   }
-  const chunks = splitMessages(renderTracker(state));
+  const text = renderTracker(state);
+  if (!force && !needsPost(state, text)) return say('No change, nothing posted.');
+  const chunks = splitMessages(text);
   const ids = [];
   for (let i = 0; i < chunks.length; i++) {
     const payload = { content: chunks[i], allowed_mentions: { parse: [] }, flags: 4 };
@@ -89,6 +135,7 @@ async function post(state) {
   }
   for (const extra of state.messageIds.slice(chunks.length)) await api('DELETE', `/channels/${state.channelId}/messages/${extra}`);
   state.messageIds = ids;
+  state.postedHash = bodyHash(text);
   saveState(state);
   say(`✓ #tracker updated (${chunks.length} message${chunks.length > 1 ? 's' : ''})`);
 }
@@ -125,17 +172,78 @@ async function scan(days) {
   say(shown ? `\n${shown} not tracked yet.` : 'Nothing untracked.');
 }
 
+const LABEL = 'com.ember.tracker';
+const plistPath = path.join(os.homedir(), 'Library/LaunchAgents', `${LABEL}.plist`);
+const logPath = path.join(TOOLS_DIR, 'tracker.log');
+const domain = () => `gui/${process.getuid()}`;
+
+function install() {
+  const inMain = fs.existsSync(path.join(MAIN, 'scripts/ember/tracker.mjs'));
+  const script = path.join(inMain ? MAIN : ROOT, 'scripts/ember/tracker.mjs');
+  say(`Using ${inMain ? 'the main checkout' : 'this worktree'}: ${script}`);
+  fs.mkdirSync(TOOLS_DIR, { recursive: true });
+  fs.mkdirSync(path.dirname(plistPath), { recursive: true });
+  fs.writeFileSync(plistPath, plistText({ label: LABEL, node: process.execPath, script, log: logPath, interval: 300 }));
+  sh('launchctl', ['bootout', `${domain()}/${LABEL}`]);
+  const res = sh('launchctl', ['bootstrap', domain(), plistPath]);
+  if (res.status !== 0) fail(`launchctl bootstrap failed: ${(res.stderr || '').trim()}`);
+  say(`✓ tracker sync runs every 5 minutes. Log: ${logPath}`);
+}
+
+function uninstall() {
+  sh('launchctl', ['bootout', `${domain()}/${LABEL}`]);
+  fs.rmSync(plistPath, { force: true });
+  say('✓ tracker sync stopped and removed');
+}
+
+function status(state) {
+  const loaded = sh('launchctl', ['print', `${domain()}/${LABEL}`]).status === 0;
+  say(`Automatic sync: ${loaded ? 'loaded' : 'not loaded'}`);
+  say(`Last sync: ${state.lastSync ?? 'never'}`);
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const noPost = argv.includes('--no-post');
   const { flags, rest } = parseArgs(argv.filter((a) => a !== '--no-post'));
   const [command, ...args] = rest;
-  const state = loadState();
   const done = async (next) => {
     saveState(next);
-    if (!noPost) await post(next);
+    if (!noPost) await post(next, { force: false });
   };
+  let state = loadState();
+  const mutating = ['seen', 'release', ...STATUSES, 'post'].includes(command);
+  if (mutating) {
+    if (!(await takeLock(30000))) fail('The tracker is busy (a sync is running). Try again in a minute.');
+    process.on('exit', dropLock);
+    state = loadState();
+  }
 
+  if (command === 'install') return install();
+  if (command === 'uninstall') return uninstall();
+  if (command === 'status') return status(state);
+  if (command === 'sync') {
+    // Another sync (or a command) is running: skip quietly, the next tick catches up.
+    if (!(await takeLock(0))) return say('Another tracker run is in progress, skipping.');
+    try {
+      const fresh = loadState();
+      const guild = await guildId();
+      const channels = Object.fromEntries(SOURCES.map((n) => [n, EMBER_CHANNELS[n]]));
+      const fetchPage = async (id, after) => {
+        const res = await api('GET', `/channels/${id}/messages?limit=100&after=${after}`);
+        if (!res.ok) throw new Error(`Discord said ${res.status} reading ${id}`);
+        return res.data;
+      };
+      const { state: next, seenCount } = await syncMessages(fresh, { channels, fetchPage, guildId: guild });
+      next.lastSync = new Date().toISOString();
+      saveState(next);
+      say(`${next.lastSync} sync: ${seenCount} new message${seenCount === 1 ? '' : 's'}`);
+      await post(next, { force: false });
+    } finally {
+      dropLock();
+    }
+    return;
+  }
   if (command === 'scan') return scan(Number(flags.days) > 0 ? Number(flags.days) : 30);
   if (command === 'list') return say(renderTracker(state));
   if (command === 'post') return post(state);
