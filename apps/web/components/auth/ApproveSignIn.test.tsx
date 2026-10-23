@@ -189,3 +189,19 @@ describe('ApproveSignIn', () => {
     expect(screen.getByText(/Too many tries/)).toBeInTheDocument();
   });
 });
+
+describe('ApproveSignIn under React StrictMode (development)', () => {
+  it('asks once and still shows the card', async () => {
+    const { StrictMode } = await import('react');
+    render(
+      <StrictMode>
+        <ApproveSignIn credential={{ token: 'T'.repeat(43) }} />
+      </StrictMode>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(calls.filter((c) => c.route === 'lookup')).toHaveLength(1);
+    expect(screen.getByTestId('approve-device')).toHaveTextContent('Car screen');
+  });
+});
