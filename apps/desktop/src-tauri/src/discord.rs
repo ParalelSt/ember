@@ -253,18 +253,57 @@ fn apply<R: Runtime>(app: &AppHandle<R>, update: Update) {
     send(&mut st, app, &app_id, presence);
 }
 
+/// What the flush timer does when it wakes.
+#[derive(Debug, PartialEq, Eq)]
+enum Flush {
+    /// Nothing is waiting (a track change or a pause sent or dropped it).
+    Nothing,
+    /// The window is not over yet: sleep this much longer.
+    Wait(u64),
+    Send,
+}
+
+/// The window is counted from the LAST send, not from when the timer was
+/// set: a track change goes out at once in between, and a seek in the new
+/// song queued behind that timer used to go out with it, seconds after the
+/// track change, inside the window Discord drops updates in.
+fn flush_due(st: &DiscordState, now: u128) -> Flush {
+    if st.pending.is_none() {
+        return Flush::Nothing;
+    }
+    let since = now.saturating_sub(st.last_update_ms);
+    if since < RATE_LIMIT_MS {
+        Flush::Wait((RATE_LIMIT_MS - since) as u64)
+    } else {
+        Flush::Send
+    }
+}
+
 /// Wake up when the rate-limit window has passed and send whatever is newest.
 fn schedule_flush<R: Runtime>(app: AppHandle<R>, wait_ms: u64) {
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(wait_ms));
-        use tauri::Manager;
-        let Some(state) = app.try_state::<DiscordPresence>() else { return };
-        let Ok(mut st) = state.0.lock() else { return };
-        st.flush_scheduled = false;
-        let Some(presence) = st.pending.take() else { return };
-        let Some(app_id) = app_id() else { return };
-        log_discord(&app, &format!("flush {:?} pos={:.1}", presence.key(), presence.position_sec));
-        send(&mut st, &app, &app_id, presence);
+        let mut wait = wait_ms;
+        loop {
+            std::thread::sleep(Duration::from_millis(wait));
+            use tauri::Manager;
+            let Some(state) = app.try_state::<DiscordPresence>() else { return };
+            let Ok(mut st) = state.0.lock() else { return };
+            match flush_due(&st, now_ms()) {
+                Flush::Wait(ms) => wait = ms,
+                Flush::Nothing => {
+                    st.flush_scheduled = false;
+                    return;
+                }
+                Flush::Send => {
+                    st.flush_scheduled = false;
+                    let Some(presence) = st.pending.take() else { return };
+                    let Some(app_id) = app_id() else { return };
+                    log_discord(&app, &format!("flush {:?} pos={:.1}", presence.key(), presence.position_sec));
+                    send(&mut st, &app, &app_id, presence);
+                    return;
+                }
+            }
+        }
     });
 }
 
@@ -393,6 +432,22 @@ mod tests {
         let (start, end) = presence(30.0, 240.0, sent).timestamps();
         assert_eq!(start, secs(sent) - 30);
         assert_eq!(end, Some(secs(sent) - 30 + 240));
+    }
+
+    #[test]
+    fn a_seek_queued_after_a_track_change_waits_out_the_new_songs_window() {
+        // A seek in song A queued a flush for 0:15. Song B went out at once
+        // at 0:10, and a seek in B at 0:12 queued behind A's timer: at 0:15
+        // it must wait until 0:25, 15 s after B's send, not go out then.
+        let st = DiscordState { last_update_ms: 10_000, pending: Some(presence(30.0, 240.0, 12_000)), flush_scheduled: true, ..Default::default() };
+        assert_eq!(flush_due(&st, 15_000), Flush::Wait(10_000));
+        assert_eq!(flush_due(&st, 25_000), Flush::Send);
+    }
+
+    #[test]
+    fn a_timer_with_nothing_left_to_send_ends() {
+        let st = DiscordState { last_update_ms: 10_000, flush_scheduled: true, ..Default::default() };
+        assert_eq!(flush_due(&st, 15_000), Flush::Nothing);
     }
 
     #[test]
