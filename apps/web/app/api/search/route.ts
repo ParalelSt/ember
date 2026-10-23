@@ -9,9 +9,7 @@ import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { getTrendingChart } from '@/lib/trending';
 import { listUnavailableIds } from '@/lib/trackAvailability';
-
-/** Longer than any real search; a bigger q only costs the Python search. */
-const MAX_QUERY_LEN = 200;
+import { MAX_SEARCH_QUERY_LEN as MAX_QUERY_LEN } from '@/lib/searchLimits';
 
 /** Uploads for the signed-in caller. Uses the cookie-bound client, so
  *  PocketBase's own list rule decides visibility, a signed-out caller gets

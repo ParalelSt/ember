@@ -43,7 +43,10 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
 }));
 
+vi.mock('@/lib/logger/client', () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
+
 const { GET } = await import('./route');
+const { api } = await import('@/lib/api');
 
 const request = (q: string) =>
   ({ nextUrl: new URL(`http://x/api/search?q=${encodeURIComponent(q)}`), headers: new Headers() }) as unknown as NextRequest;
@@ -93,5 +96,17 @@ describe('GET /api/search: query length', () => {
     const res = await GET(request('a'.repeat(200)), undefined as never);
     expect(res.status).toBe(200);
     expect(youtubeSearch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('GET /api/search + api.search', () => {
+  it('a pasted paragraph is searched by its first 200 characters, not refused', async () => {
+    searchUploads.mockResolvedValue([]);
+    youtubeSearch.mockResolvedValue([track('youtube:aaaaaaaaaaa', 'Found')]);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => GET(request(new URL(url, 'http://x').searchParams.get('q') ?? ''), undefined as never)));
+    const pasted = `  ${'word '.repeat(100)}`;
+    await expect(api.search(pasted)).resolves.toMatchObject({ tracks: [{ id: 'youtube:aaaaaaaaaaa' }] });
+    expect(youtubeSearch.mock.calls[0][0]).toBe(pasted.trim().slice(0, 200).trim());
+    vi.unstubAllGlobals();
   });
 });

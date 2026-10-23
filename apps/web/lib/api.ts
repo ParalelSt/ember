@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger/client';
 import { isPublicPage } from '@/lib/publicPaths';
 import { sessionExpired } from '@/lib/sessionExpired';
 import { connectionOk } from '@/lib/connectionBlip';
+import { MAX_SEARCH_QUERY_LEN } from '@/lib/searchLimits';
 import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/google/flows';
@@ -224,7 +225,10 @@ function transferBody(input: {
 }
 
 export const api = {
-  search: (q: string) => req<{ tracks: Track[] }>(`/search?q=${encodeURIComponent(q ?? '')}`),
+  /** A pasted paragraph is cut to what the route takes, rather than
+   *  refused with a 400 that read as "search failed". */
+  search: (q: string) =>
+    req<{ tracks: Track[] }>(`/search?q=${encodeURIComponent((q ?? '').trim().slice(0, MAX_SEARCH_QUERY_LEN))}`),
   getTrending: () =>
     req<{ tracks: Track[]; title: string | null; country: string; fetchedAt: string | null; stale: boolean }>('/youtube/trending'),
   getRecommended: (seedSourceId?: string) =>
