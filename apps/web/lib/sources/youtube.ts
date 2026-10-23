@@ -224,10 +224,22 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
       stderr += text;
       process.stderr.write(text);
     });
-    child.on('error', (e) => { clearTimeout(timer); reject_(e as PythonError); });
+    // The helper could not be started at all (the venv's python missing).
+    // Node then also fires `close`, which must not log and reject again, and
+    // its own message names the server's python path, not for the browser.
+    let failedToStart = false;
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      if (timedOut || failedToStart) return;
+      failedToStart = true;
+      serverLogger.error('python', 'the media helper could not start', { args, command: PYTHON_BIN }, e);
+      const err: PythonError = new Error('the media helper could not start');
+      err.status = 502;
+      reject(err);
+    });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (timedOut) return; // already rejected (and logged) by the timer above
+      if (timedOut || failedToStart) return; // already rejected (and logged) above
       if (code !== 0) {
         // The MESSAGE reaches the browser (and toasts), so it must be a
         // sentence, not a Python traceback, those leak absolute server paths
