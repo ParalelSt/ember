@@ -91,6 +91,21 @@ describe('UploadTrackDialog', () => {
     expect(screen.getByText(/3:20/)).toBeInTheDocument();
   });
 
+  it('a file the browser never reads the length of lets go of it after a while', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      render(<Harness />);
+      await pick('Band - Odd File.mp3');
+      // No loadedmetadata and no error, ever.
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+      await act(async () => { vi.advanceTimersByTime(5000); });
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:1');
+      expect(screen.getByRole('button', { name: 'Upload' })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('a title the member typed is kept when they pick another file', async () => {
     render(<Harness />);
     await pick('First Band - First Song.mp3');

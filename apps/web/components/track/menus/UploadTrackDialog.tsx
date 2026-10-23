@@ -60,15 +60,22 @@ export function UploadTrackDialog({
   };
 
   /** Read the duration in the browser, the server can't count on ffprobe
-   *  being installed, and a wrong duration makes the progress bar lie. */
-  const readDuration = (f: File) =>
+   *  being installed, and a wrong duration makes the progress bar lie. 0
+   *  when it cannot tell in time: a file the browser never answers for is
+   *  let go of instead of being held in memory. */
+  const readDuration = (f: File, timeoutMs = 4000) =>
     new Promise<number>((resolve) => {
       const url = URL.createObjectURL(f);
       const audio = new Audio();
+      let settled = false;
       const done = (v: number) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         URL.revokeObjectURL(url);
         resolve(Number.isFinite(v) && v > 0 ? v : 0);
       };
+      const timer = setTimeout(() => done(0), timeoutMs);
       audio.addEventListener('loadedmetadata', () => done(audio.duration), { once: true });
       audio.addEventListener('error', () => done(0), { once: true });
       audio.src = url;
