@@ -3,6 +3,11 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError } from '@/lib/upsertTrack';
 import { loadSession, assertActive, assertMember, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { rateLimitResponse } from '@/lib/rateLimit';
+
+/** Per person: every skip is a session_commands row, and they pile up while
+ *  the host is offline. Far above anyone pressing Skip by hand. */
+const SKIP_LIMIT = { windowMs: 60_000, max: 30 };
 
 /** Anyone in the session can skip, queues a command the host executes.
  *  Body (optional): { index }, the queue row the skipper sees playing. When
@@ -12,6 +17,8 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 export const POST = withRequestLog('sessions/[id]/skip', async (request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/skip'>) => {
   try {
     const { user } = await requireUser();
+    const limited = rateLimitResponse(`session-skip:${user.id}`, SKIP_LIMIT);
+    if (limited) return limited;
     const pb = await sessionsClient();
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);

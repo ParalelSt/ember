@@ -172,8 +172,9 @@ const order = () =>
     .sort((a, b) => Number(a.position) - Number(b.position))
     .map((r) => `${r.track}@${r.position}`);
 
-beforeEach(() => {
+beforeEach(async () => {
   reset();
+  (await import('@/lib/rateLimit'))._resetBuckets();
   caller.id = 'u1';
   // The fixtures' timestamps are "an hour or two ago" on this day.
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -384,5 +385,13 @@ describe('Skip from several phones', () => {
   it('an older app that sends no index still skips', async () => {
     expect((await skipAs('u2')).status).toBe(201);
     expect((await consume()).commands).toEqual([{ type: 'skip' }]);
+  });
+
+  it('one guest cannot pile up skips without limit while the host is away', async () => {
+    for (let i = 0; i < 30; i++) expect((await skipAs('u2')).status).toBe(201);
+    expect((await skipAs('u2')).status).toBe(429);
+    expect(db.session_commands).toHaveLength(30);
+    // Someone else still can.
+    expect((await skipAs('u3')).status).toBe(201);
   });
 });
