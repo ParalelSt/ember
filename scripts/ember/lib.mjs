@@ -117,7 +117,7 @@ export async function discord(pathname, init = {}) {
     headers: { Authorization: `Bot ${botToken()}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
   });
   if (!res.ok) fail(`Discord said ${res.status} for ${pathname}`);
-  return res.json();
+  return res.status === 204 ? null : res.json();
 }
 
 /** Every port something on this Mac listens on. */

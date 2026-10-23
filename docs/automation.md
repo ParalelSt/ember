@@ -14,6 +14,7 @@ One command each. Run them from any Ember folder. Don't remember the names?
 | Try a branch on your phone | `npm run test-apk` then open the link it prints on the phone |
 | Screenshots of pages | `npm run shots -- /library /settings` (add `--phone` or `--desktop` for one size) |
 | New bug reports and requests | `npm run reports` |
+| Keep the #tracker list (Claude does this) | `npm run tracker -- list` / `scan` / `fixed <link> "summary"` (see below) |
 | Does the host need updating? | `npm run host-check` |
 | Message the owner | `npm run notify -- "Ready to check on 3072"` |
 
@@ -32,6 +33,23 @@ One command each. Run them from any Ember folder. Don't remember the names?
 `npm run release -- preview` shows the release at any time.
 `npm run release:check` runs every test suite on its own (add `-- --shells`
 for the Rust and Android ones too).
+
+## The tracker
+
+One list in the private Discord channel #tracker of what was fixed, made and
+rejected, plus what is accepted but not done. Claude keeps it; the owner only
+reads it. State: `~/.ember-tools/tracker.json`.
+
+- `npm run tracker -- scan [--days 30]` shows messages (bug reports,
+  recommendations, fix-recommendations, suggestions, ideas) not tracked yet.
+- `tracker seen <link>...` marks duplicates and chatter as not worth tracking.
+- `tracker fixed|made|rejected <link> "summary" [--version 0.7.31] [--reason "..."]`
+  and `tracker open <link> "summary"`. The link is Discord's Copy Message Link.
+- `tracker release 0.7.31` stamps the version on every fixed/made item
+  without one; `npm run release -- push` does it after a successful push.
+- `tracker post` rewrites #tracker in place, `tracker list` shows it here.
+  Every change posts by itself; `--no-post` skips that. If #tracker does not
+  exist yet, the list is kept locally and the tool says so.
 
 ## Once
 

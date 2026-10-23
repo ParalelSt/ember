@@ -24,6 +24,7 @@
     "reports": "node scripts/ember/reports.mjs",
     "notes-draft": "node scripts/ember/notes-draft.mjs",
     "notify": "node scripts/ember/notify.mjs",
+    "tracker": "node scripts/ember/tracker.mjs",
     "host-check": "node scripts/ember/host-check.mjs",
     "tidy-branches": "node scripts/ember/tidy.mjs",
     "hooks": "node scripts/ember/hooks.mjs",

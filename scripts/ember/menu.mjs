@@ -11,6 +11,7 @@ export const TOOLS = [
   ['test-apk', 'Build the Ember Test phone app', 'Branch (Enter for this one):'],
   ['shots', 'Screenshots of pages, phone and desktop', 'Pages (e.g. /library /settings):'],
   ['reports', 'New bug reports and requests from Discord', null],
+  ['tracker', 'The list of what was fixed, made and rejected (#tracker)', 'Command (e.g. list, scan, post):'],
   ['notes-draft', 'Draft the release notes from the commits', null],
   ['release', 'Make a release (bump, notes, tests, commit)', null],
   ['release:check', 'Run every test suite', null],

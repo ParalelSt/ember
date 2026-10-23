@@ -178,6 +178,12 @@ async function push(confirmed) {
 
   git('push', 'origin', 'HEAD:main');
   say('✓ main pushed');
+  // Put the version on what the tracker lists as fixed or made. Never fails a release.
+  try {
+    spawnSync('node', [path.join(ROOT, 'scripts/ember/tracker.mjs'), 'release', rel.web], { cwd: ROOT, stdio: 'inherit', timeout: 60000 });
+  } catch {
+    say('(tracker not updated)');
+  }
   if (rel.shells) {
     git('tag', `v${rel.shells}`);
     git('push', 'origin', `v${rel.shells}`);
