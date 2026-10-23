@@ -47,9 +47,12 @@ vi.mock('@/components/player/PlayerProvider', () => ({
 }));
 const auth = vi.hoisted(() => ({ user: null as unknown }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: auth.user }) }));
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), toasts) }));
+const blocked = vi.hoisted(() => ({ is: false }));
 const blocking = vi.hoisted(() => ({ block: vi.fn(async () => {}), unblock: vi.fn(async () => {}) }));
 vi.mock('@/hooks/useBlockedTracks', () => ({
-  useBlockedTracks: () => ({ isBlocked: () => false, block: blocking.block, unblock: blocking.unblock }),
+  useBlockedTracks: () => ({ isBlocked: () => blocked.is, block: blocking.block, unblock: blocking.unblock }),
 }));
 vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, toggle: () => {} }) }));
 vi.mock('@/lib/offlineNative', () => ({ useTrackArtSrc: () => null }));
@@ -147,6 +150,9 @@ beforeEach(() => {
   lyrics.data = null;
   nav.push.mockReset();
   share.shareTrack.mockClear();
+  toasts.success.mockClear();
+  toasts.error.mockClear();
+  blocked.is = false;
   useSettingsStore.setState(initialSettings, true);
   useOutputStore.setState(PHONE_WITH_BUDS);
   useCastStore.setState({ path: null, availability: 'none', connection: 'idle', deviceName: null });
@@ -280,6 +286,26 @@ describe('NowPlaying: the More sheet', () => {
     openMore();
     fireEvent.click(row('block'));
     expect(blocking.block).toHaveBeenCalledWith(expect.objectContaining({ id: TRACK.id }));
+  });
+
+  it('Block song that the server refuses says so, instead of failing silently', async () => {
+    auth.user = { id: 'u1' };
+    blocking.block.mockRejectedValueOnce(new Error('network down'));
+    render(<NowPlaying />);
+    openMore();
+    fireEvent.click(row('block'));
+    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith(expect.stringContaining("Couldn't block")));
+    expect(toasts.success).not.toHaveBeenCalled();
+  });
+
+  it('Unblock song that the server refuses says so too', async () => {
+    auth.user = { id: 'u1' };
+    blocking.unblock.mockRejectedValueOnce(new Error('network down'));
+    blocked.is = true;
+    render(<NowPlaying />);
+    openMore();
+    fireEvent.click(row('block'));
+    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith(expect.stringContaining("Couldn't unblock")));
   });
 
   it('signed out, keeps what needs no account', () => {

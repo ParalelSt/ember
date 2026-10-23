@@ -267,14 +267,23 @@ export function NowPlaying() {
       label: blocked ? 'Unblock song' : 'Block song',
       Icon: BlockIcon,
       onSelect: () => {
+        // A refusal is said, not left as an unhandled rejection with no word.
         if (blocked) {
-          void blocking.unblock(track).then(() => toast.success(`Unblocked "${track.title}"`));
+          void blocking.unblock(track).then(
+            () => toast.success(`Unblocked "${track.title}"`),
+            () => toast.error(`Couldn't unblock "${track.title}". Try again.`),
+          );
           return;
         }
-        void blocking.block(track).then(() =>
-          toast.success(`Blocked "${track.title}". It won't come up in radio, mixes or suggestions.`, {
-            action: { label: 'Undo', onClick: () => void blocking.unblock(track) },
-          }),
+        void blocking.block(track).then(
+          () =>
+            toast.success(`Blocked "${track.title}". It won't come up in radio, mixes or suggestions.`, {
+              action: {
+                label: 'Undo',
+                onClick: () => void blocking.unblock(track).catch(() => toast.error(`Couldn't unblock "${track.title}". Try again.`)),
+              },
+            }),
+          () => toast.error(`Couldn't block "${track.title}". Try again.`),
         );
       },
     });
