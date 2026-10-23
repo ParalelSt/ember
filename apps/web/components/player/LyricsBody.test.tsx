@@ -14,7 +14,7 @@ const player = vi.hoisted(() => ({
 }));
 const lyrics = vi.hoisted(() => ({ synced: [] as Array<{ time: number; text: string }> }));
 
-vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => player }));
+vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => player, usePlayerPosition: () => player.position }));
 vi.mock('@/hooks/useLyrics', () => ({
   useQueryLyrics: () => ({ data: { lyrics: 'x', synced: lyrics.synced, source: 'lrclib' }, isLoading: false, error: null }),
 }));

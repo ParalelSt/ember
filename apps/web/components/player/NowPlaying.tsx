@@ -22,7 +22,7 @@ import { TransportControls } from '@/components/player/TransportControls';
 import { DevicesSheet, useDevicesEntry } from '@/components/player/DevicesButton';
 import { useBackDismiss } from '@/lib/useBackDismiss';
 import { useTrackArtSrc } from '@/lib/offlineNative';
-import { usePlayer } from '@/components/player/PlayerProvider';
+import { usePlayer, usePlayerPosition } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { useQueryLyrics } from '@/hooks/useLyrics';
@@ -63,7 +63,8 @@ export function NowPlaying() {
   useBackDismiss(open, close);
   const focus = useUiStore((s) => s.nowPlayingFocus);
   const setFocus = useUiStore((s) => s.setNowPlayingFocus);
-  const { current, isPlaying, position, duration, toggle, next, prev, seek, retry } = usePlayer();
+  const { current, isPlaying, duration, toggle, next, prev, seek, retry } = usePlayer();
+  const position = usePlayerPosition();
   const { user } = useAuth();
   // A song that could not play: the title area says so, as the bar does.
   const unplayable = useUnplayableMessage();

@@ -25,7 +25,7 @@ import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { VolumeControl } from '@/components/player/VolumeControl';
 import { DevicesButton, DevicesSheet, useDevicesEntry } from '@/components/player/DevicesButton';
-import { usePlayer } from '@/components/player/PlayerProvider';
+import { usePlayer, usePlayerPosition } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
@@ -38,7 +38,8 @@ import { isTabsPathFor, tabsHref } from '@/lib/tabSources';
 import { leavePage, notePathname } from '@/lib/inAppHistory';
 
 export function PlayerBar() {
-  const { current, isPlaying, position, duration, volume, toggle, next, prev, seek, setVolume, retry } = usePlayer();
+  const { current, isPlaying, duration, volume, toggle, next, prev, seek, setVolume, retry } = usePlayer();
+  const position = usePlayerPosition();
   const { user } = useAuth();
   // A real media query, not `md:` classes: the two bars share almost no
   // geometry, and rendering both with one hidden would put two transports,

@@ -19,7 +19,7 @@ import {
   RepeatIcon,
 } from '@/components/icons';
 import { EmptyState } from '@/components/page/EmptyState';
-import { usePlayer } from '@/components/player/PlayerProvider';
+import { usePlayer, usePlayerPosition } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
 import { TabSheetHeader } from '@/components/tabs/TabSheetHeader';
 import { NoTab, openLink } from '@/components/tabs/TabEmpty';
@@ -177,7 +177,8 @@ export function TabsPage({ trackId }: { trackId: string }) {
 
 function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourcesState; onBack: () => void }) {
   const phone = usePhone();
-  const { current, isPlaying, position, duration, seek, playTrack, toggle, rate, setRate, canSetRate } = usePlayer();
+  const { current, isPlaying, duration, seek, playTrack, toggle, rate, setRate, canSetRate } = usePlayer();
+  const position = usePlayerPosition();
   // When the player reported `position`: the line runs on from then.
   const positionAt = usePlayerStore((s) => s.positionAt);
   const follows = current?.id === song.id;

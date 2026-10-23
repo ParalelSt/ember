@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowDownIcon, ArrowUpIcon, CloseIcon } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
-import { usePlayer } from '@/components/player/PlayerProvider';
+import { usePlayer, usePlayerPosition } from '@/components/player/PlayerProvider';
 import { useQueryLyrics, type LyricsLine } from '@/hooks/useLyrics';
 import { centerLine, useLyricsFollow, type FollowDirection } from '@/hooks/useLyricsFollow';
 import { cn } from '@/lib/utils';
@@ -250,7 +250,7 @@ function SyncedLyrics({
    *  (search page, home, etc.) every time the active line changed. */
   scrollerRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const { position } = usePlayer();
+  const position = usePlayerPosition();
 
   // Binary search for the latest line whose timestamp is <= current position.
   const activeIdx = useMemo(() => {

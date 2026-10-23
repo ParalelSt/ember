@@ -69,7 +69,6 @@ import { UnplayableAnnouncer } from './UnplayableMessage';
 interface PlayerControls {
   current: Track | null;
   isPlaying: boolean;
-  position: number;
   duration: number;
   volume: number;
   queue: Track[];
@@ -1457,11 +1456,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<PlayerControls>(
     () => ({
-      current, isPlaying, position, duration, volume, queue, index, context,
+      current, isPlaying, duration, volume, queue, index, context,
       playTrack: userPlayTrack, playAt: userPlayAt, playBack: userPlayBack, toggle: userToggle, next: userNext, prev: userPrev,
       seek, setVolume, rate, setRate, canSetRate, retry,
     }),
-    [current, isPlaying, position, duration, volume, queue, index, context, userPlayTrack, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry],
+    [current, isPlaying, duration, volume, queue, index, context, userPlayTrack, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry],
   );
 
   // Pranks (admin only, never announced) sit beside the tree rather than in
@@ -1481,4 +1480,11 @@ export function usePlayer() {
   const ctx = useContext(PlayerContext);
   if (!ctx) throw new Error('usePlayer must be used inside PlayerProvider');
   return ctx;
+}
+
+/** The playhead, for the views that show it. Not part of usePlayer: it is
+ *  reported several times a second while audio plays, and every usePlayer
+ *  reader (each track list page among them) re-rendered with it. */
+export function usePlayerPosition(): number {
+  return usePlayerStore((s) => s.position);
 }

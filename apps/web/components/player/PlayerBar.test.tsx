@@ -28,7 +28,6 @@ vi.mock('@/components/player/PlayerProvider', () => ({
   usePlayer: () => ({
     current: TRACK,
     isPlaying: true,
-    position: 92,
     duration: 264,
     volume: 0.5,
     toggle: vi.fn(),
@@ -37,6 +36,7 @@ vi.mock('@/components/player/PlayerProvider', () => ({
     seek: vi.fn(),
     setVolume: vi.fn(),
   }),
+  usePlayerPosition: () => 92,
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { id: 'u1', email: 'a@b.c', name: 'A', avatarUrl: null, isAdmin: false } }),

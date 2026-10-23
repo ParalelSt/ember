@@ -35,13 +35,13 @@ vi.mock('@/components/player/PlayerProvider', () => ({
   usePlayer: () => ({
     current: player.current,
     isPlaying: true,
-    position: 0,
     duration: 180,
     toggle: player.toggle,
     next: player.next,
     prev: player.prev,
     seek: () => {},
   }),
+  usePlayerPosition: () => 0,
 }));
 const auth = vi.hoisted(() => ({ user: null as unknown }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: auth.user }) }));

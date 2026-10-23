@@ -36,7 +36,6 @@ vi.mock('@/components/player/PlayerProvider', () => ({
   usePlayer: () => ({
     current: player.current,
     isPlaying: true,
-    position: 0,
     duration: 180,
     volume: 1,
     toggle: player.toggle,
@@ -45,6 +44,7 @@ vi.mock('@/components/player/PlayerProvider', () => ({
     seek: () => {},
     setVolume: () => {},
   }),
+  usePlayerPosition: () => 0,
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, toggle: () => {} }) }));
