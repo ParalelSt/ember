@@ -33,8 +33,15 @@ const DESCRIPTION_MAX = 4000;
 
 // ── webhook resolution ────────────────────────────────────────────────────
 
-/** Minimal .env parser: KEY=value lines, quotes and CR stripped. Only used to
- *  pick out a webhook URL, so nothing is ever exported into process.env. */
+/** dotenv's own line rule, the one Next (@next/env) reads .env.local with:
+ *  an optional `export`, a quoted value kept whole, and a `#` after an
+ *  unquoted or quoted value starting a comment. */
+const ENV_LINE =
+  /^\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?$/gm;
+
+/** Minimal .env parser, read the way the web app reads the same file (a
+ *  hand parse kept `# comment` text in the webhook URL). Only used to pick
+ *  out a webhook URL, so nothing is ever exported into process.env. */
 export function readEnvFile(file) {
   const out = {};
   let text;
@@ -43,14 +50,12 @@ export function readEnvFile(file) {
   } catch {
     return out;
   }
-  for (const raw of text.split('\n')) {
-    const line = raw.replace(/\r$/, '').trim();
-    if (!line || line.startsWith('#')) continue;
-    const eq = line.indexOf('=');
-    if (eq < 1) continue;
-    const key = line.slice(0, eq).trim();
-    const value = line.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
-    out[key] = value;
+  for (const m of text.replace(/\r\n?/g, '\n').matchAll(ENV_LINE)) {
+    let value = (m[2] ?? '').trim();
+    const quote = value[0];
+    value = value.replace(/^(['"`])([\s\S]*)\1$/, '$2');
+    if (quote === '"') value = value.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
+    out[m[1]] = value;
   }
   return out;
 }
