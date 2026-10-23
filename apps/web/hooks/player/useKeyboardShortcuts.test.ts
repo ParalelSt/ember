@@ -205,11 +205,12 @@ describe('useKeyboardShortcuts while a modal is open', () => {
   };
 
   it('leaves every key to an open dialog or sheet (no play/pause, mute, seek or volume)', () => {
-    for (const attrs of [
+    const modals: Record<string, string>[] = [
       { 'data-slot': 'dialog-content', 'data-open': '' },
       { 'data-slot': 'sheet-content', 'data-open': '' },
       { role: 'dialog', 'aria-modal': 'true' },
-    ]) {
+    ];
+    for (const attrs of modals) {
       const { backend } = setup();
       const modal = mount(attrs);
       expect(press({ key: ' ', code: 'Space' })).toBe(true);
