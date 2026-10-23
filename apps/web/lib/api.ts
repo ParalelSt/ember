@@ -235,8 +235,6 @@ export const api = {
     quiet<{ gainDb: number | null }>(`/tracks/${encodeURIComponent(id)}/loudness?v=2`),
   getReplacements: (id: string) =>
     req<{ candidates: Track[] }>(`/tracks/${encodeURIComponent(id)}/replacements`),
-  saveToServer: (videoId: string) =>
-    req<{ ok: true }>(`/youtube/download/${encodeURIComponent(videoId)}`, { method: 'POST' }),
 
   listPlaylists: () => req<{ playlists: Playlist[] }>('/playlists'),
   createPlaylist: (name: string) =>
