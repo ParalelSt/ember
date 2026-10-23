@@ -70,12 +70,6 @@ export function drawableTabs(tabs: TabSummary[]): TabSummary[] {
   return DRAWN_KINDS.flatMap((kind) => tabs.filter((t) => t.kind === kind));
 }
 
-/** The tab to show: the one the listener picked if it still exists, else
- *  the first in the chain. Null when there is nothing to draw. */
-export function pickTab(tabs: TabSummary[], chosenId: string | null): TabSummary | null {
-  return tabs.find((t) => t.id === chosenId) ?? tabs[0] ?? null;
-}
-
 function addedByLabel(tab: TabSummary): string {
   return tab.mine ? 'you' : (tab.addedBy ?? 'someone');
 }

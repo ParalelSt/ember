@@ -4,7 +4,6 @@ import {
   emptyStateFor,
   followTrackChange,
   isTabsPathFor,
-  pickTab,
   pickerLabel,
   ratingLabel,
   sourceChipLabel,
@@ -47,19 +46,6 @@ describe('the source chain on the page', () => {
     const file = tab({ id: 'f' });
     expect(drawableTabs([oldGenerated(), file]).map((t) => t.id)).toEqual(['f']);
     expect(drawableTabs([oldGenerated()])).toEqual([]);
-    expect(pickTab(drawableTabs([oldGenerated(), file]), null)?.id).toBe('f');
-  });
-
-  it('a stale pick of a generated tab falls back to the first real tab', () => {
-    expect(pickTab(drawableTabs([oldGenerated(), tab({ id: 'f' })]), 'g')?.id).toBe('f');
-    expect(pickTab(drawableTabs([oldGenerated()]), 'g')).toBeNull();
-  });
-
-  it('the listener’s pick wins while it exists, else the first in the chain', () => {
-    const tabs = [tab({ id: 'f' }), tab({ id: 'p', kind: 'pasted' })];
-    expect(pickTab(tabs, 'p')?.id).toBe('p');
-    expect(pickTab(tabs, 'deleted')?.id).toBe('f');
-    expect(pickTab([], null)).toBeNull();
   });
 });
 
@@ -93,7 +79,6 @@ describe('pasted text tabs in the chain', () => {
     const pasted = tab({ id: 'p', kind: 'pasted' });
     const file = tab({ id: 'f' });
     expect(drawableTabs([oldGenerated(), pasted, file]).map((t) => t.id)).toEqual(['f', 'p']);
-    expect(pickTab(drawableTabs([oldGenerated(), pasted]), null)?.id).toBe('p');
   });
 });
 
@@ -119,7 +104,6 @@ describe('tabs found online in the chain', () => {
     const pasted = tab({ id: 'p', kind: 'pasted' });
     const file = tab({ id: 'f' });
     expect(drawableTabs([oldGenerated(), ug(), pasted, file]).map((t) => t.id)).toEqual(['f', 'p', 'u']);
-    expect(pickTab(drawableTabs([oldGenerated(), ug()]), null)?.id).toBe('u');
   });
 
   it('the chip names the site and says it is not lined up yet', () => {
