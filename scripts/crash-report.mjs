@@ -95,7 +95,29 @@ export function resolveWebhook({
 
 // Duplicated from scrubText in apps/web/lib/logger/sanitize.ts (this script
 // cannot import TypeScript). Keep the two lists in step when either changes.
+// First the Google credentials of a YouTube Music transfer, from
+// apps/web/lib/import/redact.ts (which scrubText runs first too).
+const GOOGLE_SESSION_COOKIE_RE =
+  /\b((?:__Secure-|__Host-)?[0-9]*P?(?:SAPISID|APISID|SIDTS|SIDCC|SSID|HSID|SID|LOGIN_INFO|VISITOR_INFO1_LIVE|YSC|PREF)\w*)=[^;,\s"'\\]+/g;
+const GOOGLE_PATTERNS = [
+  [/(["']?\b(?:set-)?cookie["']?\s*[:=]\s*["']?)[^\n\r"']*/gi, '$1[scrubbed]'],
+  [/(["']?authorization["']?\s*[:=]\s*["']?)[^\n\r"']*/gi, '$1[scrubbed]'],
+  [/(["']?x-goog-(?:authuser|visitor-id|pageid)["']?\s*[:=]\s*["']?)[^\n\r"']*/gi, '$1[scrubbed]'],
+  [GOOGLE_SESSION_COOKIE_RE, '$1=[scrubbed]'],
+  [/\bSAPISIDHASH\s+\S+/gi, 'SAPISIDHASH [scrubbed]'],
+  [/\bBearer\s+[A-Za-z0-9\-._~+/]{8,}=*/gi, 'Bearer [scrubbed]'],
+  [
+    /(["']?\b(?:access_token|refresh_token|id_token|device_code|client_secret|accessToken|refreshToken|idToken|deviceCode|clientSecret)["']?\s*[:=]\s*["']?)[^\s"'&,;}]*/g,
+    '$1[scrubbed]',
+  ],
+  [/([?&]token=)[^\s&"']*/gi, '$1[scrubbed]'],
+  [/\bya29\.[A-Za-z0-9\-_.]+/g, '[scrubbed]'],
+  [/(^|[^A-Za-z0-9:])1\/\/[A-Za-z0-9\-_]{8,}/g, '$1[scrubbed]'],
+  [/\bAH-1N[A-Za-z0-9\-_]{8,}/g, '[scrubbed]'],
+  [/\bGOCSPX-[A-Za-z0-9\-_]+/g, '[scrubbed]'],
+];
 const SCRUB_PATTERNS = [
+  ...GOOGLE_PATTERNS,
   [/\bbearer\s+[A-Za-z0-9\-_.]{8,}/gi, 'bearer [scrubbed]'],
   [/\b(cookie|set-cookie)\s*:\s*\S[^\n\r]*/gi, (_m, name) => `${name}: [scrubbed]`],
   [/\bpb_auth=[^;\s]+/gi, 'pb_auth=[scrubbed]'],

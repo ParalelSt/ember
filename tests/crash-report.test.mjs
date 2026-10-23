@@ -78,9 +78,25 @@ const FIXTURE_ROUTE = 'tests/fixtures/crash-report/bug-report-route.txt';
 // ── scrubbing ─────────────────────────────────────────────────────────────
 {
   const out = scrubText('GET /api/x Authorization: Bearer abcdefghijklmnop.qrs\ncookie: pb_auth=secret; a=b\nfine line');
-  check('scrubs a bearer token', !out.includes('abcdefghijklmnop') && out.includes('bearer [scrubbed]'), out.split('\n')[0]);
+  check('scrubs a bearer token', !out.includes('abcdefghijklmnop') && out.includes('[scrubbed]'), out.split('\n')[0]);
   check('scrubs a cookie header', !out.includes('pb_auth=secret'));
   check('leaves ordinary lines alone', out.includes('fine line'));
+
+  // The Google sign-in of a YouTube Music transfer (apps/web/lib/import/redact.ts):
+  // the server log and bug reports drop these, so a crash report must too.
+  const google = [
+    'token ya29.a0AfB_byC-xyz_123-abcDEF.ghi-jkl_mno',
+    'refresh 1//0gAbc-Def_ghIJklm',
+    'secret GOCSPX-abcdEFGH1234-xyz_',
+    'code AH-1Ng2abcDEFghi',
+    '{"refresh_token": "1//xyz", "access_token": "short"}',
+    'Cookie=SAPISID=abc123def; __Secure-3PSID=zzz',
+    'SAPISIDHASH 1700000000_abcdef',
+  ];
+  for (const line of google) {
+    const scrubbed = scrubText(line);
+    check(`scrubs a Google credential: ${line.slice(0, 24)}`, !/ya29\.|1\/\/|GOCSPX-|AH-1N|abc123def|"short"|_abcdef|=zzz/.test(scrubbed), scrubbed);
+  }
 }
 
 // ── rate limit state ──────────────────────────────────────────────────────
@@ -221,7 +237,7 @@ function runCli(args, env) {
   check('tail is the last 50 lines only', tailLines.length === 50 && tailLines[0] === 'line 32', `${tailLines.length} lines, first "${tailLines[0]}"`);
   check(
     'bearer token in the tail is scrubbed',
-    !!filePart && !filePart.content.includes('NOT-A-REAL-KEY-scrub-fixture') && filePart.content.includes('bearer [scrubbed]'),
+    !!filePart && !filePart.content.includes('NOT-A-REAL-KEY-scrub-fixture') && filePart.content.includes('[scrubbed]'),
   );
   check('rate-limit state written under EMBER_LOG_DIR', fs.existsSync(path.join(logDir, 'crash-report.state')));
 
