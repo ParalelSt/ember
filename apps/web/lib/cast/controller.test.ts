@@ -161,6 +161,35 @@ describe('cast controller: Safari (AirPlay)', () => {
   });
 });
 
+describe('cast controller: Safari (AirPlay), element swapped early', () => {
+  it('cancels the availability watch even when the element went before it was set up', async () => {
+    setWindow({ WebKitPlaybackTargetAvailabilityEvent: class {} });
+    let resolveWatch: (id: number) => void = () => {};
+    let watch: (a: boolean) => void = () => {};
+    const remote = {
+      state: 'disconnected',
+      watchAvailability: vi.fn((cb: (a: boolean) => void) => { watch = cb; return new Promise<number>((r) => { resolveWatch = r; }); }),
+      cancelWatchAvailability: vi.fn(async () => {}),
+      prompt: vi.fn(async () => {}),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    setCastMediaElement({ remote } as unknown as HTMLMediaElement);
+    initCast();
+    await flush();
+    expect(remote.watchAvailability).toHaveBeenCalled();
+    // The player swaps its element before Safari answers the watch.
+    setCastMediaElement(null);
+    useCastStore.getState().set({ availability: 'unknown' });
+    resolveWatch(7);
+    await flush();
+    expect(remote.cancelWatchAvailability).toHaveBeenCalledWith(7);
+    // And the old element no longer speaks for the button.
+    watch(true);
+    expect(useCastStore.getState().availability).toBe('unknown');
+  });
+});
+
 describe('cast controller: other shells', () => {
   it('the desktop app has no cast button', () => {
     shell.kind = 'tauri';
