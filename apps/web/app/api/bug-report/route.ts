@@ -10,7 +10,7 @@ import { rateLimitResponse } from "@/lib/rateLimit";
 import { formatSeenBefore, triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { scrubServerEntry, scrubText } from "@/lib/logger/sanitize";
+import { scrubClientEntries, scrubServerEntry, scrubText } from "@/lib/logger/sanitize";
 import { formatTimeline, selectTimeline } from "@/lib/reports/timeline";
 import { entriesForReporter } from "@/lib/reports/reporterEntries";
 import {
@@ -157,10 +157,17 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     // The desktop log travels inside the client snapshot but goes out as its
     // own attachment, so strip it here: inlined it would also sit in
     // report.json, doubling the payload for no extra information.
+    // The device only scrubbed secret-named keys; the patterns run here,
+    // the same as for the server's own entries and the note.
     const { desktopLog: rawDesktopLog, ...clientRest } = body.client;
-    const client = { ...clientRest, context: sanitizeContext(clientRest.context) };
+    const client = {
+      ...clientRest,
+      current: scrubClientEntries(clientRest.current),
+      previous: scrubClientEntries(clientRest.previous),
+      context: sanitizeContext(clientRest.context),
+    };
     const desktopLog =
-      typeof rawDesktopLog === "string" ? rawDesktopLog.slice(-MAX_DESKTOP_LOG) : "";
+      typeof rawDesktopLog === "string" ? scrubText(rawDesktopLog.slice(-MAX_DESKTOP_LOG)) : "";
 
     // Only what the reporter's own requests logged, plus server-wide
     // entries cut to their message: the log is everyone's, and this report

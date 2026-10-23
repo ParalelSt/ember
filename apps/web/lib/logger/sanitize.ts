@@ -1,5 +1,5 @@
 import { redactSecrets } from '@/lib/import/redact';
-import type { ServerLogEntry } from './types';
+import type { LogEntry, ServerLogEntry } from './types';
 
 /** Defensive scrubber for log payloads before they leave the device. Strips
  *  obviously-sensitive field names and truncates long strings. Runs over an
@@ -78,22 +78,41 @@ export function scrubText(text: string): string {
  *  a secret (see SETUP.md). Shared by the bug-report route and the daily
  *  digest so both redact the same way. */
 export function scrubServerEntry(e: ServerLogEntry): ServerLogEntry {
-  let data = e.data;
-  if (data !== undefined && data !== null) {
-    try {
-      // Scrubbed leaf by leaf: run over the whole JSON text, a query value's
-      // pattern swallowed the closing quote and the object would not re-parse.
-      data = scrubDataLeaves(JSON.parse(JSON.stringify(data)));
-    } catch {
-      data = scrubText(String(data));
-    }
-  }
   return {
     ...e,
     message: scrubText(e.message),
     stack: e.stack ? scrubText(e.stack) : e.stack,
-    data,
+    data: scrubData(e.data),
   };
+}
+
+/** A bug report's client entries, as the route received them. The device
+ *  only ran `scrub` over them (secret-named keys), never the patterns, so a
+ *  raw error message (a URL with its query, a token in a message) would go
+ *  to Discord and the triage model as it was. The same pass as the server's
+ *  own entries; anything that is not an entry object is dropped. */
+export function scrubClientEntries(entries: unknown[]): LogEntry[] {
+  const out: LogEntry[] = [];
+  for (const e of entries) {
+    if (!e || typeof e !== 'object' || Array.isArray(e)) continue;
+    const entry = e as LogEntry;
+    const scrubbed: LogEntry = { ...entry, message: typeof entry.message === 'string' ? scrubText(entry.message) : '' };
+    if ('stack' in entry) scrubbed.stack = typeof entry.stack === 'string' ? scrubText(entry.stack) : undefined;
+    if ('data' in entry) scrubbed.data = scrubData(entry.data);
+    out.push(scrubbed);
+  }
+  return out;
+}
+
+function scrubData(data: unknown): unknown {
+  if (data === undefined || data === null) return data;
+  try {
+    // Scrubbed leaf by leaf: run over the whole JSON text, a query value's
+    // pattern swallowed the closing quote and the object would not re-parse.
+    return scrubDataLeaves(JSON.parse(JSON.stringify(data)));
+  } catch {
+    return scrubText(String(data));
+  }
 }
 
 /** Header names redactSecrets drops by name in text, which a leaf alone no

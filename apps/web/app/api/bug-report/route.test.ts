@@ -487,6 +487,41 @@ describe('POST /api/bug-report: note scrubbing', () => {
 });
 
 
+describe('POST /api/bug-report: client log scrubbing', () => {
+  it('scrubs the client entries and the desktop log on the server too, not only the note', async () => {
+    const leaky = {
+      ts: Date.now(),
+      kind: 'error' as const,
+      level: 'error' as const,
+      category: 'api',
+      message: 'GET /api/youtube/search?q=secret-words -> 500',
+      stack: 'Error: upstream said Bearer sk-ant-abcdefgh12345678',
+      data: { url: '/api/uploads/x/stream?st=abcdefghijklmnopqrstuvwxyz' },
+      sessionId: 's1',
+    };
+    await POST(
+      request({
+        note: '',
+        client: snapshot({ current: [leaky, 'not an entry' as never], previous: [leaky], desktopLog: 'ya29.a0AfB_byC-xyz_123-abcDEF\nfine' }),
+      }),
+      undefined as never,
+    );
+    const form = postedForm(fetchMock);
+    const everything = [
+      form.get('payload_json') as string,
+      await (form.get('files[0]') as File).text(),
+      await (form.get('files[1]') as File).text(),
+    ].join('\n');
+    for (const secret of ['secret-words', 'sk-ant-abcdefgh12345678', 'abcdefghijklmnopqrstuvwxyz', 'ya29.']) {
+      expect(everything).not.toContain(secret);
+    }
+    expect(everything).toContain('fine');
+    const triageInput = vi.mocked(triageBugReport).mock.calls.at(-1)![0];
+    expect(JSON.stringify(triageInput)).not.toContain('secret-words');
+    expect(triageInput.client.current).toHaveLength(1);
+  });
+});
+
 describe('POST /api/bug-report: attachments', () => {
   const MB = 1024 * 1024;
   const file = (name: string, type: string, size?: number) => {
