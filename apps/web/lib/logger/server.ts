@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { LogLevel, ServerLogEntry } from './types';
 import { requestContext, type ServerLogContext } from './context';
+import { LOG_RETENTION_DAYS } from './retention';
 
 export { outsideRequest, requestContext, type ServerLogContext } from './context';
 
@@ -18,7 +19,7 @@ export function logDir(): string {
     ? path.resolve(process.env.EMBER_LOG_DIR)
     : path.resolve(process.cwd(), '..', '..', 'logs');
 }
-const RETENTION_DAYS = 2;
+const RETENTION_DAYS = LOG_RETENTION_DAYS;
 
 // The UTC day key (YYYY-MM-DD) the sweep last ran for, so a long-lived
 // server process re-sweeps once a new day starts instead of only ever

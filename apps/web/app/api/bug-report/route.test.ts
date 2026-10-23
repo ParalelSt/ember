@@ -405,10 +405,10 @@ describe('POST /api/bug-report: Seen before', () => {
     const thisOccurrence = serverError({ ts: now });
     vi.mocked(serverLogger.recentSince).mockResolvedValue([thisOccurrence]);
     // Same route/category/message shape (fingerprint ignores the numeric
-    // id), spread across the past week, including this occurrence.
+    // id), spread across the kept logs, including this occurrence.
     vi.mocked(serverLogger.entriesSince).mockResolvedValue([
-      serverError({ ts: now - 6 * 24 * 60 * 60 * 1000, message: 'GET /api/youtube/stream/xyz789 -> 502' }),
-      serverError({ ts: now - 3 * 24 * 60 * 60 * 1000, message: 'GET /api/youtube/stream/def456 -> 502' }),
+      serverError({ ts: now - 40 * 60 * 60 * 1000, message: 'GET /api/youtube/stream/xyz789 -> 502' }),
+      serverError({ ts: now - 20 * 60 * 60 * 1000, message: 'GET /api/youtube/stream/def456 -> 502' }),
       thisOccurrence,
     ]);
 
@@ -416,8 +416,18 @@ describe('POST /api/bug-report: Seen before', () => {
     expect(res.status).toBe(200);
     const embed = postedEmbed(fetchMock);
     const seenBefore = embed.fields.find((f) => f.name === 'Seen before');
-    expect(seenBefore?.value).toContain('seen 3 times this week');
+    expect(seenBefore?.value).toContain('seen 3 times in the last 2 days');
     expect(seenBefore?.value).not.toContain('first time');
+  });
+
+  it('looks back only as far as the server keeps its logs (2 days), not a week it cannot see', async () => {
+    vi.mocked(serverLogger.recentSince).mockResolvedValue([serverError()]);
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([]);
+    const before = Date.now();
+    await POST(request({ client: snapshot() }), undefined as never);
+    const since = vi.mocked(serverLogger.entriesSince).mock.calls.at(-1)![0];
+    expect(before - since).toBeGreaterThanOrEqual(2 * 24 * 60 * 60 * 1000 - 1000);
+    expect(before - since).toBeLessThanOrEqual(2 * 24 * 60 * 60 * 1000 + 1000);
   });
 
   it('omits server errors with no history from the report and still succeeds', async () => {

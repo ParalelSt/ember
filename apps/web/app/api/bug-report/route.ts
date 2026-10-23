@@ -10,6 +10,7 @@ import { rateLimitResponse } from "@/lib/rateLimit";
 import { formatSeenBefore, triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { LOG_RETENTION_MS } from "@/lib/logger/retention";
 import { scrubClientEntries, scrubServerEntry, scrubText } from "@/lib/logger/sanitize";
 import { formatTimeline, selectTimeline } from "@/lib/reports/timeline";
 import { entriesForReporter } from "@/lib/reports/reporterEntries";
@@ -31,9 +32,10 @@ import {
 } from "@/lib/attachments";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
-// How far back "Seen before" looks to tell "this has been happening all
-// week" from "brand new": see formatSeenBefore in lib/ai/triage.ts.
-const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// How far back "Seen before" looks to tell "this keeps happening" from
+// "brand new": as far as the server keeps its logs, since nothing older
+// exists to count (formatSeenBefore in lib/ai/triage.ts).
+const HISTORY_WINDOW_MS = LOG_RETENTION_MS;
 const MAX_NOTE_LEN = 1000;
 // Sane ceiling for individual context strings (route, platform, language,
 // …): a client that sends something absurd here shouldn't blow up the
@@ -177,7 +179,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       user.id,
     ).map(scrubServerEntry);
     // Wider window, counts only: how often has each error fingerprint in
-    // this report shown up in the last week (formatSeenBefore, shared with
+    // this report shown up in the kept logs (formatSeenBefore, shared with
     // the triage prompt below). Never displayed verbatim, so it doesn't need
     // scrubServerEntry's redaction pass.
     const history = await serverLogger.entriesSince(Date.now() - HISTORY_WINDOW_MS);
