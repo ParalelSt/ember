@@ -37,6 +37,8 @@ export interface ShortcutEvent {
 export interface TypingTarget {
   tagName?: string;
   isContentEditable?: boolean;
+  getAttribute?: (name: string) => string | null;
+  matches?: (selector: string) => boolean;
 }
 
 export interface ShortcutState {
@@ -60,6 +62,30 @@ export function isTypingTarget(el: TypingTarget | null | undefined): boolean {
   return Boolean(el.isContentEditable);
 }
 
+/** Controls Space presses or ticks (besides <button> and <summary>). */
+const SPACE_CONTROL_ROLES = new Set([
+  'button', 'checkbox', 'switch', 'radio', 'tab', 'option', 'menuitem', 'menuitemcheckbox', 'menuitemradio',
+]);
+
+/** Space on a control reached with the keyboard (it shows its focus ring)
+ *  is that control's: it presses the button or ticks the box, as in any
+ *  page. Taking it for play/pause left keyboard users unable to press a
+ *  focused button with Space (Delete in a confirm, a switch). A control
+ *  focused by a mouse click (no ring) is not, so after clicking Like,
+ *  Space still plays and pauses. */
+export function isKeyboardFocusedControl(el: TypingTarget | null | undefined): boolean {
+  if (!el) return false;
+  const role = el.getAttribute?.('role') ?? null;
+  const control = el.tagName === 'BUTTON' || el.tagName === 'SUMMARY' || (role !== null && SPACE_CONTROL_ROLES.has(role));
+  if (!control) return false;
+  try {
+    return el.matches?.(':focus-visible') === true;
+  } catch {
+    // A browser without :focus-visible: keep Space for the player.
+    return false;
+  }
+}
+
 export function shortcutFor(event: ShortcutEvent, state: ShortcutState): ShortcutAction | null {
   if (event.defaultPrevented) return { type: 'ignore' };
   if (isTypingTarget(event.target)) return { type: 'ignore' };
@@ -67,7 +93,7 @@ export function shortcutFor(event: ShortcutEvent, state: ShortcutState): Shortcu
 
   if (event.code === 'Space' || event.key === ' ') {
     // A held Space would machine-gun play/pause; one press, one toggle.
-    if (event.repeat) return { type: 'ignore' };
+    if (event.repeat || isKeyboardFocusedControl(event.target)) return { type: 'ignore' };
     return { type: 'toggle' };
   }
   if (event.key === 'm' || event.key === 'M') {

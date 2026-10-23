@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTypingTarget, shortcutFor, type ShortcutAction, type ShortcutEvent, type ShortcutState } from './shortcuts';
+import { isKeyboardFocusedControl, isTypingTarget, shortcutFor, type ShortcutAction, type ShortcutEvent, type ShortcutState } from './shortcuts';
 
 function press(event: Partial<ShortcutEvent>, state: Partial<ShortcutState> = {}) {
   return shortcutFor(
@@ -116,5 +116,34 @@ describe('shortcutFor and a key already handled', () => {
     expect(shortcutFor({ key: 'ArrowRight', defaultPrevented: true }, state)).toEqual({ type: 'ignore' });
     expect(shortcutFor({ key: ' ', code: 'Space', defaultPrevented: true }, state)).toEqual({ type: 'ignore' });
     expect(shortcutFor({ key: 'ArrowRight', defaultPrevented: false }, state)).toEqual({ type: 'seekBy', sec: 5 });
+  });
+});
+
+describe('Space on a focused control', () => {
+  const state = { hasCurrent: true, volume: 0.5 };
+  const el = (tagName: string, focusVisible: boolean, role: string | null = null) => ({
+    tagName,
+    getAttribute: (name: string) => (name === 'role' ? role : null),
+    matches: (selector: string) => selector === ':focus-visible' && focusVisible,
+  });
+
+  it('leaves Space to a button, switch or checkbox reached with the keyboard', () => {
+    expect(shortcutFor({ key: ' ', code: 'Space', target: el('BUTTON', true) }, state)).toEqual({ type: 'ignore' });
+    expect(shortcutFor({ key: ' ', code: 'Space', target: el('SPAN', true, 'switch') }, state)).toEqual({ type: 'ignore' });
+    expect(shortcutFor({ key: ' ', code: 'Space', target: el('DIV', true, 'checkbox') }, state)).toEqual({ type: 'ignore' });
+  });
+
+  it('still plays and pauses after a button was clicked with the mouse (no focus ring), or on a plain element', () => {
+    expect(shortcutFor({ key: ' ', code: 'Space', target: el('BUTTON', false) }, state)).toEqual({ type: 'toggle' });
+    expect(shortcutFor({ key: ' ', code: 'Space', target: el('DIV', true) }, state)).toEqual({ type: 'toggle' });
+  });
+
+  it('keeps the other shortcuts on a focused button', () => {
+    expect(shortcutFor({ key: 'm', target: el('BUTTON', true) }, state)).toEqual({ type: 'mute' });
+  });
+
+  it('does not break where :focus-visible throws', () => {
+    const old = { tagName: 'BUTTON', getAttribute: () => null, matches: () => { throw new Error('bad selector'); } };
+    expect(isKeyboardFocusedControl(old)).toBe(false);
   });
 });

@@ -182,3 +182,16 @@ describe('useKeyboardShortcuts and keys a control already handled', () => {
     expect(usePlayerStore.getState().volume).toBe(0.5);
   });
 });
+
+describe('useKeyboardShortcuts and a keyboard-focused button', () => {
+  it('lets Space press the button (no preventDefault, no play/pause)', () => {
+    const { backend } = setup();
+    backend!.paused = true;
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    // happy-dom does not track focus modality: the button shows its ring.
+    button.matches = (selector: string) => selector === ':focus-visible' || Element.prototype.matches.call(button, selector);
+    expect(press({ key: ' ', code: 'Space' }, button)).toBe(true);
+    expect(backend!.play).not.toHaveBeenCalled();
+  });
+});
