@@ -32,8 +32,7 @@ import { rowPaths } from '@/lib/tabs';
  *  Lookup is by song_key (lib/songKey.ts), so "Song (Remastered 2011)" and
  *  "Song" find the same tabs, plus the exact track the tab was added for. */
 
-export type { TabKind, TabSummary, TabSource } from '@/lib/tabSources';
-export { orderSources } from '@/lib/tabSources';
+export type { TabKind, TabSummary } from '@/lib/tabSources';
 
 /** Who is asking: the signed-in member as lib/auth hands it over. */
 export interface TabViewer {

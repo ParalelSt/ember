@@ -13,7 +13,6 @@ import {
   isRetired,
   mapTab,
   matchesQuery,
-  orderSources,
   resetBackfill,
   songKeyOf,
   sortTabs,
@@ -105,23 +104,12 @@ describe('source priority', () => {
     expect(sorted.map((r) => r.id)).toEqual(['f-new', 'f-old']);
   });
 
-  it('orders the chain file > Songsterr link', () => {
-    const f = mapTab(row({ id: 'f', kind: 'file', file: 'a.gp5' }), ALICE);
-    const link = { id: 42, artist: 'A', title: 'B', hasChords: false, instruments: [], url: 'https://x' };
-    expect(orderSources([f], [link]).map((s) => s.type)).toEqual(['file', 'songsterr']);
-    expect(orderSources([], [link]).map((s) => s.type)).toEqual(['songsterr']);
-  });
-
-  it('a pasted text tab sits after files, before Songsterr', () => {
+  it('a pasted text tab sits after files', () => {
     const sorted = sortTabs([
       row({ id: 'p', kind: 'pasted', created: '2026-09-04' }),
       row({ id: 'f', kind: 'file', created: '2026-09-01' }),
     ]);
     expect(sorted.map((r) => r.id)).toEqual(['f', 'p']);
-    const p = mapTab(row({ id: 'p', kind: 'pasted', file: 'abc.alphatex', format: 'alphatex' }), ALICE);
-    const f = mapTab(row({ id: 'f', kind: 'file', file: 'a.gp5' }), ALICE);
-    const link = { id: 42, artist: 'A', title: 'B', hasChords: false, instruments: [], url: 'https://x' };
-    expect(orderSources([p, f], [link]).map((s) => s.type)).toEqual(['file', 'pasted', 'songsterr']);
   });
 
   it('a pasted row maps to kind pasted, loaded through the file download route', () => {

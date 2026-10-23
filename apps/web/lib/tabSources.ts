@@ -63,24 +63,6 @@ export interface TabSummary {
   timing?: TabTiming | null;
 }
 
-export type TabSource =
-  | { type: 'file'; tab: TabSummary }
-  | { type: 'pasted'; tab: TabSummary }
-  | { type: 'fetched'; tab: TabSummary }
-  | { type: 'songsterr'; match: TabMatch };
-
-/** The source chain for a track, in the order the viewer tries them: a file
- *  someone added, then a pasted text tab, then a tab found online, then
- *  Songsterr's link-out. */
-export function orderSources(tabs: TabSummary[], matches: TabMatch[]): TabSource[] {
-  return [
-    ...tabs.filter((t) => t.kind === 'file').map((tab) => ({ type: 'file' as const, tab })),
-    ...tabs.filter((t) => t.kind === 'pasted').map((tab) => ({ type: 'pasted' as const, tab })),
-    ...tabs.filter((t) => t.kind === 'fetched').map((tab) => ({ type: 'fetched' as const, tab })),
-    ...matches.map((match) => ({ type: 'songsterr' as const, match })),
-  ];
-}
-
 /** Every tab the page can draw for a track: files, then pasted text tabs,
  *  then tabs found online. Anything else (a generated tab from an older
  *  server, still in a cached answer) is left out. */

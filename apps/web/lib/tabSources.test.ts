@@ -4,7 +4,6 @@ import {
   emptyStateFor,
   followTrackChange,
   isTabsPathFor,
-  orderSources,
   pickTab,
   pickerLabel,
   ratingLabel,
@@ -121,7 +120,6 @@ describe('tabs found online in the chain', () => {
     const file = tab({ id: 'f' });
     expect(drawableTabs([oldGenerated(), ug(), pasted, file]).map((t) => t.id)).toEqual(['f', 'p', 'u']);
     expect(pickTab(drawableTabs([oldGenerated(), ug()]), null)?.id).toBe('u');
-    expect(orderSources([oldGenerated(), ug(), file], [match]).map((x) => x.type)).toEqual(['file', 'fetched', 'songsterr']);
   });
 
   it('the chip names the site and says it is not lined up yet', () => {
