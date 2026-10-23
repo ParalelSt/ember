@@ -6,16 +6,14 @@ import type { Track } from '@/types/track';
 import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, JobKind, SourceItem } from '@/lib/import/types';
 import type { ItemStatus, JobStatus } from '@/lib/import/jobState';
 import { GOOGLE_LIKES_SOURCE_ID, notMusicCount } from '@/lib/import/musicCheck';
+import { pbDate } from '@/lib/pocketbase/dates';
 
 type Row = Record<string, unknown>;
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
-/** PocketBase's own date format, which its filters compare as text. */
-export function pbDate(ms: number): string {
-  return new Date(ms).toISOString().replace('T', ' ');
-}
+export { pbDate };
 
 /** A PocketBase date back to epoch ms, or null when the field is empty. */
 export function pbMillis(v: unknown): number | null {

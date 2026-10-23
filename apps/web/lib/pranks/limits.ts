@@ -1,4 +1,5 @@
 import type { PrankKind, PrankParams, PrankStatus } from './types';
+import { parsePbDate, pbDate } from '@/lib/pocketbase/dates';
 
 /** Every guard-rail number, as the owner decided them (2026-09-23). */
 export const PRANK_LIMITS = {
@@ -134,13 +135,4 @@ export function applyAck(
   return { ok: false, status: 409, error: `cannot go from ${row.status} to ${ack.status}` };
 }
 
-/** PocketBase's date format ("2026-09-23 12:00:00.000Z"), sortable as text. */
-export function pbDate(ms: number): string {
-  return new Date(ms).toISOString().replace('T', ' ');
-}
-
-/** Parses a PocketBase date (space or T separated) to ms; NaN when empty. */
-export function parsePbDate(s: unknown): number {
-  if (typeof s !== 'string' || !s) return NaN;
-  return Date.parse(s.replace(' ', 'T'));
-}
+export { parsePbDate, pbDate };
