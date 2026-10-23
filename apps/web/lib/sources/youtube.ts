@@ -458,11 +458,23 @@ export function readTrackGain(videoId: string): number | null {
 }
 
 /** One measurement at a time: it is a full decode of the song, and nobody is
- *  waiting on it (a song without a gain just plays unchanged). */
-const LOUDNESS_LANE = createSemaphore(1, { queueTimeoutMs: 300_000, maxQueue: 256 });
-const measuring = new Map<string, Promise<number | null>>();
-/** A song ffmpeg could not read is not retried on every request. */
-const measureFailedAt = new Map<string, number>();
+ *  waiting on it (a song without a gain just plays unchanged). Per server
+ *  PROCESS, like inFlight: the loudness route and the routes that download
+ *  each bundle their own copy of this module, and with module-level state
+ *  they measured the same song twice at once, several songs in parallel. */
+interface LoudnessState {
+  lane: Semaphore;
+  measuring: Map<string, Promise<number | null>>;
+  /** A song ffmpeg could not read is not retried on every request. */
+  measureFailedAt: Map<string, number>;
+}
+const LOUDNESS_KEY = Symbol.for('ember.loudnessMeasuring');
+const loudnessState = ((globalThis as Record<symbol, unknown>)[LOUDNESS_KEY] ??= {
+  lane: createSemaphore(1, { queueTimeoutMs: 300_000, maxQueue: 256 }),
+  measuring: new Map(),
+  measureFailedAt: new Map(),
+} satisfies LoudnessState) as LoudnessState;
+const { lane: LOUDNESS_LANE, measuring, measureFailedAt } = loudnessState;
 const MEASURE_RETRY_MS = 10 * 60_000;
 
 /** Measure a downloaded song's loudness (once; concurrent callers share the
