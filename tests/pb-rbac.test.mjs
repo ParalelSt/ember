@@ -139,6 +139,13 @@ async function subscribe(token, topics) {
 const opt = (filter) => `tracks/*?options=${encodeURIComponent(JSON.stringify({ query: { filter } }))}`;
 const rtBad = await subscribe(bob.token, [opt(`likes_via_track.user ?= "${alice.id}"`)]);
 check('S1 a realtime subscription with a join is refused', rtBad === 400, `status ${rtBad}`);
+// PocketBase reads the options with Go's JSON decoder, which takes "Query"
+// for "query": the same join under a capitalised key used to be let through
+// and applied, so bob learned which songs alice liked.
+const rtCased = await subscribe(bob.token, [
+  `tracks/*?options=${encodeURIComponent(JSON.stringify({ Query: { filter: `likes_via_track.user ?= "${alice.id}"` } }))}`,
+]);
+check('S1 a join under a capitalised "Query" key is refused too', rtCased === 400, `status ${rtCased}`);
 const rtOk = await subscribe(alice.token, [
   `pranks/*?options=${encodeURIComponent(JSON.stringify({ query: { filter: `target = "${alice.id}" && status = "pending"` } }))}`,
 ]);

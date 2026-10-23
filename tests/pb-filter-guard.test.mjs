@@ -86,6 +86,17 @@ check('a second options value is checked too',
   unsafeSubscription(`${topic({ filter: 'id != ""' })}&options=${encodeURIComponent(JSON.stringify({ query: { filter: 'uploader.name = "x"' } }))}`) !== '');
 check('unreadable options are refused', unsafeSubscription('tracks/*?options=%7Bnot-json') !== '');
 check('headers-only options are fine', unsafeSubscription(`tracks/*?options=${encodeURIComponent('{"headers":{"x":"y"}}')}`) === '');
+// PocketBase reads the options with Go's encoding/json, which matches the
+// `query` key in any letter case, and merges repeated keys.
+const rawTopic = (json) => `tracks/*?options=${encodeURIComponent(json)}`;
+for (const key of ['Query', 'QUERY', 'qUeRy']) {
+  check(`a join under "${key}" is refused`,
+    unsafeSubscription(rawTopic(JSON.stringify({ [key]: { filter: 'likes_via_track.user ?= "a"' } }))) !== '');
+}
+check('a join under a second, differently cased query key is refused',
+  unsafeSubscription(rawTopic('{"query":{"filter":"id != \\"\\""},"Query":{"filter":"uploader.name = \\"x\\""}}')) !== '');
+check('a plain filter under "Query" is still fine',
+  unsafeSubscription(rawTopic(JSON.stringify({ Query: { filter: 'target = "a"' } }))) === '');
 
 const failed = out.filter((c) => !c.pass);
 console.log(`\n${out.length - failed.length}/${out.length} passed`);

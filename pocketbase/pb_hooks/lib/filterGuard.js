@@ -95,9 +95,16 @@ function unsafeSubscription(topic) {
     } catch (_) {
       return 'unreadable options';
     }
-    const query = (opts && typeof opts === 'object' && opts.query) || {};
-    const why = unsafeQueryExpr(query.filter) || unsafeQueryExpr(query.sort);
-    if (why) return why;
+    if (!opts || typeof opts !== 'object') continue;
+    // PocketBase decodes the options with Go's encoding/json, which takes
+    // `Query` or `QUERY` for `query` too (and merges repeats), so check
+    // every key that folds to it, not only the lower-case one.
+    for (const k of Object.keys(opts)) {
+      if (k.toLowerCase() !== 'query') continue;
+      const query = (opts[k] && typeof opts[k] === 'object' && opts[k]) || {};
+      const why = unsafeQueryExpr(query.filter) || unsafeQueryExpr(query.sort);
+      if (why) return why;
+    }
   }
   return '';
 }
