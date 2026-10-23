@@ -249,6 +249,19 @@ run_service() {
       export EMBER_ADMIN_EMAIL="$PB_OWNER_EMAIL" EMBER_ADMIN_PASSWORD="$PB_OWNER_PASSWORD"
       export EMBER_BACKUP_CRON="$PB_BACKUP_CRON" EMBER_BACKUP_KEEP="$PB_BACKUP_KEEP"
       if [ -n "$WATCHDOG_CMD_PB" ]; then cd "$ROOT" && exec_detached bash -c "$WATCHDOG_CMD_PB"; fi
+      # A brand new install: PocketBase fires the boot hooks before it makes
+      # its own tables, so on the very first serve every ensure_* hook found
+      # nothing (no superuser for Next, none of Ember's collections) until a
+      # restart. Make the tables first, with no hooks loaded, then serve.
+      # Only while there is no database yet: an existing one is migrated by
+      # serve itself, as before.
+      if [ ! -f "$PB_DIR/pb_data/data.db" ]; then
+        local no_hooks
+        no_hooks="$(mktemp -d)"
+        (cd "$PB_DIR" && "$PB" migrate up --dir "$PB_DIR/pb_data" --migrationsDir "$PB_DIR/pb_migrations" --hooksDir "$no_hooks" >/dev/null) \
+          || echo "✗ pocketbase migrate up failed on the new pb_data; serve will try again"
+        rmdir "$no_hooks" 2>/dev/null || true
+      fi
       # --automigrate=0: the boot hooks create and change collections, and
       # with automigrate on PocketBase wrote a migration file for each change.
       # Two in the same second got the same name and crashed the boot.

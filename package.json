@@ -98,6 +98,7 @@
     "test:android-call": "bash tests/android-auto-call.sh",
     "test:watchdog": "bash tests/watchdog.test.sh",
     "test:start-static-env": "node tests/start-static-env.test.mjs",
+    "test:start-static-fresh-pb": "node tests/start-static-fresh-pb.test.mjs",
     "test:update-script": "bash tests/update-script.test.sh",
     "test:crash-report": "node tests/crash-report.test.mjs",
     "test:import": "node tests/import.test.mjs",
