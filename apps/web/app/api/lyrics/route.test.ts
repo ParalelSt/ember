@@ -16,10 +16,12 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
 }));
 
 const { GET } = await import('./route');
+const { _resetBuckets } = await import('@/lib/rateLimit');
 
 const call = (qs: string) => GET(new NextRequest(`http://127.0.0.1/api/lyrics?${qs}`), undefined as never);
 
 beforeEach(() => {
+  _resetBuckets();
   getLyrics.mockReset();
   getLyrics.mockResolvedValue({ lyrics: null, source: 'none', url: null });
 });
@@ -35,5 +37,14 @@ describe('GET /api/lyrics', () => {
     await call('title=Song&artist=Band&durationSec=abc');
     expect(getLyrics).toHaveBeenNthCalledWith(1, 'Song', 'Band', undefined);
     expect(getLyrics).toHaveBeenNthCalledWith(2, 'Song', 'Band', undefined);
+  });
+});
+
+describe('GET /api/lyrics rate limit', () => {
+  it('caps one member at 30 lookups a minute, since each can start the Python lyrics helper', async () => {
+    for (let i = 0; i < 30; i++) expect((await call(`title=Song${i}`)).status).toBe(200);
+    const res = await call('title=OneTooMany');
+    expect(res.status).toBe(429);
+    expect(getLyrics).toHaveBeenCalledTimes(30);
   });
 });
