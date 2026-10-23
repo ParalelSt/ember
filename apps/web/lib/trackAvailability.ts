@@ -18,6 +18,18 @@ export interface UnavailableMark {
 
 let cache: { marks: Map<string, UnavailableMark>; expires: number } | null = null;
 const CACHE_TTL_MS = 60_000;
+/** The read in progress, shared by everyone who asks meanwhile: Home asks
+ *  charts, trending, recommended and mixes at once, and with nothing cached
+ *  each signed in as admin and read the whole list for itself. */
+let reading: Promise<Map<string, UnavailableMark>> | null = null;
+/** Bumped by every write, so a read that started before it is not cached. */
+let generation = 0;
+
+function invalidate(): void {
+  cache = null;
+  reading = null;
+  generation += 1;
+}
 
 /** How long a flag is trusted without asking YouTube again. Within it the
  *  stream route answers 410 straight from the flag (no yt-dlp run); past it
@@ -52,7 +64,7 @@ export async function markTrackUnavailable(externalId: string, reason: Unavailab
     // of the same reason should not cost a write on every play.
     if (row.unavailable_at && row.unavailable_reason === reason && Date.now() - toMark(row).at < REMARK_AFTER_MS) return;
     await pb.collection('tracks').update(row.id, { unavailable_at: new Date().toISOString(), unavailable_reason: reason });
-    cache = null;
+    invalidate();
   } catch (e) {
     if ((e as { status?: number }).status !== 404) serverLogger.error('stream', 'could not mark track unavailable', { externalId }, e);
   }
@@ -64,7 +76,7 @@ export async function clearTrackUnavailable(externalId: string): Promise<void> {
     const { pb, row } = await findRow(externalId);
     if (!row.unavailable_at) return;
     await pb.collection('tracks').update(row.id, { unavailable_at: '', unavailable_reason: '' });
-    cache = null;
+    invalidate();
   } catch (e) {
     if ((e as { status?: number }).status !== 404) serverLogger.error('stream', 'could not clear track unavailable', { externalId }, e);
   }
@@ -72,6 +84,17 @@ export async function clearTrackUnavailable(externalId: string): Promise<void> {
 
 async function listMarks(): Promise<Map<string, UnavailableMark>> {
   if (cache && cache.expires > Date.now()) return cache.marks;
+  if (!reading) {
+    const run = readMarks(generation);
+    reading = run;
+    void run.finally(() => {
+      if (reading === run) reading = null;
+    });
+  }
+  return reading;
+}
+
+async function readMarks(gen: number): Promise<Map<string, UnavailableMark>> {
   try {
     const pb = await createAdminClient();
     const rows = await pb.collection('tracks').getFullList<{ external_id: string; unavailable_at?: string; unavailable_reason?: string }>({
@@ -79,7 +102,7 @@ async function listMarks(): Promise<Map<string, UnavailableMark>> {
       fields: 'external_id,unavailable_at,unavailable_reason',
     });
     const marks = new Map(rows.map((r) => [r.external_id, toMark(r)] as const));
-    cache = { marks, expires: Date.now() + CACHE_TTL_MS };
+    if (gen === generation) cache = { marks, expires: Date.now() + CACHE_TTL_MS };
     return marks;
   } catch (e) {
     serverLogger.error('stream', 'could not list unavailable tracks', {}, e);
@@ -102,5 +125,5 @@ export async function freshUnavailableMark(externalId: string, now = Date.now())
 
 /** Tests only. */
 export function _resetAvailabilityCache(): void {
-  cache = null;
+  invalidate();
 }
