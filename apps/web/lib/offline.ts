@@ -255,6 +255,9 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
 
   const completed: OfflineTrackEntry[] = [];
   let failed = 0;
+  /** Earlier copies kept for songs that failed this time: in the manifest,
+   *  but not songs saved now (each is already counted in `failed`). */
+  let keptCopies = 0;
   let totalBytesThisPlaylist = 0;
 
   try {
@@ -282,6 +285,7 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
         const kept = had.get(t.id);
         if (kept) {
           completed.push(kept);
+          keptCopies++;
           totalBytesThisPlaylist += kept.bytesAudio + kept.bytesArt;
         }
         // A full disk turns every song after this one away too: stop
@@ -290,6 +294,7 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
         if ((e as Error)?.name === 'QuotaExceededError') {
           for (const rest of stillToCome(i + 1)) {
             completed.push(rest);
+            keptCopies++;
             totalBytesThisPlaylist += rest.bytesAudio + rest.bytesArt;
           }
           failed += playable.length - i - 1;
@@ -375,12 +380,12 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
         audioFilePath: `${PLAYLISTS_DIR}/${playlist.id}/${t.audioFile}`,
       })),
     });
-    return { saved: completed.length, failed };
+    return { saved: completed.length - keptCopies, failed };
   } catch (e) {
     store.failDownload(playlist.id);
     if ((e as Error)?.name === 'AbortError') {
       // Partial state intentionally left for resume.
-      return { saved: completed.length, failed };
+      return { saved: completed.length - keptCopies, failed };
     }
     // A failed update puts the earlier download back; only a first
     // download that saved nothing is removed.

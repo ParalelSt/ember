@@ -200,8 +200,11 @@ describe('downloadPlaylist (browser storage)', () => {
     fetchMock.mockImplementation(async (url: string) =>
       url.includes('/a1') ? new Response('nope', { status: 500 }) : audio());
 
-    await downloadPlaylist(PL, [YT, UP]);
+    const result = await downloadPlaylist(PL, [YT, UP]);
 
+    // Counted once: "1 of 2 couldn't be saved", not "1 of 3" for a
+    // two-song playlist (the kept copy is not a song saved this time).
+    expect(result).toEqual({ saved: 1, failed: 1 });
     expect((await manifestIds()).sort()).toEqual(['upload:u1', 'youtube:a1']);
     expect(Object.keys(useOfflineStore.getState().webFiles).sort()).toEqual(['upload:u1', 'youtube:a1']);
     expect(useOfflineStore.getState().totalBytes).toBe(8);
