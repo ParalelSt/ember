@@ -18,12 +18,14 @@ and quiet songs come up as far as their peaks allow.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from ffmpeg_path import ffmpeg_exe
@@ -140,10 +142,18 @@ def analyze(video_id: str, base: Path | None = None) -> dict:
         "gainDb": compute_gain(lufs, peak),
         "targetLufs": TARGET_LUFS,
     }
-    # Write-then-rename so a reader never sees half a file.
-    tmp = side.with_name(side.name + ".tmp")
-    tmp.write_text(json.dumps(result))
-    os.replace(tmp, side)
+    # Write-then-rename so a reader never sees half a file. The temp name is
+    # this run's own: two runs measuring the same song at once (a download's
+    # and the player asking, from another route) shared one, and the second
+    # failed once the first had renamed it away.
+    fd, tmp = tempfile.mkstemp(dir=side.parent, prefix=f"{side.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(result))
+        os.replace(tmp, side)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp)
     return result
 
 

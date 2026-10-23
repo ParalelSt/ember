@@ -219,6 +219,45 @@ class AnalyzeTest(unittest.TestCase):
         self.assertEqual(out.stdout, "")
 
 
+class ConcurrentAnalyzeTest(unittest.TestCase):
+    """Two measurements of one song at once (the download's own one and the
+    player asking for its gain, from another route) both write the sidecar."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp(prefix="ember-loudness-race-"))
+        self.addCleanup(shutil.rmtree, self.dir, True)
+
+    def test_two_writers_of_one_sidecar_both_succeed(self):
+        vid = "racingtone0"
+        (self.dir / f"{vid}.m4a").write_text("AUDIO")
+        real_replace = os.replace
+        results = []
+
+        def replace(src, dst):
+            # The other run writes its own sidecar between this run writing
+            # its temp file and moving it into place.
+            replace_mock.side_effect = real_replace
+            results.append(loudness.analyze(vid, self.dir))
+            real_replace(src, dst)
+
+        with mock.patch.object(loudness, "measure", return_value=(-12.0, -6.0)), \
+                mock.patch.object(loudness.os, "replace", side_effect=replace) as replace_mock:
+            results.append(loudness.analyze(vid, self.dir))
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(json.loads((self.dir / f"{vid}.loudness.json").read_text()), results[1])
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), [f"{vid}.loudness.json", f"{vid}.m4a"])
+
+    def test_failed_write_leaves_no_temp_file(self):
+        vid = "fullofdisk0"
+        (self.dir / f"{vid}.m4a").write_text("AUDIO")
+        with mock.patch.object(loudness, "measure", return_value=(-12.0, -6.0)), \
+                mock.patch.object(loudness.os, "replace", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                loudness.analyze(vid, self.dir)
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), [f"{vid}.m4a"])
+
+
 class PlayerCommandTest(unittest.TestCase):
     """`player.py loudness <id>` is how the web server runs it."""
 
