@@ -107,6 +107,12 @@ onAfterBootstrap((e) => {
       { name: "size_bytes", type: "number", required: false, options: { min: 0 } },
     ],
   });
-  dao.saveCollection(collection);
-  console.log("[ensure_uploads] created uploads");
+  // A failed first-time create must not stop PocketBase from booting: warn
+  // and carry on (bughunt X11); the next boot tries again.
+  try {
+    dao.saveCollection(collection);
+    console.log("[ensure_uploads] created uploads");
+  } catch (err) {
+    console.warn("[ensure_uploads] could not create uploads: " + err);
+  }
 });

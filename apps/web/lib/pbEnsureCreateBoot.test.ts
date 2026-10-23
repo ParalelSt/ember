@@ -73,3 +73,83 @@ describe.each(['ensure_pranks.pb.js', 'ensure_sessions.pb.js'])('%s', (file) => 
     for (const n of expected) expect(names, n).toContain(n);
   });
 });
+
+// The same rule for every other hook that creates a collection on a fresh
+// install, and for ensure_admin re-promoting the owner: a failed save warns
+// and the boot goes on.
+type Field = { name: string; options?: Record<string, unknown> };
+type Def2 = { name: string; schema?: Field[]; indexes?: string[] };
+
+function bootAny(file: string, saveFails: boolean) {
+  const source = readFileSync(join(HOOKS, file), 'utf8');
+  const hooks: (() => void)[] = [];
+  const warnings: string[] = [];
+  const collections = new Map<string, Record<string, unknown>>();
+  function Collection(this: Record<string, unknown>, def: Def2) {
+    Object.assign(this, def);
+    this.id = `id_${def.name}`;
+    this.indexes = def.indexes ?? [];
+    const fields: Field[] = [...(def.schema ?? [])];
+    this.schema = {
+      getFieldByName: (n: string) => fields.find((f) => f.name === n) ?? null,
+      addField: (f: Field) => fields.push(f),
+    };
+  }
+  const make = (def: Def2) => new (Collection as unknown as new (d: Def2) => Record<string, unknown>)(def);
+  for (const name of ['users', 'tracks', 'playlists', 'playlist_tracks']) collections.set(name, make({ name }));
+  const owner = { get: () => false, set: () => {} };
+  const dao = {
+    findCollectionByNameOrId: (name: string) => {
+      const c = collections.get(name);
+      if (!c) throw new Error('not found');
+      return c;
+    },
+    saveCollection: (c: { name: string }) => {
+      if (saveFails) throw new Error('database is locked');
+      collections.set(c.name, c as Record<string, unknown>);
+    },
+    findAuthRecordByEmail: () => owner,
+    saveRecord: () => {
+      if (saveFails) throw new Error('database is locked');
+    },
+  };
+  const noop = () => {};
+  vm.runInNewContext(source, {
+    onAfterBootstrap: (fn: () => void) => hooks.push(fn),
+    onRecordBeforeCreateRequest: noop,
+    onRecordBeforeUpdateRequest: noop,
+    onModelBeforeCreate: noop,
+    $app: { dao: () => dao },
+    $os: { getenv: (k: string) => (k === 'EMBER_ADMIN_EMAIL' ? 'owner@x.test' : '') },
+    Collection,
+    SchemaField: function SchemaField(this: Record<string, unknown>, f: Field) {
+      Object.assign(this, f);
+    },
+    console: { log: () => {}, warn: (m: string) => warnings.push(m) },
+  });
+  for (const h of hooks) h();
+  return { names: [...collections.keys()], warnings };
+}
+
+describe.each([
+  ['ensure_collab_playlists.pb.js', ['playlist_members']],
+  ['ensure_imports.pb.js', ['import_jobs', 'import_items']],
+  ['ensure_recent_searches.pb.js', ['recent_searches']],
+  ['ensure_tabs.pb.js', ['tabs', 'tab_lookups']],
+  ['ensure_themes.pb.js', ['themes']],
+  ['ensure_uploads.pb.js', ['uploads']],
+  ['ensure_admin.pb.js', []],
+])('%s', (file, created) => {
+  it('warns instead of stopping the boot when a save fails', () => {
+    let result: ReturnType<typeof bootAny> | null = null;
+    expect(() => (result = bootAny(file, true))).not.toThrow();
+    expect(result!.warnings.length).toBeGreaterThan(0);
+    for (const n of created) expect(result!.names).not.toContain(n);
+  });
+
+  it('still creates its collections when the saves work', () => {
+    const { names, warnings } = bootAny(file, false);
+    expect(warnings).toEqual([]);
+    for (const n of created) expect(names, n).toContain(n);
+  });
+});

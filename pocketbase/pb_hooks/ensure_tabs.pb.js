@@ -92,9 +92,16 @@ onAfterBootstrap((e) => {
         { name: "size_bytes", type: "number", options: { noDecimal: true } },
       ],
     });
-    dao.saveCollection(tabs);
-    console.log("[ensure_tabs] created tabs");
-    return dao.findCollectionByNameOrId("tabs");
+    // A failed first-time create must not stop PocketBase from booting:
+    // warn and carry on (bughunt X11); the next boot tries again.
+    try {
+      dao.saveCollection(tabs);
+      console.log("[ensure_tabs] created tabs");
+      return dao.findCollectionByNameOrId("tabs");
+    } catch (err) {
+      console.warn("[ensure_tabs] could not create tabs: " + err);
+      return null;
+    }
   }
 
   const NEW_FIELDS = [
@@ -209,24 +216,28 @@ onAfterBootstrap((e) => {
     lookups = null;
   }
   if (!lookups) {
-    dao.saveCollection(new Collection({
-      name: "tab_lookups",
-      type: "base",
-      listRule: null,
-      viewRule: null,
-      createRule: null,
-      updateRule: null,
-      deleteRule: null,
-      indexes: ["CREATE UNIQUE INDEX idx_tab_lookups_song_site ON tab_lookups (song_key, site)"],
-      schema: [
-        { name: "song_key", type: "text", required: true, options: { max: 500 } },
-        { name: "site", type: "text", required: true, options: { max: 20 } },
-        { name: "status", type: "select", required: true, options: { maxSelect: 1, values: ["found", "none"] } },
-        { name: "query", type: "text", options: { max: 300 } },
-        { name: "searched_at", type: "text", options: { max: 40 } },
-        { name: "results", type: "json", options: { maxSize: 50000 } },
-      ],
-    }));
-    console.log("[ensure_tabs] created tab_lookups");
+    try {
+      dao.saveCollection(new Collection({
+        name: "tab_lookups",
+        type: "base",
+        listRule: null,
+        viewRule: null,
+        createRule: null,
+        updateRule: null,
+        deleteRule: null,
+        indexes: ["CREATE UNIQUE INDEX idx_tab_lookups_song_site ON tab_lookups (song_key, site)"],
+        schema: [
+          { name: "song_key", type: "text", required: true, options: { max: 500 } },
+          { name: "site", type: "text", required: true, options: { max: 20 } },
+          { name: "status", type: "select", required: true, options: { maxSelect: 1, values: ["found", "none"] } },
+          { name: "query", type: "text", options: { max: 300 } },
+          { name: "searched_at", type: "text", options: { max: 40 } },
+          { name: "results", type: "json", options: { maxSize: 50000 } },
+        ],
+      }));
+      console.log("[ensure_tabs] created tab_lookups");
+    } catch (err) {
+      console.warn("[ensure_tabs] could not create tab_lookups: " + err);
+    }
   }
 });
