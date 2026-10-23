@@ -69,6 +69,15 @@ pub struct DiscordState {
     /// latest matters: a seek supersedes the seek before it.
     pending: Option<Presence>,
     flush_scheduled: bool,
+    /// "no app id" has been logged: it is said once per run, not per update.
+    no_app_id_logged: bool,
+}
+
+impl DiscordState {
+    /// True the first time only.
+    fn first_no_app_id(&mut self) -> bool {
+        !std::mem::replace(&mut self.no_app_id_logged, true)
+    }
 }
 
 pub struct DiscordPresence(pub Mutex<DiscordState>, Worker);
@@ -202,7 +211,9 @@ fn apply<R: Runtime>(app: &AppHandle<R>, update: Update) {
     let Some(state) = app.try_state::<DiscordPresence>() else { return };
     let Update { title, artist, album, artwork_url, is_playing, position_sec, duration_sec, received_ms } = update;
     let Some(app_id) = app_id() else {
-        log_discord(app, "no app id: presence disabled");
+        if state.0.lock().map(|mut st| st.first_no_app_id()).unwrap_or(false) {
+            log_discord(app, "no app id: presence disabled");
+        }
         return;
     };
     let Ok(mut st) = state.0.lock() else { return };
@@ -514,5 +525,15 @@ mod tests {
         drop(conn);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(returned, "discord_update waited for Discord to answer");
+    }
+
+    /// A build without an app id wrote "no app id" on every update, which
+    /// crowded the log tail a bug report attaches. Said once per run.
+    #[test]
+    fn a_missing_app_id_is_logged_once() {
+        let mut st = DiscordState::default();
+        assert!(st.first_no_app_id());
+        assert!(!st.first_no_app_id());
+        assert!(!st.first_no_app_id());
     }
 }
