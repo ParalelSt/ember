@@ -3,7 +3,9 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { rateLimitResponse } from '@/lib/rateLimit';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { postToDiscord, webhookUrl } from '@/lib/reports/discord';
+import { DISCORD_UNREACHABLE, postToDiscord, webhookUrl } from '@/lib/reports/discord';
+import { serverLogger } from '@/lib/logger/server';
+import { scrubText } from '@/lib/logger/sanitize';
 
 const MAX_NOTE_LEN = 1000;
 const MAX_LYRICS_LEN = 4000;
@@ -40,7 +42,9 @@ export const POST = withRequestLog('lyrics-report', async (request: NextRequest)
     const title = String(body.trackTitle).slice(0, 200);
     const artist = String(body.trackArtist ?? '').slice(0, 200);
     const source = String(body.source ?? 'unknown').slice(0, 32);
-    const note = String(body.note ?? '').slice(0, MAX_NOTE_LEN).trim();
+    // Scrubbed like the bug report's and the request's: a person can paste
+    // anything.
+    const note = scrubText(String(body.note ?? '')).slice(0, MAX_NOTE_LEN).trim();
     const lyricsSnippet = String(body.lyrics ?? '').slice(0, MAX_LYRICS_LEN);
 
     const embed = {
@@ -64,9 +68,17 @@ export const POST = withRequestLog('lyrics-report', async (request: NextRequest)
 
     const discordRes = await postToDiscord(webhook, { method: 'POST', body: form });
     if (!discordRes.ok) {
+      // The detail (undici's network error, Discord's own body) is for the
+      // logs; the person gets a sentence.
       const text = await discordRes.text().catch(() => '');
+      serverLogger.error('api', 'lyrics-report: Discord rejected the report', {
+        status: discordRes.status,
+        detail: text.slice(0, 200),
+      });
       return jsonError(
-        `Discord rejected the report (${discordRes.status}): ${text.slice(0, 200)}`,
+        discordRes.status === DISCORD_UNREACHABLE
+          ? "Couldn't reach Discord, please try again"
+          : "Couldn't send the report, please try again",
         502,
       );
     }
