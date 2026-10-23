@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, type TouchEvent } from 'react';
+import { useEffect, useRef, useSyncExternalStore, type TouchEvent } from 'react';
 import Link from 'next/link';
 import { ArrowLeftIcon, ArrowRightIcon } from '@/components/icons';
 import { BackButton } from '@/components/ui/back-button';
@@ -18,7 +18,17 @@ export function dotWindow(count: number, current: number, size = DOT_WINDOW): nu
   return Array.from({ length: size }, (_, i) => start + i);
 }
 
-const isCoarse = () => typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches ?? false);
+/** A touch screen, read after hydration: the server cannot know, so the
+ *  first render matches what it sent (the keyboard hint). */
+const COARSE = '(pointer: coarse)';
+function subscribeCoarse(onChange: () => void) {
+  const mq = window.matchMedia?.(COARSE);
+  mq?.addEventListener?.('change', onChange);
+  return () => mq?.removeEventListener?.('change', onChange);
+}
+function useCoarse(): boolean {
+  return useSyncExternalStore(subscribeCoarse, () => window.matchMedia?.(COARSE).matches ?? false, () => false);
+}
 
 /** True when the touch began inside something that scrolls sideways. */
 function inHorizontalScroller(start: EventTarget | null, stop: HTMLElement | null): boolean {
@@ -53,6 +63,7 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt, listHre
   const older = index >= 0 ? entries[index + 1] : undefined;
   const rootRef = useRef<HTMLDivElement>(null);
   const touch = useRef<{ x: number; y: number; skip: boolean } | null>(null);
+  const coarse = useCoarse();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -195,7 +206,7 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt, listHre
             })}
             </div>
           </div>
-          <p className="md:hidden">{isCoarse() ? 'Swipe for newer or older' : 'Use the left and right arrow keys'}</p>
+          <p className="md:hidden">{coarse ? 'Swipe for newer or older' : 'Use the left and right arrow keys'}</p>
         </div>
       )}
     </div>
