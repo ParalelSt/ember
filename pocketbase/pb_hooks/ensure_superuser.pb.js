@@ -73,7 +73,14 @@ onAfterBootstrap((e) => {
 
   // Any other superuser is worth a look: after moving to a new email, the old
   // account (with the old, public password) is still there until deleted.
-  const total = dao.totalAdmins();
+  // On a brand new pb_data this hook runs before PocketBase has made its own
+  // tables, so the count throws: carry on, the next boot checks again.
+  let total = 0;
+  try {
+    total = dao.totalAdmins();
+  } catch (err) {
+    console.warn("[ensure_superuser] could not count the superusers: " + err);
+  }
   if (total > 1) {
     console.warn(
       "[ensure_superuser] " + total + " superusers exist. Open PocketBase's admin UI on the host " +
