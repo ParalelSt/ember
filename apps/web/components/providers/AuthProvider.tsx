@@ -81,15 +81,17 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
 
     // If we mounted without an initial user, attempt a token refresh so a
     // stale-but-valid cookie can rehydrate the session without a re-login.
-    // Offline tolerance: network failures during refresh are SWALLOWED so the
-    // offline-pinned playlists stay reachable. Any non-network error (401/403)
-    // still clears the store.
+    // Offline tolerance: only the server refusing the session (401/403, or
+    // 404 for an account that is gone) clears the store. No connection
+    // (the SDK reports it as status 0, "Something went wrong.", which the
+    // old message check missed) or a PocketBase restart (5xx) keeps it, so
+    // the offline-pinned playlists stay reachable and nobody is signed out
+    // by a blip.
     if (!initialUser && pb.authStore.isValid) {
       pb.collection('users').authRefresh()
         .catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message.toLowerCase() : '';
-          const isNetwork = err instanceof TypeError || msg.includes('failed to fetch') || msg.includes('network');
-          if (!isNetwork) pb.authStore.clear();
+          const status = (err as { status?: unknown } | null)?.status;
+          if (status === 401 || status === 403 || status === 404) pb.authStore.clear();
         })
         .finally(() => setLoading(false));
     } else {
