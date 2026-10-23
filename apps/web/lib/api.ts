@@ -360,6 +360,9 @@ export const api = {
   googleLikesStatus: (flowId: string) =>
     req<{ state: GoogleFlowState; preview?: GooglePreview; checking?: { done: number; total: number }; message?: string }>(
       `/import/liked/google/${encodeURIComponent(flowId)}`,
+      // 404: the sign-in is over (ran out, or the server restarted), an
+      // answer the dialog says in words.
+      { expected: [404] },
     ),
   /** Queue the transfer of the likes that sign-in read. */
   googleLikesStart: (flowId: string) =>
