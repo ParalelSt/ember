@@ -282,3 +282,17 @@ describe('cancelDownload (Android app)', () => {
     }
   });
 });
+
+describe('downloadPlaylist, storage that will not open', () => {
+  it('a download that fails before its first song does not stay "downloading" forever', async () => {
+    // A private window: the browser has navigator.storage but refuses OPFS.
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => { throw new DOMException('denied', 'SecurityError'); }, persist: async () => true },
+    });
+
+    await expect(downloadPlaylist(PL, [YT])).rejects.toThrow('denied');
+
+    expect(useOfflineStore.getState().inFlight.pl1).toBeUndefined();
+  });
+});

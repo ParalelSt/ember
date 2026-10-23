@@ -246,12 +246,9 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
 
   await requestPersistence();
 
-  const store = useOfflineStore.getState();
-  store.beginDownload(playlist.id, playable.length);
-
-  const ac = new AbortController();
-  aborters.set(playlist.id, ac);
-
+  // Opened before the download is marked as running: storage that refuses
+  // (a private window) threw here, past the catch below, and left the
+  // playlist "downloading" until a reload, with Cancel doing nothing.
   const root = await getOpfsRoot();
   const playlistDir = await ensureDir(root, [PLAYLISTS_DIR, playlist.id]);
   const audioDir = await ensureDir(playlistDir, ['audio']);
@@ -261,6 +258,12 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
   // one replaces them. A song that fails this time keeps the copy it had,
   // and the playlist's size is counted once, not once per update.
   const previous = await readJson<OfflineManifest>(playlistDir, 'manifest.json');
+
+  const store = useOfflineStore.getState();
+  store.beginDownload(playlist.id, playable.length);
+
+  const ac = new AbortController();
+  aborters.set(playlist.id, ac);
   const had = new Map((previous?.tracks ?? []).map((t) => [t.id, t]));
   const previousBytes = (previous?.tracks ?? []).reduce((sum, t) => sum + t.bytesAudio + t.bytesArt, 0);
   /** The earlier copies of the songs still to come, for a manifest written
