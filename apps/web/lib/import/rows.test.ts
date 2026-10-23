@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { importRows, itemForTrack, reviewQueue } from '@/lib/import/rows';
+import { importItemFinder, importRows, itemForTrack, reviewQueue } from '@/lib/import/rows';
 import type { ImportItem } from '@/lib/import/types';
 import type { Track } from '@/types/track';
 
@@ -81,5 +81,27 @@ describe('reviewQueue and itemForTrack', () => {
     const items = [item(0, 'accepted', 'a'), item(1, 'resolved', 'b'), item(2, 'review')];
     expect(itemForTrack(items, track('b'))?.id).toBe('i1');
     expect(itemForTrack(items, track('mine'))).toBeNull();
+  });
+});
+
+describe('importItemFinder', () => {
+  it('answers like itemForTrack, the first accepted or resolved row for the song', () => {
+    const items = [item(0, 'review', 'b'), item(1, 'accepted', 'a'), item(2, 'resolved', 'b'), item(3, 'accepted', 'b'), item(4, 'missing')];
+    const find = importItemFinder(items);
+    for (const t of [track('a'), track('b'), track('mine')]) expect(find(t)).toBe(itemForTrack(items, t));
+    expect(find(track('b'))?.id).toBe('i2');
+  });
+
+  it('reads the items once for a whole list, not once per row', () => {
+    // Liked during a transfer, or an imported playlist: every row asked for
+    // its item, and each ask walked every item (thousands x thousands).
+    let reads = 0;
+    const items = Array.from({ length: 300 }, (_, i) => {
+      const row = item(i, 'accepted', `v${i}`);
+      return Object.defineProperty(row, 'status', { get: () => { reads += 1; return 'accepted'; } });
+    });
+    const find = importItemFinder(items);
+    for (let i = 0; i < 300; i += 1) expect(find(track(`v${i}`))?.id).toBe(`i${i}`);
+    expect(reads).toBeLessThanOrEqual(600);
   });
 });
