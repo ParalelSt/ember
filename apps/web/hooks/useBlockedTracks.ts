@@ -4,7 +4,7 @@ import { useCallback, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { exclusionKeys, isExcluded } from '@/lib/trackIdentity';
+import { exclusionKeys, identityKeys, isExcluded } from '@/lib/trackIdentity';
 import { dropBlocked } from '@/lib/playback/dropBlocked';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import type { Track } from '@/types/track';
@@ -43,18 +43,31 @@ export function useBlockedTracks() {
     },
     onSettled: refreshSuggestions,
   });
+  // The menus call a song blocked when any upload of it is (isBlocked), so
+  // unblocking it unblocks whichever of them were blocked, not only this id.
+  const blockedAs = useCallback(
+    (track: Track) => {
+      const own = new Set(identityKeys(track));
+      const hits = blocked.filter((b) => isExcluded(b, own));
+      return hits.length ? hits : [track];
+    },
+    [blocked],
+  );
   const unblockMutation = useMutation({
-    mutationFn: (track: Track) => api.unblockTrack(track.id),
-    onMutate: (track) => {
-      qc.setQueryData<Track[]>(BLOCKED_TRACKS_KEY, (prev = []) => prev.filter((t) => t.id !== track.id));
+    mutationFn: (tracks: Track[]) => Promise.all(tracks.map((t) => api.unblockTrack(t.id))),
+    onMutate: (tracks) => {
+      const ids = new Set(tracks.map((t) => t.id));
+      qc.setQueryData<Track[]>(BLOCKED_TRACKS_KEY, (prev = []) => prev.filter((t) => !ids.has(t.id)));
     },
     onSettled: refreshSuggestions,
   });
+  const { mutateAsync: unblockAll } = unblockMutation;
+  const unblock = useCallback((track: Track) => unblockAll(blockedAs(track)), [unblockAll, blockedAs]);
 
   return {
     blocked,
     isBlocked: useCallback((t: Track) => isExcluded(t, keys), [keys]),
     block: blockMutation.mutateAsync,
-    unblock: unblockMutation.mutateAsync,
+    unblock,
   };
 }
