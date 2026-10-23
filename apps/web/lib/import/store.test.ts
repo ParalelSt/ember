@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type PocketBase from 'pocketbase';
-import { addTrackAt, createImportJob, createJobStore, likeTrack, pickItem, skipItem, undoItem } from '@/lib/import/store';
+import { addTrackAt, createImportJob, createJobStore, jobCounts, likeTrack, pickItem, skipItem, undoItem } from '@/lib/import/store';
 import { ImportRunner } from '@/lib/import/runner';
 import { isParseError, parseTransferInput } from '@/lib/import/sources/index';
 import { jobSourceFor } from '@/lib/import/sources/types';
@@ -23,6 +23,12 @@ type Rec = Record<string, unknown> & { id: string };
 
 function fakePb() {
   const db: Record<string, Rec[]> = {};
+  /** Rows handed back by reads, per collection: what a read costs. */
+  const rowsRead: Record<string, number> = {};
+  const read = (name: string, rows: Rec[]) => {
+    rowsRead[name] = (rowsRead[name] ?? 0) + rows.length;
+    return rows;
+  };
   let n = 0;
   const table = (name: string) => (db[name] ??= []);
   const notFound = () => Object.assign(new Error('not found'), { status: 404 });
@@ -83,7 +89,7 @@ function fakePb() {
       return rec;
     },
     async getFullList(opts: { filter?: string } = {}) {
-      return table(name).filter((r) => matches(r, opts.filter));
+      return read(name, table(name).filter((r) => matches(r, opts.filter)));
     },
     async getList(_page: number, perPage: number, opts: { filter?: string; sort?: string } = {}) {
       const rows = table(name).filter((r) => matches(r, opts.filter));
@@ -92,11 +98,11 @@ function fakePb() {
       if (key) {
         rows.sort((a, b) => String(a[key] ?? '').localeCompare(String(b[key] ?? '')) * (sort.startsWith('-') ? -1 : 1));
       }
-      return { items: rows.slice(0, perPage) };
+      return { items: read(name, rows.slice(0, perPage)), totalItems: rows.length };
     },
   });
   const pb = { collection, autoCancellation: vi.fn() } as unknown as PocketBase;
-  return { pb, db, table };
+  return { pb, db, table, rowsRead };
 }
 
 const track = (id: string, title = id): Track => ({
@@ -728,5 +734,18 @@ describe('every service ends in likes with like_id', () => {
     expect(likeIds.every(Boolean)).toBe(true);
     expect(new Set(likeIds)).toEqual(new Set(likes.map((l) => l.id)));
     expect(f.table('import_jobs').find((r) => r.id === job.id)).toMatchObject({ status: 'done' });
+  });
+});
+
+describe('jobCounts', () => {
+  it('counts the items without reading them all (it runs after every batch of 8)', async () => {
+    // A 5000-song transfer counted all of its items after each of its 625
+    // batches: millions of rows read, most of the transfer's reads.
+    const f = fakePb();
+    const statuses = ['accepted', 'resolved', 'review', 'missing', 'pending', 'skipped'];
+    for (let i = 0; i < 600; i += 1) await f.pb.collection('import_items').create({ job: 'j1', status: statuses[i % statuses.length] });
+    await f.pb.collection('import_items').create({ job: 'other', status: 'accepted' });
+    expect(await jobCounts(f.pb, 'j1')).toEqual({ accepted: 200, review: 100, missing: 100 });
+    expect(f.rowsRead.import_items ?? 0).toBeLessThanOrEqual(4);
   });
 });

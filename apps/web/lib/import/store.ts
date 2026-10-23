@@ -2,7 +2,7 @@ import 'server-only';
 import type PocketBase from 'pocketbase';
 import type { Track } from '@/types/track';
 import { upsertTrack } from '@/lib/upsertTrack';
-import { countItems, playlistPosition, type ItemStatus } from '@/lib/import/jobState';
+import { COUNTED_STATUSES, countsFrom, playlistPosition, type ItemStatus } from '@/lib/import/jobState';
 import { itemFromRecord, itemRecord, jobFromRecord, pbDate, pbMillis, readyItem } from '@/lib/import/records';
 import { syntheticLikedAt, transferBase, type SourceOrder } from '@/lib/import/likedAt';
 import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, JobKind, SourceItem } from '@/lib/import/types';
@@ -84,9 +84,16 @@ export async function likeTrack(
   }
 }
 
+/** Counted by PocketBase, one small query per status, not read: the runner
+ *  asks after every batch of 8, and reading every item each time made a
+ *  transfer of thousands of songs read millions of rows. */
 export async function jobCounts(pb: PocketBase, jobId: string): Promise<JobCounts> {
-  const rows = await pb.collection('import_items').getFullList({ filter: `job = "${esc(jobId)}"`, fields: 'status' });
-  return countItems(rows.map((r) => r.status as ItemStatus));
+  const count = (status: ItemStatus) =>
+    pb
+      .collection('import_items')
+      .getList(1, 1, { filter: `job = "${esc(jobId)}" && status = "${status}"`, fields: 'id', requestKey: null })
+      .then((l) => [status, l.totalItems] as const);
+  return countsFrom(Object.fromEntries(await Promise.all(COUNTED_STATUSES.map(count))));
 }
 
 /** The runner's heartbeat and its own writes can touch the same record at
