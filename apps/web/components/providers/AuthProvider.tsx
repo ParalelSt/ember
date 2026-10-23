@@ -10,6 +10,7 @@ import { useChangelogStore } from '@/stores/useChangelogStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { registerThemeCookieWriter, useThemeStore } from '@/stores/useThemeStore';
 import { useSessionStore } from '@/stores/useSessionStore';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import { parseThemeDoc, sameDoc } from '@/lib/theme/model';
 import { logger } from '@/lib/logger/client';
 import { flushNativeCookies } from '@/lib/nativeCookies';
@@ -187,10 +188,24 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
         // A carlist this account hosts is not the next account's: the flag
         // is kept on the device and turns radio off (bughunt X6).
         useSessionStore.getState().setHostingSessionId(null);
-        // Hard-navigate so the queue / liked / history caches from the
-        // signed-out user can't leak into the next session. The persisted
-        // settings (ember.settings.v1) + zustand player slice survive
-        // because they live in localStorage, not in React state.
+        // The saved queue and what was playing (ember.player.v1 in
+        // localStorage) are this account's too: the next account on this
+        // device used to open onto them. Volume, loop and mute are the
+        // device's and stay.
+        usePlayerStore.setState({
+          queue: [],
+          index: -1,
+          position: 0,
+          context: null,
+          baseCount: 0,
+          shuffle: false,
+          orderBackup: null,
+          played: [],
+        });
+        // Hard-navigate so the liked / history caches from the signed-out
+        // user can't leak into the next session. The persisted settings
+        // (ember.settings.v1) survive because they live in localStorage,
+        // not in React state.
         if (typeof window !== 'undefined') {
           window.location.href = '/auth';
         }
