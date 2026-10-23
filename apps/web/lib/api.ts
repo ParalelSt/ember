@@ -306,18 +306,20 @@ export const api = {
    *  (lib/playlistCopy's rule) and says which. */
   bulkAddToPlaylist: (id: string, tracks: Track[]) =>
     inBatches(tracks, (batch) =>
-      req<CopyOutcome>(`/playlists/${encodeURIComponent(id)}/tracks/bulk`, { method: 'POST', body: { tracks: batch } }),
+      req<CopyOutcome>(`/playlists/${encodeURIComponent(id)}/tracks/bulk`, { method: 'POST', body: { tracks: batch }, expected: [404] }),
     ),
   /** 409 (`isAlreadyInPlaylist`): the song is already there. An answer the
-   *  app shows as "Already in <playlist>", never an automatic bug report. */
+   *  app shows as "Already in <playlist>", never an automatic bug report.
+   *  404 on adds and removes: the playlist was deleted, or you were taken
+   *  off it, since the list on screen was read. An answer too. */
   addToPlaylist: (id: string, track: Track) =>
-    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks`, { method: 'POST', body: { track }, expected: [409] }),
+    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks`, { method: 'POST', body: { track }, expected: [404, 409] }),
   /** The playlists (yours and the ones shared with you) that already have
    *  this song, for the Add to playlist menu's marks. */
   playlistsContaining: (trackId: string) =>
     req<{ playlistIds: string[] }>(`/playlists/containing?track=${encodeURIComponent(trackId)}`),
   removeFromPlaylist: (id: string, trackId: string) =>
-    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
+    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE', expected: [404] }),
   replaceInPlaylist: (playlistId: string, trackId: string, track: Track) =>
     req<{ ok: true; merged: boolean; track: Track }>(
       `/playlists/${encodeURIComponent(playlistId)}/tracks/${encodeURIComponent(trackId)}/replace`,

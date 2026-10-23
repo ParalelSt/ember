@@ -148,6 +148,18 @@ describe('bulk copies go in batches the routes take', () => {
   });
 });
 
+describe('a playlist that is gone (404) is an answer on adds and removes', () => {
+  const song = { id: 'youtube:x', source: 'youtube', sourceId: 'x', title: 'Song', artist: 'A' } as Parameters<typeof api.addToPlaylist>[1];
+  it('add, bulk add and remove log the 404 as a warning', async () => {
+    vi.stubGlobal('fetch', answer(404, { error: "That playlist doesn't exist, or isn't yours" }));
+    await expect(api.addToPlaylist('p1', song)).rejects.toMatchObject({ status: 404 });
+    await expect(api.bulkAddToPlaylist('p1', [song])).rejects.toMatchObject({ status: 404 });
+    await expect(api.removeFromPlaylist('p1', song.id)).rejects.toMatchObject({ status: 404 });
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe('ids in the path are encoded', () => {
   // A playlist or carlist id comes from the page's own URL, so a link can
   // carry anything: "../x" must not step out to another route.
