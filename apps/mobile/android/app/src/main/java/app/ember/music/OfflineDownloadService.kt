@@ -34,7 +34,8 @@ class OfflineDownloadService : Service() {
         val failedReason = java.util.Collections.synchronizedMap(HashMap<String, String>()) // pinId -> reason
         val cancelled = java.util.Collections.synchronizedSet(HashSet<String>())
         @Volatile var current: JSONObject? = null   // { id, done, total, title }
-        var listener: ((JSONObject?) -> Unit)? = null
+        /** Set by the plugin on the main thread, called from the download executor. */
+        @Volatile var listener: ((JSONObject?) -> Unit)? = null
 
         fun start(ctx: Context) { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, OfflineDownloadService::class.java)) }
         /** Starts the downloader when the index still has work: a drain cut
