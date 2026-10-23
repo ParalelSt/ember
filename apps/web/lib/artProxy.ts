@@ -20,10 +20,11 @@ export function artProxyTarget(raw: string | null): URL | null {
 }
 
 /** Same-origin address for a cover: proxied when it's on an allowed remote
- *  host, unchanged when it's already ours (a relative path). Null when the
- *  pixels can't be read either way. */
+ *  host, unchanged when it's already ours (a root-relative path; "//host"
+ *  and "/\host" are another site). Null when the pixels can't be read
+ *  either way. */
 export function readableArtUrl(src: string): string | null {
-  if (src.startsWith('/')) return src;
+  if (/^\/(?![/\\])/.test(src)) return src;
   return artProxyTarget(src) ? `/api/art?url=${encodeURIComponent(src)}` : null;
 }
 

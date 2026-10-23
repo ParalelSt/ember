@@ -36,4 +36,10 @@ describe('readableArtUrl', () => {
   it('gives null for a cover it cannot read', () => {
     expect(readableArtUrl('https://example.com/c.jpg')).toBeNull();
   });
+
+  it('does not take a protocol-relative address for one of ours', () => {
+    expect(readableArtUrl('//example.com/c.jpg')).toBeNull();
+    expect(readableArtUrl('/\\example.com/c.jpg')).toBeNull();
+    expect(readableArtUrl('//i.ytimg.com/vi/a/x.jpg')).toBeNull();
+  });
 });
