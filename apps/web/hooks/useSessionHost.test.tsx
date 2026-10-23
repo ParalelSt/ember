@@ -84,6 +84,34 @@ describe('useSessionHost (app shell, no session page open)', () => {
     await waitFor(() => expect(api.publishSessionNow).toHaveBeenCalledWith('s2', 1));
   });
 
+  it('tells the server again when it ends up on a row the host has already left', async () => {
+    // Forward to B and straight back to A inside one poll: the poll still
+    // said A, so going back sent nothing, then the server took B. The row
+    // was remembered as told, and guests saw B (and Play next landed after
+    // it) for the rest of the song.
+    let serverNow = 0;
+    api.getSession.mockImplementation(async () => state({ nowIndex: serverNow }));
+    api.publishSessionNow.mockImplementation(async (_id: string, row: number) => {
+      serverNow = row;
+      return { ok: true };
+    });
+    usePlayerStore.setState({ queue: [a, b], index: 0 });
+    const { rerender } = renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.getSession).toHaveBeenCalled());
+
+    act(() => usePlayerStore.setState({ index: 1 }));
+    rerender();
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenLastCalledWith('s1', 1));
+    act(() => usePlayerStore.setState({ index: 0 }));
+    rerender();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500);
+    });
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenLastCalledWith('s1', 0));
+    expect(serverNow).toBe(0);
+  });
+
   it('does nothing while this device hosts nothing', async () => {
     useSessionStore.setState({ hostingSessionId: null });
     renderHook(() => useSessionHost(), { wrapper });

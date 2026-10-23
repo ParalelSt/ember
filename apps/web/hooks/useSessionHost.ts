@@ -94,18 +94,27 @@ export function useSessionHost() {
   const serverNow = state?.session.nowIndex ?? 0;
   const playingRow =
     isActiveHost && state ? sessionIndexFor(state.queue.map((q) => q.track.id), current?.id, serverNow) : -1;
-  // Per carlist: the row last told to ANOTHER carlist says nothing about
-  // this one (the host of a new one may well be on the same row number).
-  const lastPublished = useRef<{ sessionId: string; row: number } | null>(null);
+  // Sent whenever the server's row is not the one playing, except while that
+  // very row is already on its way. Per carlist: a send to ANOTHER carlist
+  // says nothing about this one (the host of a new one may well be on the
+  // same row number). Remembering every row as told, even one skipped
+  // because a stale poll agreed with it, left the server on a row the host
+  // had already left (forward and straight back inside one poll).
+  const lastPublished = useRef<{ sessionId: string; row: number; sending: boolean } | null>(null);
   useEffect(() => {
-    if (!isActiveHost || !sessionId || playingRow < 0) return;
+    if (!isActiveHost || !sessionId || playingRow < 0 || playingRow === serverNow) return;
     const last = lastPublished.current;
-    if (last?.sessionId === sessionId && last.row === playingRow) return;
-    lastPublished.current = { sessionId, row: playingRow };
-    if (playingRow === serverNow) return;
-    api.publishSessionNow(sessionId, playingRow).catch(() => {
-      lastPublished.current = null;
-    });
+    if (last?.sessionId === sessionId && last.row === playingRow && last.sending) return;
+    const mine = { sessionId, row: playingRow, sending: true };
+    lastPublished.current = mine;
+    api.publishSessionNow(sessionId, playingRow).then(
+      () => {
+        mine.sending = false;
+      },
+      () => {
+        if (lastPublished.current === mine) lastPublished.current = null;
+      },
+    );
   }, [isActiveHost, sessionId, playingRow, serverNow]);
 }
 
