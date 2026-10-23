@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { RATE_LIMITED_MESSAGE } from '@/lib/import/transferCopy';
+import { LINK_RATE_LIMITED_MESSAGE, RATE_LIMITED_MESSAGE } from '@/lib/import/transferCopy';
 import { MATCHED_BY_NAME, SPOTIFY_LINK_CAP } from '@/lib/import/transferRoutes';
 import { GOOGLE_MESSAGES } from '@/lib/import/sources/ytmusicLiked';
 
@@ -665,6 +665,33 @@ describe('TransferFlow: what it says when Ember will not take it', () => {
     fireEvent.click(startButton());
     await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(RATE_LIMITED_MESSAGE));
     expect(push).not.toHaveBeenCalled();
+  });
+
+  const toSpotifyLink = () => {
+    pick('Liked songs');
+    service('Spotify');
+    have(/A link to a playlist/);
+    toEnd();
+    fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
+    fireEvent.click(continueButton());
+  };
+
+  it('a pasted link over its limit names the link limit, not the upload one', async () => {
+    api.importInspect.mockRejectedValue(refuse(429, 'Slow down, try again in about 300s.'));
+    setup();
+    toSpotifyLink();
+    await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(LINK_RATE_LIMITED_MESSAGE));
+    noStart();
+  });
+
+  it('a link refused at Start names the link limit too', async () => {
+    api.importInspect.mockResolvedValue({ source: 'spotify', id: 'x', name: 'Late night drive', coverUrl: null, items: [{}], truncated: false });
+    api.importStart.mockRejectedValue(refuse(429, 'Slow down, try again in about 300s.'));
+    setup();
+    toSpotifyLink();
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    fireEvent.click(startButton());
+    await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(LINK_RATE_LIMITED_MESSAGE));
   });
 });
 

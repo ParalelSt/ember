@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   KEPT_FIRST_MESSAGE,
+  LINK_RATE_LIMITED_MESSAGE,
   OVER_CAP_MESSAGE,
   plainTransferResult,
   RATE_LIMITED_MESSAGE,
@@ -26,6 +27,13 @@ describe('transferErrorMessage', () => {
     const e = Object.assign(new Error('Slow down, try again in about 900s.'), { status: 429 });
     expect(transferErrorMessage(e)).toBe(RATE_LIMITED_MESSAGE);
     expect(RATE_LIMITED_MESSAGE).toContain('five uploads');
+  });
+
+  it('a pasted link names the link limit, not the upload one', () => {
+    const e = Object.assign(new Error('Slow down, try again in about 300s.'), { status: 429 });
+    expect(transferErrorMessage(e, 'link')).toBe(LINK_RATE_LIMITED_MESSAGE);
+    expect(LINK_RATE_LIMITED_MESSAGE).toContain('ten minutes');
+    expect(LINK_RATE_LIMITED_MESSAGE).not.toContain('upload');
   });
 
   it('falls back to a sentence when all there is is a status', () => {
