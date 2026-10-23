@@ -34,8 +34,6 @@ const TONE_DASH: &[u8] = include_bytes!("../../test-fixtures/tone-dash.m4a");
 const FRAGMENTED: &[u8] = include_bytes!("../../test-fixtures/noise-dash-10s-fragments.m4a");
 /// The same kind of audio after that remux: ftyp, moov, mdat.
 const FASTSTART: &[u8] = include_bytes!("../../test-fixtures/tone-faststart.m4a");
-/// moof/mdat pairs in FRAGMENTED.
-const FRAGMENTS: usize = 4;
 
 fn read_headers(stream: &TcpStream) -> Vec<String> {
     let mut reader = BufReader::new(stream.try_clone().expect("clone"));

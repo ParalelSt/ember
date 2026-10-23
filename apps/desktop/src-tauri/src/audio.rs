@@ -265,11 +265,6 @@ impl AudioEngine {
         Self { play_budgets, ..self }
     }
 
-    /// Whether a real output device is attached.
-    pub fn has_output(&self) -> bool {
-        self.mixer.is_some()
-    }
-
     /// The output router, when there is a device to route to.
     pub fn outputs(&self) -> Option<&crate::output::OutputRouter> {
         self.outputs.as_ref()
@@ -367,6 +362,7 @@ impl AudioEngine {
     }
 
     /// The equalizer as last set.
+    #[cfg(test)]
     pub fn eq(&self) -> crate::eq::EqSettings {
         self.eq.get()
     }
@@ -530,11 +526,7 @@ fn log_audio<R: Runtime>(app: &AppHandle<R>, level: &str, msg: &str) {
     }
 }
 
-fn emit_err<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String) {
-    emit_err_about(app, retry, message, None);
-}
-
-/// `emit_err` for a failure of one particular load's playback.
+/// An `audio:error` about one particular load's playback.
 fn emit_err_about<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String, token: Option<u64>) {
     use tauri::Emitter;
     let _ = app.emit("audio:error", ErrPayload { message, retry, token, retried: false });
