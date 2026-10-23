@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   LIBRARY_VIEW_KEY,
   arrangeLibrary,
-  badgeCoverLook,
   buildLibraryItems,
   firstArts,
   libraryChips,
@@ -125,19 +124,7 @@ describe('arrangeLibrary', () => {
   });
 });
 
-describe('badgeCoverLook / firstArts', () => {
-  it('four or more distinct covers make a mosaic of the first four', () => {
-    expect(badgeCoverLook(['a', 'a', 'b', null, 'c', 'd', 'e'])).toEqual({ mode: 'mosaic', tiles: ['a', 'b', 'c', 'd'] });
-  });
-
-  it('one to three show the first one full size', () => {
-    expect(badgeCoverLook(['x', 'y'])).toEqual({ mode: 'single', src: 'x' });
-  });
-
-  it('none leaves the plain tile', () => {
-    expect(badgeCoverLook([null, undefined, ''])).toEqual({ mode: 'plain' });
-  });
-
+describe('firstArts', () => {
   it('firstArts skips missing and repeated covers', () => {
     expect(firstArts(songs(null, 'a', 'a', 'b'))).toEqual(['a', 'b']);
   });

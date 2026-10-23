@@ -81,22 +81,6 @@ export function arrangeLibrary(
   return [...system, ...rest];
 }
 
-/** A system collection cover's look from its songs' covers: four or more
- *  distinct ones make a 2x2 mosaic, one to three show the first full size,
- *  none leaves the plain coloured tile. */
-export type BadgeCoverLook = { mode: 'mosaic'; tiles: string[] } | { mode: 'single'; src: string } | { mode: 'plain' };
-
-export function badgeCoverLook(arts: readonly (string | null | undefined)[]): BadgeCoverLook {
-  const distinct: string[] = [];
-  for (const a of arts) {
-    if (a && !distinct.includes(a)) distinct.push(a);
-    if (distinct.length === 4) break;
-  }
-  if (distinct.length >= 4) return { mode: 'mosaic', tiles: distinct };
-  if (distinct.length > 0) return { mode: 'single', src: distinct[0] };
-  return { mode: 'plain' };
-}
-
 /** The first few distinct covers of a song list (enough for a mosaic). */
 export function firstArts(tracks: readonly { artworkUrl?: string | null }[], max = 4): string[] {
   const out: string[] = [];
