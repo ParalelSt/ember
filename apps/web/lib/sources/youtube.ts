@@ -156,12 +156,16 @@ function envCap(name: string, fallback: number): number {
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
-const LANES: Record<PythonLane, Semaphore> = {
+/** One set of lanes per server PROCESS, like inFlight below: every route
+ *  that runs Python bundles its own copy of this module, and with the lanes
+ *  on the module each copy ran its own PYTHON_MAX_CONCURRENCY processes. */
+const LANES_KEY = Symbol.for('ember.pythonLanes');
+const LANES = ((globalThis as Record<symbol, unknown>)[LANES_KEY] ??= {
   // Search, stream lookups, album/artist/track pages, lyrics, trending.
   interactive: createSemaphore(envCap('PYTHON_MAX_CONCURRENCY', 4), { queueTimeoutMs: 15_000, maxQueue: 64 }),
   // Import batches (match, classify, playlist reads): they retry on a 503.
   bulk: createSemaphore(envCap('PYTHON_MAX_BULK', 2), { queueTimeoutMs: 120_000, maxQueue: 64 }),
-};
+} satisfies Record<PythonLane, Semaphore>) as Record<PythonLane, Semaphore>;
 
 /** How long a listener's cold download may wait for a gate slot, and how
  *  many may wait at once, before it fails with a 503 (the stream route then

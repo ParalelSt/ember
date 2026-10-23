@@ -47,6 +47,11 @@ function finishAll(stdout: string) {
 
 beforeEach(() => {
   vi.resetModules();
+  // The caps are one per process (see 'caps across route bundles'): each
+  // test starts with fresh ones, read from its own environment.
+  const g = globalThis as Record<symbol, unknown>;
+  delete g[Symbol.for('ember.pythonLanes')];
+  delete g[Symbol.for('ember.downloadGate')];
   alive = [];
   spawned = 0;
   peak = 0;
@@ -205,5 +210,34 @@ describe('downloads in flight', () => {
     await expect(job).resolves.toBe('/m/sharedvid01.m4a');
     await expect(joined).resolves.toBe('/m/sharedvid01.m4a');
     expect(other.isDownloading('sharedvid01')).toBe(false);
+  });
+});
+
+describe('caps across route bundles', () => {
+  it('PYTHON_MAX_CONCURRENCY and the download gate hold for the whole process, not per route copy', async () => {
+    // Every route that searches or downloads bundles its own copy of this
+    // module in a production build (see failureMemo). With the caps on the
+    // module, each copy ran its own 4 Python processes and 2 downloads.
+    const first = await import('./youtube');
+    const searches = Array.from({ length: 4 }, (_, i) => first.searchTracks(`first ${i}`));
+    const downloads = ['aaaaaaaaaaa', 'bbbbbbbbbbb'].map((id) => first.ensureDownloaded(id));
+    await settle();
+    expect(alive.filter((c) => c.args.includes('search'))).toHaveLength(4);
+    expect(alive.filter((c) => c.args.includes('download'))).toHaveLength(2);
+
+    vi.resetModules();
+    const other = await import('./youtube');
+    const late = other.searchTracks('other route');
+    const lateDownload = other.ensureDownloaded('ccccccccccc');
+    await settle();
+    expect(alive.filter((c) => c.args.includes('search'))).toHaveLength(4);
+    expect(alive.filter((c) => c.args.includes('download'))).toHaveLength(2);
+
+    while (alive.length) {
+      for (const c of [...alive]) c.finish(c.args.includes('download') ? JSON.stringify({ filePath: `/m/${c.args.at(-1)}.m4a` }) : '[]');
+      await settle();
+    }
+    await Promise.all([...searches, ...downloads, late, lateDownload]);
+    expect(peak).toBe(6);
   });
 });
