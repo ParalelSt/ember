@@ -17,12 +17,12 @@ import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
 import { UnplayableMessage, useUnplayableMessage } from '@/components/player/UnplayableMessage';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { EqualizerSheet } from '@/components/player/EqualizerSheet';
-import { SeekBar } from '@/components/player/SeekBar';
+import { PlayheadSeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { DevicesSheet, useDevicesEntry } from '@/components/player/DevicesButton';
 import { useBackDismiss } from '@/lib/useBackDismiss';
 import { useTrackArtSrc } from '@/lib/offlineNative';
-import { usePlayer, usePlayerPosition } from '@/components/player/PlayerProvider';
+import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { useQueryLyrics } from '@/hooks/useLyrics';
@@ -64,7 +64,6 @@ export function NowPlaying() {
   const focus = useUiStore((s) => s.nowPlayingFocus);
   const setFocus = useUiStore((s) => s.setNowPlayingFocus);
   const { current, isPlaying, duration, toggle, next, prev, seek, retry } = usePlayer();
-  const position = usePlayerPosition();
   const { user } = useAuth();
   // A song that could not play: the title area says so, as the bar does.
   const unplayable = useUnplayableMessage();
@@ -427,7 +426,7 @@ export function NowPlaying() {
         </div>
 
         {/* Progress */}
-        <SeekBar position={position} duration={duration} onSeek={seek} labels="below" className="mt-6" />
+        <PlayheadSeekBar duration={duration} onSeek={seek} labels="below" className="mt-6" />
 
         {/* Transport controls, prev/play/next centered; loop pinned right. */}
         <TransportControls

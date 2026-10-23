@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Slider } from '@/components/ui/slider';
+import { usePlayerPosition } from '@/components/player/PlayerProvider';
 import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -85,4 +86,11 @@ export function SeekBar({ position, duration, onSeek, labels = 'none', className
   }
 
   return <div className={className}>{slider}</div>;
+}
+
+/** SeekBar on the player's own playhead. It reads the position itself, so
+ *  the view that holds it (the player bars, the full-screen player, which
+ *  stays mounted while closed) does not re-render on every report. */
+export function PlayheadSeekBar(props: Omit<SeekBarProps, 'position'>) {
+  return <SeekBar position={usePlayerPosition()} {...props} />;
 }

@@ -41,7 +41,8 @@ vi.mock('@/components/player/PlayerProvider', () => ({
     prev: player.prev,
     seek: () => {},
   }),
-  usePlayerPosition: () => 0,
+  // The store's own playhead, read the way the real hook reads it.
+  usePlayerPosition: () => usePlayerStore((s) => s.position),
 }));
 const auth = vi.hoisted(() => ({ user: null as unknown }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: auth.user }) }));
@@ -102,12 +103,13 @@ vi.mock('@/components/ui/dropdown-menu', () => {
   };
 });
 const Stub = vi.hoisted(() => () => null);
-vi.mock('@/components/player/SeekBar', () => ({ SeekBar: Stub }));
+vi.mock('@/components/player/SeekBar', () => ({ SeekBar: Stub, PlayheadSeekBar: Stub }));
 // The lyrics card: here it only has to show whether its report form is open.
 vi.mock('@/components/player/LyricsBody', () => ({
   LyricsBody: ({ reportOpen }: { reportOpen?: boolean }) => (reportOpen ? <div data-testid="lyrics-report" /> : null),
 }));
-vi.mock('@/components/player/NowPlayingSummary', () => ({ NowPlayingSummary: Stub }));
+const summaryRendered = vi.hoisted(() => vi.fn(() => null));
+vi.mock('@/components/player/NowPlayingSummary', () => ({ NowPlayingSummary: summaryRendered }));
 
 const initialSettings = useSettingsStore.getState();
 const NO_OUTPUTS = { platform: null, devices: [], currentId: null, currentName: null, currentKind: null, systemPicker: null, castDevices: null };
@@ -407,5 +409,16 @@ describe('NowPlaying: the More sheet', () => {
     usePlayerStore.getState().setNowPlayingOpen(false);
     render(<NowPlaying />);
     expect(within(view()).queryByRole('button', { name: 'More' })).toBeNull();
+  });
+});
+
+describe('NowPlaying on playhead reports', () => {
+  it('re-renders only its seek bar, not the whole view (it stays mounted while closed too)', () => {
+    usePlayerStore.setState({ position: 0, duration: 180 });
+    render(<NowPlaying />);
+    const before = summaryRendered.mock.calls.length;
+    expect(before).toBeGreaterThan(0);
+    for (let s = 1; s <= 5; s += 0.25) act(() => usePlayerStore.getState().reportPosition(s));
+    expect(summaryRendered).toHaveBeenCalledTimes(before);
   });
 });
