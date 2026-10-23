@@ -99,3 +99,53 @@ describe('POST /api/discord/update', () => {
     expect(clear).not.toHaveBeenCalled();
   });
 });
+
+// Two updates close together (a song change, then a pause) each wait on
+// PocketBase before they touch the card. The older one answering last put
+// back "playing" over the pause, and the card stayed wrong until the next
+// change.
+describe('POST /api/discord/update, two at once', () => {
+  it('an older update that finishes last does not undo a newer one', async () => {
+    const lookups: Array<() => void> = [];
+    requireUserMock.mockImplementation(async () => {
+      await new Promise<void>((r) => lookups.push(r));
+      return {
+        pb: { collection: () => ({ getOne: async () => ({ share_discord: true }) }) },
+        user: { id: 'owner', email: 'owner@ember.test', isAdmin: true },
+      };
+    });
+
+    const first = POST(req(playing));
+    const second = POST(req({ track: playing.track, isPlaying: false }));
+    await vi.waitFor(() => expect(lookups).toHaveLength(2));
+    lookups[1]();
+    await second;
+    expect(clear).toHaveBeenCalledTimes(1);
+    lookups[0]();
+    await first;
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("another member's call in between does not hold the owner's update back", async () => {
+    const lookups: Array<() => void> = [];
+    const owner = { id: 'owner', email: 'owner@ember.test', isAdmin: true };
+    const friend = { id: 'friend', email: 'friend@ember.test', isAdmin: false };
+    const who = [owner, friend];
+    requireUserMock.mockImplementation(async () => {
+      const user = who.shift()!;
+      await new Promise<void>((r) => lookups.push(r));
+      return { pb: { collection: () => ({ getOne: async () => ({ share_discord: true }) }) }, user };
+    });
+
+    const mine = POST(req(playing));
+    const theirs = POST(req({ track: null, isPlaying: false }));
+    await vi.waitFor(() => expect(lookups).toHaveLength(2));
+    lookups[1]();
+    await theirs;
+    lookups[0]();
+    await mine;
+
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+});
