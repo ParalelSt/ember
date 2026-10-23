@@ -52,11 +52,17 @@ export async function writeStreamToOpfs(
   source: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
 ): Promise<number> {
-  const handle = await dir.getFileHandle(filename, { create: true });
-  const writable = await handle.createWritable();
-  let bytes = 0;
+  let writable: FileSystemWritableFileStream;
   try {
-    const reader = source.getReader();
+    const handle = await dir.getFileHandle(filename, { create: true });
+    writable = await handle.createWritable();
+  } catch (e) {
+    await source.cancel(e).catch(() => {});
+    throw e;
+  }
+  let bytes = 0;
+  const reader = source.getReader();
+  try {
     for (;;) {
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       const { done, value } = await reader.read();
@@ -67,6 +73,9 @@ export async function writeStreamToOpfs(
     await writable.close();
   } catch (e) {
     await writable.abort().catch(() => {});
+    // Stop the source too: an unread download body keeps its connection to
+    // the server open after the write has given up (a full disk).
+    await reader.cancel(e).catch(() => {});
     throw e;
   }
   return bytes;
