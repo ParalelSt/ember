@@ -7,6 +7,7 @@ import { serverLogger } from '@/lib/logger/server';
 import { resolveUploadPath } from '@/lib/uploads';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { deleteUploadCover } from '@/lib/uploads/cover';
+import { markTrackUnavailable } from '@/lib/trackAvailability';
 
 /** Removes an upload, the record and the file on disk. Uploader or admin
  *  only; other people may have it in a playlist, so this is deliberate. */
@@ -23,6 +24,10 @@ export const DELETE = withRequestLog('uploads/[id]', async (_request: Request, c
     }
 
     await pb.collection('uploads').delete(id);
+    // Its row in the shared catalog stays (it may sit in someone's playlist
+    // or likes), flagged unavailable so those lists stop offering a song
+    // whose stream is now a 404. Best effort, never throws.
+    await markTrackUnavailable(`upload:${id}`, 'unavailable');
 
     // Record first, file second: a leftover file is harmless, a record
     // pointing at a missing file is a broken song in someone's playlist.

@@ -24,6 +24,8 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/lib/uploads/cover', () => ({ deleteUploadCover: vi.fn(async () => {}) }));
 vi.mock('@/lib/uploads', () => ({ resolveUploadPath: () => null }));
+const availability = vi.hoisted(() => ({ markTrackUnavailable: vi.fn(async () => {}) }));
+vi.mock('@/lib/trackAvailability', () => availability);
 
 const { DELETE } = await import('./route');
 
@@ -50,6 +52,12 @@ describe('DELETE /api/uploads/[id]', () => {
     const res = await del('up1');
     expect(res.status).toBeGreaterThanOrEqual(500);
     expect(pb.remove).not.toHaveBeenCalled();
+  });
+
+  it('marks the song\'s catalog row unavailable, so other people\'s playlists stop offering it', async () => {
+    const res = await del('up1');
+    expect(res.status).toBe(200);
+    expect(availability.markTrackUnavailable).toHaveBeenCalledWith('upload:up1', 'unavailable');
   });
 
   it('still answers 404 for an upload that really does not exist', async () => {
