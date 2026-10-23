@@ -164,12 +164,14 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
     if (userId) claimAccountPlayback(userId);
   }, [userId]);
 
-  // Pull the privacy switches once there's a session. Presence publishing
+  // Pull the privacy switches once per account. Presence publishing
   // assumes "don't share" until this lands, so the cost of it being late is
-  // silence, never an unwanted broadcast.
+  // silence, never an unwanted broadcast. Keyed on the id, not the user
+  // object: a theme change or profile refresh rewrites the record, and a
+  // reload racing a switch just flipped could put the old value back.
   useEffect(() => {
-    if (user) void usePrivacyStore.getState().load();
-  }, [user]);
+    if (userId) void usePrivacyStore.getState().load();
+  }, [userId]);
 
   // What's new read state, per user. Until it lands nothing shows as New.
   useEffect(() => {
