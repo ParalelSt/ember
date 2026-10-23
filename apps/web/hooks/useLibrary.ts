@@ -295,7 +295,8 @@ export function useExecuteRecordPlay() {
       if (!pin) return;
       const history = qc.getQueryData<Track[]>(QK.history) ?? [];
       if (sameTrackIds(pin.trackIds, playableFor(history).map((t) => t.id))) return;
-      void pinList(RECENT_PIN, 'Recently played', history);
+      // A refusal waits for the next play, which tries the sync again.
+      void pinList(RECENT_PIN, 'Recently played', history).catch(() => {});
     },
   });
 }

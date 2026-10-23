@@ -16,11 +16,20 @@ vi.mock('@/lib/api', () => ({ api }));
 // Native-only feature: stub the plugin presence check and the pin call, and
 // spy on the latter the way useCollections.test.tsx does for offline hooks.
 const nativeMock = vi.hoisted(() => ({ present: true }));
+const pinRefused = vi.hoisted(() => ({ next: false }));
 const pinListSpy = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('@/lib/offlineNative', () => ({ nativeOfflinePresent: () => nativeMock.present }));
 vi.mock('@/lib/offline', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/offline')>();
-  return { ...actual, pinList: pinListSpy };
+  // A plain function around the spy: a spy's own bookkeeping handles the
+  // promise it returns, which would hide an unhandled rejection.
+  return {
+    ...actual,
+    pinList: (...a: Parameters<typeof actual.pinList>) => {
+      const out = pinListSpy(...a);
+      return pinRefused.next ? ((pinRefused.next = false), Promise.reject(new Error('plugin gone'))) : out;
+    },
+  };
 });
 
 function makeTrack(id: string): Track {
@@ -68,6 +77,26 @@ describe('useExecuteRecordPlay: Recently played pin re-sync', () => {
       expect.objectContaining({ id: 't2' }),
       expect.objectContaining({ id: 't1' }),
     ]));
+  });
+
+  it('a re-pin the app refuses after a play is not left as an unhandled error', async () => {
+    useOfflineStore.setState({
+      pins: [{ id: RECENT_PIN, name: 'Recently played', total: 1, done: 1, failed: 0, downloading: false, trackIds: ['t1'] }],
+    });
+    api.recordPlay.mockResolvedValue({});
+    pinRefused.next = true;
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      const { result } = renderHook(() => ({ mutate: useExecuteRecordPlay(), qc: useQueryClient() }), { wrapper });
+      act(() => { result.current.qc.setQueryData(QK.history, [makeTrack('t1')]); });
+      await act(async () => { result.current.mutate.mutate(makeTrack('t2')); });
+      await waitFor(() => expect(pinListSpy).toHaveBeenCalledTimes(1));
+      await new Promise((r) => setTimeout(r, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 
   it('does not re-pin when the pinned set already matches (no drift-triggered restart)', async () => {
