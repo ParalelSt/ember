@@ -65,6 +65,7 @@ export function createAndroidCacheAdapter(deps: AndroidCacheDeps = {}): AndroidC
   let entries = new Map<string, CacheEntry>();
   let snapshot: CacheStats = { bytes: 0, count: 0, cap: ANDROID_CACHE_CAP_BYTES };
   let unsubscribeNative: (() => void) | null = null;
+  let disposed = false;
   const listeners = new Set<() => void>();
   const notify = () => {
     for (const l of listeners) {
@@ -113,6 +114,9 @@ export function createAndroidCacheAdapter(deps: AndroidCacheDeps = {}): AndroidC
           }
           state = 'ok';
           applyStats(await readStats());
+          // Disposed while the stats were on their way: nobody is left to
+          // unsubscribe a listener added now.
+          if (disposed) return true;
           // subscribeState reports the current state at once, so cachedIds
           // and the offline flags are filled before anyone reads them.
           unsubscribeNative = subscribeState(onNative);
@@ -150,6 +154,7 @@ export function createAndroidCacheAdapter(deps: AndroidCacheDeps = {}): AndroidC
     reload,
 
     dispose() {
+      disposed = true;
       unsubscribeNative?.();
       unsubscribeNative = null;
       listeners.clear();
