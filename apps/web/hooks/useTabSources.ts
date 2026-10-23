@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { QK, useQueryTrack } from '@/hooks/useLibrary';
 import { drawableTabs, type TabSummary } from '@/lib/tabSources';
@@ -210,6 +211,8 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
   const remove = useMutation({
     mutationFn: (tabId: string) => api.deleteTabFile(tabId),
     onSuccess: refresh,
+    // The page has no other place to say it: the tab just stayed.
+    onError: () => toast.error("Couldn't delete that tab. Try again in a moment."),
   });
   const searchAgain = useMutation({
     mutationFn: () => api.findTabsOnline(id, title, artist, true),
