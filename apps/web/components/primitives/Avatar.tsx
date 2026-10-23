@@ -3,10 +3,20 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
+/** The first character as a person sees it (one grapheme): `source[0]`
+ *  is one UTF-16 unit, half of an emoji, which drew a broken glyph. */
+function firstGrapheme(source: string): string {
+  if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
+    const first = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(source)[Symbol.iterator]().next();
+    if (!first.done) return first.value.segment;
+  }
+  return Array.from(source)[0] ?? '';
+}
+
 /** First letter of `name`, falling back to `email`, falling back to '?'. */
 function initialFor(name?: string | null, email?: string | null): string {
   const source = (name || email || '').trim();
-  return source ? source[0]!.toUpperCase() : '?';
+  return source ? firstGrapheme(source).toUpperCase() : '?';
 }
 
 export interface AvatarProps {
