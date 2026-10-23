@@ -22,7 +22,8 @@ interface Props {
    *  doesn't add them twice. */
   added?: Track[];
   /** Seed tracks for recommendations when the search bar is empty. The first
-   *  track's sourceId is used as the seed; passing an empty array gives
+   *  YouTube track's sourceId is used as the seed (an upload's or Jamendo's
+   *  id is none: the server answers it with the chart); with none, it gives
    *  generic/trending recommendations from the YouTube endpoint. */
   seeds?: Track[];
   onAdd: (track: Track) => void;
@@ -58,7 +59,8 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, cl
     enabled: searching,
   });
 
-  const seed = seeds.length > 0 ? seeds[refreshNonce % seeds.length] : undefined;
+  const ytSeeds = seeds.filter((t) => t.source === 'youtube' && !!t.sourceId);
+  const seed = ytSeeds.length > 0 ? ytSeeds[refreshNonce % ytSeeds.length] : undefined;
   const seedSourceId = seed?.sourceId;
   const recsQuery = useQuery({
     queryKey: [...QK.recommended(seedSourceId), refreshNonce] as const,
@@ -100,7 +102,7 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, cl
         <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
           {searching
             ? `Results for "${debouncedQ}"`
-            : seeds.length > 0
+            : ytSeeds.length > 0
               ? 'Recommended for this playlist'
               : 'Recommended'}
         </div>

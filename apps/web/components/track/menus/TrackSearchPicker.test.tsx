@@ -113,3 +113,22 @@ describe('TrackSearchPicker in a height-capped dialog', () => {
     expect(list.parentElement!.parentElement).toHaveClass('min-h-0');
   });
 });
+
+describe('TrackSearchPicker recommendations seed', () => {
+  // The server grows recommendations from a YouTube video only; any other id
+  // gets today's chart under "Recommended for this playlist".
+  const upload: Track = { ...song('upload:u1', 'Demo Take'), source: 'upload', sourceId: 'u1' };
+
+  it('seeds from a YouTube song, not from an upload listed first', async () => {
+    setup([upload, ...inPlaylist]);
+    await screen.findByText('Live Forever');
+    expect(api.getRecommended).toHaveBeenCalledWith('aaa');
+  });
+
+  it('with only uploads, asks for plain recommendations and says so', async () => {
+    setup([upload]);
+    await screen.findByText('Live Forever');
+    expect(api.getRecommended).toHaveBeenCalledWith(undefined);
+    expect(screen.getByText('Recommended')).toBeInTheDocument();
+  });
+});
