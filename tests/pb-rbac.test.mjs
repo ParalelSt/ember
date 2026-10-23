@@ -216,6 +216,12 @@ for (const col of ['app_settings', 'prank_sounds', 'prank_schedules', 'tab_looku
   r = await list(col, bob.token, {});
   check(`G7 ${col} shows a member nothing of anyone else's`, (r.data?.items ?? []).length === 0, `status ${r.status}`);
 }
+// G8: accounts are deleted only by the admin route (it also removes the
+// member's private tabs and their files). A raw self-delete through /pb
+// skipped that cleanup and left the files behind.
+r = await call('DELETE', `/api/collections/users/records/${bob.id}`, bob.token);
+const bobStill = await call('GET', `/api/collections/users/records/${bob.id}`, su);
+check('G8 a member cannot delete their own account through /pb', r.status >= 400 && bobStill.status === 200, `status ${r.status}`);
 
 const failed = out.filter((c) => !c.pass);
 console.log(`\n${out.length - failed.length}/${out.length} passed`);
