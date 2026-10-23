@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -866,10 +867,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // across a track boundary (Firefox Android tears it down otherwise).
     // Local art (the same downloaded copy) wins over the remote artworkUrl.
     b.setMetadata(track, localArtFor(track, downloads.artFiles));
-  }, [positions, swapToWebAudio, pushVolume]);
+  }, [positions, swapToWebAudio, pushVolume, setDuration]);
 
-  loadAndPlayRef.current = loadAndPlay;
-  fallbackToWebAudioRef.current = fallbackToWebAudio;
+  // Latest callbacks for the backend's events (wired once). A layout effect,
+  // not a write during render: it still lands before any passive effect.
+  useLayoutEffect(() => {
+    loadAndPlayRef.current = loadAndPlay;
+    fallbackToWebAudioRef.current = fallbackToWebAudio;
+  });
 
   /** The level the music plays at, for an engine that just took over. */
   const applyVolume = useCallback((b: AudioBackend) => {
