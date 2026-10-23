@@ -247,4 +247,21 @@ describe('lining a tab up', () => {
     expect(await audioForTrack('upload:gone', store.pb)).toBeNull();
     expect(await audioForTrack('spotify:x', store.pb)).toBeNull();
   });
+
+  it('waits for a song still downloading instead of handing align.py the file being written', async () => {
+    // The download another route started (one list per process, see
+    // lib/sources/youtube.ts): its file can already be on disk mid-write.
+    const inFlight = (globalThis as Record<symbol, unknown>)[Symbol.for('ember.ytDownloadsInFlight')] as Map<string, Promise<string>>;
+    fs.writeFileSync(path.join(dir, 'midwrite001.m4a'), 'half');
+    let finish!: (p: string) => void;
+    inFlight.set('midwrite001', new Promise<string>((r) => { finish = r; }));
+    let got: string | null | undefined;
+    const pending = audioForTrack('youtube:midwrite001', store.pb).then((p) => { got = p; });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(got).toBeUndefined();
+    finish(path.join(dir, 'midwrite001.m4a'));
+    inFlight.delete('midwrite001');
+    await pending;
+    expect(got).toBe(path.join(dir, 'midwrite001.m4a'));
+  });
 });

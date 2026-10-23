@@ -10,7 +10,7 @@ import { queuePythonJob } from '@/lib/pythonJobs';
 import { buildTabPlanFromFile } from '@/lib/tabPlan';
 import { resolveRowPath } from '@/lib/tabs';
 import { parseTrackKey } from '@/lib/trackKey';
-import { ensureDownloaded, findCachedFile } from '@/lib/sources/youtube';
+import { ensureDownloaded } from '@/lib/sources/youtube';
 import { resolveUploadPath } from '@/lib/uploads';
 import { readTiming, type TabTiming } from '@/lib/tabSync';
 import { isOptionalDepMissing, warnOptionalDepsOnce } from '@/lib/tabOptionalDeps';
@@ -80,7 +80,9 @@ export function alignmentStatus(row: RecordModel): AlignStatus {
 export async function audioForTrack(trackId: string, pb: PocketBase): Promise<string | null> {
   const key = parseTrackKey(trackId);
   if (!key) return null;
-  if (key.source === 'youtube') return findCachedFile(key.sourceId) ?? (await ensureDownloaded(key.sourceId));
+  // ensureDownloaded answers from the cache too, but joins a download still
+  // running first: its file can be on disk before it is finished.
+  if (key.source === 'youtube') return ensureDownloaded(key.sourceId);
   const row = await pb.collection('uploads').getOne(key.sourceId).catch(() => null);
   if (!row) return null;
   const full = resolveUploadPath(String(row.filename ?? ''));
