@@ -326,8 +326,14 @@ export async function searchTracks(query: string, { limit = 30 } = {}): Promise<
  *  its own yt-dlp. That is not rare: a player asking for a byte range opens
  *  several requests for one song, so a single play could kick off three or
  *  four downloads of the same file, all fighting for the same throttled
- *  YouTube budget and racing to write the same path. Callers share one run. */
-const inFlight = new Map<string, Promise<string>>();
+ *  YouTube budget and racing to write the same path. Callers share one run.
+ *
+ *  One list per server PROCESS, not per module copy: a production build
+ *  bundles each route on its own (lib/sources/failureMemo), and the stream
+ *  route must see a download the Save route or the auto cache started, or
+ *  it serves the half-written file (isDownloading, below). */
+const IN_FLIGHT_KEY = Symbol.for('ember.ytDownloadsInFlight');
+const inFlight = ((globalThis as Record<symbol, unknown>)[IN_FLIGHT_KEY] ??= new Map()) as Map<string, Promise<string>>;
 
 /** Is yt-dlp currently writing this track?
  *

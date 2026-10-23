@@ -182,3 +182,28 @@ describe('runPython concurrency cap', () => {
     await Promise.all(bulk);
   });
 });
+
+describe('downloads in flight', () => {
+  it('are one list per process, even when each route bundles its own copy of this module', async () => {
+    // A production build bundles every route on its own (see failureMemo):
+    // the stream route has to know a download the Save route started is
+    // still being written, or it serves the half-written file, and the
+    // loudness route must not measure it.
+    const first = await import('./youtube');
+    const job = first.ensureDownloaded('sharedvid01');
+    await settle();
+    expect(spawned).toBe(1);
+
+    vi.resetModules();
+    const other = await import('./youtube');
+    expect(other.isDownloading('sharedvid01')).toBe(true);
+    const joined = other.ensureDownloaded('sharedvid01');
+    await settle();
+    expect(spawned).toBe(1);
+
+    finishAll(JSON.stringify({ filePath: '/m/sharedvid01.m4a' }));
+    await expect(job).resolves.toBe('/m/sharedvid01.m4a');
+    await expect(joined).resolves.toBe('/m/sharedvid01.m4a');
+    expect(other.isDownloading('sharedvid01')).toBe(false);
+  });
+});
