@@ -158,13 +158,16 @@ test('tracker: digests and release posts are noise, webhook bug reports are not'
   assert.ok(isNoise({ author: bot, content: "What's new in Ember 0.7.31" }));
   assert.ok(isNoise({ author: bot, content: 'Release notes 0.7.31' }));
   assert.ok(!isNoise({ author: bot, content: '', embeds: [{ title: 'Bug report from a@b.c', description: 'Playlists jump' }] }));
-  assert.ok(!isNoise({ author: { bot: false }, content: 'Daily digest idea: send me one' }));
+  assert.ok(!isNoise({ author: { bot: false }, content: 'Daily digest idea: send me one every morning with the new songs in it' }));
+  // Short messages by people are chat.
+  assert.ok(isNoise({ author: { bot: false }, content: 'easy peasy' }));
+  assert.ok(!isNoise({ author: { bot: false }, webhook_id: '9', content: '', embeds: [{ title: 'New feature: Queue', description: '.' }] }));
   assert.equal(messageText({ content: '', embeds: [{ title: 'Bug report', description: 'Playlists\njump' }] }), 'Bug report Playlists jump');
 });
 
 test('tracker: a scan skips tracked, seen and noise', () => {
   const state = markSeen(upsertItem(emptyState(), { id: '1', status: 'fixed', summary: 'a', link: 'l', at: 'x' }), ['2']);
-  const msgs = [{ id: '1' }, { id: '2' }, { id: '3', author: { bot: true }, content: 'Daily digest' }, { id: '4', content: 'hi' }];
+  const msgs = [{ id: '1' }, { id: '2' }, { id: '3', author: { bot: true }, content: 'Daily digest' }, { id: '4', content: 'Playlists jump to the top of the sidebar when you click one of them' }, { id: '5', content: 'hi' }];
   assert.deepEqual(newMessages(msgs, state).map((m) => m.id), ['4']);
 });
 
@@ -180,14 +183,14 @@ test('tracker: sections in order, empty ones left out, newest first', () => {
   assert.deepEqual(out.slice(1), [
     '',
     '**✅ Fixed**',
-    `- New fix (not released yet) <${link(3)}>`,
-    `- Old fix (0.7.1) <${link(2)}>`,
+    `- New fix (not released yet) [open](<${link(3)}>)`,
+    `- Old fix (0.7.1) [open](<${link(2)}>)`,
     '',
     '**🔨 Accepted, not done yet**',
-    `- Sleep timer <${link(4)}>`,
+    `- Sleep timer [open](<${link(4)}>)`,
     '',
     '**❌ Rejected**',
-    `- Dark mode: already there <${link(1)}>`,
+    `- Dark mode: already there [open](<${link(1)}>)`,
   ]);
   assert.ok(!out.includes('**✅ Made**'));
 });
@@ -250,7 +253,7 @@ test('tracker: the same bug bumps one group instead of adding lines', () => {
   for (let i = 0; i < 12; i++) s = addBugReport(s, bug(`Playlists jump to the top (${i})`, i), GUILD);
   assert.equal(s.items.length, 1);
   assert.equal(s.items[0].count, 12);
-  assert.match(renderTracker(s), /\*\*🐞 Bugs, not fixed yet\*\*\n- Playlists jump to the top \(0\) x12 </);
+  assert.match(renderTracker(s), /\*\*🐞 Bugs, not fixed yet\*\*\n- Playlists jump to the top \(0\) x12 \[open\]/);
   assert.equal(autoSummary(bug('x'.repeat(300))).length, 100);
 });
 
@@ -271,7 +274,7 @@ test('tracker: a bug that comes back after a fix is a new group with a note', ()
   assert.equal(s.items.length, 2);
   assert.equal(s.items[0].status, 'fixed');
   assert.equal(s.items[1].cameBack, '0.7.30');
-  assert.match(renderTracker(s), /Queue loses songs \(came back after fix in 0\.7\.30\) </);
+  assert.match(renderTracker(s), /Queue loses songs \(came back after fix in 0\.7\.30\) \[open\]/);
   s = addBugReport(s, bug('Queue loses songs', 6), GUILD);
   assert.equal(s.items[1].count, 2);
 });
@@ -299,6 +302,16 @@ test('tracker: sections order is bugs, requests, fixed, made, open, rejected', (
   assert.deepEqual(heads, ['**🐞 Bugs, not fixed yet**', '**🆕 New requests, not sorted**', '**✅ Fixed**', '**✅ Made**', '**🔨 Accepted, not done yet**', '**❌ Rejected**']);
 });
 
+test('tracker: seen takes an item off the list', () => {
+  const state = upsertItem(emptyState(), { id: '7', status: 'new', summary: 'easy', link: 'l', at: 'x' });
+  assert.deepEqual(markSeen(state, ['7']).items, []);
+});
+
+test('tracker: request forms are summed up by their title', () => {
+  assert.equal(autoSummary({ content: '', embeds: [{ title: 'New feature: Option to queue a song', description: '.' }] }), 'Option to queue a song');
+  assert.equal(autoSummary({ content: '', embeds: [{ title: 'Fix: lyrics display tweak', description: 'let users scroll' }] }), 'lyrics display tweak: let users scroll');
+});
+
 test('tracker: sync only reads after lastId, dedupes, and skips noise', async () => {
   const channels = { 'bug-reports': '2', ideas: '3' };
   const t0 = Date.parse('2026-10-23T10:00:00Z');
@@ -314,13 +327,13 @@ test('tracker: sync only reads after lastId, dedupes, and skips noise', async ()
   assert.equal(r.state.items.length, 0);
   assert.equal(r.state.lastId['3'], snowflake(t0));
   const big = BigInt(snowflake(t0)) + 5000000000000n;
-  store[3].push(idea('Add a sleep timer\nmore detail', big), idea('Daily digest', big + 1n));
+  store[3].push(idea('Add a sleep timer that stops playback after a set time\nmore detail', big), idea('Daily digest', big + 1n));
   store[3][1].author.bot = true;
   store[2].push({ ...bug('Search crashes'), id: String(big + 2n) }, { ...bug('Search crashes'), id: String(big + 3n) });
   r = await syncMessages(r.state, { channels, fetchPage, guildId: '1', now: t0 });
   assert.deepEqual(r.state.items.map((i) => [i.channel, i.status, i.summary, i.count ?? 1]), [
     ['bug-reports', 'new', 'Search crashes', 2],
-    ['ideas', 'new', 'Add a sleep timer', 1],
+    ['ideas', 'new', 'Add a sleep timer that stops playback after a set time', 1],
   ]);
   assert.equal(r.state.lastId['3'], String(big + 1n));
   calls.length = 0;

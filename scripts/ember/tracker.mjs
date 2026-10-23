@@ -51,7 +51,8 @@ function saveState(state) {
 }
 
 const channelNames = Object.fromEntries(Object.entries(EMBER_CHANNELS).map(([name, id]) => [id, name]));
-const SOURCES = ['bug-reports', 'recommendations', 'fix-recommendations', 'suggestions', 'ideas'];
+// #suggestions is the board game chat (OMR), not Ember.
+const SOURCES = ['bug-reports', 'recommendations', 'fix-recommendations', 'ideas'];
 
 /** Discord call that reports instead of stopping the tool. */
 async function api(method, pathname, body, tries = 3) {
@@ -238,7 +239,7 @@ async function main() {
       next.lastSync = new Date().toISOString();
       saveState(next);
       say(`${next.lastSync} sync: ${seenCount} new message${seenCount === 1 ? '' : 's'}`);
-      await post(next, { force: false });
+      if (!noPost) await post(next, { force: false });
     } finally {
       dropLock();
     }

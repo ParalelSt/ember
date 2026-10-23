@@ -49,8 +49,12 @@ const NOISE = /^[\s*_#>`~-]*(daily\s+(error\s+)?digest|weekly\s+digest|digest\b|
 
 /** Digests and release-notes posts by a bot are not requests. Webhook bug
  *  reports are bot-authored too and stay. */
+/** Messages by people shorter than this are chat. */
+export const CHAT_MIN = 60;
+
 export function isNoise(m) {
-  if (!m.author?.bot) return false;
+  // A short message by a person is chat, not a report or request.
+  if (!m.author?.bot && !m.webhook_id) return (m.content ?? '').trim().length < CHAT_MIN;
   const first = [m.content ?? '', m.embeds?.[0]?.title ?? ''].map((t) => t.trim()).filter(Boolean);
   return first.some((t) => NOISE.test(t));
 }
@@ -80,7 +84,8 @@ export function upsertItem(state, item) {
 export function markSeen(state, ids) {
   const seen = { ...state.seen };
   for (const id of ids) seen[id] = true;
-  return { ...state, seen };
+  // Something put on the list by sync and then marked not worth tracking leaves it.
+  return { ...state, seen, items: state.items.filter((i) => !seen[i.id]) };
 }
 
 /** Stamp `version` on every fixed/made item that has none. */
@@ -102,7 +107,7 @@ const stamp = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDat
 const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 
 function itemLine(i) {
-  const link = `<${i.link}>`;
+  const link = `[open](<${i.link}>)`;
   if (i.status === 'rejected') return `- ${oneLine(i.summary)}${i.reason ? `: ${oneLine(i.reason)}` : ''} ${link}`;
   if (i.status === 'open') return `- ${oneLine(i.summary)} ${link}`;
   return `- ${oneLine(i.summary)} (${i.version || 'not released yet'}) ${link}`;
@@ -122,7 +127,7 @@ function bugLine(i) {
   if (i.held) return `- ${i.count} more reports from ${i.author} (held)`;
   const times = i.count > 1 ? ` x${i.count}` : '';
   const back = i.cameBack ? ` (came back after fix in ${i.cameBack})` : '';
-  return `- ${oneLine(i.summary)}${times}${back} <${i.link}>`;
+  return `- ${oneLine(i.summary)}${times}${back} [open](<${i.link}>)`;
 }
 
 /** The summary as lines; empty sections are left out, newest first. The
@@ -137,7 +142,7 @@ export function renderTracker(state, now = new Date()) {
     lines.push('', '**🐞 Bugs, not fixed yet**', ...shown);
   }
   const requests = fresh.filter((i) => !isBug(i)).sort(byNewest);
-  if (requests.length) lines.push('', '**🆕 New requests, not sorted**', ...requests.map((i) => `- ${oneLine(i.summary)} <${i.link}>`));
+  if (requests.length) lines.push('', '**🆕 New requests, not sorted**', ...requests.map((i) => `- ${oneLine(i.summary)} [open](<${i.link}>)`));
   for (const [status, title] of SECTIONS) {
     const items = state.items.filter((i) => i.status === status).sort((a, b) => String(b.at).localeCompare(String(a.at)));
     if (!items.length) continue;
@@ -196,7 +201,12 @@ export function firstLine(m) {
   return raw.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
 }
 export function autoSummary(m) {
-  const line = firstLine(m).replace(/\s+/g, ' ');
+  // Request forms post an embed titled "New feature: <title>" or "Fix: <title>";
+  // the title is the summary, the description only the detail.
+  const title = (m.embeds?.[0]?.title ?? '').trim();
+  const form = title.match(/^(?:new feature|fix):\s*(.+)$/i);
+  const detail = (m.embeds?.[0]?.description ?? '').trim().split('\n')[0].trim();
+  const line = (form ? (detail.length > 1 ? `${form[1]}: ${detail}` : form[1]) : firstLine(m)).replace(/\s+/g, ' ');
   return (line.length > 100 ? `${line.slice(0, 97)}...` : line) || '(attachment only)';
 }
 export const authorKey = (m) => m.author?.username ?? m.author?.id ?? 'unknown';
