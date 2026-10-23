@@ -224,9 +224,13 @@ export const api = {
     req<{ tracks: Track[]; title: string | null; country: string; fetchedAt: string | null; stale: boolean }>('/youtube/trending'),
   getRecommended: (seedSourceId?: string) =>
     req<{ tracks: Track[] }>(`/youtube/recommended${seedSourceId ? `?seed=${encodeURIComponent(seedSourceId)}` : ''}`),
-  getArtist: (channelId: string) => req<ArtistPayload>(`/youtube/artist/${encodeURIComponent(channelId)}`),
-  getAlbum: (browseId: string) => req<AlbumDetail>(`/youtube/album/${encodeURIComponent(browseId)}`),
-  getTrack: (videoId: string) => req<{ track: Track }>(`/youtube/track/${encodeURIComponent(videoId)}`),
+  // 404 (and 400, an id that is not one) is an answer: the page says
+  // "not found" (BrowseError, the shared track page), not a fault.
+  getArtist: (channelId: string) =>
+    req<ArtistPayload>(`/youtube/artist/${encodeURIComponent(channelId)}`, { expected: [400, 404] }),
+  getAlbum: (browseId: string) => req<AlbumDetail>(`/youtube/album/${encodeURIComponent(browseId)}`, { expected: [400, 404] }),
+  getTrack: (videoId: string) =>
+    req<{ track: Track }>(`/youtube/track/${encodeURIComponent(videoId)}`, { expected: [400, 404] }),
   getTrackAvailability: (id: string) =>
     req<{ unavailable: boolean; reason: string | null }>(`/tracks/${encodeURIComponent(id)}/availability`),
   /** Volume normalization gain in dB (null: not measured yet). Quiet: it is
@@ -305,7 +309,9 @@ export const api = {
     }),
   /** The live carlist you host or joined (the Carlist button), or null. */
   getLiveCarlist: () => req<{ carlist: LiveCarlist | null }>('/sessions'),
-  getSession: (id: string) => req<SessionState>(`/sessions/${encodeURIComponent(id)}`),
+  /** 404 (gone) and 403 (not joined): the carlist page says "Carlist not
+   *  found". Asked every 2 s, so a fault here would file a report a poll. */
+  getSession: (id: string) => req<SessionState>(`/sessions/${encodeURIComponent(id)}`, { expected: [403, 404] }),
   /** `ahead`: songs that play before it (-1: it is the first). */
   addToSession: (id: string, track: Track, position: AddPosition = 'end') =>
     req<{ ok: true; position: AddPosition; ahead: number }>(`/sessions/${encodeURIComponent(id)}/tracks`, {

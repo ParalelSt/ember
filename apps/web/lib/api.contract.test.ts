@@ -25,6 +25,32 @@ describe('req(): a rate limit is an answer, not a fault', () => {
   });
 });
 
+describe('pages that say "not found" log that answer as a warning', () => {
+  const cases: [string, () => Promise<unknown>, number][] = [
+    ['artist 404', () => api.getArtist('UCnope'), 404],
+    ['artist id that is not one', () => api.getArtist('x'), 400],
+    ['album 404', () => api.getAlbum('MPREb_nope123'), 404],
+    ['shared track 404', () => api.getTrack('aaaaaaaaaaa'), 404],
+    ['carlist gone', () => api.getSession('s1'), 404],
+    ['carlist not joined', () => api.getSession('s1'), 403],
+  ];
+  for (const [name, call, status] of cases) {
+    it(name, async () => {
+      vi.stubGlobal('fetch', answer(status, { error: 'not found' }));
+      await expect(call()).rejects.toMatchObject({ status });
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it('anything else on those pages is still a fault', async () => {
+    vi.stubGlobal('fetch', answer(500, { error: 'boom' }));
+    await expect(api.getSession('s1')).rejects.toMatchObject({ status: 500 });
+    await expect(api.getArtist('UCx')).rejects.toMatchObject({ status: 500 });
+    expect(logger.error).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('ids in the path are encoded', () => {
   // A playlist or carlist id comes from the page's own URL, so a link can
   // carry anything: "../x" must not step out to another route.
