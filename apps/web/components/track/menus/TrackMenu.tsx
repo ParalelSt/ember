@@ -50,14 +50,17 @@ export function TrackMenu({
   // Blocked: never in radio, mixes or recommendations again (owner request
   // 2026-10-22). The song still plays when picked by hand.
   const toggleBlock = () => {
+    const unblockFailed = () => toast.error(`Couldn't unblock "${track.title}", please try again.`);
     if (blocked) {
-      void unblock(track).then(() => toast.success(`Unblocked "${track.title}"`));
+      void unblock(track).then(() => toast.success(`Unblocked "${track.title}"`), unblockFailed);
       return;
     }
-    void block(track).then(() =>
-      toast.success(`Blocked "${track.title}". It won't come up in radio, mixes or suggestions.`, {
-        action: { label: 'Undo', onClick: () => void unblock(track) },
-      }),
+    void block(track).then(
+      () =>
+        toast.success(`Blocked "${track.title}". It won't come up in radio, mixes or suggestions.`, {
+          action: { label: 'Undo', onClick: () => void unblock(track).catch(unblockFailed) },
+        }),
+      () => toast.error(`Couldn't block "${track.title}", please try again.`),
     );
   };
 

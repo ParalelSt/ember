@@ -5,6 +5,7 @@ import type { Track } from '@/types/track';
 
 const playTrack = vi.fn();
 const toastSuccess = vi.fn();
+const toastError = vi.fn();
 
 // The menu itself (dropdown or phone sheet) is AddToPlaylistMenu's; here it
 // just lists the actions TrackMenu hands it.
@@ -29,7 +30,9 @@ vi.mock('./AddToPlaylistMenu', () => ({
   ),
 }));
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => ({ playTrack }) }));
-vi.mock('sonner', () => ({ toast: { success: (m: string, o?: unknown) => toastSuccess(m, o) } }));
+vi.mock('sonner', () => ({
+  toast: { success: (m: string, o?: unknown) => toastSuccess(m, o), error: (m: string) => toastError(m) },
+}));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 const blocking = vi.hoisted(() => ({ ids: new Set<string>(), block: vi.fn(async () => {}), unblock: vi.fn(async () => {}) }));
 vi.mock('@/hooks/useBlockedTracks', () => ({
@@ -64,6 +67,7 @@ beforeEach(() => {
   blocking.unblock.mockClear();
   playTrack.mockReset();
   toastSuccess.mockReset();
+  toastError.mockReset();
   usePlayerStore.setState({ queue: [], index: -1, baseCount: 0 });
 });
 
@@ -162,6 +166,21 @@ describe('TrackMenu block (owner request 2026-10-22)', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Unblock song' }));
     expect(blocking.unblock).toHaveBeenCalledWith(track);
     expect(blocking.block).not.toHaveBeenCalled();
+  });
+
+  it('a block or unblock that failed says so instead of failing silently', async () => {
+    blocking.block.mockRejectedValueOnce(new Error('offline'));
+    render(<TrackMenu track={track} />);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Block song' }));
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalledWith(`Couldn't block "Song", please try again.`));
+    expect(toastSuccess).not.toHaveBeenCalled();
+
+    blocking.ids.add(track.id);
+    blocking.unblock.mockRejectedValueOnce(new Error('offline'));
+    render(<TrackMenu track={track} />);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unblock song' }));
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalledWith(`Couldn't unblock "Song", please try again.`));
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 });
 
