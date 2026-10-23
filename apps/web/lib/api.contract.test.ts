@@ -132,6 +132,22 @@ describe('Carlist: a carlist that ended between two polls is an answer', () => {
   });
 });
 
+describe('bulk copies go in batches the routes take', () => {
+  it('liking 501 songs at once sends two confirmed requests of at most 500, and adds the answers', async () => {
+    const fetch = vi.fn(async (_url: string, init: RequestInit) => {
+      const { tracks } = JSON.parse(String(init.body)) as { tracks: unknown[] };
+      return Response.json({ added: tracks.length - 1, skipped: [{ id: 'dup', title: 't', artist: 'a', reason: 'same-track', existingTitle: 't' }] }, { status: 201 });
+    });
+    vi.stubGlobal('fetch', fetch);
+    const songs = Array.from({ length: 501 }, (_, i) => ({ id: `youtube:s${i}` }) as Parameters<typeof api.bulkLike>[0][number]);
+    const outcome = await api.bulkLike(songs);
+    const bodies = fetch.mock.calls.map((c) => JSON.parse(String(c[1].body)) as { tracks: unknown[]; confirmed: boolean });
+    expect(bodies.map((b) => b.tracks.length)).toEqual([500, 1]);
+    expect(bodies.every((b) => b.confirmed === true)).toBe(true);
+    expect(outcome).toMatchObject({ added: 499, skipped: [{ id: 'dup' }, { id: 'dup' }] });
+  });
+});
+
 describe('ids in the path are encoded', () => {
   // A playlist or carlist id comes from the page's own URL, so a link can
   // carry anything: "../x" must not step out to another route.

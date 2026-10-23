@@ -128,7 +128,10 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
 }));
 
+vi.mock('@/lib/logger/client', () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
+
 const { POST } = await import('./route');
+const { api } = await import('@/lib/api');
 
 const request = (body: unknown) => ({ json: async () => body, headers: new Headers() }) as unknown as NextRequest;
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) }) as never;
@@ -283,5 +286,24 @@ describe('POST /api/playlists/[id]/tracks/bulk', () => {
     const stored = catalog.get('youtube:north') as Track & { evil?: string };
     expect(stored.evil).toBeUndefined();
     expect(stored.durationSec).toBe(0);
+  });
+});
+
+describe('POST /api/playlists/[id]/tracks/bulk + api.bulkAddToPlaylist', () => {
+  it('copies more songs than one request takes (Select all on a long list), in order, and adds up the answer', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      const id = /\/api\/playlists\/([^/]+)\/tracks\/bulk$/.exec(url)![1];
+      return POST(request(JSON.parse(String(init.body))), ctx(decodeURIComponent(id)));
+    }));
+    const many = Array.from({ length: 1201 }, (_, i) => t(`youtube:n${i}`, `Song ${i}`, 'X'));
+    // Already in the playlist, past the first request's songs.
+    many[700] = SLOW;
+    const outcome = await api.bulkAddToPlaylist('mine', many);
+    expect(outcome.added).toBe(1200);
+    expect(outcome.skipped.map((x) => x.id)).toEqual(['youtube:slow']);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3);
+    const added = inPlaylist('mine').slice(3).map(([track]) => track);
+    expect(added).toEqual(many.filter((x) => x !== SLOW).map((x) => x.id));
+    vi.unstubAllGlobals();
   });
 });

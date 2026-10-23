@@ -1,6 +1,6 @@
 import type { AlbumDetail, ArtistPayload, CollectionTrack, LiveCarlist, Playlist, SessionState, Track } from '@/types/track';
 import type { AddPosition } from '@/lib/carlist';
-import type { CopyOutcome } from '@/lib/playlistCopy';
+import { MAX_BULK, type CopyOutcome } from '@/lib/playlistCopy';
 import type { CandidatePerson, CollabState, InvitePreview } from '@/lib/collab';
 import { logger } from '@/lib/logger/client';
 import { isPublicPage } from '@/lib/publicPaths';
@@ -199,6 +199,20 @@ export interface LinkLikedCounts {
   newSample: { title: string; artist: string }[];
 }
 
+/** The bulk routes take MAX_BULK songs a request (Select all on a long
+ *  Liked songs picks more): the rest follow in order, one request at a
+ *  time, and the answers add up. */
+async function inBatches(tracks: Track[], send: (batch: Track[]) => Promise<CopyOutcome>): Promise<CopyOutcome> {
+  if (tracks.length <= MAX_BULK) return send(tracks);
+  const out: CopyOutcome = { added: 0, skipped: [] };
+  for (let i = 0; i < tracks.length; i += MAX_BULK) {
+    const r = await send(tracks.slice(i, i + MAX_BULK));
+    out.added += r.added;
+    out.skipped.push(...r.skipped);
+  }
+  return out;
+}
+
 /** A pasted link's refusals that are answers (lib/sources/spotify.ts and
  *  the YouTube Music playlist reader): not a playlist, private, gone, or
  *  nothing in it to import. */
@@ -291,7 +305,9 @@ export const api = {
   /** Copy songs into a playlist: the server skips the ones already there
    *  (lib/playlistCopy's rule) and says which. */
   bulkAddToPlaylist: (id: string, tracks: Track[]) =>
-    req<CopyOutcome>(`/playlists/${encodeURIComponent(id)}/tracks/bulk`, { method: 'POST', body: { tracks } }),
+    inBatches(tracks, (batch) =>
+      req<CopyOutcome>(`/playlists/${encodeURIComponent(id)}/tracks/bulk`, { method: 'POST', body: { tracks: batch } }),
+    ),
   /** 409 (`isAlreadyInPlaylist`): the song is already there. An answer the
    *  app shows as "Already in <playlist>", never an automatic bug report. */
   addToPlaylist: (id: string, track: Track) =>
@@ -454,7 +470,7 @@ export const api = {
    *  member's yes to "this likes every one of them": the route refuses
    *  without it. */
   bulkLike: (tracks: Track[]) =>
-    req<CopyOutcome>('/likes/bulk', { method: 'POST', body: { tracks, confirmed: true } }),
+    inBatches(tracks, (batch) => req<CopyOutcome>('/likes/bulk', { method: 'POST', body: { tracks: batch, confirmed: true } })),
   like: (track: Track) => req<{ ok: true }>('/likes', { method: 'POST', body: { track } }),
   unlike: (trackId: string) =>
     req<{ ok: true }>(`/likes/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
