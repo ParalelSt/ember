@@ -9,6 +9,7 @@ import { useExecuteBackupNow, useQueryAdminBackups } from '@/hooks/useAdmin';
 import { apiUrl } from '@/lib/api';
 import { describeBackupSchedule } from '@/lib/backupSchedule';
 import { formatBytes } from '@/lib/format';
+import { pbDateLabel } from '@/lib/pocketbase/dates';
 
 /** Database backups (PocketBase's own, nightly by default) plus the member
  *  files that live outside the database. Listing, "Back up now" and the
@@ -95,7 +96,7 @@ export default function AdminBackupsPage() {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold">{b.name}</div>
                     <div className="text-xs text-muted-foreground tabular-nums">
-                      {new Date(b.modified).toLocaleString()} · {formatBytes(b.size)} · {b.auto ? 'automatic' : 'manual'}
+                      {pbDateLabel(b.modified, true)} · {formatBytes(b.size)} · {b.auto ? 'automatic' : 'manual'}
                     </div>
                   </div>
                   <a

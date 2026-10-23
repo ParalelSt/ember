@@ -1,8 +1,9 @@
 import type { PropsWithChildren } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import AdminUsersPage from './page';
 import type { AdminUser } from '@/lib/api';
+import { safariDate } from '@/test-utils/safariDate';
 
 // @base-ui's Dialog reaches the repo root's hoisted React through its own
 // node_modules copy (see app/(app)/dizajn/page.test.tsx); render plain
@@ -53,5 +54,21 @@ describe('AdminUsersPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Sign out everywhere' }));
     });
     expect(signOutEverywhere).toHaveBeenCalledWith('u1');
+  });
+});
+
+describe('AdminUsersPage Joined date', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    users[0].created = '2024-01-01';
+  });
+
+  it('reads the PocketBase format where new Date() cannot (older Safari)', () => {
+    users[0].created = '2026-10-23 12:00:00.000Z';
+    const want = new Date('2026-10-23T12:00:00.000Z').toLocaleDateString();
+    vi.stubGlobal('Date', safariDate());
+    render(<AdminUsersPage />);
+    expect(screen.queryByText('Invalid Date')).toBeNull();
+    expect(screen.getByText(want)).toBeInTheDocument();
   });
 });

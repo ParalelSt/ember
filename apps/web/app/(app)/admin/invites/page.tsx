@@ -12,6 +12,7 @@ import {
   useQueryAdminInvites,
 } from '@/hooks/useAdmin';
 import type { AdminInvite } from '@/lib/api';
+import { pbDateLabel } from '@/lib/pocketbase/dates';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
@@ -90,7 +91,7 @@ export default function AdminInvitesPage() {
               <div className="truncate text-sm font-semibold">{inv.email}</div>
             </div>
             <div className="text-xs text-muted-foreground tabular-nums">
-              {new Date(inv.created).toLocaleDateString()}
+              {pbDateLabel(inv.created)}
             </div>
             <Button
               variant="ghost"
