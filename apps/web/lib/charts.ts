@@ -178,13 +178,3 @@ export function chartsCache(): ChartsCache {
   });
   return g[SHARED];
 }
-
-/** Up to `n` distinct cover images from the top of a list. */
-export function topArtworks(tracks: readonly Track[], n: number): string[] {
-  const out: string[] = [];
-  for (const t of tracks) {
-    if (t.artworkUrl && !out.includes(t.artworkUrl)) out.push(t.artworkUrl);
-    if (out.length >= n) break;
-  }
-  return out;
-}

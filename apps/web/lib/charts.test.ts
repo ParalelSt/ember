@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CHARTS_TTL_MS, createChartsCache, topArtworks } from '@/lib/charts';
+import { CHARTS_TTL_MS, createChartsCache } from '@/lib/charts';
 import { parseGenreCharts, type GenreChartFetch } from '@/lib/sources/youtube';
 import type { Track } from '@/types/track';
 
@@ -176,9 +176,3 @@ describe('parseGenreCharts', () => {
   });
 });
 
-describe('topArtworks', () => {
-  it('takes distinct covers from the top, skipping missing ones', () => {
-    const list = [track('a', 'x'), track('b', null), track('c', 'x'), track('d', 'y'), track('e', 'z')];
-    expect(topArtworks(list, 2)).toEqual(['x', 'y']);
-  });
-});

@@ -1,9 +1,9 @@
-import { chartsCache, topArtworks } from '@/lib/charts';
+import { chartsCache } from '@/lib/charts';
 import { getTrendingChart } from '@/lib/trending';
 import { listUnavailableIds } from '@/lib/trackAvailability';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { chartColor, chartTitle, POPULAR_SLUG, POPULAR_TITLE, type ChartsPayload } from '@/lib/chartsView';
+import { chartColor, chartTitle, POPULAR_SLUG, POPULAR_TITLE, tileCovers, type ChartsPayload } from '@/lib/chartsView';
 
 /** The chart tiles for Home: Popular now (the blended daily chart,
  *  lib/trending.ts) and one tile per genre chart (lib/charts.ts), without
@@ -23,7 +23,7 @@ export const GET = withRequestLog('charts', async () => {
         slug: POPULAR_SLUG,
         title: POPULAR_TITLE,
         color: chartColor(POPULAR_SLUG),
-        artworkUrls: topArtworks(popularTracks, 4),
+        artworkUrls: tileCovers(popularTracks),
         count: popularTracks.length,
         fetchedAt: trending.fetchedAt,
         stale: trending.stale,
@@ -35,7 +35,7 @@ export const GET = withRequestLog('charts', async () => {
             slug: c.slug,
             title: chartTitle(c.slug, c.title),
             color: chartColor(c.slug),
-            artworkUrls: topArtworks(tracks, 4),
+            artworkUrls: tileCovers(tracks),
             count: tracks.length,
             fetchedAt: c.fetchedAt,
             stale: c.stale,

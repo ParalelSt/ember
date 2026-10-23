@@ -18,10 +18,7 @@ const get = vi.fn();
 const dead = new Set<string>();
 
 vi.mock('@/lib/trending', () => ({ getTrendingChart: () => trending() }));
-vi.mock('@/lib/charts', async () => {
-  const real = await vi.importActual<typeof import('@/lib/charts')>('@/lib/charts');
-  return { topArtworks: real.topArtworks, chartsCache: () => ({ getAll, get }) };
-});
+vi.mock('@/lib/charts', () => ({ chartsCache: () => ({ getAll, get }) }));
 vi.mock('@/lib/trackAvailability', () => ({ listUnavailableIds: async () => dead }));
 vi.mock('@/lib/upsertTrack', () => ({
   jsonError: (error: string, status: number) => Response.json({ error }, { status }),
