@@ -74,6 +74,16 @@ describe('useSessionHost (app shell, no session page open)', () => {
     expect(next).toHaveBeenCalled();
   });
 
+  it('publishes the playing row to a NEW carlist even when it is the same row number as the last one', async () => {
+    api.getSession.mockImplementation(async (id: string) => state({ id, nowIndex: 0 }));
+    usePlayerStore.setState({ queue: [a, b], index: 1 });
+    renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenCalledWith('s1', 1));
+    // That carlist ends; the host starts another one, still on song B.
+    act(() => useSessionStore.setState({ hostingSessionId: 's2' }));
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenCalledWith('s2', 1));
+  });
+
   it('does nothing while this device hosts nothing', async () => {
     useSessionStore.setState({ hostingSessionId: null });
     renderHook(() => useSessionHost(), { wrapper });

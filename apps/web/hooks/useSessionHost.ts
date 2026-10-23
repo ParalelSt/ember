@@ -94,11 +94,14 @@ export function useSessionHost() {
   const serverNow = state?.session.nowIndex ?? 0;
   const playingRow =
     isActiveHost && state ? sessionIndexFor(state.queue.map((q) => q.track.id), current?.id, serverNow) : -1;
-  const lastPublished = useRef<number | null>(null);
+  // Per carlist: the row last told to ANOTHER carlist says nothing about
+  // this one (the host of a new one may well be on the same row number).
+  const lastPublished = useRef<{ sessionId: string; row: number } | null>(null);
   useEffect(() => {
     if (!isActiveHost || !sessionId || playingRow < 0) return;
-    if (playingRow === lastPublished.current) return;
-    lastPublished.current = playingRow;
+    const last = lastPublished.current;
+    if (last?.sessionId === sessionId && last.row === playingRow) return;
+    lastPublished.current = { sessionId, row: playingRow };
     if (playingRow === serverNow) return;
     api.publishSessionNow(sessionId, playingRow).catch(() => {
       lastPublished.current = null;
