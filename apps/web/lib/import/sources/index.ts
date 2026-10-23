@@ -157,4 +157,3 @@ function csvLabel(kind: ParsedSource['kind'], fromSpotify: boolean): string {
 
 export { isParseError, MAX_TRANSFER_ITEMS };
 export type { ParseError, ParsedSource };
-export type { TransferItem } from '@/lib/import/sources/types';
