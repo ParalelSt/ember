@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { cancelApprovedFor } from '@/lib/qrLogin/server';
 
 const MIN_LEN = 8;
 const MAX_LEN = 71;
@@ -27,6 +28,10 @@ export const POST = withRequestLog('admin/users/[id]/password', async (req: Next
     if (pw.length > MAX_LEN) return jsonError(`Password must be ${MAX_LEN} characters or fewer`, 400);
 
     const pb = await createAdminClient();
+    // A QR sign-in the member approved that no device has collected yet
+    // would still mint a session after the reset: cancel it first, like the
+    // sign-out-everywhere routes do.
+    await cancelApprovedFor(pb, id);
     const target = await pb.collection('users').update(id, {
       password: pw,
       passwordConfirm: pw,
