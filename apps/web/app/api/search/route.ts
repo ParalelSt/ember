@@ -10,6 +10,9 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { getTrendingChart } from '@/lib/trending';
 import { listUnavailableIds } from '@/lib/trackAvailability';
 
+/** Longer than any real search; a bigger q only costs the Python search. */
+const MAX_QUERY_LEN = 200;
+
 /** Uploads for the signed-in caller. Uses the cookie-bound client, so
  *  PocketBase's own list rule decides visibility, a signed-out caller gets
  *  nothing rather than us hand-rolling the check. Never throws: uploads are
@@ -45,6 +48,9 @@ export const GET = withRequestLog('search', async (request: NextRequest) => {
       } catch {
         return Response.json({ tracks: [] });
       }
+    }
+    if (q.length > MAX_QUERY_LEN) {
+      return Response.json({ error: `Search is limited to ${MAX_QUERY_LEN} characters` }, { status: 400 });
     }
     // Caps actual searches (typed or voice, voice just fills the box). Humans
     // never hit this thanks to the 250ms debounce + React Query cache.

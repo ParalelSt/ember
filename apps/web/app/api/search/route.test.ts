@@ -78,3 +78,20 @@ describe('GET /api/search', () => {
     expect((await res.json()).error).toMatch(/unavailable/);
   });
 });
+
+describe('GET /api/search: query length', () => {
+  it('refuses a query over 200 characters with 400, before it reaches the Python search', async () => {
+    const res = await GET(request('a'.repeat(201)), undefined as never);
+    expect(res.status).toBe(400);
+    expect(youtubeSearch).not.toHaveBeenCalled();
+    expect(searchUploads).not.toHaveBeenCalled();
+  });
+
+  it('still searches a 200-character query', async () => {
+    searchUploads.mockResolvedValue([]);
+    youtubeSearch.mockResolvedValue([]);
+    const res = await GET(request('a'.repeat(200)), undefined as never);
+    expect(res.status).toBe(200);
+    expect(youtubeSearch).toHaveBeenCalledTimes(1);
+  });
+});
