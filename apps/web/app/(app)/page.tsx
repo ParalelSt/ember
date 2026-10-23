@@ -73,7 +73,9 @@ export default function HomePage() {
   const { data: history = [] } = useQueryHistory();
   const { data: liked = [] } = useQueryLikes();
   const { data: trending = [], isLoading: trendingLoading } = useQueryTrending();
-  const seedTrack = history[0];
+  // Radio grows from a YouTube video: an upload's (or Jamendo's) id is no
+  // seed, and the server answers it with today's chart instead.
+  const seedTrack = history.find((t) => t.source === 'youtube');
   const { data: recommended = [], isLoading: recommendedLoading } = useQueryRecommended(seedTrack?.sourceId);
 
   const recsTitle = seedTrack ? `Because you played "${seedTrack.title}"` : 'Recommended for you';
