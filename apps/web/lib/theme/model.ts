@@ -86,6 +86,14 @@ export function validateInputs(raw: unknown): { ok: true; inputs: ThemeInputs } 
   return { ok: true, inputs: out };
 }
 
+/** The first `max` UTF-16 units of `s` (the unit the 40-character limit
+ *  counts), never ending on half of an emoji: a plain slice there left a
+ *  lone surrogate, which shows as a broken glyph. */
+export function clipName(s: string, max: number): string {
+  const out = s.slice(0, Math.max(0, max));
+  return /[\uD800-\uDBFF]$/.test(out) ? out.slice(0, -1) : out;
+}
+
 /** A theme name trimmed to one line, or null when empty or too long. */
 export function cleanThemeName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;

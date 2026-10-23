@@ -38,3 +38,12 @@ describe('copyName', () => {
     expect(copyName('   ')).toBe('Theme copy');
   });
 });
+
+describe('copyName with an emoji at the cut', () => {
+  it('never leaves half an emoji (a lone surrogate) in the name', () => {
+    // 34 letters then a guitar: the cut for " copy" falls inside the emoji.
+    const name = copyName('a'.repeat(34) + '🎸 x');
+    expect(name).toBe('a'.repeat(34) + ' copy');
+    expect(name).not.toMatch(/[\uD800-\uDFFF]/);
+  });
+});
