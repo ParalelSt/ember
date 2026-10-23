@@ -945,7 +945,15 @@ async function fetchLrclib(
   };
 }
 
-export async function getLyrics(title: string, artist: string, durationSec?: number): Promise<LyricsResult> {
+export async function getLyrics(
+  title: string,
+  artist: string,
+  durationSec?: number,
+  /** `beforeHelper` runs right before the Genius helper (a Python process,
+   *  up to 20 s) would start, and never for a cached or LRCLib answer: a
+   *  rate limit throws from it to refuse only the costly lookups. */
+  opts: { beforeHelper?: () => void } = {},
+): Promise<LyricsResult> {
   const cleanTitle = title.trim().slice(0, 200);
   const cleanArtist = artist.trim().slice(0, 200);
   if (!cleanTitle) {
@@ -970,6 +978,7 @@ export async function getLyrics(title: string, artist: string, durationSec?: num
     return fromLrclib;
   }
 
+  opts.beforeHelper?.();
   const raw = await runPython<RawLyrics>(['lyrics', '--', cleanTitle, cleanArtist], { timeoutMs: 20000 });
   if (raw?.error) {
     const e: PythonError = new Error(raw.error);

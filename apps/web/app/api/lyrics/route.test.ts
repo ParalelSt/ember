@@ -29,22 +29,35 @@ beforeEach(() => {
 describe('GET /api/lyrics', () => {
   it('passes the track length on', async () => {
     await call('title=Song&artist=Band&durationSec=213');
-    expect(getLyrics).toHaveBeenCalledWith('Song', 'Band', 213);
+    expect(getLyrics).toHaveBeenCalledWith('Song', 'Band', 213, expect.anything());
   });
 
   it('passes no length when it is missing or junk', async () => {
     await call('title=Song&artist=Band');
     await call('title=Song&artist=Band&durationSec=abc');
-    expect(getLyrics).toHaveBeenNthCalledWith(1, 'Song', 'Band', undefined);
-    expect(getLyrics).toHaveBeenNthCalledWith(2, 'Song', 'Band', undefined);
+    expect(getLyrics).toHaveBeenNthCalledWith(1, 'Song', 'Band', undefined, expect.anything());
+    expect(getLyrics).toHaveBeenNthCalledWith(2, 'Song', 'Band', undefined, expect.anything());
   });
 });
 
 describe('GET /api/lyrics rate limit', () => {
-  it('caps one member at 30 lookups a minute, since each can start the Python lyrics helper', async () => {
+  /** getLyrics as it behaves when the answer needs the Genius helper. */
+  const viaHelper = async (_t: string, _a: string, _d: unknown, opts?: { beforeHelper?: () => void }) => {
+    opts?.beforeHelper?.();
+    return { lyrics: 'words', source: 'genius', url: null };
+  };
+
+  it('caps one member at 30 Genius helper runs a minute', async () => {
+    getLyrics.mockImplementation(viaHelper);
     for (let i = 0; i < 30; i++) expect((await call(`title=Song${i}`)).status).toBe(200);
     const res = await call('title=OneTooMany');
     expect(res.status).toBe(429);
-    expect(getLyrics).toHaveBeenCalledTimes(30);
+    expect(res.headers.get('Retry-After')).toBeTruthy();
+  });
+
+  it('never limits answers that start no helper (cached, or from LRCLib): fast skipping never 429s', async () => {
+    for (let i = 0; i < 100; i++) expect((await call(`title=Skip${i}`)).status).toBe(200);
+    getLyrics.mockImplementation(viaHelper);
+    expect((await call('title=NeedsGenius')).status).toBe(200);
   });
 });
