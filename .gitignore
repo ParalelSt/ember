@@ -86,6 +86,8 @@ Thumbs.db
 coverage/
 .nyc_output/
 cookies.txt
+# player.py's per-run copies of YTDLP_COOKIE_FILE, beside that file.
+.ember-cookies/
 
 # Local roadmap / status notes, not committed
 ROADMAP.md

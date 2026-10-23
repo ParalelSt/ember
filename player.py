@@ -4,6 +4,8 @@ import sys
 import json
 import time
 import shutil
+import atexit
+import tempfile
 import argparse
 import contextlib
 import concurrent.futures
@@ -35,12 +37,68 @@ def _cookie_opts():
     anonymous path is unchanged by default."""
     cookie_file = os.environ.get("YTDLP_COOKIE_FILE", "").strip()
     if cookie_file:
-        return {"cookiefile": cookie_file}
+        return {"cookiefile": _cookie_copy(cookie_file)}
     browser = os.environ.get("YTDLP_COOKIES_FROM_BROWSER", "").strip()
     if browser:
         name, _, profile = browser.partition(":")
         return {"cookiesfrombrowser": (name, profile or None, None, None)}
     return {}
+
+
+# yt-dlp saves its cookie jar back to the cookie file when a run ends, by
+# truncating the file and writing it again. Several player.py runs share the
+# file at once, so a run that loaded it mid-save read it empty and then saved
+# that empty jar back, and the session was gone for good. Each run hands
+# yt-dlp its own copy instead (yt-dlp writes back to the copy), removed when
+# the run ends. A run killed outright (the web server's timeout) cannot
+# remove its copy, so each run first sweeps the copies of runs that are gone.
+# Beside the cookie file by default (None), not in a shared /tmp.
+COOKIE_COPY_DIR: Path | None = None
+_cookie_copy_path: str | None = None
+
+
+def _cookie_copy(cookie_file: str) -> str:
+    """This run's private copy of the cookie file. The original when no copy
+    can be made (yt-dlp then reports an unreadable file itself)."""
+    global _cookie_copy_path
+    if _cookie_copy_path:
+        return _cookie_copy_path
+    folder = COOKIE_COPY_DIR or Path(cookie_file).resolve().parent / ".ember-cookies"
+    try:
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        _sweep_cookie_copies(folder)
+        fd, copy = tempfile.mkstemp(dir=folder, prefix=f"{os.getpid()}-", suffix=".txt")
+    except OSError as e:
+        print(f"[cookies] no private copy ({e}); using {cookie_file} itself", file=sys.stderr)
+        return cookie_file
+    try:
+        with os.fdopen(fd, "wb") as out, open(cookie_file, "rb") as src:
+            shutil.copyfileobj(src, out)
+    except OSError:
+        _remove_quietly(copy)
+        return cookie_file
+    atexit.register(_remove_quietly, copy)
+    _cookie_copy_path = copy
+    return copy
+
+
+def _sweep_cookie_copies(folder: Path):
+    """Remove the copies of runs whose process is gone."""
+    for p in folder.glob("*-*.txt"):
+        pid = p.name.split("-", 1)[0]
+        if not pid.isdigit():
+            continue
+        try:
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            _remove_quietly(p)
+        except OSError:
+            pass  # alive, someone else's
+
+
+def _remove_quietly(path):
+    with contextlib.suppress(OSError):
+        os.unlink(path)
 
 
 def _ffmpeg_opts():
