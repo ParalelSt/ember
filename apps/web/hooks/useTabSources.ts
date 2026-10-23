@@ -94,6 +94,14 @@ function againResult(
   return data && data.added > 0 ? 'found' : 'none';
 }
 
+/** "Line it up" was refused (the hourly budget, a tab that is gone, the
+ *  server down): said, instead of the button just going back to how it
+ *  was. A rate limit's own answer says how long to wait. */
+function lineUpFailed(e: unknown): void {
+  const status = (e as { status?: number } | null)?.status;
+  toast.error(status === 429 && e instanceof Error ? e.message : "Couldn't line that tab up just now. Try again in a moment.");
+}
+
 /** align.py gives up after five minutes (lib/tabAlign.ts); a row waiting
  *  longer than that has nothing left to wait for. */
 const ALIGN_GIVE_UP_MS = 6 * 60 * 1000;
@@ -236,8 +244,10 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
       qc.setQueryData(['tab-align', tabId], { status: 'running' as const });
       setWaiting((m) => (m[tabId] ? { ...m, [tabId]: { ...m[tabId], started: true } } : m));
     },
-    onError: (_e, tabId) =>
-      setWaiting((m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== tabId))),
+    onError: (e, tabId) => {
+      setWaiting((m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== tabId)));
+      lineUpFailed(e);
+    },
   });
 
   return {
@@ -307,6 +317,7 @@ export function useTabAlignment(tab: TabSummary | null): TabAlignment {
       await qc.cancelQueries({ queryKey: ['tab-align', tabId] });
       qc.setQueryData(['tab-align', tabId], { status: 'running' as const });
     },
+    onError: lineUpFailed,
   });
 
   // A job that finished brings the row its timing.
