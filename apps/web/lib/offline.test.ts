@@ -11,7 +11,7 @@ import { useOfflineStore } from '@/stores/useOfflineStore';
 
 vi.mock('@/lib/api', () => ({ apiUrl: (u: string) => u }));
 
-import { downloadPlaylist, hydrateOfflineStore, removeDownload } from './offline';
+import { cancelDownload, downloadPlaylist, hydrateOfflineStore, removeDownload } from './offline';
 
 type Node = FakeDir | FakeFile;
 class FakeFile {
@@ -194,5 +194,26 @@ describe('downloadPlaylist (browser storage)', () => {
     await removeDownload('pl1');
 
     expect(useOfflineStore.getState().webFiles).toEqual({});
+  });
+});
+
+describe('cancelDownload (Android app)', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('a cancel the app refuses is swallowed, not left as an unhandled error', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      Plugins: { EmberOffline: { cancel: () => Promise.reject(new Error('plugin gone')) } },
+    };
+    try {
+      cancelDownload('pl1');
+      await new Promise((r) => setTimeout(r, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 });

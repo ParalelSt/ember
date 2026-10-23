@@ -426,7 +426,9 @@ export async function removeDownload(playlistId: string): Promise<void> {
 
 export function cancelDownload(playlistId: string): void {
   if (nativeOfflinePresent()) {
-    void nativeCancel(playlistId).then((s) => useOfflineStore.getState().setNativeStatus(s));
+    // A refused cancel changes nothing: the plugin's next status event still
+    // says what it is doing.
+    void nativeCancel(playlistId).then((s) => useOfflineStore.getState().setNativeStatus(s), () => {});
     return;
   }
   const ac = aborters.get(playlistId);
