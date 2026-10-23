@@ -45,7 +45,8 @@ export function builtLine(mix: Pick<MixPayload, 'subtitle' | 'builtAt'>, now: nu
   const at = Date.parse(mix.builtAt);
   let when = 'today';
   if (!Number.isNaN(at)) {
-    const days = Math.floor((startOfDay(now) - startOfDay(at)) / 86400000);
+    // Rounded: a day the clocks change on is 23 or 25 hours long.
+    const days = Math.round((startOfDay(now) - startOfDay(at)) / 86400000);
     if (days === 1) when = 'yesterday';
     else if (days > 1) when = `${days} days ago`;
   }
