@@ -1,10 +1,29 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { api } from './api';
+import { logger } from '@/lib/logger/client';
+
+// What req() makes of the answers the routes give: which ones are a fault
+// (logger.error, which sends an automatic bug report) and which are an
+// answer the app shows (a warning).
 
 vi.mock('@/lib/logger/client', () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
 
 const answer = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   vi.fn(async () => Response.json(body, { status, headers }));
+
+beforeEach(() => {
+  vi.mocked(logger.error).mockClear();
+  vi.mocked(logger.warn).mockClear();
+});
+
+describe('req(): a rate limit is an answer, not a fault', () => {
+  it('logs a 429 as a warning and still throws its sentence and status', async () => {
+    vi.stubGlobal('fetch', answer(429, { error: 'Slow down, try again in about 12s.' }, { 'Retry-After': '12' }));
+    await expect(api.search('abc')).rejects.toMatchObject({ status: 429, message: 'Slow down, try again in about 12s.' });
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('ids in the path are encoded', () => {
   // A playlist or carlist id comes from the page's own URL, so a link can

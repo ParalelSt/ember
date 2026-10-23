@@ -141,8 +141,10 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected, ba
     const reqId = res.headers.get('x-request-id') || undefined;
     const entry = { method, path, status: res.status, body: err.error, reqId };
     // A 401 is an answer too (the session is gone), not a fault: as an error
-    // it sent an automatic bug report per call (bughunt V5).
-    if (res.status === 401 || expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
+    // it sent an automatic bug report per call (bughunt V5). So is a 429:
+    // the route's own limit said no, which the server logs as a warning too
+    // (withRequestLog).
+    if (res.status === 401 || res.status === 429 || expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
     else logger.error('api', `${method} ${path} → ${res.status}`, entry);
     // Attach the HTTP status so callers can branch on it (e.g. 409 = already
     // in the playlist → a friendly toast instead of the raw server text).
