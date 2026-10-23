@@ -26,8 +26,15 @@ vi.mock('@/lib/auth', () => ({
   UnauthorizedError: class UnauthorizedError extends Error {},
   unauthorizedResponse: () => Response.json({ error: 'Unauthorized' }, { status: 401 }),
 }));
+// createAdminClient signs in with the admin password on every call; the
+// catalog client reuses one login.
+const logins = vi.hoisted(() => ({ fresh: 0 }));
 vi.mock('@/lib/pocketbase/server', () => ({
-  createAdminClient: async () => ({ collection: () => ({ getList }) }),
+  createAdminClient: async () => {
+    logins.fresh += 1;
+    return { collection: () => ({ getList }) };
+  },
+  createCatalogClient: async () => ({ collection: () => ({ getList }) }),
 }));
 vi.mock('@/lib/upsertTrack', () => ({
   fromError: (e: unknown) => Response.json({ error: String(e) }, { status: 500 }),
@@ -44,5 +51,11 @@ describe('GET /api/listening', () => {
     const body = (await res.json()) as { items: { userName: string }[] };
     expect(JSON.stringify(body)).not.toContain('jane.secret');
     expect(body.items.map((i) => i.userName)).toEqual(['Unnamed member', 'Bob']);
+  });
+
+  it('does not sign in as admin on every poll (Home asks every 30 s)', async () => {
+    logins.fresh = 0;
+    for (let i = 0; i < 5; i += 1) await (GET as unknown as () => Promise<Response>)();
+    expect(logins.fresh).toBe(0);
   });
 });

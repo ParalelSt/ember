@@ -1,5 +1,5 @@
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
-import { createAdminClient } from '@/lib/pocketbase/server';
+import { createCatalogClient } from '@/lib/pocketbase/server';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
@@ -20,7 +20,9 @@ const WINDOW_MS = 30 * 60 * 1000;
 export const GET = withRequestLog('listening', async () => {
   try {
     const { user } = await requireUser();
-    const pb = await createAdminClient();
+    // The reused admin login: Home asks every 30 s, and a fresh one is a
+    // password check each time.
+    const pb = await createCatalogClient();
     const since = new Date(Date.now() - WINDOW_MS).toISOString().replace('T', ' ');
     const records = await pb.collection('plays').getList(1, 100, {
       filter: `played_at >= "${since}" && user != "${user.id}"`,
