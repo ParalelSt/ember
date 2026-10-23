@@ -344,13 +344,16 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
     await atomicWriteJson(playlistDir, 'manifest.json', finalManifest);
 
     const meta = await readMeta();
+    // Only a finished download was ever counted: the copies a cancelled one
+    // left behind (its partial manifest) are not in the total yet.
+    const counted = meta.downloadedPlaylistIds.includes(playlist.id) ? previousBytes : 0;
     if (!meta.downloadedPlaylistIds.includes(playlist.id)) {
       meta.downloadedPlaylistIds.push(playlist.id);
     }
-    meta.totalBytes = Math.max(0, meta.totalBytes + totalBytesThisPlaylist - previousBytes);
+    meta.totalBytes = Math.max(0, meta.totalBytes + totalBytesThisPlaylist - counted);
     await writeMeta(meta);
 
-    store.finishDownload(playlist.id, totalBytesThisPlaylist - previousBytes);
+    store.finishDownload(playlist.id, totalBytesThisPlaylist - counted);
     await indexWebFiles(new Set(completed.map((t) => t.id)));
 
     await notifySwIndex({

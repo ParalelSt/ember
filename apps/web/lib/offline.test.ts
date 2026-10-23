@@ -157,6 +157,24 @@ describe('downloadPlaylist (browser storage)', () => {
     expect(useOfflineStore.getState().totalBytes).toBe(8);
   });
 
+  it('a download cancelled part way and then started again counts its size in full', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (!url.includes('/u1')) return audio();
+      cancelDownload('pl1');
+      throw new DOMException('Aborted', 'AbortError');
+    });
+    await downloadPlaylist(PL, [YT, UP]);
+    expect(useOfflineStore.getState().totalBytes).toBe(0);
+
+    fetchMock.mockImplementation(async () => audio());
+    await downloadPlaylist(PL, [YT, UP]);
+
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+    useOfflineStore.setState({ totalBytes: 0 });
+    await hydrateOfflineStore();
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+  });
+
   it('an update where a song now fails keeps the copy it already had', async () => {
     await downloadPlaylist(PL, [YT, UP]);
     fetchMock.mockImplementation(async (url: string) =>
