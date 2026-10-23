@@ -1,16 +1,30 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import SettingsProfile from './page';
 
+const auth = vi.hoisted(() => ({
+  user: { id: 'u1', email: 'robin@ember.test' } as { id: string; email: string } | null,
+  name: 'Robin' as string | null,
+}));
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuth: () => ({
-    user: { id: 'u1', email: 'robin@ember.test' },
-    name: 'Robin',
+    user: auth.user,
+    name: auth.name,
     avatarUrl: '/pb/api/files/users/u1/avatar.png',
     refresh: vi.fn(),
     signOut: vi.fn(),
   }),
 }));
+const api = vi.hoisted(() => ({ updateProfile: vi.fn(async () => ({})) }));
+vi.mock('@/lib/api', () => ({ api }));
+vi.mock('@/components/settings/PrivacyToggles', () => ({ PrivacyToggles: () => null }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  auth.user = { id: 'u1', email: 'robin@ember.test' };
+  auth.name = 'Robin';
+});
 
 describe('SettingsProfile', () => {
   it('renders the current avatar through the shared Avatar', () => {
@@ -41,5 +55,29 @@ describe('SettingsProfile', () => {
     expect(revoke).toHaveBeenCalledWith('blob:preview-2');
     URL.createObjectURL = saved.create;
     URL.revokeObjectURL = saved.revoke;
+  });
+});
+
+describe('SettingsProfile name, opened before the account is known', () => {
+  it('saving only a new picture does not clear the name', async () => {
+    auth.user = null;
+    auth.name = null;
+    const { container, rerender } = render(<SettingsProfile />);
+    auth.user = { id: 'u1', email: 'robin@ember.test' };
+    auth.name = 'Robin';
+    rerender(<SettingsProfile />);
+    expect(screen.getByLabelText('Username')).toHaveValue('Robin');
+    const input = container.querySelector('input[type="file"]')!;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(api.updateProfile).toHaveBeenCalledTimes(1));
+    expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ name: undefined }));
+  });
+
+  it('a name typed by hand is still sent, an empty one included', async () => {
+    render(<SettingsProfile />);
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ name: '' })));
   });
 });

@@ -14,7 +14,10 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function SettingsProfile() {
   const { user, name: currentName, avatarUrl, refresh, signOut } = useAuth();
-  const [name, setName] = useState(currentName ?? '');
+  // What was typed; until then the field shows the account's name, which
+  // may not be known yet when the page opens (an offline start).
+  const [draft, setDraft] = useState<string | null>(null);
+  const name = draft ?? currentName ?? '';
   const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [removeAvatar, setRemoveAvatar] = useState(false);
@@ -51,11 +54,13 @@ export default function SettingsProfile() {
     setBusy(true);
     try {
       await api.updateProfile({
-        name: name.trim() !== (currentName ?? '') ? name.trim() : undefined,
+        // Only a name typed here, and only when it changed.
+        name: draft !== null && draft.trim() !== (currentName ?? '') ? draft.trim() : undefined,
         avatar: pendingAvatar ?? undefined,
         removeAvatar,
       });
       await refresh();
+      setDraft(null);
       setPendingAvatar(null);
       setPreviewUrl(null);
       setRemoveAvatar(false);
@@ -101,7 +106,7 @@ export default function SettingsProfile() {
           id="username"
           maxLength={50}
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => setDraft(e.target.value)}
           placeholder={user?.email ?? ''}
         />
         <p className="text-xs text-muted-foreground">
