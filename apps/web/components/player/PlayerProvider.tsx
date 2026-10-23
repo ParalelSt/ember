@@ -36,6 +36,7 @@ import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
 import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, playedWalk, prevIndex, previousFromHistory, rememberPlayed, repeatsCurrent } from '@/lib/playback/queueNav';
+import type { QueuedTrack } from '@/lib/playback/addToQueue';
 import { useAvailabilityProbe } from '@/hooks/player/useAvailabilityProbe';
 import { useAutoCache } from '@/hooks/player/useAutoCache';
 import type { BackendKind } from '@/lib/autoCache/select';
@@ -1360,23 +1361,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Synchronously start so the user-gesture token survives (React 19 effects
     // are async).
     const context: PlaybackContext = nextContext ?? { type: 'single' };
-    // Size of the curated list, before radio extends it.
-    const baseCount = queueList.length;
     // Play history (what Previous goes back to): a tap on another song of
     // the list already playing (the same songs in the same order at the top
-    // of the queue) is a jump within it, so the song being left is
-    // remembered. Any other list is a new queue, with a fresh history.
+    // of the queue, songs added with "Add to queue" aside) is a jump within
+    // it, so the song being left is remembered. Any other list is a new
+    // queue, with a fresh history.
     const before = usePlayerStore.getState();
-    const sameList = before.queue.length >= queueList.length
-      && queueList.every((t, k) => before.queue[k]?.id === t.id);
+    const isQueued = (t: Track) => !!(t as QueuedTrack).queued;
+    const listed = before.queue.filter((t) => !isQueued(t));
+    const sameList = listed.length >= queueList.length
+      && queueList.every((t, k) => listed[k]?.id === t.id);
     const leaving = before.queue[before.index];
     if (!sameList) setPlayed([]);
     else if (leaving && leaving.id !== track.id && !isUnavailable(leaving)) {
       setPlayed(rememberPlayed(playedRef.current, leaving.id));
     }
-    loadAndPlay(track, true, { list: queueList, context, baseCount });
+    // Within the same list, songs queued by hand and not played yet stay
+    // next, after the song tapped (Spotify's way).
+    const handQueued = sameList ? before.queue.filter((t, k) => k > before.index && isQueued(t)) : [];
+    const queue = handQueued.length ? [...queueList.slice(0, i + 1), ...handQueued, ...queueList.slice(i + 1)] : queueList;
+    // Size of the curated list, before radio extends it.
+    const baseCount = queue.length;
+    loadAndPlay(track, true, { list: queue, context, baseCount }, { at: i });
     usePlayerStore.setState({
-      queue: queueList,
+      queue,
       index: i,
       context,
       baseCount,
