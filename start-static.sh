@@ -331,6 +331,8 @@ supervise() {
       sup_stop_child
       exit 0
     fi
+    # It exited on its own: whatever it had started goes with it.
+    stop_leftovers "$SUP_CHILD"
     SUP_CHILD=""
 
     # A shutdown signal can reach the service a moment before it reaches the
@@ -452,7 +454,25 @@ sup_stop_child() {
   # a `wait` interrupted by a trap can drop the job, which is exactly why
   # this polls instead of waiting again.
   wait "$SUP_CHILD" 2>/dev/null
+  stop_leftovers "$SUP_CHILD"
   say "■ $SUP_LABEL stopped"
+}
+
+# stop_leftovers PID: once a service has exited, stops what it started and
+# left running in its process group (exec_detached made it the group's
+# leader): Next's Python helpers, their ffmpeg. Next does not stop them
+# itself, and a download or align.py would otherwise run on for minutes after
+# a stop or a crash, beside the next start's own. SIGTERM, then SIGKILL after
+# 2 s. With no group of its own (no setsid or perl) there is none to stop.
+stop_leftovers() {
+  local group="$1"
+  kill -TERM -- "-$group" 2>/dev/null || return 0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 -- "-$group" 2>/dev/null || return 0
+    sleep 0.2
+  done
+  kill -KILL -- "-$group" 2>/dev/null
+  return 0
 }
 
 SUPERVISORS=""

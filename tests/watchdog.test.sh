@@ -242,6 +242,36 @@ check "no crash post and no restart after update.sh's stop" [ "$(wc -l <"$POSTS"
 check "update.sh leaves no pid or lock behind" file_missing "$ROOT_DIR/logs/watchdog.pid"
 check "nothing restarted behind update.sh's back" no_leftovers
 
+# ── 3b. helpers a service started die with it ─────────────────────────
+# Next spawns Python helpers (downloads, align.py, ffmpeg). A stop sent to
+# Next alone left them running on, and so did Next crashing.
+echo "── a service's helpers stop with it"
+new_root
+HEALTHY_PORT="$(free_port)"
+PB_FAKE_PORT="$(free_port)"
+export PORT="$HEALTHY_PORT" POCKETBASE_PORT="$PB_FAKE_PORT"
+export WATCHDOG_CMD_PB="exec node '$TMP/healthy.mjs' $PB_FAKE_PORT"
+export WATCHDOG_CMD_NEXT="node '$TMP/stay.mjs' helper-on-stop & exec node '$TMP/healthy.mjs' $HEALTHY_PORT"
+start_watchdog
+check "the service and its helper are up" wait_until 10 port_up "$HEALTHY_PORT"
+helper_running() { pgrep -f "stay.mjs $1" >/dev/null 2>&1; }
+helper_gone() { ! helper_running "$1"; }
+check "the helper is running" wait_until 5 helper_running helper-on-stop
+check "SIGTERM stops the watchdog" stop_and_wait TERM
+check "the service's helper was stopped with it" wait_until 5 helper_gone helper-on-stop
+
+new_root
+HELPER_COUNT="$TMP/helper-crash.count"
+rm -f "$HELPER_COUNT"
+export WATCHDOG_CMD_NEXT="echo x >>'$HELPER_COUNT'; node '$TMP/stay.mjs' helper-on-crash & sleep 0.5; exit 1"
+export WATCHDOG_MAX_CRASHES=1 WATCHDOG_RETRY=600
+start_watchdog
+check "the crashing service started its helper" wait_until 10 file_has "$HELPER_COUNT" x
+check "a service that crashes does not leave its helper running" wait_until 5 helper_gone helper-on-crash
+stop_and_wait TERM
+export WATCHDOG_MAX_CRASHES=3
+unset WATCHDOG_RETRY
+
 # ── 4. watchdog killed outright: its loops must not keep restarting ──────
 echo "── SIGKILLed watchdog leaves no restart loop"
 new_root
