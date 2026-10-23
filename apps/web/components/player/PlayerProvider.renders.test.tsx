@@ -99,3 +99,17 @@ describe('playhead reports and the saved queue', () => {
     write.mockRestore();
   });
 });
+
+describe('a volume drag', () => {
+  it('does not re-render a usePlayer reader that does not show the volume', () => {
+    render(
+      <PlayerProvider>
+        <ListPage />
+      </PlayerProvider>,
+    );
+    const before = listRendered.mock.calls.length;
+    // The slider reports every step of a drag.
+    for (let v = 0.3; v <= 0.9; v += 0.05) act(() => usePlayerStore.getState().setVolume(v));
+    expect(listRendered).toHaveBeenCalledTimes(before);
+  });
+});

@@ -38,7 +38,8 @@ import { isTabsPathFor, tabsHref } from '@/lib/tabSources';
 import { leavePage, notePathname } from '@/lib/inAppHistory';
 
 export function PlayerBar() {
-  const { current, isPlaying, duration, volume, toggle, next, prev, seek, setVolume, retry } = usePlayer();
+  const { current, isPlaying, duration, toggle, next, prev, seek, setVolume, retry } = usePlayer();
+  const volume = usePlayerStore((s) => s.volume);
   const { user } = useAuth();
   // A real media query, not `md:` classes: the two bars share almost no
   // geometry, and rendering both with one hidden would put two transports,

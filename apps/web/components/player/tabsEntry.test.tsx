@@ -37,7 +37,6 @@ vi.mock('@/components/player/PlayerProvider', () => ({
     current: player.current,
     isPlaying: true,
     duration: 180,
-    volume: 1,
     toggle: player.toggle,
     next: player.next,
     prev: player.prev,

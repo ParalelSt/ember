@@ -70,7 +70,6 @@ interface PlayerControls {
   current: Track | null;
   isPlaying: boolean;
   duration: number;
-  volume: number;
   queue: Track[];
   index: number;
   context: PlaybackContext | null;
@@ -1457,11 +1456,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<PlayerControls>(
     () => ({
-      current, isPlaying, duration, volume, queue, index, context,
+      current, isPlaying, duration, queue, index, context,
       playTrack: userPlayTrack, playAt: userPlayAt, playBack: userPlayBack, toggle: userToggle, next: userNext, prev: userPrev,
       seek, setVolume, rate, setRate, canSetRate, retry,
     }),
-    [current, isPlaying, duration, volume, queue, index, context, userPlayTrack, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry],
+    [current, isPlaying, duration, queue, index, context, userPlayTrack, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry],
   );
 
   // Pranks (admin only, never announced) sit beside the tree rather than in
@@ -1485,7 +1484,8 @@ export function usePlayer() {
 
 /** The playhead, for the views that show it. Not part of usePlayer: it is
  *  reported several times a second while audio plays, and every usePlayer
- *  reader (each track list page among them) re-rendered with it. */
+ *  reader (each track list page among them) re-rendered with it. The volume
+ *  is not either (a slider drag is as busy): read the store for it. */
 export function usePlayerPosition(): number {
   return usePlayerStore((s) => s.position);
 }
