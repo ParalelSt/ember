@@ -242,6 +242,17 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
   const audioDir = await ensureDir(playlistDir, ['audio']);
   const artDir = await ensureDir(playlistDir, ['art']);
 
+  // An update of a playlist already saved here: its copies stay until a new
+  // one replaces them. A song that fails this time keeps the copy it had,
+  // and the playlist's size is counted once, not once per update.
+  const previous = await readJson<OfflineManifest>(playlistDir, 'manifest.json');
+  const had = new Map((previous?.tracks ?? []).map((t) => [t.id, t]));
+  const previousBytes = (previous?.tracks ?? []).reduce((sum, t) => sum + t.bytesAudio + t.bytesArt, 0);
+  /** The earlier copies of the songs still to come, for a manifest written
+   *  part way (a cancel must not cost the songs not reached yet). */
+  const stillToCome = (from: number) =>
+    playable.slice(from).flatMap((t) => (had.has(t.id) ? [had.get(t.id)!] : []));
+
   const completed: OfflineTrackEntry[] = [];
   let failed = 0;
   let totalBytesThisPlaylist = 0;
@@ -268,6 +279,11 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
         if ((e as Error)?.name === 'AbortError') throw e;
         // One bad track costs that track, not the tracks already saved.
         failed++;
+        const kept = had.get(t.id);
+        if (kept) {
+          completed.push(kept);
+          totalBytesThisPlaylist += kept.bytesAudio + kept.bytesArt;
+        }
         continue;
       }
 
@@ -310,7 +326,7 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
         name: playlist.name,
         artworkFile: null,
         downloadedAt: new Date(0).toISOString(),
-        tracks: completed,
+        tracks: [...completed, ...stillToCome(i + 1)],
       };
       await atomicWriteJson(playlistDir, 'manifest.json', partialManifest);
     }
@@ -331,10 +347,10 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
     if (!meta.downloadedPlaylistIds.includes(playlist.id)) {
       meta.downloadedPlaylistIds.push(playlist.id);
     }
-    meta.totalBytes += totalBytesThisPlaylist;
+    meta.totalBytes = Math.max(0, meta.totalBytes + totalBytesThisPlaylist - previousBytes);
     await writeMeta(meta);
 
-    store.finishDownload(playlist.id, totalBytesThisPlaylist);
+    store.finishDownload(playlist.id, totalBytesThisPlaylist - previousBytes);
     await indexWebFiles(new Set(completed.map((t) => t.id)));
 
     await notifySwIndex({
@@ -351,6 +367,12 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
     if ((e as Error)?.name === 'AbortError') {
       // Partial state intentionally left for resume.
       return { saved: completed.length, failed };
+    }
+    // A failed update puts the earlier download back; only a first
+    // download that saved nothing is removed.
+    if (previous) {
+      await atomicWriteJson(playlistDir, 'manifest.json', previous).catch(() => {});
+      throw e;
     }
     const playlistsRoot = await getDirIfExists(root, [PLAYLISTS_DIR]);
     if (playlistsRoot) {

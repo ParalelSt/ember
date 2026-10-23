@@ -144,6 +144,50 @@ describe('downloadPlaylist (browser storage)', () => {
     expect(Object.keys(useOfflineStore.getState().webFiles).sort()).toEqual(['upload:u1', 'youtube:a1']);
   });
 
+  it('updating a download counts its size once, not once per update', async () => {
+    await downloadPlaylist(PL, [YT, UP]);
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+
+    await downloadPlaylist(PL, [YT, UP]);
+
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+    // And the size kept on disk for the next start agrees.
+    useOfflineStore.setState({ totalBytes: 0 });
+    await hydrateOfflineStore();
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+  });
+
+  it('an update where a song now fails keeps the copy it already had', async () => {
+    await downloadPlaylist(PL, [YT, UP]);
+    fetchMock.mockImplementation(async (url: string) =>
+      url.includes('/a1') ? new Response('nope', { status: 500 }) : audio());
+
+    await downloadPlaylist(PL, [YT, UP]);
+
+    expect((await manifestIds()).sort()).toEqual(['upload:u1', 'youtube:a1']);
+    expect(Object.keys(useOfflineStore.getState().webFiles).sort()).toEqual(['upload:u1', 'youtube:a1']);
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+  });
+
+  it('an update where nothing could be fetched leaves the earlier download in place', async () => {
+    await downloadPlaylist(PL, [YT]);
+    fetchMock.mockImplementation(async () => new Response('nope', { status: 500 }));
+
+    await downloadPlaylist(PL, [YT, UP]).catch(() => {});
+
+    expect(await manifestIds()).toEqual(['youtube:a1']);
+    expect(useOfflineStore.getState().downloaded).toContain('pl1');
+  });
+
+  it('an update that fails outright puts the earlier download back', async () => {
+    await downloadPlaylist(PL, [YT]);
+
+    await expect(downloadPlaylist(PL, [BAD])).rejects.toThrow();
+
+    expect(await manifestIds()).toEqual(['youtube:a1']);
+    expect(useOfflineStore.getState().downloaded).toContain('pl1');
+  });
+
   it('forgets the local URLs of a removed download', async () => {
     await downloadPlaylist(PL, [YT]);
 
