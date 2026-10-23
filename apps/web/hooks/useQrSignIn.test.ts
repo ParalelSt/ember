@@ -10,7 +10,7 @@ let visibility: DocumentVisibilityState = 'visible';
 let startCount = 0;
 let statusCalls = 0;
 const statusUrls: string[] = [];
-let statusAnswers: Array<() => Response> = [];
+let statusAnswers: Array<() => Response | Promise<Response>> = [];
 const startBodies: unknown[] = [];
 
 function jsonRes(body: unknown, status = 200) {
@@ -187,5 +187,35 @@ describe('useQrSignIn', () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonRes({ status: 'existing' })));
     const { result } = await mount();
     expect(result.current.state).toEqual({ kind: 'error' });
+  });
+
+  it('keeps a session approved while the tab was being hidden: the server hands it over only once', async () => {
+    let answer!: (r: Response) => void;
+    statusAnswers.push(() => new Promise<Response>((r) => { answer = r; }));
+    const { result, onApproved } = await mount();
+    await advance(POLL_MS + 400);
+    expect(statusCalls).toBe(1);
+    // The poll is in flight when the tab goes away; the answer it brings is
+    // the session, already marked used on the server.
+    act(() => setVisible('hidden'));
+    await act(async () => {
+      answer(jsonRes({ status: 'approved', token: 'tok', record: { id: 'u1', email: 'sam@example.com', name: 'Sam' } }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(onApproved).toHaveBeenCalledWith('tok', { id: 'u1', email: 'sam@example.com', name: 'Sam' });
+    expect(result.current.state).toEqual({ kind: 'approved', name: 'Sam' });
+  });
+
+  it('drops the session once unmounted (nothing left to sign in)', async () => {
+    let answer!: (r: Response) => void;
+    statusAnswers.push(() => new Promise<Response>((r) => { answer = r; }));
+    const { unmount, onApproved } = await mount();
+    await advance(POLL_MS + 400);
+    unmount();
+    await act(async () => {
+      answer(jsonRes({ status: 'approved', token: 'tok', record: { id: 'u1' } }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(onApproved).not.toHaveBeenCalled();
   });
 });
