@@ -122,6 +122,17 @@ describe('android: one setQueue per queue change', () => {
     expect(play).toBe(true);
   });
 
+  it('a tap on the second copy of a song in the queue sends native THAT entry, not the first copy', () => {
+    // The song added to the queue by hand is also further down the playlist.
+    usePlayerStore.setState({ queue: [A, B, C, B], index: 0, isPlaying: true });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    native.setQueue.mockClear();
+    act(() => { player!.playAt(3); });
+    expect(native.setQueue).toHaveBeenCalledTimes(1);
+    expect(native.setQueue.mock.calls[0][1]).toBe(3);
+    expect(usePlayerStore.getState().index).toBe(3);
+  });
+
   it('removing another song hands native the shorter queue once', () => {
     usePlayerStore.setState({ queue: [A, B, C], index: 2, isPlaying: true });
     render(<PlayerProvider><Grab /></PlayerProvider>);

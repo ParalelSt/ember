@@ -760,7 +760,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     track: Track | null,
     autoplay: boolean,
     next?: QueueOrigin & { list: Track[] },
-    opts?: { listenerRetry?: boolean },
+    opts?: { listenerRetry?: boolean; at?: number },
   ) => {
     let b = backendRef.current;
     if (!b) return;
@@ -793,7 +793,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // The native player owns the queue: hand it the whole thing and the
       // index to start at. It diffs, so an unchanged queue never restarts.
       let queue = next?.list ?? usePlayerStore.getState().queue;
-      let idx = queue.findIndex((t) => t.id === track.id);
+      // The entry the caller moved to, when it says: a song listed twice (a
+      // copy added to the queue by hand) must not jump to its first copy.
+      const at = opts?.at;
+      let idx = at !== undefined && queue[at]?.id === track.id ? at : queue.findIndex((t) => t.id === track.id);
       if (idx < 0) { queue = [track]; idx = 0; }
       loadedTrackRef.current = track.id;
       // A song picked or moved to starts from the top: hand the stored
@@ -1047,7 +1050,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         logger.breadcrumb('playback', 'offline: skipped uncached', { count: r.uncached.length });
       }
       remember(r.index);
-      loadAndPlay(st.queue[r.index], true);
+      loadAndPlay(st.queue[r.index], true, undefined, { at: r.index });
       setIndex(r.index);
       return;
     }
@@ -1058,7 +1061,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     remember(r.index);
-    loadAndPlay(st.queue[r.index], true);
+    loadAndPlay(st.queue[r.index], true, undefined, { at: r.index });
     setIndex(r.index);
   }, [announce, loadAndPlay, setIndex, setPlayed, stallOffline]);
 
