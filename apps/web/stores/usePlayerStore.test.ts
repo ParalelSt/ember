@@ -220,3 +220,19 @@ describe('reportPosition', () => {
     expect(saved).toMatchObject({ position: 7, volume: 0.4 });
   });
 });
+
+describe('previewVolume', () => {
+  it('follows a slider drag without saving the whole queue at every step', () => {
+    usePlayerStore.setState({ queue: Array.from({ length: 2000 }, (_, i) => track(`t${i}`)), index: 0, volume: 0.25 });
+    const write = vi.spyOn(localStorage, 'setItem');
+    for (let v = 0.3; v <= 0.9; v += 0.05) usePlayerStore.getState().previewVolume(v);
+    usePlayerStore.getState().previewVolume(1.5);
+    expect(write).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().volume).toBe(1);
+    // The drag's end saves it.
+    usePlayerStore.getState().setVolume(0.9);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}').state.volume).toBe(0.9);
+    write.mockRestore();
+  });
+});

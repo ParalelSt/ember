@@ -56,11 +56,14 @@ interface PlayerState {
   /** Write the playhead and save it (usePositionPersistence's moments). */
   setPosition: (p: number) => void;
   /** The player's playhead report, several a second while audio plays: for
-   *  the views only, not saved (see `reporting`). */
+   *  the views only, not saved (see `unsaved`). */
   reportPosition: (p: number) => void;
   setDuration: (d: number) => void;
   setIsPlaying: (b: boolean) => void;
   setVolume: (v: number) => void;
+  /** A volume slider step mid-drag: heard and shown, not saved (see
+   *  `unsaved`); the drag's end saves it through setVolume. */
+  previewVolume: (v: number) => void;
   setContext: (c: PlaybackContext | null) => void;
   setLoopMode: (m: LoopMode) => void;
   toggleShuffle: () => void;
@@ -96,18 +99,30 @@ export function restoreOrder(original: Track[], queue: Track[], index: number): 
   return { queue: order.map((i) => queue[i]), index: at >= 0 ? at : index };
 }
 
-/** True while a playhead report is written. Saving it would serialize the
- *  whole persisted slice, a queue of thousands of songs from a big list,
- *  into localStorage several times a second; usePositionPersistence saves
- *  the playhead itself, about once a second and on pause and leave, and any
- *  other save carries the latest one. */
-let reporting = false;
+/** True during a write that is not saved: a playhead report (several a
+ *  second while audio plays) or a volume slider step. Saving them would
+ *  serialize the whole persisted slice, a queue of thousands of songs from
+ *  a big list, into localStorage at that pace; usePositionPersistence saves
+ *  the playhead itself, about once a second and on pause and leave, the
+ *  drag's end saves the volume, and any other save carries the latest. */
+let skipSave = false;
 
-/** localStorage, skipping the writes of a playhead report. */
+function unsaved(write: () => void): void {
+  skipSave = true;
+  try {
+    write();
+  } finally {
+    skipSave = false;
+  }
+}
+
+/** localStorage, skipping the writes made through `unsaved`. */
 function playerStorage() {
   const base = createJSONStorage(() => window.localStorage);
-  return base && { ...base, setItem: (...args: Parameters<typeof base.setItem>) => (reporting ? undefined : base.setItem(...args)) };
+  return base && { ...base, setItem: (...args: Parameters<typeof base.setItem>) => (skipSave ? undefined : base.setItem(...args)) };
 }
+
+const clampVolume = (volume: number) => Math.min(1, Math.max(0, volume));
 
 const stamp = () => (typeof performance === 'undefined' ? 0 : performance.now());
 
@@ -136,17 +151,11 @@ export const usePlayerStore = create<PlayerState>()(
       setQueue: (queue) => set({ queue }),
       setIndex: (index) => set({ index }),
       setPosition: (position) => set({ position, positionAt: stamp() }),
-      reportPosition: (position) => {
-        reporting = true;
-        try {
-          set({ position, positionAt: stamp() });
-        } finally {
-          reporting = false;
-        }
-      },
+      reportPosition: (position) => unsaved(() => set({ position, positionAt: stamp() })),
       setDuration: (duration) => set({ duration }),
       setIsPlaying: (isPlaying) => set({ isPlaying }),
-      setVolume: (volume) => set({ volume: Math.min(1, Math.max(0, volume)) }),
+      setVolume: (volume) => set({ volume: clampVolume(volume) }),
+      previewVolume: (volume) => unsaved(() => set({ volume: clampVolume(volume) })),
       setContext: (context) => set({ context }),
       setLoopMode: (loopMode) => set({ loopMode }),
       /** Shuffle the upcoming tracks only, whatever is playing stays playing

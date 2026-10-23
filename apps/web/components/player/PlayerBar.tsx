@@ -40,6 +40,8 @@ import { leavePage, notePathname } from '@/lib/inAppHistory';
 export function PlayerBar() {
   const { current, isPlaying, duration, toggle, next, prev, seek, setVolume, retry } = usePlayer();
   const volume = usePlayerStore((s) => s.volume);
+  // A drag's steps are heard but not saved; its end is (stores/usePlayerStore).
+  const previewVolume = usePlayerStore((s) => s.previewVolume);
   const { user } = useAuth();
   // A real media query, not `md:` classes: the two bars share almost no
   // geometry, and rendering both with one hidden would put two transports,
@@ -273,7 +275,8 @@ export function PlayerBar() {
           volume={volume}
           muted={muted}
           max={1}
-          onChange={setVolume}
+          onChange={previewVolume}
+          onCommit={setVolume}
           onToggleMute={toggleMuted}
           className="hidden md:flex"
           // Mute only below lg; a shorter slider below xl.
