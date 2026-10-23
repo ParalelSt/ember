@@ -106,7 +106,8 @@ export function alignTab(pb: PocketBase, row: RecordModel, deps: AlignDeps = {})
       if (isOptionalDepMissing(reason)) {
         warnOptionalDepsOnce();
       } else {
-        serverLogger.error('tabs', 'lining the tab up failed', { tab: row.id, reason });
+        const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : undefined;
+        serverLogger.error('tabs', 'lining the tab up failed', { tab: row.id, reason, ...(cause ? { cause } : {}) });
       }
       // Remember the attempt even when it failed, so the automatic pass
       // never tries the same tab twice; "Line it up" still does.
@@ -231,7 +232,9 @@ function runScript(audio: string, planPath: string, outPath: string): Promise<vo
     child.stdout.on('data', () => {}); // keep the pipe drained
     child.on('error', (e) => {
       clearTimeout(timer);
-      reject(e);
+      // Node's message names the full path of the python it could not run;
+      // the page shows the reason, so it gets a sentence and the log the rest.
+      reject(new Error('the tab helper could not start', { cause: e }));
     });
     child.on('close', (code) => {
       clearTimeout(timer);

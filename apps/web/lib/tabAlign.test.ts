@@ -32,6 +32,7 @@ const TIMING = { offset_ms: 1350, bpm: 97.4, confidence: 0.82, bars: [{ bar: 0, 
 
 function writeScript(body: string) {
   fs.writeFileSync(SCRIPT, `#!/bin/sh\necho "$1 $2 $3" >> ${JSON.stringify(CALLS)}\n${body}\n`, { mode: 0o755 });
+  fs.chmodSync(SCRIPT, 0o755);
 }
 
 const TEX = `\\title "Copper Tide"
@@ -160,6 +161,19 @@ describe('lining a tab up', () => {
     // A failure counts as a try: the automatic pass never listens twice.
     expect(String(store.rows.get('tabs')![0].aligned_at)).toMatch(/^\d{4}-/);
     expect(alreadyTried(store.rows.get('tabs')![0])).toBe(true);
+  });
+
+  it('a helper that cannot start shows the page a sentence, not the server path Node names', async () => {
+    fs.chmodSync(SCRIPT, 0o644); // spawn fails with "spawn <full path> EACCES"
+    const tab = store.rows.get('tabs')![0];
+    expect(await alignTab(store.pb, tab)).toBeNull();
+    expect(alignmentStatus(store.rows.get('tabs')![0])).toEqual({
+      status: 'failed',
+      error: 'the tab helper could not start',
+    });
+    // The owner still sees why, in the one log line.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(errorSpy.mock.calls)).toContain('EACCES');
   });
 
   it('numpy missing on the host logs one warn, not an error per tab, and the tab still fails cleanly', async () => {
