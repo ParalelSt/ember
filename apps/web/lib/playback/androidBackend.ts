@@ -155,6 +155,20 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
    *  list in the old one's order. */
   let orderSent = '';
   const p = plugin();
+  /** Set by destroy. A destroyed backend reports nothing more and pushes
+   *  nothing to native: React's dev double mount builds a second backend
+   *  right after, and both answered every native event (one `ended` reached
+   *  the player twice). */
+  let destroyed = false;
+  /** What each addListener handed back, removed by destroy. */
+  const handles: unknown[] = [];
+  const on = (event: string, cb: (d: never) => void) => {
+    const h = p!.addListener(event, ((d: never) => {
+      if (!destroyed) cb(d);
+    }) as (d: never) => void);
+    call(h);
+    handles.push(h);
+  };
   const nativeShuffle = !!p && typeof p.setShuffle === 'function';
   const nativeExplains = !!p && typeof p.drainUnplayable === 'function';
 
@@ -223,7 +237,7 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     resyncing = true;
     const seq = ++resyncSeq;
     const done = (s: NativeState | null) => {
-      if (seq !== resyncSeq) return;
+      if (seq !== resyncSeq || destroyed) return;
       clearTimeout(resyncTimer);
       resyncing = false;
       if (s && typeof s === 'object') applyState(s);
@@ -291,41 +305,41 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
 
   if (p) {
     if (nativeOverlay) {
-      call(
-        p.addListener('overlay', ((d: OverlayEvent) => {
+      on(
+        'overlay',
+        ((d: OverlayEvent) => {
           if (d?.phase !== 'ended') return;
           const reason = OVERLAY_ENDS.includes(d.reason as OverlayEnd) ? (d.reason as OverlayEnd) : 'error';
           const played = Number(d.playedSec);
           settleOverlay(d.id, { reason, playedSec: Number.isFinite(played) ? Math.max(0, played) : 0 });
-        }) as (d: never) => void),
+        }) as (d: never) => void,
       );
     }
-    call(p.addListener('state', onState as (d: never) => void));
-    call(
-      p.addListener('queue', ((d: { tracks: Track[]; index: number; shuffle?: boolean }) => {
+    on('state', onState as (d: never) => void);
+    on(
+      'queue',
+      ((d: { tracks: Track[]; index: number; shuffle?: boolean }) => {
         index = d.index;
         // The flag comes first from native (session extras before the
         // queue); a report of it here is only news when the state event has
         // not carried it yet.
         if (nativeShuffle && typeof d.shuffle === 'boolean') onShuffleReport(d.shuffle);
         events.onQueueReplaced?.(d.tracks, d.index, nativeShuffle && typeof d.shuffle === 'boolean' ? { shuffle: d.shuffle } : undefined);
-      }) as (d: never) => void),
+      }) as (d: never) => void,
     );
-    call(p.addListener('ended', (() => events.onEnded()) as (d: never) => void));
-    call(
-      p.addListener('error', ((d: { message?: string }) => {
-        logger.error('audio', d?.message || 'native player error');
-        events.onError({ trackId, nativeExplains });
-      }) as (d: never) => void),
-    );
+    on('ended', (() => events.onEnded()) as (d: never) => void);
+    on('error', ((d: { message?: string }) => {
+      logger.error('audio', d?.message || 'native player error');
+      events.onError({ trackId, nativeExplains });
+    }) as (d: never) => void);
     if (nativeExplains) {
       const deliver = (d: { notices?: unknown } | null | undefined, away: boolean) => {
         const notices = parseNotices(d);
-        if (!notices.length) return;
+        if (!notices.length || destroyed) return;
         if (away) events.onUnplayable?.(notices, { away: true });
         else events.onUnplayable?.(notices);
       };
-      call(p.addListener('unplayable', ((d: { notices?: unknown }) => deliver(d, false)) as (d: never) => void));
+      on('unplayable', ((d: { notices?: unknown }) => deliver(d, false)) as (d: never) => void);
       // Songs that failed while no page was listening (the app closed, the
       // WebView re-created): native kept them for this moment, and the bar
       // says them as "while you were away".
@@ -351,7 +365,7 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     call(p.setQueue({ tracks: h.tracks, index: h.i, play, ...nativeQueueContext(h.origin), ...at }));
   };
   const settle = (s: NativeState | null, q: { tracks: Track[]; index: number } | null) => {
-    if (settled) return;
+    if (settled || destroyed) return;
     settled = true;
     const h = held;
     held = null;
@@ -501,8 +515,13 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     isPaused: () => paused,
     isTransitioning: () => false,
     destroy() {
-      // The native listeners die with the WebView; the native player keeps
-      // playing.
+      // The native player keeps playing; only this page's view of it goes.
+      destroyed = true;
+      for (const h of handles) {
+        void Promise.resolve(h)
+          .then((x) => call((x as { remove?: () => unknown } | null | undefined)?.remove?.()))
+          .catch(() => {});
+      }
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', onShown);
         document.removeEventListener('resume', onShown);
