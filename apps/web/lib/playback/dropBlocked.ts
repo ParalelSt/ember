@@ -25,3 +25,24 @@ export function dropBlocked(state: QueueState, blocked: Track): Pick<QueueState,
   const dropped = new Set(queue.filter((t, i) => drop(t, i)));
   return { queue: kept, orderBackup: orderBackup ? orderBackup.filter((t) => !dropped.has(t)) : null };
 }
+
+/** The server refused the block: put back what dropBlocked took out, when
+ *  the queue is still the one it left (anything else changed it since, and
+ *  the songs stay out). The index moves with the song playing. */
+export function undoDropBlocked(
+  state: QueueState,
+  before: Pick<QueueState, 'queue' | 'orderBackup'>,
+  after: Pick<QueueState, 'queue' | 'orderBackup'>,
+): Pick<QueueState, 'queue' | 'index' | 'orderBackup'> | null {
+  if (state.queue !== after.queue) return null;
+  // Where each song left in the queue sat before (it is a subsequence).
+  const keptAt: number[] = [];
+  before.queue.forEach((t, i) => {
+    if (t === after.queue[keptAt.length]) keptAt.push(i);
+  });
+  return {
+    queue: before.queue,
+    index: keptAt[state.index] ?? state.index,
+    orderBackup: state.orderBackup === after.orderBackup ? before.orderBackup : state.orderBackup,
+  };
+}

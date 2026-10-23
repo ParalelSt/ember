@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useBlockedTracks } from './useBlockedTracks';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import type { Track } from '@/types/track';
 
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
@@ -74,5 +75,46 @@ describe('useBlockedTracks', () => {
 
     expect(api.unblockTrack).toHaveBeenCalledTimes(1);
     expect(api.unblockTrack).toHaveBeenCalledWith(blockedSong.id);
+  });
+});
+
+describe('useBlockedTracks: block refused', () => {
+  const playing = makeTrack({ id: 'youtube:p0', sourceId: 'p0', title: 'Opener', artist: 'Someone' });
+  const radioA = makeTrack({ id: 'youtube:r1', sourceId: 'r1', title: 'Radio One', artist: 'Other' });
+  const song = makeTrack({ id: 'youtube:x9', sourceId: 'x9', title: 'Blocked Me', artist: 'Band' });
+  const radioB = makeTrack({ id: 'youtube:r2', sourceId: 'r2', title: 'Radio Two', artist: 'Other' });
+
+  it('puts the song back into the queued radio when the server refuses the block', async () => {
+    const queue = [playing, radioA, song, radioB];
+    usePlayerStore.setState({ queue, index: 0, baseCount: 1, orderBackup: null });
+    api.blockTrack.mockRejectedValue(new Error('server down'));
+    const { result } = renderHook(() => useBlockedTracks(), { wrapper });
+    await waitFor(() => expect(result.current.blocked).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.block(song).catch(() => {});
+    });
+
+    expect(usePlayerStore.getState().queue).toEqual(queue);
+    expect(usePlayerStore.getState().index).toBe(0);
+  });
+
+  it('keeps the place of the song playing when it moved on while the block was in flight', async () => {
+    const queue = [playing, radioA, song, radioB];
+    usePlayerStore.setState({ queue, index: 0, baseCount: 1, orderBackup: null });
+    let refuse: (e: Error) => void = () => {};
+    api.blockTrack.mockImplementation(() => new Promise((_r, rej) => { refuse = rej; }));
+    const { result } = renderHook(() => useBlockedTracks(), { wrapper });
+    await waitFor(() => expect(result.current.blocked).toHaveLength(1));
+
+    let pending: Promise<unknown> = Promise.resolve();
+    act(() => { pending = result.current.block(song).catch(() => {}); });
+    await waitFor(() => expect(usePlayerStore.getState().queue).toEqual([playing, radioA, radioB]));
+    // Skipped to Radio Two (index 2 of the shortened queue).
+    usePlayerStore.setState({ index: 2 });
+    await act(async () => { refuse(new Error('server down')); await pending; });
+
+    expect(usePlayerStore.getState().queue).toEqual(queue);
+    expect(usePlayerStore.getState().queue[usePlayerStore.getState().index]).toBe(radioB);
   });
 });

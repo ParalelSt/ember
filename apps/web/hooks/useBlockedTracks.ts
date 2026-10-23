@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { exclusionKeys, identityKeys, isExcluded } from '@/lib/trackIdentity';
-import { dropBlocked } from '@/lib/playback/dropBlocked';
+import { dropBlocked, undoDropBlocked } from '@/lib/playback/dropBlocked';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import type { Track } from '@/types/track';
 
@@ -38,8 +38,17 @@ export function useBlockedTracks() {
     mutationFn: (track: Track) => api.blockTrack(track),
     onMutate: (track) => {
       qc.setQueryData<Track[]>(BLOCKED_TRACKS_KEY, (prev = []) => [track, ...prev.filter((t) => t.id !== track.id)]);
-      const next = dropBlocked(usePlayerStore.getState(), track);
-      if (next) usePlayerStore.setState(next);
+      const state = usePlayerStore.getState();
+      const next = dropBlocked(state, track);
+      if (!next) return undefined;
+      usePlayerStore.setState(next);
+      return { before: { queue: state.queue, orderBackup: state.orderBackup }, after: next };
+    },
+    // Not blocked after all: the radio songs it took out come back.
+    onError: (_e, _track, ctx) => {
+      if (!ctx) return;
+      const undo = undoDropBlocked(usePlayerStore.getState(), ctx.before, ctx.after);
+      if (undo) usePlayerStore.setState(undo);
     },
     onSettled: refreshSuggestions,
   });
