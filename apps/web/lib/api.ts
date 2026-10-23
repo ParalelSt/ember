@@ -590,10 +590,12 @@ export const api = {
     req<{ theme: SavedTheme; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: patch,
-      expected: [422],
+      expected: [404, 422],
     }),
+  // 404 on these two: the theme was deleted meanwhile (another device), an
+  // answer the page says ("that theme is gone").
   deleteSavedTheme: (id: string) =>
-    req<{ ok: true; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    req<{ ok: true; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, { method: 'DELETE', expected: [404] }),
 
   /** Multipart. 413 and 415 (a picture too large, or not one it takes) are
    *  answers. `user` is absent when nothing changed. */

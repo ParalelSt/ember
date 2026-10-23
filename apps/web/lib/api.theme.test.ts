@@ -37,6 +37,14 @@ describe('api theme calls', () => {
     expect(error).not.toHaveBeenCalled();
   });
 
+  it('a theme deleted meanwhile (404) is an answer when renaming, sharing or deleting it', async () => {
+    respond(404, { error: 'No such theme' });
+    await expect(api.updateSavedTheme('t1', { name: 'x' })).rejects.toMatchObject({ status: 404 });
+    await expect(api.deleteSavedTheme('t1')).rejects.toMatchObject({ status: 404 });
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it('still logs an unexpected failure as an error', async () => {
     respond(500, { error: 'boom' });
     await expect(api.listThemes()).rejects.toThrow('boom');
