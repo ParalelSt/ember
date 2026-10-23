@@ -123,10 +123,13 @@ export function usePositionPersistence({
   // swap (persist guards on isTransitioning).
   useEffect(() => {
     if (!backendReady) return;
-    const b = backendRef.current;
-    if (!b) return;
+    if (!backendRef.current) return;
+    // The engine in the ref at each tick: a swap (the desktop engine falling
+    // back to web audio, a cast engine taking over) leaves the first one
+    // stopped for good, and asking it stopped the periodic write.
     const periodic = setInterval(() => {
-      if (!b.isPaused()) persist();
+      const b = backendRef.current;
+      if (b && !b.isPaused()) persist();
     }, 5000);
     const onVisibility = () => {
       if (document.hidden) persist();
