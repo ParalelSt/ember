@@ -16,7 +16,11 @@ const lyrics = vi.hoisted(() => ({ synced: [] as Array<{ time: number; text: str
 
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => player, usePlayerPosition: () => player.position }));
 vi.mock('@/hooks/useLyrics', () => ({
-  useQueryLyrics: () => ({ data: { lyrics: 'x', synced: lyrics.synced, source: 'lrclib' }, isLoading: false, error: null }),
+  useQueryLyrics: (track: { id: string } | null) => ({
+    data: { lyrics: track?.id === 'b' ? 'B words' : 'x', synced: lyrics.synced, source: 'lrclib' },
+    isLoading: false,
+    error: null,
+  }),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // base-ui pieces reach the root's hoisted React 18 (see RequestDialog.test.tsx).
@@ -187,5 +191,27 @@ describe('LyricsBody: follow mode', () => {
     userScroll();
     at(35);
     expect(pill()).toBeInTheDocument();
+  });
+});
+
+describe('LyricsBody: the report form', () => {
+  it('reports the song it was opened on, even when the next song starts while it is open', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { rerender } = render(<LyricsBody active />);
+    fireEvent.click(screen.getByRole('button', { name: 'Report incorrect lyrics' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'The chorus is wrong' } });
+
+    // Song A ends and song B starts while the listener is still typing.
+    player.current = { id: 'b', title: 'Song B', artist: 'Other' };
+    rerender(<LyricsBody active />);
+    expect(screen.getByText(/Song A/, { selector: 'p' })).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+    expect(body).toMatchObject({ trackTitle: 'Song A', trackArtist: 'Artist', lyrics: 'x', note: 'The chorus is wrong' });
   });
 });

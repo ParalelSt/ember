@@ -45,6 +45,15 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
   };
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // The song the form was opened on, kept while it is open: the next song
+  // starting meanwhile must not turn the note into a report about that one.
+  // Set while rendering (React's "adjusting state when a prop changes").
+  const [reportFor, setReportFor] = useState<{ title: string; artist: string; source: string; lyrics: string } | null>(null);
+  if (reportOpen && !reportFor && current) {
+    setReportFor({ title: current.title, artist: current.artist, source: data?.source ?? 'unknown', lyrics: data?.lyrics ?? '' });
+  } else if (!reportOpen && reportFor) {
+    setReportFor(null);
+  }
 
   // Ref to the scrolling lyrics container, passed down to SyncedLyrics
   // so its active-line auto-scroll only moves THIS element, not the
@@ -53,7 +62,7 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
 
   const submitReport = async (e: FormEvent) => {
     e.preventDefault();
-    if (!current) return;
+    if (!reportFor) return;
     setSubmitting(true);
     try {
       const res = await fetch('/api/lyrics-report', {
@@ -61,11 +70,11 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          trackTitle: current.title,
-          trackArtist: current.artist,
-          source: data?.source ?? 'unknown',
+          trackTitle: reportFor.title,
+          trackArtist: reportFor.artist,
+          source: reportFor.source,
           note,
-          lyrics: data?.lyrics ?? '',
+          lyrics: reportFor.lyrics,
         }),
       });
       if (!res.ok) {
@@ -188,7 +197,7 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
             <DialogHeader>
               <DialogTitle>Report wrong lyrics</DialogTitle>
               <DialogDescription>
-                What&apos;s wrong with the lyrics for &quot;{current?.title}&quot;? Goes to the project&apos;s Discord channel.
+                What&apos;s wrong with the lyrics for &quot;{reportFor?.title ?? current?.title}&quot;? Goes to the project&apos;s Discord channel.
               </DialogDescription>
             </DialogHeader>
             <Textarea
