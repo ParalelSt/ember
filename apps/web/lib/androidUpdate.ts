@@ -2,6 +2,7 @@ import 'server-only';
 import { currentAsset, latestRelease, releaseVersion, type ReleaseAsset } from '@/lib/desktopUpdate';
 import { serverLogger } from '@/lib/logger/server';
 import { isNewer, parseVersion } from '@/lib/semver';
+import { plainNotes } from '@/lib/updatePolicy';
 
 /** The Android app's update feed, from the same GitHub Release (and the same
  *  cached lookup) as the desktop feed in lib/desktopUpdate.ts.
@@ -80,7 +81,7 @@ export async function androidUpdateFor(currentVersion: string): Promise<AndroidU
     url: `/api/android/apk/${asset.id}`,
     size: asset.size,
     sha256: sha256Of(asset),
-    notes: release.body?.slice(0, 2000) || release.name || `Ember ${release.tag_name}`,
+    notes: plainNotes(release),
     publishedAt: release.published_at,
   };
 }
