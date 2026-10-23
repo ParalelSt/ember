@@ -8,10 +8,8 @@ export const PRANK_LIMITS = {
   /** Music level under a ducking sound. */
   duck: 0.3,
   soundMaxSec: 30,
-  /** Leftover from the swap prank kind, which was dropped before it shipped.
-   *  swapMaxSec still bounds how long a prank's media stays servable;
-   *  swapMinSec is otherwise unused. */
-  swapMinSec: 5,
+  /** Leftover from the swap prank kind, which was dropped before it shipped;
+   *  still bounds how long a prank's media stays servable. */
   swapMaxSec: 300,
   volumeMin: 0.1,
   volumeMax: 1,
