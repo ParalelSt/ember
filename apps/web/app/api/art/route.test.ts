@@ -55,4 +55,20 @@ describe('GET /api/art', () => {
     fetchMock.mockResolvedValue(new Response('<html>', { headers: { 'content-type': 'text/html' } }));
     expect((await call('https://i.ytimg.com/vi/abc/hq.jpg')).status).toBe(502);
   });
+
+  // An SVG served from this origin would run its script as the app.
+  it('never passes on an SVG, whatever its case or parameters', async () => {
+    for (const type of ['image/svg+xml', 'IMAGE/SVG+XML; charset=utf-8']) {
+      fetchMock.mockResolvedValueOnce(new Response('<svg onload="alert(1)"/>', { headers: { 'content-type': type } }));
+      expect((await call('https://lh3.googleusercontent.com/x')).status).toBe(502);
+    }
+  });
+
+  it('tells the browser not to sniff the cover', async () => {
+    fetchMock.mockResolvedValue(new Response(new Uint8Array([1]), { headers: { 'content-type': 'image/webp; q=1' } }));
+    const res = await call('https://i.ytimg.com/vi/abc/hq.webp');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/webp');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
 });
