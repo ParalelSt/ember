@@ -180,3 +180,29 @@ describe('BugReportDialog: attachments Discord would not take', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('BugReportDialog: closed while sending', () => {
+  it('opens on a fresh form next time, not on the diagnosis of a report sent after it was closed', async () => {
+    tauri.invoke.mockResolvedValue('');
+    let answer: (v: unknown) => void = () => {};
+    const fetchMock = vi.fn(() => new Promise((r) => { answer = r; }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await submitReport();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    // Escape / the backdrop while it sends.
+    useUiStore.setState({ bugReportOpen: false });
+    answer({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        triage: { summary: 'old', likelyCause: 'x', area: 'player', severity: 'low', confidence: 'low', nextSteps: [], reproduction: 'y' },
+      }),
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Sending…' })).toBeNull());
+
+    useUiStore.setState({ bugReportOpen: true });
+    expect(await screen.findByRole('button', { name: 'Send report' })).toBeInTheDocument();
+    expect(screen.queryByText('Report sent')).toBeNull();
+  });
+});

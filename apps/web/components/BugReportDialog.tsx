@@ -102,8 +102,9 @@ export function BugReportDialog() {
       setNote('');
       setFiles([]);
       // With AI triage on, stay open to show the diagnosis; without it there's
-      // nothing to show, so close as before.
-      if (data.triage) setTriage(data.triage);
+      // nothing to show, so close as before. Closed while it was sending:
+      // no diagnosis either, or the next Report a bug would open on it.
+      if (data.triage && useUiStore.getState().bugReportOpen) setTriage(data.triage);
       else setOpen(false);
     } catch (e) {
       toast.error(`Couldn't send report: ${(e as Error).message}`);
