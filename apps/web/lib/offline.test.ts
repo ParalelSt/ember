@@ -22,7 +22,10 @@ class FakeFile {
   async createWritable() {
     const chunks: Uint8Array[] = [];
     return {
-      write: async (c: Uint8Array | string) => { chunks.push(typeof c === 'string' ? new TextEncoder().encode(c) : c); },
+      write: async (c: Uint8Array | string) => {
+        if (diskFull && this.name.endsWith('.m4a')) throw new DOMException('quota', 'QuotaExceededError');
+        chunks.push(typeof c === 'string' ? new TextEncoder().encode(c) : c);
+      },
       close: async () => {
         const out = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0));
         let at = 0;
@@ -60,6 +63,8 @@ class FakeDir {
 }
 
 let root: FakeDir;
+/** A full disk: every audio write is refused. */
+let diskFull = false;
 const fetchMock = vi.fn();
 let urlCount = 0;
 
@@ -72,6 +77,7 @@ const PL = { id: 'pl1', name: 'Mix', created_at: '', artwork_url: null };
 
 beforeEach(() => {
   root = new FakeDir();
+  diskFull = false;
   Object.defineProperty(navigator, 'storage', {
     configurable: true,
     value: { getDirectory: async () => root, persist: async () => true },
@@ -120,6 +126,20 @@ describe('downloadPlaylist (browser storage)', () => {
     const result = await downloadPlaylist(PL, [YT, BAD]);
 
     expect(result).toEqual({ saved: 1, failed: 1 });
+  });
+
+  it('stops asking the server for songs once the disk is full', async () => {
+    const more = ['q1', 'q2', 'q3'].map((id) => makeTrack({ id: `youtube:${id}`, sourceId: id, title: id, streamUrl: `/api/youtube/stream/${id}` }));
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/q1')) diskFull = true;
+      return audio();
+    });
+
+    const result = await downloadPlaylist(PL, [YT, ...more]);
+
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/api/youtube/stream/a1', '/api/youtube/stream/q1']);
+    expect(result).toEqual({ saved: 1, failed: 3 });
+    expect(await manifestIds()).toEqual(['youtube:a1']);
   });
 
   it('still fails outright when nothing at all could be saved', async () => {

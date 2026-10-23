@@ -284,6 +284,17 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
           completed.push(kept);
           totalBytesThisPlaylist += kept.bytesAudio + kept.bytesArt;
         }
+        // A full disk turns every song after this one away too: stop
+        // fetching them from the server. Songs not reached keep the copies
+        // they had and count as not saved this time.
+        if ((e as Error)?.name === 'QuotaExceededError') {
+          for (const rest of stillToCome(i + 1)) {
+            completed.push(rest);
+            totalBytesThisPlaylist += rest.bytesAudio + rest.bytesArt;
+          }
+          failed += playable.length - i - 1;
+          break;
+        }
         continue;
       }
 
