@@ -22,26 +22,32 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
   }
 
   render(): ReactNode {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-dvh grid place-items-center px-6 text-center">
-          <div className="max-w-md">
-            <h1 className="text-2xl font-bold tracking-tight">Something broke</h1>
-            <p className="mt-3 text-sm text-muted-foreground">
-              The error has been logged. Reload the page to recover, then{' '}
-              <span className="text-foreground">Report a bug</span> from the menu if it keeps happening.
-            </p>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="mt-6 inline-flex h-10 items-center rounded-md bg-ember px-4 text-sm font-semibold text-ember-foreground hover:bg-ember-soft"
-            >
-              Reload
-            </button>
-          </div>
-        </div>
-      );
-    }
+    if (this.state.hasError) return <CrashFallback onReload={() => window.location.reload()} />;
     return this.props.children;
   }
+}
+
+/** What a crash shows instead of the app (this boundary) or instead of the
+ *  page under the app shell (app/(app)/error.tsx, which keeps the sidebar,
+ *  the player and the menu). `onReload`: the full reload here, Next's
+ *  retry of the page there. */
+export function CrashFallback({ onReload }: { onReload: () => void }) {
+  return (
+    <div className="min-h-dvh grid place-items-center px-6 text-center">
+      <div className="max-w-md">
+        <h1 className="text-2xl font-bold tracking-tight">Something broke</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
+          The error has been logged. Reload the page to recover, then{' '}
+          <span className="text-foreground">Report a bug</span> from the menu if it keeps happening.
+        </p>
+        <button
+          type="button"
+          onClick={onReload}
+          className="mt-6 inline-flex h-10 items-center rounded-md bg-ember px-4 text-sm font-semibold text-ember-foreground hover:bg-ember-soft"
+        >
+          Reload
+        </button>
+      </div>
+    </div>
+  );
 }
