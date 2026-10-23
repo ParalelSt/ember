@@ -243,33 +243,33 @@ export const api = {
     req<{ playlist: Playlist }>('/playlists', { method: 'POST', body: { name } }),
   // 404 is an answer (deleted, or no longer shared with you), not a fault.
   getPlaylist: (id: string) =>
-    req<{ playlist: Playlist; tracks: CollectionTrack[] }>(`/playlists/${id}`, { expected: [404] }),
+    req<{ playlist: Playlist; tracks: CollectionTrack[] }>(`/playlists/${encodeURIComponent(id)}`, { expected: [404] }),
   renamePlaylist: (id: string, name: string) =>
-    req<{ playlist: { id: string; name: string } }>(`/playlists/${id}`, { method: 'PATCH', body: { name }, expected: [403, 404] }),
+    req<{ playlist: { id: string; name: string } }>(`/playlists/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name }, expected: [403, 404] }),
   /** Move one song to a new 0-based place in the playlist's own order. */
   movePlaylistTrack: (id: string, trackId: string, to: number) =>
-    req<{ ok: true }>(`/playlists/${id}/tracks/move`, { method: 'POST', body: { trackId, to }, expected: [404] }),
+    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks/move`, { method: 'POST', body: { trackId, to }, expected: [404] }),
   // Collaborative playlists (docs/collaborative-playlists.md).
-  getPlaylistCollab: (id: string) => req<CollabState>(`/playlists/${id}/collab`, { expected: [404] }),
+  getPlaylistCollab: (id: string) => req<CollabState>(`/playlists/${encodeURIComponent(id)}/collab`, { expected: [404] }),
   setPlaylistCollaborative: (id: string, collaborative: boolean) =>
-    req<CollabState>(`/playlists/${id}/collab`, { method: 'PATCH', body: { collaborative }, expected: [403, 404] }),
+    req<CollabState>(`/playlists/${encodeURIComponent(id)}/collab`, { method: 'PATCH', body: { collaborative }, expected: [403, 404] }),
   newPlaylistInvite: (id: string) =>
-    req<{ inviteCode: string }>(`/playlists/${id}/invite`, { method: 'POST', expected: [403, 404, 409] }),
+    req<{ inviteCode: string }>(`/playlists/${encodeURIComponent(id)}/invite`, { method: 'POST', expected: [403, 404, 409] }),
   stopPlaylistInvite: (id: string) =>
-    req<{ inviteCode: null }>(`/playlists/${id}/invite`, { method: 'DELETE', expected: [403, 404] }),
+    req<{ inviteCode: null }>(`/playlists/${encodeURIComponent(id)}/invite`, { method: 'DELETE', expected: [403, 404] }),
   addPlaylistMember: (id: string, userId: string) =>
-    req<{ members: CollabState['members'] }>(`/playlists/${id}/members`, {
+    req<{ members: CollabState['members'] }>(`/playlists/${encodeURIComponent(id)}/members`, {
       method: 'POST',
       body: { userId },
       expected: [403, 404, 409],
     }),
   /** The owner removes someone, or a member removes themselves (leave). */
   removePlaylistMember: (id: string, userId: string) =>
-    req<{ ok: true; inviteCode?: string }>(`/playlists/${id}/members/${encodeURIComponent(userId)}`, {
+    req<{ ok: true; inviteCode?: string }>(`/playlists/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, {
       method: 'DELETE',
       expected: [403, 404],
     }),
-  listPlaylistPeople: (id: string) => req<{ people: CandidatePerson[] }>(`/playlists/${id}/people`, { expected: [403, 404] }),
+  listPlaylistPeople: (id: string) => req<{ people: CandidatePerson[] }>(`/playlists/${encodeURIComponent(id)}/people`, { expected: [403, 404] }),
   /** What an invite link leads to, without joining (the invite card). */
   previewPlaylistInvite: (code: string) =>
     req<InvitePreview>('/playlists/join/preview', { method: 'POST', body: { code }, expected: [404] }),
@@ -278,20 +278,20 @@ export const api = {
   /** Copy songs into a playlist: the server skips the ones already there
    *  (lib/playlistCopy's rule) and says which. */
   bulkAddToPlaylist: (id: string, tracks: Track[]) =>
-    req<CopyOutcome>(`/playlists/${id}/tracks/bulk`, { method: 'POST', body: { tracks } }),
+    req<CopyOutcome>(`/playlists/${encodeURIComponent(id)}/tracks/bulk`, { method: 'POST', body: { tracks } }),
   /** 409 (`isAlreadyInPlaylist`): the song is already there. An answer the
    *  app shows as "Already in <playlist>", never an automatic bug report. */
   addToPlaylist: (id: string, track: Track) =>
-    req<{ ok: true }>(`/playlists/${id}/tracks`, { method: 'POST', body: { track }, expected: [409] }),
+    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks`, { method: 'POST', body: { track }, expected: [409] }),
   /** The playlists (yours and the ones shared with you) that already have
    *  this song, for the Add to playlist menu's marks. */
   playlistsContaining: (trackId: string) =>
     req<{ playlistIds: string[] }>(`/playlists/containing?track=${encodeURIComponent(trackId)}`),
   removeFromPlaylist: (id: string, trackId: string) =>
-    req<{ ok: true }>(`/playlists/${id}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
+    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
   replaceInPlaylist: (playlistId: string, trackId: string, track: Track) =>
     req<{ ok: true; merged: boolean; track: Track }>(
-      `/playlists/${playlistId}/tracks/${encodeURIComponent(trackId)}/replace`,
+      `/playlists/${encodeURIComponent(playlistId)}/tracks/${encodeURIComponent(trackId)}/replace`,
       { method: 'POST', body: { track } },
     ),
   //, Carlist live sessions,
@@ -305,27 +305,27 @@ export const api = {
     }),
   /** The live carlist you host or joined (the Carlist button), or null. */
   getLiveCarlist: () => req<{ carlist: LiveCarlist | null }>('/sessions'),
-  getSession: (id: string) => req<SessionState>(`/sessions/${id}`),
+  getSession: (id: string) => req<SessionState>(`/sessions/${encodeURIComponent(id)}`),
   /** `ahead`: songs that play before it (-1: it is the first). */
   addToSession: (id: string, track: Track, position: AddPosition = 'end') =>
-    req<{ ok: true; position: AddPosition; ahead: number }>(`/sessions/${id}/tracks`, {
+    req<{ ok: true; position: AddPosition; ahead: number }>(`/sessions/${encodeURIComponent(id)}/tracks`, {
       method: 'POST',
       body: { track, position },
     }),
   /** `index`: the queue row the skipper sees playing, so a skip that
    *  arrives after the song already changed skips nothing more. */
   skipSession: (id: string, index?: number) =>
-    req<{ ok: true; stale?: boolean }>(`/sessions/${id}/skip`, {
+    req<{ ok: true; stale?: boolean }>(`/sessions/${encodeURIComponent(id)}/skip`, {
       method: 'POST',
       body: index === undefined ? undefined : { index },
     }),
   consumeSessionCommands: (id: string) =>
-    req<{ commands: { type: string }[] }>(`/sessions/${id}/commands/consume`, { method: 'POST' }),
+    req<{ commands: { type: string }[] }>(`/sessions/${encodeURIComponent(id)}/commands/consume`, { method: 'POST' }),
   publishSessionNow: (id: string, index: number) =>
-    req<{ ok: true }>(`/sessions/${id}/now`, { method: 'POST', body: { index } }),
-  endSession: (id: string) => req<{ ok: true }>(`/sessions/${id}/end`, { method: 'POST' }),
+    req<{ ok: true }>(`/sessions/${encodeURIComponent(id)}/now`, { method: 'POST', body: { index } }),
+  endSession: (id: string) => req<{ ok: true }>(`/sessions/${encodeURIComponent(id)}/end`, { method: 'POST' }),
   saveSession: (id: string, name?: string) =>
-    req<{ playlist: { id: string; name: string } }>(`/sessions/${id}/save`, { method: 'POST', body: { name } }),
+    req<{ playlist: { id: string; name: string } }>(`/sessions/${encodeURIComponent(id)}/save`, { method: 'POST', body: { name } }),
   /** Inspect a pasted playlist link for the create dialog's preview. */
   importInspect: (url: string, opts: { liked?: boolean } = {}) =>
     req<InspectResult & { liked?: LinkLikedCounts }>('/import/inspect', {
@@ -401,13 +401,13 @@ export const api = {
   /** What other members played in the last ~30 min (newest per user). */
   listening: () =>
     req<{ items: { userName: string; playedAt: string; track: Track }[] }>('/listening'),
-  deletePlaylist: (id: string) => req<{ ok: true }>(`/playlists/${id}`, { method: 'DELETE' }),
+  deletePlaylist: (id: string) => req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /** Upload (or replace) a playlist cover image. Multipart, so it bypasses
    *  the JSON `req` helper. */
   updatePlaylistArtwork: async (id: string, file: File): Promise<{ playlist: Playlist }> => {
     const fd = new FormData();
     fd.append('artwork', file);
-    const res = await fetch(`${API_BASE}/api/playlists/${id}/artwork`, {
+    const res = await fetch(`${API_BASE}/api/playlists/${encodeURIComponent(id)}/artwork`, {
       method: 'PATCH',
       body: fd,
       credentials: 'include',
@@ -462,8 +462,8 @@ export const api = {
     req<{ tab: TabFile }>('/tabs/text', { method: 'POST', body: { text, ...meta }, expected: [422] }),
   /** Save a tab's sync nudge for everyone (its uploader or an admin). */
   saveTabOffset: (id: string, offsetMs: number) =>
-    req<{ tab: TabFile }>(`/tabs/files/${id}`, { method: 'PATCH', body: { offsetMs } }),
-  deleteTabFile: (id: string) => req<{ ok: true }>(`/tabs/files/${id}`, { method: 'DELETE' }),
+    req<{ tab: TabFile }>(`/tabs/files/${encodeURIComponent(id)}`, { method: 'PATCH', body: { offsetMs } }),
+  deleteTabFile: (id: string) => req<{ ok: true }>(`/tabs/files/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /** Look for the song's tab online (Ultimate Guitar). Once per song: the
    *  server answers "cached" when it was searched before; `again` searches
    *  anew (the ⋯ menu's "Search online again"). */
