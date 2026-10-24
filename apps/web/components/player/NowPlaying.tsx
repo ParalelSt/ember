@@ -329,7 +329,8 @@ export function NowPlaying() {
       )}
       {current && (
         <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
-          <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0" data-testid="now-playing-more-sheet">
+          {/* The player's own sheet: its shortcuts keep working (OPEN_MODAL). */}
+          <SheetContent data-player-view side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0" data-testid="now-playing-more-sheet">
             <SheetHeader className="px-block pt-block pb-cluster">
               <div className="flex min-w-0 items-center gap-row">
                 <Artwork src={art} className="size-12 shrink-0 rounded-md bg-art">

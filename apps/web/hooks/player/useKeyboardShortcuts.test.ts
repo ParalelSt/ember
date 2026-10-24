@@ -226,6 +226,22 @@ describe('useKeyboardShortcuts while a modal is open', () => {
     }
   });
 
+  it('keeps working while one of the player\'s own sheets is open (queue, equalizer, devices, More)', () => {
+    const { backend } = setup();
+    backend!.paused = true;
+    const sheet = mount({ 'data-slot': 'sheet-content', 'data-open': '', 'data-player-view': '' });
+    expect(press({ key: ' ', code: 'Space' })).toBe(false);
+    expect(backend!.play).toHaveBeenCalledTimes(1);
+    press({ key: 'm' });
+    expect(usePlayerStore.getState().muted).toBe(true);
+    // A real dialog opened over it (Add to playlist, Report a bug) still takes the keys.
+    const dialog = mount({ 'data-slot': 'dialog-content', 'data-open': '' });
+    expect(press({ key: ' ', code: 'Space' })).toBe(true);
+    expect(backend!.play).toHaveBeenCalledTimes(1);
+    dialog.remove();
+    sheet.remove();
+  });
+
   it('works again once the dialog is closing or gone, and inside the full-screen player', () => {
     const { backend } = setup();
     backend!.paused = true;

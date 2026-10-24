@@ -113,7 +113,9 @@ export const QueueSheet = memo(function QueueSheet({ open, onOpenChange }: Props
           (data-[side=right]:w-3/4) outranks a plain w-96, which left the
           queue at three quarters of a phone, too narrow for "Couldn't play"'s
           reason lines. 90% of a phone, as in the owner's pick. */}
-      <SheetContent side="right" className="data-[side=right]:w-96 max-w-[90vw] flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0">
+      {/* The player's own sheet: its keyboard shortcuts keep working here
+          (hooks/player/useKeyboardShortcuts OPEN_MODAL). */}
+      <SheetContent data-player-view side="right" className="data-[side=right]:w-96 max-w-[90vw] flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0">
         <SheetHeader className="px-4 py-4 border-b border-sidebar-border">
           <SheetTitle className="text-base">Queue</SheetTitle>
         </SheetHeader>

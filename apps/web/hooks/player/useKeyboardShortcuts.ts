@@ -8,11 +8,12 @@ import type { AudioBackend } from '@/lib/playback/types';
 /** An open modal: a dialog or sheet (components/ui, ReviewSheet; base-ui
  *  marks the open popup `data-open`, a closing one `data-closed`) or a
  *  hand-made `aria-modal` one (the QR scanner). Its keys are its own, never
- *  the player's. The full-screen player (NowPlaying, `data-player-view`) is
- *  the player itself, so its shortcuts keep working there. */
+ *  the player's. The player's own views (`data-player-view`: the
+ *  full-screen player, and its queue, equalizer, devices and More sheets)
+ *  are the player itself, so its shortcuts keep working there. */
 export const OPEN_MODAL = [
-  '[data-slot="dialog-content"][data-open]',
-  '[data-slot="sheet-content"][data-open]',
+  '[data-slot="dialog-content"][data-open]:not([data-player-view])',
+  '[data-slot="sheet-content"][data-open]:not([data-player-view])',
   '[role="dialog"][aria-modal="true"]:not([aria-hidden="true"]):not([data-player-view])',
 ].join(',');
 

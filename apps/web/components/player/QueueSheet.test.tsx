@@ -15,13 +15,22 @@ const player = vi.hoisted(() => ({ playAt: vi.fn(), playTrack: vi.fn(), playBack
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => player }));
 vi.mock('@/components/ui/sheet', () => ({
   Sheet: ({ children }: PropsWithChildren) => <div>{children}</div>,
-  SheetContent: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  SheetContent: ({ children, side, ...rest }: PropsWithChildren<{ side?: string }>) => (
+    <div data-testid="queue-sheet" data-side={side} {...rest}>{children}</div>
+  ),
   SheetHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
   SheetTitle: ({ children }: PropsWithChildren) => <div>{children}</div>,
 }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/', useRouter: () => ({ push: vi.fn() }) }));
 
 beforeEach(() => usePlayerStore.setState({ played: [], position: 0, duration: 0 }));
+
+describe('QueueSheet placement', () => {
+  it('is one of the player\'s own sheets: the player\'s keyboard shortcuts keep working over it', () => {
+    render(<QueueSheet open onOpenChange={() => {}} />);
+    expect(screen.getByTestId('queue-sheet')).toHaveAttribute('data-player-view');
+  });
+});
 afterEach(() => resetUnplayableStore());
 
 describe('QueueSheet', () => {
