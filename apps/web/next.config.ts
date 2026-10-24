@@ -62,6 +62,9 @@ const nextConfig: NextConfig = {
   // paths proxy.ts's matcher skips (anything ending in .png, .svg...).
   async rewrites() {
     return [
+      // The short download address for the Android app (typed into a car
+      // head unit's browser): the newest APK. Public in proxy.ts.
+      { source: '/apk', destination: '/api/android/latest-apk' },
       {
         source: `/pb/:path((?!${PB_SUPERUSER_ROUTES})(?:.*))`,
         destination: `${POCKETBASE_ORIGIN}/:path`,

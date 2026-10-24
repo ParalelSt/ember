@@ -64,6 +64,16 @@ describe('proxy [bughunt W05]: unauthenticated /api/* gets 401 JSON, not a redir
     expect((await proxy(req('/api/versions-secret'))).status).toBe(401);
   });
 
+  it('leaves the short /apk download address open with no session, and nothing next to it', async () => {
+    for (const path of ['/apk', '/api/android/latest-apk']) {
+      const res = await proxy(req(path));
+      expect(res.status, path).toBe(200);
+    }
+    expect((await proxy(req('/apkx'))).status).toBe(307);
+    expect((await proxy(req('/apk/other'))).status).toBe(307);
+    expect((await proxy(req('/api/android/latest-apk-secret'))).status).toBe(401);
+  });
+
   it('keeps any other /api/android/ route behind sign-in', async () => {
     const res = await proxy(req('/api/android/something-else'));
     expect(res.status).toBe(401);

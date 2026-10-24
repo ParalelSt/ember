@@ -32,8 +32,11 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
   // before anyone can sign in. Only this route under /api/app/.
   '/api/app/update'];
 // Exact paths, not prefixes. /api/version: which version this server runs,
-// for `npm run host-check`; the same number Settings shows.
-const PUBLIC_API_EXACT = new Set(['/api/version']);
+// for `npm run host-check`; the same number Settings shows. /apk (rewritten
+// to /api/android/latest-apk in next.config.ts): the newest Android APK, for
+// installing by hand on a device nobody is signed in on, like a car head
+// unit. Only the current release's APK, no user data.
+const PUBLIC_API_EXACT = new Set(['/api/version', '/apk', '/api/android/latest-apk']);
 
 /** An upload's audio or cover asked for with a signed cast link (`?st=`):
  *  a Chromecast has no session to send. Let through to the route, which

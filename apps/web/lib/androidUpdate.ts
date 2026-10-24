@@ -91,3 +91,15 @@ export async function androidUpdateFor(currentVersion: string): Promise<AndroidU
 export async function androidApkAsset(id: number): Promise<ReleaseAsset | null> {
   return currentAsset(id, isAndroidApkName, ['android']);
 }
+
+/** The APK of Android's current release, for a person installing Ember by
+ *  hand (the short /apk address, typed into a car head unit's browser):
+ *  the same release the phone updater offers, or null when there is none
+ *  or it carries no APK. */
+export async function latestAndroidApk(): Promise<{ asset: ReleaseAsset; version: string } | null> {
+  const release = await latestRelease('android');
+  if (!release) return null;
+  const asset = (release.assets ?? []).find((a) => isAndroidApkName(a.name));
+  if (!asset) return null;
+  return { asset, version: releaseVersion(release) };
+}
