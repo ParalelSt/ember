@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { toast } from 'sonner';
 import { BOOT_START_UPDATE_APP_TEXT, HeadUnitSettings } from './HeadUnitSettings';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const headUnit = vi.hoisted(() => ({ value: false }));
+vi.mock('@/hooks/useHeadUnit', () => ({ useIsHeadUnit: () => headUnit.value }));
 
 /** Settings > Devices, Android app only: "Open Ember when this device
  *  starts" and "and keep playing", both off by default, kept by the app. */
@@ -11,6 +14,8 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 type W = { Capacitor?: unknown };
 
 afterEach(() => {
+  headUnit.value = false;
+  useSettingsStore.setState({ headUnitControls: true });
   delete (window as unknown as W).Capacitor;
   vi.mocked(toast.error).mockClear();
 });
@@ -87,5 +92,23 @@ describe('HeadUnitSettings', () => {
     render(<HeadUnitSettings />);
     expect(screen.getByText(BOOT_START_UPDATE_APP_TEXT)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Open Ember when this device starts/ })).toBeNull();
+  });
+
+  it('on a head unit, the car controls switch is there, on by default, and turns them off', async () => {
+    headUnit.value = true;
+    androidWith();
+    render(<HeadUnitSettings />);
+    const sw = screen.getByRole('button', { name: 'Turn off Car controls' });
+    expect(sw).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(sw);
+    expect(useSettingsStore.getState().headUnitControls).toBe(false);
+    expect(screen.getByRole('button', { name: 'Turn on Car controls' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('elsewhere there is no car controls switch', async () => {
+    androidWith();
+    render(<HeadUnitSettings />);
+    await waitFor(() => expect(startSwitch('on')).toBeEnabled());
+    expect(screen.queryByRole('button', { name: /Car controls/ })).toBeNull();
   });
 });

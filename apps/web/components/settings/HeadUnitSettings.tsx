@@ -5,20 +5,27 @@ import { toast } from 'sonner';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { SwitchRow } from '@/components/settings/AutoCacheSettings';
 import { bootStartSupported, getBootStart, isAndroidApp, setBootStart, type BootStartSettings } from '@/lib/bootStart';
+import { useIsHeadUnit } from '@/hooks/useHeadUnit';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 
 export const BOOT_START_UPDATE_APP_TEXT = 'Opening Ember when this device starts needs a newer version of the Ember app.';
 
 const noSubscribe = () => () => {};
 
 /** Settings > Devices, in the Android app only: using Ember on a device that
- *  runs it by itself, like a car head unit. "Open Ember when this device
- *  starts", and with it "and keep playing" (both off by default), kept by
- *  the app (lib/bootStart). Plain on purpose, like the other switches. */
+ *  runs it by itself, like a car head unit. On a head unit (lib/headUnit),
+ *  the car controls' switch (on by default there); everywhere in the app,
+ *  "Open Ember when this device starts", and with it "and keep playing"
+ *  (both off by default), kept by the app (lib/bootStart). Plain on
+ *  purpose, like the other switches. */
 export function HeadUnitSettings() {
   const android = useSyncExternalStore(noSubscribe, isAndroidApp, () => false);
   const supported = useSyncExternalStore(noSubscribe, bootStartSupported, () => false);
   const [settings, setSettings] = useState<BootStartSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const headUnit = useIsHeadUnit();
+  const carControls = useSettingsStore((s) => s.headUnitControls);
+  const setCarControls = useSettingsStore((s) => s.setHeadUnitControls);
 
   useEffect(() => {
     if (!supported) return;
@@ -50,6 +57,14 @@ export function HeadUnitSettings() {
   return (
     <section className="mt-section max-w-2xl flex flex-col gap-row" data-testid="head-unit-settings">
       <SectionHeader title="Car head unit" />
+      {headUnit && (
+        <SwitchRow
+          name="Car controls"
+          description="This device looks like a car head unit: big previous, play and next buttons in the player bar, and swipe the song's cover left or right to skip."
+          on={carControls}
+          onToggle={() => setCarControls(!carControls)}
+        />
+      )}
       {supported ? (
         <>
           <SwitchRow

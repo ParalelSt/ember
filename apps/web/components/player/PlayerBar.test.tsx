@@ -24,14 +24,15 @@ const TRACK: Track = {
 // Everything the bar reads that is not the bar: the player, the account, the
 // like state and the two menus/sheets that open portals. The subject here is
 // the bar's own geometry.
+const skip = vi.hoisted(() => ({ next: vi.fn(), prev: vi.fn() }));
 vi.mock('@/components/player/PlayerProvider', () => ({
   usePlayer: () => ({
     current: TRACK,
     isPlaying: true,
     duration: 264,
     toggle: vi.fn(),
-    next: vi.fn(),
-    prev: vi.fn(),
+    next: skip.next,
+    prev: skip.prev,
     seek: vi.fn(),
     setVolume: vi.fn(),
   }),
@@ -45,6 +46,9 @@ vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, 
 // only ever holds one transport (see hooks/useIsDesktop).
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
+// A car head unit with the car controls on (hooks/useHeadUnit).
+const car = vi.hoisted(() => ({ value: false }));
+vi.mock('@/hooks/useHeadUnit', () => ({ useHeadUnitControls: () => car.value }));
 // Party mode (the wider, uncapped slider) is desktop-only: a mouse browser or
 // Tauri, never a touch device or the Android app. See lib/playback/partyDevice.
 const partyEligible = vi.hoisted(() => ({ value: true }));
@@ -109,6 +113,9 @@ const desktopBar = () => {
 
 beforeEach(() => {
   desktop.value = true;
+  car.value = false;
+  skip.next.mockClear();
+  skip.prev.mockClear();
   partyEligible.value = true;
   useSettingsStore.setState({ tabsEnabled: true, partyVolume: false });
 });
@@ -122,6 +129,38 @@ describe('PlayerBar', () => {
   // get 44px hit boxes there (globals.css, .touch-hit).
   it('the desktop bar gives its controls touch-sized hit boxes', () => {
     expect(desktopBar()).toHaveClass('touch-hit');
+  });
+
+  // The owner's pick for a car head unit: previous, play and next big enough
+  // to tap while driving, and a swipe on the cover to skip.
+  it('on a car head unit, previous, play and next are big', () => {
+    car.value = true;
+    const b = desktopBar();
+    expect(within(b).getByRole('button', { name: 'Previous' })).toHaveClass('h-16', 'w-16');
+    expect(within(b).getByRole('button', { name: 'Next' })).toHaveClass('h-16', 'w-16');
+    expect(within(b).getByRole('button', { name: 'Pause' })).toHaveClass('h-18', 'w-18');
+  });
+
+  it('on a car head unit, swiping the cover skips', () => {
+    car.value = true;
+    desktopBar();
+    const now = screen.getByTestId('player-bar-now');
+    fireEvent.pointerDown(now, { pointerId: 1, clientX: 300, clientY: 40 });
+    fireEvent.pointerUp(now, { pointerId: 1, clientX: 200, clientY: 44 });
+    expect(skip.next).toHaveBeenCalledTimes(1);
+    fireEvent.pointerDown(now, { pointerId: 2, clientX: 200, clientY: 40 });
+    fireEvent.pointerUp(now, { pointerId: 2, clientX: 300, clientY: 40 });
+    expect(skip.prev).toHaveBeenCalledTimes(1);
+  });
+
+  it('elsewhere the bar keeps its mouse-sized controls and no swipe', () => {
+    const b = desktopBar();
+    expect(within(b).getByRole('button', { name: 'Previous' })).not.toHaveClass('h-16');
+    expect(within(b).getByRole('button', { name: 'Pause' })).toHaveClass('h-10', 'w-10');
+    const now = screen.getByTestId('player-bar-now');
+    fireEvent.pointerDown(now, { pointerId: 1, clientX: 300, clientY: 40 });
+    fireEvent.pointerUp(now, { pointerId: 1, clientX: 200, clientY: 40 });
+    expect(skip.next).not.toHaveBeenCalled();
   });
 
   it('renders exactly one bar, the one the window calls for', () => {

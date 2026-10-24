@@ -47,8 +47,19 @@ describe('useSettingsStore tabsEnabled', () => {
     await useSettingsStore.getState().loadPlugins('u1');
     expect(Object.keys(stored()).sort()).toEqual([
       'autoCacheEnabled', 'autoReportEnabled', 'eqChosenHere', 'eqUnsavedFor', 'equalizer',
-      'normalizeVolume', 'partyVolume', 'tabsEnabled',
+      'headUnitControls', 'normalizeVolume', 'partyVolume', 'tabsEnabled',
     ]);
+  });
+});
+
+describe('useSettingsStore head unit car controls', () => {
+  it('is on by default, kept on this device, and never sent to the account', () => {
+    expect(useSettingsStore.getState().headUnitControls).toBe(true);
+    useSettingsStore.getState().setHeadUnitControls(false);
+    expect(useSettingsStore.getState().headUnitControls).toBe(false);
+    expect(stored().headUnitControls).toBe(false);
+    expect(updatePlugins).not.toHaveBeenCalledWith(expect.objectContaining({ headUnitControls: false }));
+    useSettingsStore.getState().setHeadUnitControls(true);
   });
 });
 

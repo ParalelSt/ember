@@ -32,7 +32,8 @@ export function migrateSettings(persisted: unknown, version: number): unknown {
  *  does not flicker on load and still reads right offline or signed out.
  *  The equalizer follows the account the same way (its own `equalizer`
  *  key in the same field).
- *  autoReportEnabled and the auto cache switches are per device only. */
+ *  autoReportEnabled, the auto cache switches and the head unit's car
+ *  controls are per device only. */
 interface SettingsState {
   /** Party-size volume slider plugin: widens the slider and lifts the
    *  audio past full output (gain 2) with a linear curve. Off by default; the
@@ -80,6 +81,11 @@ interface SettingsState {
    *  Per device, not synced: it is about this device's storage and network. */
   autoCacheEnabled: boolean;
   setAutoCacheEnabled: (on: boolean) => void;
+  /** The car controls on a car head unit (lib/headUnit): big previous,
+   *  play and next, and a swipe on the cover to skip. On by default; only
+   *  a head unit uses it. Per device, not synced. */
+  headUnitControls: boolean;
+  setHeadUnitControls: (on: boolean) => void;
 
   /** The signed-in user the plugin switches are synced with (null when
    *  signed out: toggles then stay on this device). Not persisted. */
@@ -162,6 +168,8 @@ export const useSettingsStore = create<SettingsState>()(
         eqUnsavedFor: null,
         autoCacheEnabled: true,
         setAutoCacheEnabled: (autoCacheEnabled) => set({ autoCacheEnabled }),
+        headUnitControls: true,
+        setHeadUnitControls: (headUnitControls) => set({ headUnitControls }),
 
         pluginsUserId: null,
         pluginsLoaded: false,
@@ -242,6 +250,7 @@ export const useSettingsStore = create<SettingsState>()(
         eqChosenHere: s.eqChosenHere,
         eqUnsavedFor: s.eqUnsavedFor,
         autoCacheEnabled: s.autoCacheEnabled,
+        headUnitControls: s.headUnitControls,
       }),
     },
   ),

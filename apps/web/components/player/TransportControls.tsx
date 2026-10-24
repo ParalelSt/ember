@@ -6,13 +6,16 @@ import { NextIcon, PauseIcon, PlayIcon, PrevIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 /** 'sm' is the desktop mini player bar, 'phone' the phone bar (its one play
- *  button, at Android's 48px minimum), 'lg' the full-screen view. */
-export type TransportSize = 'sm' | 'phone' | 'lg';
+ *  button, at Android's 48px minimum), 'lg' the full-screen view, 'car' the
+ *  desktop bar on a car head unit (hooks/useHeadUnit): big enough to tap
+ *  while driving. */
+export type TransportSize = 'sm' | 'phone' | 'lg' | 'car';
 
 const ROW: Record<TransportSize, string> = {
   sm: 'flex items-center gap-3',
   phone: 'flex items-center gap-cluster',
   lg: 'relative flex items-center justify-center gap-10',
+  car: 'flex items-center gap-stack',
 };
 
 // Prev / next buttons: the desktop bar keeps the Button default box, the
@@ -21,6 +24,7 @@ const STEP_BOX: Record<TransportSize, string | undefined> = {
   sm: undefined,
   phone: 'h-12 w-12',
   lg: 'h-12 w-12',
+  car: 'h-16 w-16',
 };
 
 // `size-*` (not `h-* w-*`): Button's own
@@ -31,18 +35,21 @@ const STEP_ICON: Record<TransportSize, string> = {
   sm: 'h-4 w-4',
   phone: 'size-6',
   lg: 'h-7 w-7',
+  car: 'size-8',
 };
 
 const PLAY_BOX: Record<TransportSize, string> = {
   sm: 'h-10 w-10',
   phone: 'h-12 w-12',
   lg: 'h-16 w-16',
+  car: 'h-18 w-18',
 };
 
 const PLAY_ICON: Record<TransportSize, string> = {
   sm: 'h-4 w-4',
   phone: 'size-6',
   lg: 'h-7 w-7',
+  car: 'size-8',
 };
 
 export interface TransportControlsProps {
@@ -75,7 +82,7 @@ export function PlayPauseButton({
         PLAY_BOX[size],
         // On the phone bar it sits beside a flex-1 name column, which must
         // never squeeze it below 48px.
-        size === 'phone' && 'shrink-0',
+        (size === 'phone' || size === 'car') && 'shrink-0',
         'rounded-full bg-foreground text-background hover:bg-foreground/90',
       )}
     >
