@@ -177,6 +177,14 @@ describe('what a member may change', () => {
     expect(order(shared)).toEqual(['youtube:bbb', 'youtube:ccc']);
   });
 
+  it('two people removing the same song both see it gone', async () => {
+    // The second one (a view a poll behind) got a 404, so the song came
+    // back on their screen with "Couldn't remove that, please try again".
+    expect((await call(removeRoute.DELETE, owner, { id: shared, trackId: 'youtube:aaa' })).status).toBe(200);
+    expect((await call(removeRoute.DELETE, member, { id: shared, trackId: 'youtube:aaa' })).status).toBe(200);
+    expect(order(shared)).toEqual(['youtube:bbb', 'youtube:ccc']);
+  });
+
   it('reorders, and the rows are numbered 1, 2, 3 again', async () => {
     const r = await call(moveRoute.POST, member, { id: shared }, { trackId: 'youtube:ccc', to: 0 });
     expect(r.status).toBe(200);
