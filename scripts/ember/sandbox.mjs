@@ -118,7 +118,11 @@ async function start() {
   const sink = 'http://127.0.0.1:8099';
   const log = path.join(SANDBOX, `app-${port}.log`);
   const out = fs.openSync(log, 'w');
-  spawn('npx', ['next', 'dev', '--webpack', '-p', String(port)], {
+  // A production build, like the 3072 copy: Next 16's dev server refuses its
+  // own scripts to any origin but localhost, so a phone on the LAN got a
+  // page that never loaded. webpack, because Turbopack cannot follow the
+  // worktree's symlinked node_modules.
+  spawn('sh', ['-c', `npx next build --webpack && exec npx next start -p ${port}`], {
     cwd: path.join(dir, 'apps/web'),
     detached: true,
     stdio: ['ignore', out, out],
@@ -140,15 +144,15 @@ async function start() {
     },
   }).unref();
 
-  // Ready when the page answers (a first compile takes a while).
-  for (let i = 0; i < 90; i++) {
+  // Ready when the page answers (the build takes a few minutes).
+  for (let i = 0; i < 450; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     try {
       const res = await fetch(`http://127.0.0.1:${port}/login`, { redirect: 'manual' });
       if (res.status < 500) return say(`✓ ${branch} on http://${ip}:${port}  (log: ${log})`);
     } catch {}
   }
-  fail(`Started, but nothing answers on ${port} after 3 minutes. Log: ${log}`);
+  fail(`Started, but nothing answers on ${port} after 15 minutes. Log: ${log}`);
 }
 
 if (verb === 'list') list();
