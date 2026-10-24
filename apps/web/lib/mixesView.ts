@@ -1,3 +1,4 @@
+import { calendarDaysAgo } from '@/lib/format';
 import type { Track } from '@/types/track';
 import type { MixKind } from '@/lib/mixes/kinds';
 
@@ -45,16 +46,9 @@ export function builtLine(mix: Pick<MixPayload, 'subtitle' | 'builtAt'>, now: nu
   const at = Date.parse(mix.builtAt);
   let when = 'today';
   if (!Number.isNaN(at)) {
-    // Rounded: a day the clocks change on is 23 or 25 hours long.
-    const days = Math.round((startOfDay(now) - startOfDay(at)) / 86400000);
+    const days = calendarDaysAgo(at, now);
     if (days === 1) when = 'yesterday';
     else if (days > 1) when = `${days} days ago`;
   }
   return names ? `Built ${when} from ${names}` : `Built ${when}`;
-}
-
-function startOfDay(t: number): number {
-  const d = new Date(t);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
 }

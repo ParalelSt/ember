@@ -87,9 +87,18 @@ export function formatAddedDate(value: string | null | undefined, now: number = 
   });
 }
 
+/** Local calendar days from `at` to `now`: 1 for any time yesterday.
+ *  Rounded, because a day the clocks change on is 23 or 25 hours long. */
+export function calendarDaysAgo(at: number, now: number): number {
+  const startOfDay = (t: number) => new Date(t).setHours(0, 0, 0, 0);
+  return Math.round((startOfDay(now) - startOfDay(at)) / 86_400_000);
+}
+
 /** How long ago, in the words Settings > Devices uses: "just now",
- *  "5 min ago", "3 hours ago", "yesterday", "12 days ago". Takes PocketBase's
- *  `2026-06-12 10:00:00.000Z` as well as ISO. Empty for an unreadable date. */
+ *  "5 min ago", "3 hours ago", "yesterday", "12 days ago". Past a day it
+ *  counts calendar days, so "yesterday" is never two days back. Takes
+ *  PocketBase's `2026-06-12 10:00:00.000Z` as well as ISO. Empty for an
+ *  unreadable date. */
 export function formatSince(value: string | null | undefined, now: number = Date.now()): string {
   const at = new Date(String(value ?? '').replace(' ', 'T')).getTime();
   if (!value || Number.isNaN(at)) return '';
@@ -97,7 +106,7 @@ export function formatSince(value: string | null | undefined, now: number = Date
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins} min ago`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
-  const days = Math.floor(hours / 24);
+  const days = calendarDaysAgo(at, now);
+  if (hours < 24 || days < 1) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
   return days === 1 ? 'yesterday' : `${days} days ago`;
 }

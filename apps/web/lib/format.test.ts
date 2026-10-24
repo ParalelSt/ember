@@ -193,6 +193,7 @@ describe('formatAgo with PocketBase dates', () => {
 });
 
 describe('formatSince', () => {
+  pinTz('UTC');
   const now = Date.parse('2026-10-16T12:00:00.000Z');
   const ago = (ms: number) => new Date(now - ms).toISOString();
   it.each([
@@ -207,10 +208,25 @@ describe('formatSince', () => {
   ])('%s is %s', (at, words) => {
     expect(formatSince(at, now)).toBe(words);
   });
+  it('says yesterday only for yesterday: 47 hours ago is two days ago', () => {
+    // Monday 08:00 seen on Wednesday 07:00.
+    expect(formatSince('2026-10-12 08:00:00.000Z', Date.parse('2026-10-14T07:00:00.000Z'))).toBe('2 days ago');
+    // Monday 20:00 seen on Wednesday 07:00 (35 hours): two calendar days.
+    expect(formatSince('2026-10-12 20:00:00.000Z', Date.parse('2026-10-14T07:00:00.000Z'))).toBe('2 days ago');
+    // Tuesday 08:00 seen on Wednesday 23:00 (39 hours): yesterday.
+    expect(formatSince('2026-10-13 08:00:00.000Z', Date.parse('2026-10-14T23:00:00.000Z'))).toBe('yesterday');
+  });
   it('is empty for a missing or unreadable date', () => {
     expect(formatSince('', now)).toBe('');
     expect(formatSince(null, now)).toBe('');
     expect(formatSince('soon', now)).toBe('');
+  });
+  describe('in the listener\'s own zone (Los Angeles)', () => {
+    pinTz('America/Los_Angeles');
+    it('a sign-in at 23:00 local, seen 26 hours later at 01:00, was two days ago', () => {
+      // 23:00 PDT on 12 Oct is 06:00Z on 13 Oct; 01:00 PDT on 14 Oct.
+      expect(formatSince('2026-10-13 06:00:00.000Z', Date.parse('2026-10-14T08:00:00.000Z'))).toBe('2 days ago');
+    });
   });
 });
 
