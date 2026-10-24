@@ -105,9 +105,13 @@ export interface TransferFlowProps {
 }
 
 /** An app path to go back to, or the Liked songs page. A full URL or a
- *  protocol-relative one is never followed. */
+ *  protocol-relative one is never followed, nor a path with a backslash,
+ *  tab or newline: browsers read '/\example.com' as '//example.com' (the
+ *  same rule as lib/safeNext.ts). */
 export function safeFrom(from: string | undefined | null): string {
-  return from && from.startsWith('/') && !from.startsWith('//') ? from : '/library/liked';
+  if (!from || !from.startsWith('/') || from.startsWith('//')) return '/library/liked';
+  if (/[\\\u0000-\u001f\u007f]/.test(from)) return '/library/liked';
+  return from;
 }
 
 /** Bring songs liked somewhere else into Ember, on one page. The first

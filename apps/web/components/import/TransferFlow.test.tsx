@@ -279,6 +279,16 @@ describe('TransferFlow: services first, then a sheet for where to', () => {
     expect(safeFrom('//evil.example')).toBe('/library/liked');
     expect(safeFrom(undefined)).toBe('/library/liked');
   });
+
+  it('refuses a path a browser reads as another site (backslash, tab, newline)', () => {
+    // new URL('/\\evil.example', origin) is https://evil.example/: the
+    // router would leave Ember for it on Back or Start.
+    expect(new URL('/\\evil.example', 'https://ember.test').origin).toBe('https://evil.example');
+    expect(safeFrom('/\\evil.example')).toBe('/library/liked');
+    expect(safeFrom('/\t/evil.example')).toBe('/library/liked');
+    expect(safeFrom('/\n/evil.example')).toBe('/library/liked');
+    expect(safeFrom('/library/liked?x=1')).toBe('/library/liked?x=1');
+  });
 });
 
 describe('TransferFlow: what do you have already', () => {
