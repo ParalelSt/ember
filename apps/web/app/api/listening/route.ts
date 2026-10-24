@@ -7,6 +7,12 @@ import { publicName } from '@/lib/collab';
 
 /** How far back a play still counts as "listening now". */
 const WINDOW_MS = 30 * 60 * 1000;
+/** Plays are read newest first, a page at a time, until there are enough
+ *  people. Every song start is a play, so one member skipping through songs
+ *  can fill a page on their own. Bounded: at most PAGES * PER_PAGE plays. */
+const PER_PAGE = 200;
+const PAGES = 5;
+const MAX_ITEMS = 12;
 
 /** What other members are listening to: each OTHER user's most recent play
  *  within the window. Admin client, the `plays` collection is per-user for
@@ -24,34 +30,38 @@ export const GET = withRequestLog('listening', async () => {
     // password check each time.
     const pb = await createCatalogClient();
     const since = new Date(Date.now() - WINDOW_MS).toISOString().replace('T', ' ');
-    const records = await pb.collection('plays').getList(1, 100, {
-      filter: `played_at >= "${since}" && user != "${user.id}"`,
-      sort: '-played_at',
-      expand: 'track,user',
-    });
-
     const seenUsers = new Set<string>();
     const items = [];
-    for (const r of records.items) {
-      const userId = String(r.user);
-      if (seenUsers.has(userId)) continue; // newest play per user only
-      seenUsers.add(userId);
-      const who = (r.expand?.user ?? null) as
-        | { name?: string; share_listening?: boolean }
-        | null;
-      // Opted out of being seen. `seenUsers` already has them, so their older
-      // plays can't slip through further down the list either.
-      if (who?.share_listening !== true) continue;
-
-      const track = mapTrackRow(((r.expand?.track as unknown) ?? null) as TrackRecord | null);
-      if (!track) continue;
-      items.push({
-        // A name, never the email: a member without one is "Unnamed member".
-        userName: publicName(who),
-        playedAt: String(r.played_at),
-        track,
+    for (let page = 1; page <= PAGES && items.length < MAX_ITEMS; page++) {
+      const records = await pb.collection('plays').getList(page, PER_PAGE, {
+        filter: `played_at >= "${since}" && user != "${user.id}"`,
+        sort: '-played_at',
+        expand: 'track,user',
+        skipTotal: true,
       });
-      if (items.length >= 12) break;
+
+      for (const r of records.items) {
+        const userId = String(r.user);
+        if (seenUsers.has(userId)) continue; // newest play per user only
+        seenUsers.add(userId);
+        const who = (r.expand?.user ?? null) as
+          | { name?: string; share_listening?: boolean }
+          | null;
+        // Opted out of being seen. `seenUsers` already has them, so their older
+        // plays can't slip through further down the list either.
+        if (who?.share_listening !== true) continue;
+
+        const track = mapTrackRow(((r.expand?.track as unknown) ?? null) as TrackRecord | null);
+        if (!track) continue;
+        items.push({
+          // A name, never the email: a member without one is "Unnamed member".
+          userName: publicName(who),
+          playedAt: String(r.played_at),
+          track,
+        });
+        if (items.length >= MAX_ITEMS) break;
+      }
+      if (records.items.length < PER_PAGE) break;
     }
     return Response.json({ items });
   } catch (e) {
