@@ -201,7 +201,9 @@ export async function runDigest(options: RunDigestOptions = {}): Promise<DigestR
   // Exactly one log read per run. entriesSince is uncached and walks every
   // day file in the window, so calling it twice would double a job that runs
   // unattended (T2 review note).
-  const entries = await serverLogger.entriesSince(since);
+  // Info lines never reach the digest: left out while reading, so a day of
+  // them cannot push the day's problems past the read cap.
+  const entries = await serverLogger.entriesSince(since, (e) => e.level !== 'info');
   const groups = groupForDigest(entries, since).map(scrubGroup);
   if (groups.length === 0) {
     return finish({ posted: false, reason: 'quiet', groups: [], summary: null });

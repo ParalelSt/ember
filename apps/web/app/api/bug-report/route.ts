@@ -190,7 +190,9 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     // this report shown up in the kept logs (formatSeenBefore, shared with
     // the triage prompt below). Never displayed verbatim, so it doesn't need
     // scrubServerEntry's redaction pass.
-    const history = await serverLogger.entriesSince(Date.now() - HISTORY_WINDOW_MS);
+    // Problems only (the report's own entries are errors): routine info lines
+    // must not push older occurrences past the read cap.
+    const history = await serverLogger.entriesSince(Date.now() - HISTORY_WINDOW_MS, (e) => e.level !== "info");
 
     const userAgent = request.headers.get("user-agent") ?? "unknown";
     const reportedAtMs = Date.now();

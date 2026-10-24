@@ -326,7 +326,18 @@ describe('runDigest', () => {
 
     await runDigest({ now, since: now - 3 * 60 * 60 * 1000 });
 
-    expect(serverLogger.entriesSince).toHaveBeenCalledWith(now - 3 * 60 * 60 * 1000);
+    expect(serverLogger.entriesSince).toHaveBeenCalledWith(now - 3 * 60 * 60 * 1000, expect.any(Function));
+  });
+
+  // The read is capped: info lines (which the digest never shows) are left
+  // out while reading, so a day of them cannot push the problems past it.
+  it('asks the log for problems only', async () => {
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([]);
+    await runDigest({ now: Date.now() });
+    const keep = vi.mocked(serverLogger.entriesSince).mock.calls[0][1]!;
+    expect(keep(entry({ level: 'info' }))).toBe(false);
+    expect(keep(entry({ level: 'warn' }))).toBe(true);
+    expect(keep(entry({ level: 'error' }))).toBe(true);
   });
 });
 

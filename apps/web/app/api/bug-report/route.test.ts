@@ -724,3 +724,14 @@ describe('POST /api/bug-report: a report that did not go out', () => {
     expect(releaseRateLimitHit).not.toHaveBeenCalled();
   });
 });
+
+describe('POST /api/bug-report: "Seen before" history', () => {
+  // The history read is capped: routine info lines are left out while
+  // reading, so they cannot push older occurrences of the error past it.
+  it('asks the log for problems only', async () => {
+    await POST(request({ client: snapshot() }), undefined as never);
+    const keep = vi.mocked(serverLogger.entriesSince).mock.calls.at(-1)![1] as (e: ServerLogEntry) => boolean;
+    expect(keep(serverError({ level: 'info' }))).toBe(false);
+    expect(keep(serverError({ level: 'error' }))).toBe(true);
+  });
+});

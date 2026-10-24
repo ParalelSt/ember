@@ -98,6 +98,30 @@ describe('serverLogger.entriesSince (EMBER_LOG_DIR override)', () => {
     expect(await serverLogger.recentSince(now - 10)).toHaveLength(10);
   }, 30_000);
 
+  // The 20 000 cap used to come before the caller's own filter: a day with
+  // more than that many routine lines (a phone in Android Auto logs plays and
+  // focus changes all day) pushed every older error out, and the digest never
+  // saw the morning's problems.
+  it('filters before it caps, so wanted older entries are not cut off', async () => {
+    const now = Date.now();
+    const errors = Array.from({ length: 100 }, (_, i) => entry({ ts: now - 60_000 - i, level: 'error' }));
+    const routine = Array.from({ length: 30_000 }, (_, i) => entry({ ts: now - i, level: 'info', kind: 'breadcrumb' }));
+    writeFile(fileFor(new Date()), [...errors, ...routine]);
+    const out = await serverLogger.entriesSince(now - 3_600_000, (e) => e.level !== 'info');
+    expect(out).toHaveLength(100);
+    expect(out.every((e) => e.level === 'error')).toBe(true);
+    expect(out[0].ts).toBe(now - 60_000);
+  }, 30_000);
+
+  it('still caps a filtered read at the newest 20000', async () => {
+    const now = Date.now();
+    writeFile(fileFor(new Date()), Array.from({ length: 25_000 }, (_, i) => entry({ ts: now - i })));
+    const out = await serverLogger.entriesSince(now - 3_600_000, (e) => e.level === 'error');
+    expect(out).toHaveLength(20_000);
+    expect(out[0].ts).toBe(now);
+    expect(out[19_999].ts).toBe(now - 19_999);
+  }, 30_000);
+
   it('skips corrupt lines and missing files without throwing', async () => {
     const now = Date.now();
     fs.writeFileSync(
