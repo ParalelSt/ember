@@ -186,3 +186,22 @@ describe('AuthPage email step when something else answers', () => {
     expect(screen.queryByText('Failed to fetch')).toBeNull();
   });
 });
+
+/** Password managers fill and save by these hints. The email and the
+ *  password are on two steps, so without them a manager could neither fill
+ *  a returning member's password nor offer to save (or make) a new one. */
+describe('AuthPage autofill hints', () => {
+  it.each([
+    ['a returning member', 'existing', 'current-password'],
+    ['a new member', 'new', 'new-password'],
+  ])('%s: the email is the username, the password is %s', async (_who, status, hint) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status }), { status: 200 })));
+    nav.search = new URLSearchParams();
+    render(<AuthPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use password instead' }));
+    expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete', 'username');
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b.test' } });
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!);
+    expect(await screen.findByLabelText('Password')).toHaveAttribute('autocomplete', hint);
+  });
+});

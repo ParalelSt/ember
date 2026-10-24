@@ -152,6 +152,7 @@ export default function AuthPage() {
                 <Input
                   id="email"
                   type="email"
+                  autoComplete="username"
                   required
                   autoFocus
                   value={email}
@@ -185,6 +186,7 @@ export default function AuthPage() {
                 <Input
                   id="password"
                   type="password"
+                  autoComplete={stage.mode === 'existing' ? 'current-password' : 'new-password'}
                   required
                   minLength={8}
                   autoFocus
