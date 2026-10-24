@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { api } from './api';
+import { api, NO_ANSWER_MESSAGE } from './api';
 import { logger } from '@/lib/logger/client';
 
 // What req() makes of the answers the routes give: which ones are a fault
@@ -79,8 +79,13 @@ describe('file uploads answer like every other call', () => {
   });
 
   it('a tab upload with no sentence from the server still says one', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>', { status: 502 })));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>', { status: 500 })));
     await expect(api.uploadTabFile(file, { title: 't', artist: 'a' })).rejects.toThrow('That file could not be added.');
+  });
+
+  it('a gateway page in place of the server says it cannot be reached', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>', { status: 502 })));
+    await expect(api.uploadTabFile(file, { title: 't', artist: 'a' })).rejects.toThrow(NO_ANSWER_MESSAGE);
   });
 
   it('sends the form as multipart, with no JSON content type', async () => {

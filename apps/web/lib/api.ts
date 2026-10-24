@@ -5,7 +5,7 @@ import type { CandidatePerson, CollabState, InvitePreview } from '@/lib/collab';
 import { logger } from '@/lib/logger/client';
 import { isPublicPage } from '@/lib/publicPaths';
 import { sessionExpired } from '@/lib/sessionExpired';
-import { connectionOk } from '@/lib/connectionBlip';
+import { GATEWAY_STATUSES, connectionOk } from '@/lib/connectionBlip';
 import { clipSearchQuery } from '@/lib/searchLimits';
 import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
@@ -97,13 +97,24 @@ export const NETWORK_RETRY_DELAYS_MS = [300, 1000];
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** What the error says when something answered in Ember's place (see req). */
+export const NO_ANSWER_MESSAGE = "Can't reach Ember right now. Check your connection.";
+
+/** A body that is not JSON (or never fully arrived). */
+const UNREADABLE = Symbol('unreadable');
+
+const isAbort = (e: unknown, signal?: AbortSignal) =>
+  !!signal?.aborted || (e instanceof Error && e.name === 'AbortError');
+
 async function req<T>(path: string, { method = 'GET', body, signal, expected, background }: ReqOptions = {}): Promise<T> {
   let res: Response;
+  let data: unknown;
   // A FormData body carries its own multipart boundary: setting the header
   // by hand would strip it and the upload would arrive unreadable.
   const form = body instanceof FormData;
   const retryDelays = method === 'GET' || background ? NETWORK_RETRY_DELAYS_MS : [];
   for (let attempt = 0; ; attempt++) {
+    let failure: unknown;
     try {
       res = await fetch(`${API_BASE}/api${path}`, {
         method,
@@ -112,30 +123,43 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected, ba
         credentials: 'include',
         signal,
       });
-      break;
+      data = await res.json().catch((e: unknown) => {
+        if (isAbort(e, signal)) throw e;
+        return UNREADABLE;
+      });
+      // Ember answers every call with JSON. A success that is not JSON (a
+      // Wi-Fi sign-in page answering in its place, a body cut off by a
+      // dropped connection), or a gateway status without it (the Tailscale
+      // Funnel while Next restarts), is no answer from the server: as one
+      // it showed "Unexpected token '<'" in toasts, sent a bug report per
+      // call, and told the offline player the server was back.
+      if (data !== UNREADABLE || !(res.ok || GATEWAY_STATUSES.includes(res.status))) break;
+      failure = new Error(NO_ANSWER_MESSAGE);
     } catch (e) {
-      // Network-level failure (offline, DNS, CORS, a dropped connection), or
-      // the caller aborting, which is never retried. `network` tells
-      // autoReport this is a possible blip, not a fault on its own.
-      const aborted = !!signal?.aborted || (e instanceof Error && e.name === 'AbortError');
-      const data = { method, path, network: !aborted };
-      if (!aborted && attempt < retryDelays.length) {
-        logger.warn('api', `${method} ${path} network error, retrying`, { ...data, attempt: attempt + 1 });
-        await sleep(retryDelays[attempt]);
-        continue;
-      }
-      if (background) {
-        logger.warn('api', `${method} ${path} network error`, { ...data, error: (e as Error)?.message });
-      } else {
-        logger.error('api', `${method} ${path} network error`, data, e as Error);
-      }
-      throw e;
+      failure = e;
     }
+    // Network-level failure (offline, DNS, CORS, a dropped connection, no
+    // answer from Ember), or the caller aborting, which is never retried.
+    // `network` tells autoReport this is a possible blip, not a fault on its
+    // own.
+    const aborted = isAbort(failure, signal);
+    const entry = { method, path, network: !aborted };
+    if (!aborted && attempt < retryDelays.length) {
+      logger.warn('api', `${method} ${path} network error, retrying`, { ...entry, attempt: attempt + 1 });
+      await sleep(retryDelays[attempt]);
+      continue;
+    }
+    if (background) {
+      logger.warn('api', `${method} ${path} network error`, { ...entry, error: (failure as Error)?.message });
+    } else {
+      logger.error('api', `${method} ${path} network error`, entry, failure as Error);
+    }
+    throw failure;
   }
   // Any HTTP answer, even an error status, means the connection is back.
   connectionOk();
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+    const err = (data !== UNREADABLE && data && typeof data === 'object' ? data : { error: res.statusText }) as { error?: string };
     // proxy.ts stamps every response with x-request-id; surfacing it here
     // lets triage line up this client-side entry with the matching
     // server-side withRequestLog entry for the same request.
@@ -166,7 +190,7 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected, ba
     }
     throw error;
   }
-  return (await res.json()) as T;
+  return data as T;
 }
 
 /** Like req, but silent: no client log entry on failure. The target's side
