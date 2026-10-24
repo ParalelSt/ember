@@ -31,6 +31,9 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
   // The launch gate of every native shell (app/api/app/update): asked
   // before anyone can sign in. Only this route under /api/app/.
   '/api/app/update'];
+// Exact paths, not prefixes. /api/version: which version this server runs,
+// for `npm run host-check`; the same number Settings shows.
+const PUBLIC_API_EXACT = new Set(['/api/version']);
 
 /** An upload's audio or cover asked for with a signed cast link (`?st=`):
  *  a Chromecast has no session to send. Let through to the route, which
@@ -257,7 +260,7 @@ export default async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   const isPublicPage = isPublicPath(path);
-  const isPublicApi = (path.startsWith('/api/') && PUBLIC_API_PREFIXES.some((p) => path.startsWith(p)))
+  const isPublicApi = PUBLIC_API_EXACT.has(path) || (path.startsWith('/api/') && PUBLIC_API_PREFIXES.some((p) => path.startsWith(p)))
     || isSignedMediaRequest(path, req.nextUrl.searchParams);
   // /pb/* is the same-origin proxy to PocketBase; it must stay open to anons
   // so the sign-in / sign-up endpoints work before there's a session.
