@@ -13,7 +13,7 @@
 # (`tmux attach -t ember` to see it): started in this terminal, it would
 # stop the moment the SSH window closes (bughunt O2). Without tmux installed
 # it stays in this window, as before, and says how to get tmux. On a host
-# where systemd runs Ember (deploy/ember.service is active), it is restarted
+# where systemd runs Ember (deploy/ember.service is active, or failed: systemd gave up on it), it is restarted
 # through systemd instead, from anywhere (bughunt O6).
 #
 # WHY THIS EXISTS, and not just `git pull && ./start-static.sh`:
@@ -172,8 +172,12 @@ fi
 # Ember has been stopped.
 TMUX_SESSION="ember"
 SYSTEMD_UNIT="ember.service"
+# A unit systemd gave up on (failed) is still the one the host boots with:
+# it is started again through systemd (launch_ember clears the failed state
+# first), not in tmux beside it.
 if [ "$HERE" != 1 ] && command -v systemctl >/dev/null 2>&1 \
-   && systemctl --user is-active --quiet "$SYSTEMD_UNIT" 2>/dev/null; then
+   && { systemctl --user is-active --quiet "$SYSTEMD_UNIT" 2>/dev/null \
+        || systemctl --user is-failed --quiet "$SYSTEMD_UNIT" 2>/dev/null; }; then
   RELAUNCH="systemd"
 elif [ -n "${TMUX:-}" ] || [ -n "${STY:-}" ] || [ "$HERE" = 1 ]; then
   RELAUNCH="here"
