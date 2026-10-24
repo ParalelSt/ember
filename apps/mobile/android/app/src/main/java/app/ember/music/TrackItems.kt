@@ -57,8 +57,14 @@ object TrackItems {
             .setDurationMs(durationMs)
             .setIsBrowsable(false)
             .setIsPlayable(true)
-            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+            .setMediaType(if (isLive(track)) MediaMetadata.MEDIA_TYPE_RADIO_STATION else MediaMetadata.MEDIA_TYPE_MUSIC)
     }
+
+    /** A live radio station (the web app's lib/radio): no length, never a
+     *  play in history or a like, never downloaded ahead. */
+    fun isLive(track: JSONObject?): Boolean = track?.optString("source") == "station"
+
+    fun isLive(item: MediaItem?): Boolean = item != null && isLive(trackOf(item))
 
     fun trackOf(item: MediaItem): JSONObject? =
         item.mediaMetadata.extras?.getString(EXTRA_TRACK)?.let { runCatching { JSONObject(it) }.getOrNull() }

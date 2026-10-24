@@ -11,9 +11,11 @@ import java.io.IOException
  *  we only supply ids, titles, covers and playability. Lists are fetched on
  *  demand, each tab straight from the API the web app already uses.
  *
- *  Four tabs (Android Auto shows at most four): Home (recently played and a
- *  few playlists), Liked songs, Playlists, and Library (recently played,
- *  uploads, and the songs downloaded to the phone). A list longer than
+ *  Five tabs: Home (recently played and a few playlists), Liked songs,
+ *  Playlists, Radio (live stations: nearby, favourites, Croatia) and Library
+ *  (recently played, uploads, and the songs downloaded to the phone). A car
+ *  that shows fewer (Android Auto: four) keeps the first four it always had,
+ *  and Radio moves to the top of Library. A list longer than
  *  [PAGE_SIZE] comes in folders of that many ("Songs 1-100"), which the car
  *  pages through; a tap still plays on through the whole list.
  *
@@ -36,6 +38,9 @@ class BrowseTree(
     /** A line for the top of Home (title, subtitle), or null: an app update
      *  waiting until the car is parked (UpdateRules.carNotice). */
     private val notice: () -> Pair<String, String>? = { null },
+    /** Where the phone is, already rounded (RadioPlaces), or null: Radio >
+     *  Nearby then lists the home country. */
+    private val location: () -> Pair<Double, Double>? = { null },
 ) {
     /** Every track the car has been shown, by id. A tap from a legacy browser
      *  (Android Auto, the car Media Center) hands back only the mediaId, so the
@@ -60,6 +65,19 @@ class BrowseTree(
 
     /** The list the tapped track came from, from that track onward; or just
      *  the track when it was not part of a list we showed. */
+    /** The queue a tap on [mediaId] plays and where in it to start: a song
+     *  plays on from itself (queueFor); a station plays in its whole list,
+     *  so the car's previous button reaches the station above it too. */
+    fun queueAt(mediaId: String): Pair<List<JSONObject>, Int> {
+        val (parent, id) = split(mediaId)
+        if (parent != null && parent in RADIO_LISTS) {
+            val list = synchronized(lists) { lists[parent] }.orEmpty()
+            val i = list.indexOfFirst { it.optString("id") == id }
+            if (i >= 0) return list to i
+        }
+        return queueFor(mediaId) to 0
+    }
+
     fun queueFor(mediaId: String): List<JSONObject> {
         val (parent, id) = split(mediaId)
         val list = parent?.let { synchronized(lists) { lists[it] } }.orEmpty()
@@ -80,6 +98,11 @@ class BrowseTree(
         const val HOME_RECENT = "home-recent"
         const val PLAYLIST_PREFIX = "playlist:"
         const val SEARCH_PREFIX = "search:"
+        const val RADIO = "radio"
+        const val RADIO_NEARBY = "radio-nearby"
+        const val RADIO_FAVORITES = "radio-favorites"
+        const val RADIO_COUNTRY = "radio-country"
+        private val RADIO_LISTS = setOf(RADIO_NEARBY, RADIO_FAVORITES, RADIO_COUNTRY)
         private const val SEP = '|'
         /** "liked~2": the third page of Liked songs. */
         private const val PAGE_SEP = '~'
@@ -102,8 +125,9 @@ class BrowseTree(
         /** The root tabs a car that shows [limit] of them gets (0 or less:
          *  no limit given). */
         fun tabsFor(limit: Int): List<String> {
-            val all = listOf(HOME, LIKED, PLAYLISTS, LIBRARY)
-            return if (limit in 1 until all.size) all.take(limit) else all
+            val all = listOf(HOME, LIKED, PLAYLISTS, RADIO, LIBRARY)
+            if (limit !in 1 until all.size) return all
+            return (all - RADIO).take(limit)
         }
 
         /** Extras that ask the car for list rows or a grid. */
@@ -152,13 +176,24 @@ class BrowseTree(
         return when {
             parentId == ROOT -> tabsFor(rootLimit).map(::tab)
             parentId == HOME -> withNotice(home())
-            parentId == LIBRARY -> listOf(
+            parentId == LIBRARY -> listOfNotNull(
+                // Not a tab of its own on this car: Radio leads Library.
+                if (RADIO in tabsFor(rootLimit)) null else folder(RADIO, "Radio"),
                 folder(RECENT, "Recently played"),
                 folder(UPLOADS, "Uploads"),
                 folder(DOWNLOADS, "On this phone"),
             )
             parentId == DOWNLOADS -> downloadsList()
+            parentId == RADIO -> listOf(
+                folder(RADIO_NEARBY, "Nearby"),
+                folder(RADIO_FAVORITES, "Favourite stations"),
+                folder(RADIO_COUNTRY, "Croatia"),
+            )
             !online() -> offline()
+            parentId == RADIO_NEARBY -> stations(parentId, location()?.let { (la, lo) -> api.radioNearby(la, lo) }
+                ?: api.radioCountry(RadioPlaces.HOME_COUNTRY), "No stations found nearby")
+            parentId == RADIO_FAVORITES -> stations(parentId, api.radioFavorites(), "No favourite stations yet. Add them on the Radio page in the app")
+            parentId == RADIO_COUNTRY -> stations(parentId, api.radioCountry(RadioPlaces.HOME_COUNTRY), "No stations found")
             parentId == PLAYLISTS -> api.playlists().map(::playlistFolder)
             parentId == LIKED -> api.likes().let { list ->
                 onLiked(list.map { it.optString("id") })
@@ -173,6 +208,7 @@ class BrowseTree(
 
     private fun tab(id: String): MediaItem = when (id) {
         HOME -> folder(HOME, "Home")
+        RADIO -> folder(RADIO, "Radio")
         LIKED -> folder(LIKED, "Liked songs")
         PLAYLISTS -> folder(PLAYLISTS, "Playlists", styleExtras(browsable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM))
         else -> folder(LIBRARY, "Library")
@@ -217,6 +253,10 @@ class BrowseTree(
         val seen = HashSet<String>()
         return list.filter { seen.add(it.optString("id")) }
     }
+
+    /** A station list, or the line that says it is empty. */
+    private fun stations(parentId: String, list: List<JSONObject>, empty: String): List<MediaItem> =
+        if (list.isEmpty()) listOf(placeholder(empty)) else tracks(parentId, list, paged = false)
 
     private fun downloadsList(): List<MediaItem> {
         val list = downloads()

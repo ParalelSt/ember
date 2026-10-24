@@ -174,6 +174,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Voice search (EmberSpeechPlugin), asked for on the first mic tap. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Live radio near you: the page's "Use my location" asks for the
+         rough location (about 10 km is all it uses), and the car's
+         Radio > Nearby reads the last one Android knows, only once given.
+         Never the precise location; never asked for by the car. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- "Scan QR code" when Google's scanner is missing (no Play services):
          the page's own scanner asks for the camera on first use. Google's
          scanner itself needs no permission. A camera is not required. -->

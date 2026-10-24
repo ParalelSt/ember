@@ -145,7 +145,10 @@ class EmberPlaybackService : MediaLibraryService() {
         fun policyTrack(item: MediaItem): AutoCachePolicy.Track {
             val json = TrackItems.trackOf(item)
             fun str(k: String) = json?.takeIf { it.has(k) && !it.isNull(k) }?.optString(k)?.takeIf { it.isNotEmpty() }
-            val stream = if (json == null || str("streamUrl") != null) item.localConfiguration?.uri?.toString() else null
+            // A live station has no end to download to: no address, so the
+            // policy passes it over.
+            val stream = if (TrackItems.isLive(json)) null
+                else if (json == null || str("streamUrl") != null) item.localConfiguration?.uri?.toString() else null
             return AutoCachePolicy.Track(item.mediaId, stream, str("unavailableAt"))
         }
 
@@ -305,6 +308,7 @@ class EmberPlaybackService : MediaLibraryService() {
             online = ::online,
             onLiked = { ids -> handler.post { liked.replace(ids); refreshButtons() } },
             notice = { UpdateRules.carNotice(AppUpdater.isReady(), AppUpdater.installsSilently()) },
+            location = { RadioPlaces.lastKnown(this) },
         )
         // Streams go through the same OkHttp client, so they carry the cookie
         // and get the same 401 retry as the JSON calls. Every byte they bring
@@ -450,7 +454,9 @@ class EmberPlaybackService : MediaLibraryService() {
     private fun refreshButtons() {
         if (!::session.isInitialized) return
         val p = active
-        val state = Triple(liked.isLiked(p.currentMediaItem?.mediaId), shuffle.on, p.repeatMode)
+        // A live station is not a song: no heart for it.
+        val heart = p.currentMediaItem?.takeIf { !TrackItems.isLive(it) }?.let { liked.isLiked(it.mediaId) }
+        val state = Triple(heart, shuffle.on, p.repeatMode)
         if (state == lastButtons) return
         lastButtons = state
         session.setCustomLayout(ImmutableList.copyOf(CarButtons.layout(state.first, state.second, state.third)))
@@ -510,6 +516,7 @@ class EmberPlaybackService : MediaLibraryService() {
     private fun toggleLike(): SessionResult {
         val item = active.currentMediaItem ?: return SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE)
         val track = TrackItems.trackOf(item) ?: return SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE)
+        if (TrackItems.isLive(track)) return SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED)
         val id = item.mediaId
         val was = liked.isLiked(id) ?: return SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)
         liked.set(id, !was)
@@ -1303,14 +1310,17 @@ class EmberPlaybackService : MediaLibraryService() {
             }
             val query = items.singleOrNull()?.requestMetadata?.searchQuery
             if (!mine && query != null) return voiceSearch(query, controller)
+            var start = startIndex
             val resolved: List<MediaItem> =
-                if (items.size == 1 && items[0].localConfiguration == null && TrackItems.trackOf(items[0]) == null)
-                    tree.queueFor(items[0].mediaId).map { TrackItems.toMediaItem(it, api.baseUrl, artAuthority) }
-                else items.mapNotNull(::resolve)
+                if (items.size == 1 && items[0].localConfiguration == null && TrackItems.trackOf(items[0]) == null) {
+                    val (list, at) = tree.queueAt(items[0].mediaId)
+                    start = at
+                    list.map { TrackItems.toMediaItem(it, api.baseUrl, artAuthority) }
+                } else items.mapNotNull(::resolve)
             Log.i(TAG, "set ${items.size} item(s) from ${controller.packageName} -> queue of ${resolved.size}")
             playbackLog.info("queue.set", "queue of ${resolved.size} from ${controller.packageName}",
                 org.json.JSONObject().put("caller", controller.packageName).put("count", resolved.size))
-            return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(resolved, startIndex.coerceIn(0, maxOf(0, resolved.size - 1)), startPositionMs))
+            return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(resolved, start.coerceIn(0, maxOf(0, resolved.size - 1)), startPositionMs))
         }
 
         /** "Play <song> on Ember" (the Assistant, the car's voice button):

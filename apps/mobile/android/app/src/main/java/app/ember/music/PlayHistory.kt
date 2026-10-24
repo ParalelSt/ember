@@ -174,7 +174,10 @@ class PlayHistory(private val max: Int = MAX) {
         if (player.mediaItemCount == 0) return
         val queue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
         val index = player.currentMediaItemIndex
-        when (val move = previous(queue, index, player.currentPosition)) {
+        // A live station has no start to go back to: Previous always means
+        // the station before it.
+        val position = if (TrackItems.isLive(player.currentMediaItem)) 0L else player.currentPosition
+        when (val move = previous(queue, index, position)) {
             Move.Restart -> player.seekTo(0)
             is Move.To -> {
                 goingBackTo = queue[move.index]

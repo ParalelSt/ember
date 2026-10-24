@@ -35,8 +35,9 @@ class BrowseTreeCarTest {
 
     @Test fun `a car that shows fewer tabs gets the first ones`() {
         assertEquals(listOf(BrowseTree.HOME, BrowseTree.LIKED), BrowseTree.tabsFor(2))
-        assertEquals(4, BrowseTree.tabsFor(0).size)
-        assertEquals(4, BrowseTree.tabsFor(9).size)
+        // No limit, or room for all: Radio is a tab too (RadioCarTest).
+        assertEquals(5, BrowseTree.tabsFor(0).size)
+        assertEquals(5, BrowseTree.tabsFor(9).size)
         val tree = BrowseTree(api)
         assertEquals(listOf(BrowseTree.HOME, BrowseTree.LIKED, BrowseTree.PLAYLISTS), tree.children(BrowseTree.ROOT, rootLimit = 3).map { it.mediaId })
     }

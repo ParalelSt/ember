@@ -18,7 +18,8 @@ class BrowseTreeTest {
         server.enqueue(MockResponse().setBody("""{"playlist":{"id":"p1","name":"Road"},"tracks":[{"id":"youtube:a","title":"A","artist":"X","streamUrl":"/api/youtube/stream/a"}]}"""))
         server.start()
         val tree = BrowseTree(ServerApi(server.url("/").toString().trimEnd('/')) { "pb_auth=x" })
-        val root = tree.children(BrowseTree.ROOT).map { it.mediaId }
+        // Android Auto shows four tabs (a car with room for more also gets Radio, RadioCarTest).
+        val root = tree.children(BrowseTree.ROOT, rootLimit = 4).map { it.mediaId }
         assertEquals(listOf(BrowseTree.HOME, BrowseTree.LIKED, BrowseTree.PLAYLISTS, BrowseTree.LIBRARY), root)
         assertTrue(tree.children(BrowseTree.ROOT).all { it.mediaMetadata.isBrowsable == true })
         val playlists = tree.children(BrowseTree.PLAYLISTS)

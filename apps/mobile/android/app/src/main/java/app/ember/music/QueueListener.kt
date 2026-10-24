@@ -88,6 +88,9 @@ class QueueListener(
         val track = TrackItems.trackOf(item) ?: return
         unheard = null
         lastHeard.id = item.mediaId
+        // A live station is not a song: never a play in history (the
+        // server refuses one anyway), and radio has nothing to add after it.
+        if (TrackItems.isLive(track)) return
         recordPlay(track)
         extendQueue()
     }
