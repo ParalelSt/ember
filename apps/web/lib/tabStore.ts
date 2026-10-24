@@ -287,15 +287,26 @@ export async function addedByNames(pb: PocketBase, rows: RecordModel[]): Promise
   return names;
 }
 
-/** Before a member is deleted: their private tabs go, row and files, since
+/** Deletes a member. Their private tabs go too, row and files, since
  *  nobody else could ever open them. Shared tabs stay for everyone and just
- *  stop naming them (the relation is optional, bughunt X10). */
-export async function deletePrivateTabs(pb: PocketBase, userId: string): Promise<number> {
+ *  stop naming them (the relation is optional, bughunt X10). The private
+ *  ones are listed first (the delete empties their user link) but removed
+ *  only once the member is gone, so a delete that fails leaves the member
+ *  their tabs. Returns how many private tabs went. */
+export async function deleteMember(pb: PocketBase, userId: string): Promise<number> {
   const rows = await pb.collection('tabs').getFullList({
     filter: pb.filter('user = {:id} && shared = false', { id: userId }),
   });
+  await pb.collection('users').delete(userId);
   for (const row of rows) {
-    await pb.collection('tabs').delete(row.id);
+    // The member is gone either way: one tab that will not go is logged,
+    // not a failed delete (a retry would only find no such member).
+    try {
+      await pb.collection('tabs').delete(row.id);
+    } catch (err) {
+      serverLogger.error('api', 'private tab delete failed', { id: row.id }, err);
+      continue;
+    }
     for (const full of rowPaths(row)) {
       await fs.unlink(full).catch((err) => {
         serverLogger.error('api', 'tab file delete failed', { path: full }, err);

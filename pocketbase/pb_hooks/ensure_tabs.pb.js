@@ -46,7 +46,7 @@
 //
 // A tab outlives the member who added it: shared tabs are for everyone, so
 // deleting the member only empties `user` (no cascade). Their private tabs
-// are removed, files and all, by the admin delete route (deletePrivateTabs).
+// are removed, files and all, by the admin delete route (deleteMember).
 
 onAfterBootstrap((e) => {
   // Everything lives inside the handler: PocketBase runs each handler in an
