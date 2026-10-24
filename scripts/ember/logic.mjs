@@ -69,7 +69,9 @@ export const SECRET_PATTERNS = [
   ['Discord webhook URL', /discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]{20,}/],
   ['Discord bot token', /\b[MN][\w-]{23,25}\.[\w-]{6}\.[\w-]{27,40}\b/],
   ['private key', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/],
-  ['password in a setting', /(PASSWORD|_SECRET|_TOKEN|KEYSTORE_PASS\w*)\s*[=:]\s*["']?[^\s"'$<>{}]{8,}/],
+  // A value read from somewhere else (env.X, process.env.X) or an obvious
+  // stand-in (fake, example, placeholder) is not a password.
+  ['password in a setting', /(PASSWORD|_SECRET|_TOKEN|KEYSTORE_PASS\w*)\s*[=:]\s*["']?(?!(?:process\.)?env\.|[\w-]*(?:fake|example|placeholder))[^\s"'$<>{}]{8,}/],
   ['GitHub token', /\bgh[pousr]_[A-Za-z0-9]{30,}\b/],
   ['Anthropic or OpenAI key', /\bsk-(?:ant-)?[A-Za-z0-9_-]{20,}\b/],
 ];

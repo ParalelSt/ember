@@ -80,6 +80,17 @@ test('notes-draft: fixes and features become bullets the release accepts', () =>
   assert.deepEqual(notesProblems(notes, []), []);
 });
 
+test('pre-push: a password read from a setting, or a fake one, is not a secret', () => {
+  const diff = [
+    '+++ b/scripts/ember/sandbox.mjs',
+    '+      POCKETBASE_ADMIN_PASSWORD: env.POCKETBASE_ADMIN_PASSWORD,',
+    "+      GITHUB_RELEASES_TOKEN: 'sandbox-fake',",
+    '+const t = { DISCORD_TOKEN: process.env.DISCORD_TOKEN };',
+    "+      API_TOKEN: 'realLookingValue123',",
+  ].join('\n');
+  assert.deepEqual(scanAddedLines(diff), ['scripts/ember/sandbox.mjs: looks like a password in a setting']);
+});
+
 test('pre-push: secrets, em dashes and pranks in What\'s new are caught', () => {
   const diff = [
     '+++ b/apps/web/lib/x.ts',
