@@ -447,3 +447,42 @@ describe('Skip from several phones', () => {
     expect((await skipAs('u3')).status).toBe(201);
   });
 });
+
+describe('limits on starting carlists and adding songs', () => {
+  it('a guest adding 20 songs in a minute is never refused, but a flood is', async () => {
+    db.session_members.push({ id: 'm2', session: 's1', user: 'u2' });
+    caller.id = 'u2';
+    const POST = await addRoute();
+    for (let i = 0; i < 20; i++) expect((await POST(req({ track: newTrack }), ctx)).status).toBe(201);
+    let refused: Response | null = null;
+    for (let i = 0; i < 100 && !refused; i++) {
+      const res = await POST(req({ track: newTrack }), ctx);
+      if (res.status === 429) refused = res;
+    }
+    expect(refused?.headers.get('Retry-After')).toBeTruthy();
+    // Per person: the host still adds.
+    caller.id = 'u1';
+    expect((await POST(req({ track: newTrack }), ctx)).status).toBe(201);
+  });
+
+  it('starting carlists over and over is refused after a while', async () => {
+    const POST = await handler(import('./route'));
+    const statuses: number[] = [];
+    for (let i = 0; i < 40; i++) statuses.push((await POST(req({ name: `Trip ${i}` }))).status);
+    expect(statuses.slice(0, 5)).toEqual([201, 201, 201, 201, 201]);
+    expect(statuses).toContain(429);
+  });
+
+  it('a carlist name longer than the start dialog allows (120) is refused, not stored', async () => {
+    const POST = await handler(import('./route'));
+    const before = db.sessions.length;
+    expect((await POST(req({ name: 'x'.repeat(121) }))).status).toBe(400);
+    expect(db.sessions.length).toBe(before);
+    expect((await POST(req({ name: 'x'.repeat(120) }))).status).toBe(201);
+  });
+
+  it('saving the queue as a playlist keeps the playlist name cap (200)', async () => {
+    const POST = await handler(import('./[id]/save/route'));
+    expect((await POST(req({ name: 'x'.repeat(201) }), ctx)).status).toBe(400);
+  });
+});
