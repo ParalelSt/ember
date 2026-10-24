@@ -6,7 +6,7 @@ import {
 } from "@/lib/auth";
 import { serverLogger } from "@/lib/logger/server";
 import type { ClientSnapshot, ReportContext } from "@/lib/logger/types";
-import { rateLimitResponse } from "@/lib/rateLimit";
+import { rateLimitResponse, releaseRateLimitHit } from "@/lib/rateLimit";
 import { formatSeenBefore, triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
@@ -135,6 +135,14 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       ? rateLimitResponse(`bug-report:auto:${user.id}`, { windowMs: 60 * 60 * 1000, max: 3 })
       : rateLimitResponse(`bug-report:${user.id}`, { windowMs: 30 * 1000, max: 1 });
     if (limited) return limited;
+    // A person whose report Discord did not take is told to try again: give
+    // the try back, or that try met the 30 s limit (as requests does). An
+    // automatic report keeps it spent: each try costs a model call, and its
+    // hourly cap must hold while Discord is away.
+    const notSent = (res: Response): Response => {
+      if (!automatic) releaseRateLimitHit(`bug-report:${user.id}`);
+      return res;
+    };
 
     // Checked before the webhook itself: a sandbox with no webhook of its
     // own has nowhere to send a test account's report anyway, so this skips
@@ -356,13 +364,13 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     }
     if (discordRes.status === DISCORD_UNREACHABLE) {
       serverLogger.error("api", "bug-report: Discord unreachable", { detail: failText.slice(0, 200) });
-      return jsonError("Couldn't reach Discord, please try again", 502);
+      return notSent(jsonError("Couldn't reach Discord, please try again", 502));
     }
     if (!discordRes.ok) {
-      return jsonError(
+      return notSent(jsonError(
         `Discord rejected the report (${discordRes.status}): ${failText.slice(0, 200)}`,
         502,
-      );
+      ));
     }
 
     // The reporter sees the diagnosis too, it tells them their report was

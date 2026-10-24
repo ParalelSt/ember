@@ -20,7 +20,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 // vi.fn() (not a plain arrow) so tests below can assert on call args/keys:
 // vi.mocked() needs a real mock function, not just something shaped like one.
-vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: vi.fn(() => null) }));
+vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: vi.fn(() => null), releaseRateLimitHit: vi.fn() }));
 vi.mock('@/lib/logger/server', () => ({
   serverLogger: { recentSince: vi.fn(async () => []), entriesSince: vi.fn(async () => []), error: vi.fn() },
 }));
@@ -44,7 +44,7 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
 
 const { POST } = await import('./route');
 const { serverLogger } = await import('@/lib/logger/server');
-const { rateLimitResponse } = await import('@/lib/rateLimit');
+const { rateLimitResponse, releaseRateLimitHit } = await import('@/lib/rateLimit');
 const { triageBugReport } = await import('@/lib/ai/triage');
 
 /** The Discord embed the route built (parsed out of the multipart payload). */
@@ -105,6 +105,7 @@ beforeEach(() => {
   vi.mocked(serverLogger.recentSince).mockResolvedValue([]);
   vi.mocked(serverLogger.entriesSince).mockResolvedValue([]);
   vi.mocked(rateLimitResponse).mockReturnValue(null);
+  vi.mocked(releaseRateLimitHit).mockClear();
   vi.mocked(triageBugReport).mockResolvedValue(null);
 });
 
@@ -690,5 +691,36 @@ describe('POST /api/bug-report: Discord unreachable', () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Couldn't reach Discord, please try again");
     expect(body.error).not.toContain('fetch failed');
+  });
+});
+
+describe('POST /api/bug-report: a report that did not go out', () => {
+  // It said "please try again", and a try within 30 s met the one-a-30-s
+  // limit the failed send had used up (requests already gives its try back).
+  it('gives a person their try back when Discord did not take the report', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(502);
+    expect(releaseRateLimitHit).toHaveBeenCalledWith('bug-report:u1');
+  });
+
+  it('also when Discord refused it', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => 'oops' });
+    await POST(request({ client: snapshot() }), undefined as never);
+    expect(releaseRateLimitHit).toHaveBeenCalledWith('bug-report:u1');
+  });
+
+  it('keeps the try spent once the report went out', async () => {
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(200);
+    expect(releaseRateLimitHit).not.toHaveBeenCalled();
+  });
+
+  // Each automatic try costs a model call: their hourly cap stays the cap
+  // while Discord is away.
+  it('keeps an automatic report\'s try spent either way', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    await POST(request({ client: snapshot(), automatic: true }), undefined as never);
+    expect(releaseRateLimitHit).not.toHaveBeenCalled();
   });
 });
