@@ -177,7 +177,7 @@ impl OutputBackend for Mock {
 }
 
 fn router_on(mock: &Mock, trust_absence: bool) -> (Mixer, OutputRouter) {
-    start(Box::new(mock.clone()), RouterConfig { poll: None, trust_absence }).expect("the router starts")
+    start(Box::new(mock.clone()), RouterConfig { poll: None, trust_absence, server_retry: None }).expect("the router starts")
 }
 
 /// Records every snapshot the listener is told.
@@ -556,7 +556,7 @@ fn the_stored_choice_is_applied_at_launch_when_present_and_waited_for_when_not()
 #[test]
 fn no_device_at_all_fails_the_start() {
     let mock = Mock::new(&[]);
-    assert!(start(Box::new(mock), RouterConfig { poll: None, trust_absence: true }).is_err());
+    assert!(start(Box::new(mock), RouterConfig { poll: None, trust_absence: true, server_retry: None }).is_err());
 }
 
 // --- Persistence ---------------------------------------------------------------
@@ -635,7 +635,7 @@ fn the_commands_are_registered_and_allowed() {
 use super::server::{stream_env, ServerFirst, SoundServer, SERVER_ID};
 
 /// How the router runs on Linux (see `RouterConfig::for_this_os`).
-const LINUX: RouterConfig = RouterConfig { poll: None, trust_absence: false };
+const LINUX: RouterConfig = RouterConfig { poll: None, trust_absence: false, server_retry: None };
 
 /// A sound server that is up or down. A stream on it is the test pulling
 /// from the tap, as with `Mock`.
@@ -674,6 +674,10 @@ impl FakeServer {
 }
 
 impl SoundServer for FakeServer {
+    fn probe(&self) -> bool {
+        !self.down.load(Ordering::SeqCst)
+    }
+
     fn open(&self, tap: Tap, on_lost: OnLost) -> Result<Box<dyn std::any::Any>, (String, Tap, OnLost)> {
         if self.down.load(Ordering::SeqCst) {
             return Err(("Connection refused".to_string(), tap, on_lost));
@@ -761,6 +765,73 @@ fn a_dropped_sound_server_connection_moves_to_alsa() {
     server.drop_out();
     router.tick_now();
     assert_eq!(actives(&seen).last().cloned().flatten().as_deref(), Some("default"));
+}
+
+/// A .deb user's report: Ember played on the laptop speaker instead of the
+/// output the desktop had chosen. Once the sound server could not be reached
+/// (Ember started before it, or it restarted), Ember fell back to ALSA and
+/// stayed there for good: Linux does not poll the devices. The router now
+/// checks every `server_retry` whether the server is back, and moves to it
+/// when the next song starts, never in the middle of one.
+#[test]
+fn a_sound_server_that_comes_back_is_used_again_from_the_next_song() {
+    let alsa = Mock::new(&[("default", true)]);
+    let server = FakeServer::down();
+    let (_mixer, router) = start(Box::new(server_first(Some(&server), &alsa)), LINUX).unwrap();
+    let seen = listen(&router);
+    router.recheck_now();
+    router.song_boundary();
+    assert_eq!(router.list().unwrap().active.as_deref(), Some("default"), "still down: stays on ALSA");
+    let alsa_opens = alsa.opens();
+
+    server.down.store(false, Ordering::SeqCst);
+    router.recheck_now();
+    assert_eq!(server.opens(), 0, "the check alone moves nothing mid-song");
+    router.song_boundary();
+    router.tick_now();
+    assert_eq!(actives(&seen).last().cloned().flatten().as_deref(), Some(SERVER_ID));
+    assert_eq!(server.opens(), 1);
+    assert_eq!(alsa.opens(), alsa_opens, "ALSA was not reopened on the way");
+
+    // Back on the server, the next song changes nothing.
+    router.recheck_now();
+    router.song_boundary();
+    router.tick_now();
+    assert_eq!(server.opens(), 1);
+}
+
+/// An ALSA device the listener picked is not a fallback: it stays.
+#[test]
+fn a_chosen_alsa_device_is_not_moved_to_the_sound_server() {
+    let alsa = Mock::new(&[("default", true), ("HDA Intel PCH", false)]);
+    let server = FakeServer::default();
+    let (_mixer, router) = start(Box::new(server_first(Some(&server), &alsa)), LINUX).unwrap();
+    router.set(Some("HDA Intel PCH".into())).unwrap();
+    router.recheck_now();
+    router.song_boundary();
+    assert_eq!(router.list().unwrap().active.as_deref(), Some("HDA Intel PCH"));
+    assert_eq!(server.opens(), 1, "only the launch open");
+}
+
+/// The engine tells the router when the webview starts a song, and only
+/// then: its own re-opens (a seek back, a stall retry) are mid-song.
+#[test]
+fn a_song_the_webview_loads_is_the_boundary() {
+    let audio = include_str!("../audio.rs");
+    let load = &audio[audio.find("pub async fn audio_load").unwrap()..];
+    let load = &load[..load.find("\n}\n").or_else(|| load.find("\r\n}\r\n")).unwrap()];
+    assert!(load.contains("song_boundary()"));
+    assert_eq!(audio.matches("song_boundary()").count(), 1, "only audio_load marks a boundary");
+}
+
+#[test]
+fn only_linux_checks_for_the_sound_server() {
+    let retry = RouterConfig::for_this_os().server_retry;
+    if cfg!(target_os = "linux") {
+        assert_eq!(retry, Some(Duration::from_secs(30)));
+    } else {
+        assert_eq!(retry, None);
+    }
 }
 
 #[test]

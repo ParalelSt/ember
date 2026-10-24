@@ -1608,6 +1608,11 @@ pub async fn audio_load<R: Runtime>(
     }
     // A song the webview asks for gets its own native retry after a stall.
     engine.stall_retried.store(false, Ordering::SeqCst);
+    // Between songs: where the output router may move back to the sound
+    // server (src/output.rs). Not the engine's own re-opens, which are mid-song.
+    if let Some(router) = engine.outputs() {
+        router.song_boundary();
+    }
     load_track(&app, engine.inner(), url, autoplay, start_at, cookie, cache_key).await
 }
 
