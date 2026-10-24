@@ -63,6 +63,10 @@ export function Artwork({
           src={src}
           alt={alt}
           loading={loading}
+          // Covers come from other sites (YouTube, a radio station's own
+          // logo): none of them is told which page, or which Ember host,
+          // shows it.
+          referrerPolicy="no-referrer"
           className={cn('absolute inset-0 h-full w-full object-cover', imgClassName)}
         />
       ) : (

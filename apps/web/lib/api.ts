@@ -10,6 +10,7 @@ import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/google/flows';
 import type { TabSummary } from '@/lib/tabSources';
+import type { RadioStation } from '@/lib/radio/station';
 import type { NativeDevice } from '@/lib/logger/nativeLog';
 import type { NativeSurface } from '@/lib/logger/types';
 import type { TabTiming } from '@/lib/tabSync';
@@ -398,6 +399,17 @@ export const api = {
     req<{ ok: true }>('/recent-searches', { method: 'POST', body: { track } }),
   removeRecentSearch: (trackId: string) =>
     req<{ ok: true }>(`/recent-searches/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
+  //, Live radio (lib/radio): Radio Browser's stations through the host.
+  /** Stations near a point; the caller rounds it first (radioCoords). */
+  radioNearby: (lat: number, lng: number) =>
+    req<{ stations: RadioStation[] }>(`/radio/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`),
+  radioCountry: (code: string) => req<{ stations: RadioStation[] }>(`/radio/country?code=${encodeURIComponent(code)}`),
+  radioSearch: (q: string) => req<{ stations: RadioStation[] }>(`/radio/search?q=${encodeURIComponent(q)}`),
+  radioFavorites: () => req<{ stations: RadioStation[] }>('/radio/favorites'),
+  addRadioFavorite: (id: string) =>
+    req<{ station: RadioStation }>('/radio/favorites', { method: 'POST', body: { id } }),
+  removeRadioFavorite: (id: string) =>
+    req<{ ok: true }>(`/radio/favorites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /** What other members played in the last ~30 min (newest per user). */
   listening: () =>
     req<{ items: { userName: string; playedAt: string; track: Track }[] }>('/listening'),

@@ -39,6 +39,17 @@ export function stationStreamPath(id: string): string {
   return `/api/radio/stream/${id}`;
 }
 
+/** ~0.1 degree (about 10 km): enough for "near me", too coarse to say where
+ *  someone lives, and it lets everyone in a town share one cached list. The
+ *  app rounds before it asks; the server rounds again whatever it is sent. */
+export function roundCoord(v: number): number {
+  return Math.round(v * 10) / 10;
+}
+
+/** The country whose stations stand in for Nearby when the listener has
+ *  not shared where they are (the owner's). */
+export const RADIO_HOME_COUNTRY = 'HR';
+
 /** A live station rather than a song: no length, no seeking, nothing to
  *  like, add to a playlist or record as a play. */
 export function isLiveTrack(track: Pick<Track, 'source'> | null | undefined): boolean {

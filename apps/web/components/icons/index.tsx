@@ -97,4 +97,7 @@ export {
   ScanQrCode as ScanQrIcon,
   // The approve sheet: a tablet asking to sign in.
   Tablet as TabletIcon,
+  // Live radio (the Radio page, a station with no logo).
+  Radio as RadioIcon,
+  LocateFixed as LocateIcon,
 } from 'lucide-react';

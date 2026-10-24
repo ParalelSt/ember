@@ -1,6 +1,6 @@
 import 'server-only';
 import { createRadioBrowser, type RadioBrowser, type RawStation } from '@/lib/radio/radioBrowser';
-import { isStationId, stationTrack, type RadioStation } from '@/lib/radio/station';
+import { isStationId, roundCoord, stationTrack, type RadioStation } from '@/lib/radio/station';
 
 /** The radio lists the routes serve, cached here for hours: Radio Browser is
  *  run by volunteers and asks apps not to hammer it, and a station list
@@ -30,11 +30,7 @@ const PLAYABLE_CODECS = new Set(['MP3', 'AAC', 'AAC+', 'OGG', 'OPUS']);
 const str = (v: unknown, max = 200): string => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
 
-/** ~0.1 degree (about 10 km): enough for "near me", too coarse to say where
- *  someone lives, and it lets everyone in a town share one cached list. */
-export function roundCoord(v: number): number {
-  return Math.round(v * 10) / 10;
-}
+export { roundCoord };
 
 function httpUrl(raw: unknown): string | null {
   const s = str(raw, 2_000);

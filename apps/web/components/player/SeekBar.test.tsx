@@ -116,3 +116,19 @@ describe('SeekBar', () => {
     expect(slider()).toHaveAttribute('aria-valuetext', '1:30 of 2:00');
   });
 });
+
+describe('PlayheadSeekBar for a live radio station', () => {
+  it('shows LIVE where the bar would be, with nothing to seek', async () => {
+    const { PlayheadSeekBar } = await import('./SeekBar');
+    const onSeek = vi.fn();
+    const { container } = render(<PlayheadSeekBar live duration={0} onSeek={onSeek} labels="inline" />);
+    expect(screen.getByTestId('live-badge').textContent).toBe('Live');
+    expect(container.querySelector('input[type="range"]')).toBeNull();
+  });
+
+  it('leaves the phone bar\'s bare strip empty', async () => {
+    const { PlayheadSeekBar } = await import('./SeekBar');
+    const { container } = render(<PlayheadSeekBar live duration={0} onSeek={vi.fn()} />);
+    expect(container.innerHTML).toBe('');
+  });
+});
