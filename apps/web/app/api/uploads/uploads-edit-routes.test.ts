@@ -169,6 +169,28 @@ describe('POST /api/uploads/[id]/cover', () => {
     expect(store.rows.get('uploads')!.find((r) => r.id === 'up2')).toMatchObject({ artwork_ext: 'png', artwork_v: 1 });
   });
 
+  it('keeps the old cover when the record cannot be saved, and drops the new file', async () => {
+    fs.writeFileSync(path.join(UPLOAD_DIR, 'up2.jpg'), JPEG);
+    const uploads = store.pb.collection('uploads');
+    const pb = store.pb;
+    store = {
+      ...store,
+      pb: {
+        ...pb,
+        collection: (name: string) =>
+          name === 'uploads'
+            ? { ...uploads, update: async () => Promise.reject(Object.assign(new Error('PocketBase is restarting'), { status: 0 })) }
+            : pb.collection(name),
+      } as typeof pb,
+    };
+    const res = await postCover('up2', new File([PNG], 'c.png', { type: 'image/png' }));
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    // The record still says jpg, so the jpg must still be there.
+    expect(store.rows.get('uploads')!.find((r) => r.id === 'up2')!.artwork_ext).toBe('jpg');
+    expect(fs.readFileSync(path.join(UPLOAD_DIR, 'up2.jpg')).equals(JPEG)).toBe(true);
+    expect(fs.existsSync(path.join(UPLOAD_DIR, 'up2.png'))).toBe(false);
+  });
+
   it('checks the bytes, not the claimed type: a GIF or text is a 415', async () => {
     const gif = Buffer.from('GIF89a......');
     expect((await postCover('up1', new File([gif], 'c.jpg', { type: 'image/jpeg' }))).status).toBe(415);

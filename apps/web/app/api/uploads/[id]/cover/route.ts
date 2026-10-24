@@ -53,9 +53,19 @@ export const POST = withRequestLog('uploads/[id]/cover', async (request: Request
     if (!ext) return jsonError('A cover must be a JPEG or PNG image', 415);
 
     const oldExt = String(own.row.artwork_ext ?? '');
-    if (!(await writeUploadCover(own.row.id, ext, data, oldExt))) return jsonError('Could not store the cover', 500);
+    if (!(await writeUploadCover(own.row.id, ext, data))) return jsonError('Could not store the cover', 500);
 
-    const updated = await pb.collection('uploads').update(own.row.id, { artwork_ext: ext, artwork_v: nextVersion(own.row) });
+    // File first, record second, old file last: until the record is saved
+    // it still points at the old cover, which must stay until then.
+    const changed = oldExt !== ext;
+    const updated = await pb
+      .collection('uploads')
+      .update(own.row.id, { artwork_ext: ext, artwork_v: nextVersion(own.row) })
+      .catch(async (e) => {
+        if (changed) await deleteUploadCover(own.row.id, ext);
+        throw e;
+      });
+    if (changed && oldExt) await deleteUploadCover(own.row.id, oldExt);
     await syncCatalogUpload(pb, updated);
     return Response.json({ upload: mapMyUpload(updated) });
   } catch (e) {

@@ -132,12 +132,12 @@ export function sniffCoverImage(buf: Buffer): 'jpg' | 'png' | null {
 
 /** Writes a cover a member picked in Settings > Uploads, in the same place
  *  and under the same name as an extracted one (`<id>.<ext>` beside the
- *  audio), and removes the old file when the format changed. Returns false
- *  when the path will not resolve; a failed write throws. */
-export async function writeUploadCover(id: string, ext: 'jpg' | 'png', data: Buffer, oldExt: string): Promise<boolean> {
+ *  audio). An old file in the other format is the caller's to remove, once
+ *  the record points at the new one. Returns false when the path will not
+ *  resolve; a failed write throws. */
+export async function writeUploadCover(id: string, ext: 'jpg' | 'png', data: Buffer): Promise<boolean> {
   const full = resolveUploadPath(coverFilename(id, ext));
   if (!full) return false;
   await fs.writeFile(full, data);
-  if (oldExt && oldExt !== ext) await deleteUploadCover(id, oldExt);
   return true;
 }

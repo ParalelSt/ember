@@ -185,18 +185,18 @@ describe('sniffCoverImage', () => {
 
 describe('writeUploadCover', () => {
   it('writes <id>.<ext> beside the audio, where the art route reads it', async () => {
-    expect(await writeUploadCover('rec9', 'jpg', tinyJpeg(), '')).toBe(true);
+    expect(await writeUploadCover('rec9', 'jpg', tinyJpeg())).toBe(true);
     expect(fs.readFileSync(path.join(UPLOAD_DIR, 'rec9.jpg')).equals(tinyJpeg())).toBe(true);
   });
 
-  it('removes the old file when the format changes', async () => {
+  it('leaves an old file in the other format alone (the route removes it once the record is saved)', async () => {
     fs.writeFileSync(path.join(UPLOAD_DIR, 'rec9.jpg'), tinyJpeg());
-    await writeUploadCover('rec9', 'png', tinyPng(), 'jpg');
-    expect(fs.existsSync(path.join(UPLOAD_DIR, 'rec9.jpg'))).toBe(false);
+    await writeUploadCover('rec9', 'png', tinyPng());
+    expect(fs.existsSync(path.join(UPLOAD_DIR, 'rec9.jpg'))).toBe(true);
     expect(fs.existsSync(path.join(UPLOAD_DIR, 'rec9.png'))).toBe(true);
   });
 
   it('refuses an id that would escape the uploads directory', async () => {
-    expect(await writeUploadCover('../escape', 'jpg', tinyJpeg(), '')).toBe(false);
+    expect(await writeUploadCover('../escape', 'jpg', tinyJpeg())).toBe(false);
   });
 });
