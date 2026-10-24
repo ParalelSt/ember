@@ -500,7 +500,8 @@ fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
 #[cfg(test)]
 mod packaging_tests;
 
-#[cfg(test)]
+// Uses tauri's mock app, which is not built on Windows (see Cargo.toml).
+#[cfg(all(test, not(windows)))]
 mod version_tests;
 
 #[cfg(test)]
