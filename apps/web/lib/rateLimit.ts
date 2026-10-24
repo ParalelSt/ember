@@ -25,6 +25,14 @@ export async function callerKey(request: Request): Promise<string> {
   return `ip:${clientIp(request)}`;
 }
 
+/** The wait in the 429 sentence: "30s" under a minute, else whole minutes
+ *  rounded up, so an hourly limit does not read "about 3412s". */
+function waitWords(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  const mins = Math.ceil(sec / 60);
+  return mins === 1 ? '1 minute' : `${mins} minutes`;
+}
+
 /** Convenience helper for routes, returns a Response if the caller is over
  *  the limit, otherwise null so the handler continues. */
 export function rateLimitResponse(
@@ -35,7 +43,7 @@ export function rateLimitResponse(
   const r = checkRateLimit(key, cfg, opts);
   if (r.ok) return null;
   return Response.json(
-    { error: `Slow down, try again in about ${r.retryAfter}s.` },
+    { error: `Slow down, try again in about ${waitWords(r.retryAfter)}.` },
     {
       status: 429,
       headers: { 'Retry-After': String(r.retryAfter) },
