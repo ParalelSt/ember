@@ -48,6 +48,26 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
+/** Written on sign-out, so the other open tabs hear it (a `storage` event
+ *  fires in every tab but the one that wrote). */
+const SIGNED_OUT_KEY = 'ember.signedOut';
+
+/** The saved queue and what was playing (ember.player.v1 in localStorage)
+ *  are the account's: the next account on this device used to open onto
+ *  them. Volume, loop and mute are the device's and stay. */
+function clearAccountPlayback(): void {
+  usePlayerStore.setState({
+    queue: [],
+    index: -1,
+    position: 0,
+    context: null,
+    baseCount: 0,
+    shuffle: false,
+    orderBackup: null,
+    played: [],
+  });
+}
+
 export function AuthProvider({ children, initialUser }: { children: ReactNode; initialUser: AuthUser | null }) {
   const [pb] = useState(() => createClient());
   const [sessionUser, setUser] = useState<AuthUser | null>(initialUser);
@@ -66,6 +86,20 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
     }),
     [pb],
   );
+
+  // Signed out in another tab: the session cookie is gone for this tab too,
+  // and its player still held the queue, which its next save (about once a
+  // second while playing) wrote back for the next account. Drop both here.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== SIGNED_OUT_KEY || !e.newValue) return;
+      clearAccountPlayback();
+      useSessionStore.getState().setHostingSessionId(null);
+      if (pb.authStore.token || pb.authStore.record) pb.authStore.clear();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [pb]);
 
   useEffect(() => {
     // Sync local user state with the SDK on every auth change. The SDK
@@ -190,20 +224,14 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
         // A carlist this account hosts is not the next account's: the flag
         // is kept on the device and turns radio off (bughunt X6).
         useSessionStore.getState().setHostingSessionId(null);
-        // The saved queue and what was playing (ember.player.v1 in
-        // localStorage) are this account's too: the next account on this
-        // device used to open onto them. Volume, loop and mute are the
-        // device's and stay.
-        usePlayerStore.setState({
-          queue: [],
-          index: -1,
-          position: 0,
-          context: null,
-          baseCount: 0,
-          shuffle: false,
-          orderBackup: null,
-          played: [],
-        });
+        // The saved queue and what was playing are this account's too, in
+        // this tab and in every other open one.
+        clearAccountPlayback();
+        try {
+          localStorage.setItem(SIGNED_OUT_KEY, String(Date.now()));
+        } catch {
+          // Storage refused (a private window): the other tabs keep theirs.
+        }
         // Hard-navigate so the liked / history caches from the signed-out
         // user can't leak into the next session. The persisted settings
         // (ember.settings.v1) survive because they live in localStorage,

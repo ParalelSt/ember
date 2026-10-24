@@ -68,4 +68,39 @@ describe('AuthProvider sign-out', () => {
     const saved = JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}') as { state?: { queue?: unknown[] } };
     expect(saved.state?.queue).toEqual([]);
   });
+
+  it('tells the other open tabs, which drop the queue too instead of saving it back', async () => {
+    let signOut: (() => Promise<void>) | null = null;
+    function Grab() {
+      signOut = useAuth().signOut;
+      return null;
+    }
+    render(<AuthProvider initialUser={user}><Grab /></AuthProvider>);
+    await act(async () => {
+      await signOut!();
+    });
+    expect(localStorage.getItem('ember.signedOut')).toBeTruthy();
+  });
+
+  it('another tab signing out clears this tab\'s queue and session, so its next save is empty', async () => {
+    authStore.clear.mockClear();
+    render(<AuthProvider initialUser={user}><div /></AuthProvider>);
+    // This tab still holds the queue in memory, as an open player would.
+    expect(usePlayerStore.getState().queue).toHaveLength(1);
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'ember.signedOut', newValue: String(Date.now()) }));
+    });
+    const s = usePlayerStore.getState();
+    expect(s).toMatchObject({ queue: [], index: -1, position: 0, context: null, baseCount: 0 });
+    expect(s).toMatchObject({ volume: 0.6, loopMode: 'all', muted: true });
+    const saved = JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}') as { state?: { queue?: unknown[] } };
+    expect(saved.state?.queue).toEqual([]);
+    expect(authStore.clear).toHaveBeenCalled();
+    // Other keys are not a sign-out.
+    usePlayerStore.setState({ queue: [makeTrack({ id: 'youtube:b2' })], index: 0 });
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'ember.player.v1', newValue: '{}' }));
+    });
+    expect(usePlayerStore.getState().queue).toHaveLength(1);
+  });
 });
