@@ -54,7 +54,9 @@ describe('mixes schedule', () => {
     const warn = vi.fn();
     const tick = createNightlyTick({ dir, hour: 4, build, now: () => now, warn });
     const a = tick();
-    await new Promise((r) => setTimeout(r, 10));
+    // Until the first build has started (the marker write before it can
+    // take longer than any fixed sleep on a busy machine).
+    await vi.waitFor(() => expect(build).toHaveBeenCalledTimes(1));
     expect(await tick()).toBe(false);
     release();
     await a;
