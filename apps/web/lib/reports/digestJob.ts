@@ -129,6 +129,38 @@ export function shouldRunNow(now: Date, hour: number, markerExists: boolean): bo
   return now.getHours() >= hour;
 }
 
+/** One tick of the schedule (instrumentation.ts calls it every minute): runs
+ *  the digest once the hour has come and the day is not marked, never twice
+ *  at once. A run waits on the model (up to 25 s) and on Discord, and the
+ *  marker is only written once it is done, so without the guard the next
+ *  minute's tick started a second run and the day's digest went out twice
+ *  (as lib/mixes/schedule.ts's tick already guards against). */
+export function createDigestTick({
+  hour,
+  now = () => new Date(),
+  run = runDigest,
+}: {
+  hour: number;
+  now?: () => Date;
+  run?: (options: RunDigestOptions) => Promise<unknown>;
+}) {
+  let busy = false;
+  return async function tick(): Promise<void> {
+    if (busy) return;
+    busy = true;
+    try {
+      const at = now();
+      if (!shouldRunNow(at, hour, await markerExists(at))) return;
+      await run({ now: at.getTime(), writeMarker: true });
+    } catch (e) {
+      // Never let the digest take the server down.
+      console.warn('[digest] scheduled run failed', e);
+    } finally {
+      busy = false;
+    }
+  };
+}
+
 /** The digest's own entries come straight off disk, so they get the same
  *  redaction pass the bug-report route applies before anything leaves the
  *  host. Only the group examples are scrubbed (the rest of a group is counts
