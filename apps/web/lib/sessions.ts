@@ -5,6 +5,7 @@ import { ForbiddenError } from '@/lib/auth';
 import { createCatalogClient } from '@/lib/pocketbase/server';
 import { fileUrl } from '@/lib/pocketbase/fileUrl';
 import { publicName } from '@/lib/collab';
+import { isNotFound } from '@/lib/pocketbase/notFound';
 import type { PlaylistPerson } from '@/types/track';
 
 /** Unambiguous join-code alphabet (no 0/O/1/I). */
@@ -34,7 +35,10 @@ export async function loadSession(pb: PocketBase, id: string): Promise<RecordMod
   let row: RecordModel;
   try {
     row = await pb.collection('sessions').getOne(id, { expand: 'host' });
-  } catch {
+  } catch (err) {
+    // Only a missing row is "not found": the carlist page takes a 404 as the
+    // carlist being gone, so a PocketBase hiccup must stay a failure.
+    if (!isNotFound(err)) throw err;
     const e: StatusError = new Error('Session not found.');
     e.status = 404;
     throw e;
@@ -85,7 +89,8 @@ export async function assertMember(
     await pb
       .collection('session_members')
       .getFirstListItem(`session = "${session.id}" && user = "${userId}"`);
-  } catch {
+  } catch (e) {
+    if (!isNotFound(e)) throw e;
     throw new ForbiddenError('Join this session with its code first.');
   }
 }

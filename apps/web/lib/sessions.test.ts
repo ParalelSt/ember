@@ -72,3 +72,35 @@ describe('carlist expiry', () => {
     expect(update).toHaveBeenCalledWith('s1', { active: false });
   });
 });
+
+// A carlist poll that met a PocketBase hiccup answered "not found" (404) or
+// "join it first" (403). The carlist page takes both as the carlist being
+// gone, so every guest in the car saw "Carlist not found" until the next
+// poll, and the failure was never logged as one.
+describe('a PocketBase failure is not "no such carlist"', () => {
+  const failing = (status: number) =>
+    ({
+      collection: () => ({
+        getOne: async () => {
+          throw Object.assign(new Error('pb down'), { status });
+        },
+        getFirstListItem: async () => {
+          throw Object.assign(new Error('pb down'), { status });
+        },
+      }),
+    }) as unknown as PocketBase;
+
+  it('loadSession: only a missing row is 404', async () => {
+    await expect(loadSession(failing(404), 's1')).rejects.toMatchObject({ status: 404 });
+    await expect(loadSession(failing(503), 's1')).rejects.toMatchObject({ status: 503 });
+    await expect(loadSession(failing(0), 's1')).rejects.toMatchObject({ status: 0 });
+  });
+
+  it('assertMember: only a missing roster row is 403', async () => {
+    const { assertMember } = await import('./sessions');
+    const { ForbiddenError } = await import('@/lib/auth');
+    const session = { id: 's1', host: 'u1' } as never;
+    await expect(assertMember(failing(404), session, 'u2')).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(assertMember(failing(503), session, 'u2')).rejects.toMatchObject({ status: 503 });
+  });
+});
