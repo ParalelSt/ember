@@ -1,5 +1,5 @@
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
-import { connectionOk, whenConnectionBack } from '@/lib/connectionBlip';
+import { GATEWAY_STATUSES, connectionOk, whenConnectionBack } from '@/lib/connectionBlip';
 
 /** The server could not be reached while the browser still says it is
  *  online.
@@ -32,8 +32,9 @@ async function answers(): Promise<boolean> {
   const ctl = new AbortController();
   const limit = setTimeout(() => ctl.abort(), PROBE_MS);
   try {
-    await fetch(`${BASE}${PROBE_PATH}`, { method: 'HEAD', cache: 'no-store', credentials: 'include', signal: ctl.signal });
-    return true;
+    const res = await fetch(`${BASE}${PROBE_PATH}`, { method: 'HEAD', cache: 'no-store', credentials: 'include', signal: ctl.signal });
+    // A static file never gets these from Ember: a gateway answered for it.
+    return !GATEWAY_STATUSES.includes(res.status);
   } catch {
     return false;
   } finally {

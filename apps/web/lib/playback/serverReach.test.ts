@@ -83,4 +83,17 @@ describe('serverReach', () => {
     expect(useAutoCacheStore.getState().online).toBe(true);
   });
 
+  it('a gateway answering for a server that is down is not the server back', async () => {
+    // The Tailscale Funnel answers 502 while Next restarts.
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 502 }))
+      .mockResolvedValueOnce(new Response(null, { status: 504 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    serverUnreachable();
+    await vi.advanceTimersByTimeAsync(2 * PROBE_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(useAutoCacheStore.getState().online).toBe(false);
+    await vi.advanceTimersByTimeAsync(PROBE_MS);
+    expect(useAutoCacheStore.getState().online).toBe(true);
+  });
 });
