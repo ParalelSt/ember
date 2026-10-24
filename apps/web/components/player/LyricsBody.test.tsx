@@ -2,6 +2,7 @@ import type { ComponentProps, PropsWithChildren } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LyricsBody } from './LyricsBody';
+import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
 // Synced lyrics, one line every 10 s: line N (1-based) is active from (N-1)*10.
 const linesA = Array.from({ length: 10 }, (_, i) => ({ time: i * 10, text: `Line ${i + 1}` }));
@@ -213,5 +214,22 @@ describe('LyricsBody: the report form', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
     expect(body).toMatchObject({ trackTitle: 'Song A', trackArtist: 'Artist', lyrics: 'x', note: 'The chorus is wrong' });
+  });
+
+  it('a Wi-Fi sign-in page answering 200 is not "Report sent": the note stays and it says so', async () => {
+    const { toast } = await import('sonner');
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<!DOCTYPE html><p>Sign in</p>', { status: 200, headers: { 'content-type': 'text/html' } })));
+    render(<LyricsBody active />);
+    fireEvent.click(screen.getByRole('button', { name: 'Report incorrect lyrics' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'The chorus is wrong' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    });
+
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(`Couldn't send: ${NO_ANSWER_MESSAGE}`);
+    expect(screen.getByRole('textbox')).toHaveValue('The chorus is wrong');
   });
 });

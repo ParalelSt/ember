@@ -18,6 +18,7 @@ import { usePlayer, usePlayerPosition } from '@/components/player/PlayerProvider
 import { useQueryLyrics, type LyricsLine } from '@/hooks/useLyrics';
 import { centerLine, useLyricsFollow, type FollowDirection } from '@/hooks/useLyricsFollow';
 import { cn } from '@/lib/utils';
+import { GATEWAY_STATUSES, NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
 interface Props {
   /** Active flag drives the lazy fetch, only goes to /api/lyrics while
@@ -77,10 +78,12 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
           lyrics: reportFor.lyrics,
         }),
       });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error || `Request failed: ${res.status}`);
-      }
+      // The route answers JSON: anything else came from something in its
+      // place (a Wi-Fi sign-in page, the Funnel's 502), and the report never
+      // arrived. As "sent" it cleared the note.
+      const j = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!j && (res.ok || GATEWAY_STATUSES.includes(res.status))) throw new Error(NO_ANSWER_MESSAGE);
+      if (!res.ok) throw new Error(j?.error || `Request failed: ${res.status}`);
       toast.success('Report sent, thanks');
       setNote('');
       setReportOpen(false);
