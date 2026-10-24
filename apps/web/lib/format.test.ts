@@ -132,6 +132,8 @@ describe('formatAgo', () => {
 });
 
 describe('formatAddedDate', () => {
+  // The listener's own day: these read in UTC, the zones below in theirs.
+  pinTz('UTC');
   const now = Date.parse('2026-09-24T12:00:00Z');
   it('day and month this year, with the year before it', () => {
     expect(formatAddedDate('2026-06-12 10:00:00.000Z', now)).toBe('12 Jun');
