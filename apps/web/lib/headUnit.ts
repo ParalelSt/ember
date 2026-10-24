@@ -1,10 +1,11 @@
 import { isCarUserAgent } from '@/lib/carUa';
 import { nativePlatform } from '@/lib/playback/nativePlatform';
 
-/** Is this a car head unit running the Android app? Then the player bar
- *  gets the car controls (owner's pick, 2026-10): previous, play and next
- *  big enough to tap while driving, and a swipe on the cover to skip. On
- *  by default there, with a switch in Settings > Devices to turn it off
+/** Is this a car head unit running the Android app? Then the app uses the
+ *  car layout (owner's picks, 2026-10): a rail of big icons in place of the
+ *  sidebar, and a player bar with previous, play and next big enough to tap
+ *  while driving and a swipe on the cover to skip. On by default there, with
+ *  a switch in Settings > Devices to turn it off
  *  (useSettingsStore.headUnitControls).
  *
  *  A head unit is either what Android itself calls a car (Android

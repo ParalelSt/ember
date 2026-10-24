@@ -9,7 +9,9 @@ export function useIsHeadUnit(): boolean {
   return useSyncExternalStore(subscribeHeadUnit, isHeadUnit, () => false);
 }
 
-/** The car controls are on: a head unit, and not switched off in Settings. */
+/** The car layout is on: a head unit, and not switched off in Settings.
+ *  Then the shell shows the icon rail (components/nav/CarRail) and the
+ *  player its car bar (components/player/CarPlayerBar). */
 export function useHeadUnitControls(): boolean {
   const headUnit = useIsHeadUnit();
   const on = useSettingsStore((s) => s.headUnitControls);

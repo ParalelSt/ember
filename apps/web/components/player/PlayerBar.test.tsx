@@ -46,7 +46,7 @@ vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, 
 // only ever holds one transport (see hooks/useIsDesktop).
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
-// A car head unit with the car controls on (hooks/useHeadUnit).
+// A car head unit with the car layout on (hooks/useHeadUnit).
 const car = vi.hoisted(() => ({ value: false }));
 vi.mock('@/hooks/useHeadUnit', () => ({ useHeadUnitControls: () => car.value }));
 // Party mode (the wider, uncapped slider) is desktop-only: a mouse browser or
@@ -131,14 +131,26 @@ describe('PlayerBar', () => {
     expect(desktopBar()).toHaveClass('touch-hit');
   });
 
-  // The owner's pick for a car head unit: previous, play and next big enough
-  // to tap while driving, and a swipe on the cover to skip.
-  it('on a car head unit, previous, play and next are big', () => {
+  // The owner's pick for a car head unit (carlayout2, option G): a bar of
+  // its own, with the cover, title and artist, then previous, play and next
+  // big enough to tap while driving, and a swipe on the cover to skip.
+  it('on a car head unit, the car bar: cover, title, artist and big previous, play and next', () => {
     car.value = true;
     const b = desktopBar();
+    expect(b).toHaveAttribute('data-layout', 'car');
+    expect(b).toHaveClass('touch-hit', 'safe-area-bottom');
     expect(within(b).getByRole('button', { name: 'Previous' })).toHaveClass('h-16', 'w-16');
     expect(within(b).getByRole('button', { name: 'Next' })).toHaveClass('h-16', 'w-16');
     expect(within(b).getByRole('button', { name: 'Pause' })).toHaveClass('h-18', 'w-18');
+    const now = within(b).getByTestId('player-bar-now');
+    expect(within(now).getByText(TRACK.title)).toBeInTheDocument();
+    expect(within(now).getByText(TRACK.artist)).toBeInTheDocument();
+    expect(now.querySelector('img')).toHaveAttribute('src', TRACK.artworkUrl);
+    // Nothing else: no seek bar, volume, loop or queue buttons.
+    expect(within(b).queryByLabelText('progress')).toBeNull();
+    expect(within(b).queryByRole('button', { name: 'Queue' })).toBeNull();
+    expect(within(b).queryByRole('button', { name: /Loop/ })).toBeNull();
+    expect(within(b).getAllByRole('button')).toHaveLength(3);
   });
 
   it('on a car head unit, swiping the cover skips', () => {
@@ -153,8 +165,17 @@ describe('PlayerBar', () => {
     expect(skip.prev).toHaveBeenCalledTimes(1);
   });
 
+  it('a head unit narrower than the desktop bar keeps the phone bar', () => {
+    car.value = true;
+    desktop.value = false;
+    render(<PlayerBar />);
+    expect(screen.getByTestId('phone-player-bar')).toBeInTheDocument();
+    expect(bar()).not.toHaveAttribute('data-layout');
+  });
+
   it('elsewhere the bar keeps its mouse-sized controls and no swipe', () => {
     const b = desktopBar();
+    expect(b).not.toHaveAttribute('data-layout');
     expect(within(b).getByRole('button', { name: 'Previous' })).not.toHaveClass('h-16');
     expect(within(b).getByRole('button', { name: 'Pause' })).toHaveClass('h-10', 'w-10');
     const now = screen.getByTestId('player-bar-now');

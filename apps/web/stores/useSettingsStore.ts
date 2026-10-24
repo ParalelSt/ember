@@ -81,9 +81,9 @@ interface SettingsState {
    *  Per device, not synced: it is about this device's storage and network. */
   autoCacheEnabled: boolean;
   setAutoCacheEnabled: (on: boolean) => void;
-  /** The car controls on a car head unit (lib/headUnit): big previous,
-   *  play and next, and a swipe on the cover to skip. On by default; only
-   *  a head unit uses it. Per device, not synced. */
+  /** The car layout on a car head unit (lib/headUnit): the icon rail, big
+   *  previous, play and next, and a swipe on the cover to skip. On by
+   *  default; only a head unit uses it. Per device, not synced. */
   headUnitControls: boolean;
   setHeadUnitControls: (on: boolean) => void;
 

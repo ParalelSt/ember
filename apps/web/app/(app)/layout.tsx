@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Sidebar } from '@/components/nav/Sidebar';
+import { CarRail } from '@/components/nav/CarRail';
 import { TopBar } from '@/components/nav/TopBar';
 import { MobileNav } from '@/components/nav/MobileNav';
 import { Drawer } from '@/components/nav/Drawer';
@@ -20,6 +21,7 @@ import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useHeadUnitControls } from '@/hooks/useHeadUnit';
 import { useReleaseStaleHosting } from '@/hooks/useSession';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
@@ -34,6 +36,9 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   // Desktop: the search bar lives INSIDE the scroller (DesktopTopBar).
   // Phone: the search sheet stays outside it, as before.
   const isDesktop = useIsDesktop();
+  // A car head unit with the car layout on (hooks/useHeadUnit): a rail of
+  // big icons in place of the sidebar (the player bar has its own car bar).
+  const carLayout = useHeadUnitControls();
   // A carlist this device hosted and nobody ended must not keep radio off.
   useReleaseStaleHosting();
 
@@ -64,7 +69,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
     // moves up"). svh is the stable small-viewport size, the shell never
     // moves; hiding the bar just shows a brief same-color strip below it.
     <div className="h-svh flex flex-col md:flex-row overflow-hidden">
-      <Sidebar />
+      {carLayout ? <CarRail onSearchClick={() => setSearchOpen(true)} /> : <Sidebar />}
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} />
       <div className="flex-1 min-h-0 flex flex-col min-w-0">
         <TopBar onMenu={() => setDrawerOpen(true)} menuDot={hasNew} />

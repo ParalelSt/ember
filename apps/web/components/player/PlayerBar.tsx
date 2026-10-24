@@ -22,6 +22,7 @@ import { UnplayableMessage, useUnplayableMessage } from '@/components/player/Unp
 import { OfflineBadge } from '@/components/player/OfflineBadge';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
 import { PlayheadSeekBar } from '@/components/player/SeekBar';
+import { CarPlayerBar } from '@/components/player/CarPlayerBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { VolumeControl } from '@/components/player/VolumeControl';
 import { DevicesButton, DevicesSheet, useDevicesEntry } from '@/components/player/DevicesButton';
@@ -29,7 +30,6 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useHeadUnitControls } from '@/hooks/useHeadUnit';
-import { useSwipeSkip } from '@/hooks/player/useSwipeSkip';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -70,10 +70,9 @@ export function PlayerBar() {
   const toggleMuted = usePlayerStore((s) => s.toggleMuted);
   // A song that could not play: said in the bar's title area, not a toast.
   const unplayable = useUnplayableMessage();
-  // A car head unit (owner's pick): big previous, play and next, and a
-  // swipe on the cover (the now-playing block) to skip.
-  const carControls = useHeadUnitControls();
-  const swipe = useSwipeSkip({ onNext: next, onPrev: prev, enabled: carControls });
+  // A car head unit with the car layout on (owner's pick): its own bar,
+  // big previous, play and next, and a swipe on the cover to skip.
+  const carLayout = useHeadUnitControls();
 
   // Desktop only, the button is hidden on phones (md:inline-flex), where
   // lyrics live inside the full-screen NowPlaying view instead.
@@ -113,6 +112,23 @@ export function PlayerBar() {
         />
         {/* The bar's message opens the queue straight from here, where the
             songs that could not play are listed with their reasons. */}
+        <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+      </footer>
+    );
+  }
+
+  if (carLayout) {
+    return (
+      <footer data-testid="player-bar" data-layout="car" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom touch-hit')}>
+        <CarPlayerBar
+          track={current}
+          playing={isPlaying}
+          onToggle={toggle}
+          onNext={next}
+          onPrev={prev}
+          onRetry={retry}
+          onOpenQueue={() => setQueueOpen(true)}
+        />
         <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
       </footer>
     );
@@ -193,7 +209,7 @@ export function PlayerBar() {
     <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[minmax(13.5rem,1fr)_1fr_auto] lg:grid-cols-[minmax(16.5rem,1fr)_2fr_1fr] xl:grid-cols-[minmax(20rem,1fr)_2fr_1fr] gap-4 items-center">
       {/* Now playing. No tap-to-open here: this bar only renders on an md
           and wider window, and the phone bar owns that gesture. */}
-      <div className="flex items-center gap-3 min-w-0" data-testid="player-bar-now" {...swipe}>
+      <div className="flex items-center gap-3 min-w-0" data-testid="player-bar-now">
         {unplayable ? (
           <UnplayableMessage size="desktop" onRetry={retry} onOpenQueue={() => setQueueOpen(true)} />
         ) : (
@@ -217,7 +233,7 @@ export function PlayerBar() {
           onToggle={toggle}
           onNext={next}
           onPrev={prev}
-          size={carControls ? 'car' : 'sm'}
+          size="sm"
           left={loopButton}
         />
         <PlayheadSeekBar

@@ -51,7 +51,7 @@ export function HeadUnitHelp({ origin }: { origin: string }) {
 
 /** Settings > Devices, in the Android app only: using Ember on a device that
  *  runs it by itself, like a car head unit. On a head unit (lib/headUnit),
- *  the car controls' switch (on by default there); everywhere in the app,
+ *  the car layout's switch (on by default there); everywhere in the app,
  *  "Open Ember when this device starts", and with it "and keep playing"
  *  (both off by default), kept by the app (lib/bootStart). Plain on
  *  purpose, like the other switches. */
@@ -98,8 +98,8 @@ export function HeadUnitSettings() {
       <HeadUnitHelp origin={origin} />
       {headUnit && (
         <SwitchRow
-          name="Car controls"
-          description="This device looks like a car head unit: big previous, play and next buttons in the player bar, and swipe the song's cover left or right to skip."
+          name="Car layout"
+          description="This device looks like a car head unit: a rail of big buttons on the left, big previous, play and next buttons in the player bar, and swipe the song's cover left or right to skip. Off: the normal layout, with a sidebar of big rows and playlist covers."
           on={carControls}
           onToggle={() => setCarControls(!carControls)}
         />

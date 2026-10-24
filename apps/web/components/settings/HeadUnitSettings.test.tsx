@@ -94,22 +94,22 @@ describe('HeadUnitSettings', () => {
     expect(screen.queryByRole('button', { name: /Open Ember when this device starts/ })).toBeNull();
   });
 
-  it('on a head unit, the car controls switch is there, on by default, and turns them off', async () => {
+  it('on a head unit, the car layout switch is there, on by default, and turns it off', async () => {
     headUnit.value = true;
     androidWith();
     render(<HeadUnitSettings />);
-    const sw = screen.getByRole('button', { name: 'Turn off Car controls' });
+    const sw = screen.getByRole('button', { name: 'Turn off Car layout' });
     expect(sw).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(sw);
     expect(useSettingsStore.getState().headUnitControls).toBe(false);
-    expect(screen.getByRole('button', { name: 'Turn on Car controls' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Turn on Car layout' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('elsewhere there is no car controls switch', async () => {
+  it('elsewhere there is no car layout switch', async () => {
     androidWith();
     render(<HeadUnitSettings />);
     await waitFor(() => expect(startSwitch('on')).toBeEnabled());
-    expect(screen.queryByRole('button', { name: /Car controls/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Car layout/ })).toBeNull();
   });
 
   it('explains how to put Ember on a head unit, with this server\'s /apk address', () => {
