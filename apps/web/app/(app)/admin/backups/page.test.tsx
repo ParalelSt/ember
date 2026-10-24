@@ -53,7 +53,7 @@ describe('AdminBackupsPage', () => {
   it('shows the schedule in words and the free disk space', () => {
     render(<AdminBackupsPage />);
     expect(screen.getByTestId('backup-schedule').textContent).toBe(
-      'Automatic backups: Every night at 04:00 (server time), keeping the last 7.',
+      'Automatic backups: Every night at 04:00 UTC, keeping the last 7.',
     );
     expect(screen.getByTestId('backup-disk').textContent).toBe('Free disk space: 120.00 GB of 500.00 GB');
     expect(screen.queryByRole('alert')).toBeNull();

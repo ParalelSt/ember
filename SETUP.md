@@ -745,7 +745,7 @@ An unknown code falls back to the global chart (`ZZ`).
 ### Backups
 
 The database (accounts, playlists, likes, settings, avatars, playlist
-artwork) is backed up **automatically every night at 04:00 server time**,
+artwork) is backed up **automatically every night at 04:00 UTC**,
 keeping the last 7. It uses PocketBase's own backups: each one is a zip of
 `pocketbase/pb_data` in `pocketbase/pb_data/backups`. Nothing to set up;
 `pocketbase/pb_hooks/ensure_backups.pb.js` turns it on the first time
@@ -769,7 +769,7 @@ Settings → Backups); your choice is kept from then on, including turning it
 off. Or set it in `apps/web/.env.local`, which wins on every start:
 
 ```bash
-# cron, server time; "off" turns automatic backups off
+# cron, in UTC (PocketBase runs its cron in UTC); "off" turns automatic backups off
 EMBER_BACKUP_CRON=0 4 * * *
 # how many automatic backups to keep
 EMBER_BACKUP_KEEP=7
