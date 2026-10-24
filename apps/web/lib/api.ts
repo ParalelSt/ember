@@ -696,8 +696,10 @@ export const api = {
       req<{ ok: true }>(`/admin/tracks/${encodeURIComponent(recordId)}`, { method: 'DELETE' }),
 
     listInvites: () => req<{ invites: AdminInvite[] }>('/admin/invites'),
+    // Already on the list (409) or not an address the route takes (400):
+    // the page shows the sentence.
     addInvite: (email: string) =>
-      req<{ ok: true; invite: AdminInvite }>('/admin/invites', { method: 'POST', body: { email } }),
+      req<{ ok: true; invite: AdminInvite }>('/admin/invites', { method: 'POST', body: { email }, expected: [400, 409] }),
     deleteInvite: (id: string) =>
       req<{ ok: true }>(`/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 

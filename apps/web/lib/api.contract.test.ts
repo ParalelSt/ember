@@ -177,6 +177,26 @@ describe('a long pasted search is cut without breaking a character', () => {
   });
 });
 
+describe('Admin > Invites: a refused address is an answer', () => {
+  // The page shows the route's sentence ("That email is already on the
+  // list", "Invalid email") in a toast; as a fault each one also sent an
+  // automatic bug report.
+  for (const [status, error] of [[409, 'That email is already on the list'], [400, 'Invalid email']] as const) {
+    it(`logs a ${status} as a warning and still throws its sentence`, async () => {
+      vi.stubGlobal('fetch', answer(status, { error }));
+      await expect(api.admin.addInvite('a@b')).rejects.toMatchObject({ status, message: error });
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it('a server failure is still a fault', async () => {
+    vi.stubGlobal('fetch', answer(500, { error: 'boom' }));
+    await expect(api.admin.addInvite('a@b.co')).rejects.toMatchObject({ status: 500 });
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('ids in the path are encoded', () => {
   // A playlist or carlist id comes from the page's own URL, so a link can
   // carry anything: "../x" must not step out to another route.
