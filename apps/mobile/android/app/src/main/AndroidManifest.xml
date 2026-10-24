@@ -143,6 +143,23 @@
             </intent-filter>
         </receiver>
 
+        <!-- "Open Ember when this device starts" (BootStart, BootReceiver),
+             for a car head unit running Ember itself. Disabled until the
+             setting is turned on (BootStart.save enables it). Not exported:
+             these broadcasts come from the system, which reaches it anyway,
+             and no other app can make Ember start playing. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="false"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -185,7 +202,8 @@
          "Install unknown apps" switch; UPDATE_PACKAGES_WITHOUT_USER_ACTION
          (Android 13+) lets an update Ember is the installer of record for go
          in without a dialog; RECEIVE_BOOT_COMPLETED keeps the 6-hourly check
-         (UpdateCheckJob) scheduled across a reboot. -->
+         (UpdateCheckJob) scheduled across a reboot, and lets "Open Ember
+         when this device starts" (BootReceiver) work. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

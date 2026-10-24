@@ -102,9 +102,13 @@ class EmberPlaybackService : MediaLibraryService() {
             "com.android.car.media",
             "com.google.android.carassistant",
         )
-        /** How long a service started for a media button (the app was
-         *  closed) may take to show its notification before it gives up
-         *  cleanly. Android allows 5 s (10 s on 12+). */
+        /** "Open Ember when this device starts" (BootReceiver): load the
+         *  saved queue, and play it when [EXTRA_PLAY] is true. */
+        const val ACTION_BOOT_RESUME = "app.ember.music.BOOT_RESUME"
+        const val EXTRA_PLAY = "play"
+        /** How long a service started for a media button or at boot (the
+         *  app was closed) may take to show its notification before it
+         *  gives up cleanly. Android allows 5 s (10 s on 12+). */
         const val MEDIA_BUTTON_GUARD_MS = 3_500L
         private const val GUARD_CHANNEL = "ember.resume"
         private const val GUARD_NOTIFICATION_ID = 7201
@@ -547,37 +551,44 @@ class EmberPlaybackService : MediaLibraryService() {
 
     /** The saved queue (SavedQueue), where it was, playing. Nothing saved:
      *  nothing to play (the foreground guard then lets the service go). */
-    private fun resumeAndPlay() {
+    private fun resumeAndPlay() = resumeSaved(play = true, why = "a media button")
+
+    /** The saved queue, where it was, playing or paused ([play]). Something
+     *  already loaded is kept (and played when [play]). */
+    private fun resumeSaved(play: Boolean, why: String) {
         // The service is going away: nothing to load into.
         if (resumeIo.isShutdown) return
         resumeIo.execute {
             val saved = runCatching { savedQueue.resume(api.baseUrl, artAuthority) }.getOrNull()
             handler.post {
                 val p = session.player
-                if (p.mediaItemCount > 0) { androidx.media3.common.util.Util.handlePlayButtonAction(p); return@post }
-                if (saved == null) { Log.i(TAG, "play with nothing saved: nothing to resume"); return@post }
-                Log.i(TAG, "resume ${saved.mediaItems.size} song(s) at ${saved.startIndex} for a media button")
+                if (p.mediaItemCount > 0) { if (play) androidx.media3.common.util.Util.handlePlayButtonAction(p); return@post }
+                if (saved == null) { Log.i(TAG, "resume for $why with nothing saved: nothing to resume"); return@post }
+                Log.i(TAG, "resume ${saved.mediaItems.size} song(s) at ${saved.startIndex} for $why, ${if (play) "playing" else "paused"}")
                 shuffle.clear()
                 shuffleFlag(false)
                 p.setMediaItems(saved.mediaItems, saved.startIndex, saved.startPositionMs)
                 p.prepare()
-                p.play()
+                if (play) p.play()
             }
         }
     }
 
-    /** Started for a media button with the app closed (EmberMediaButtonReceiver):
-     *  Android requires the notification within seconds. Media3 shows it as
-     *  soon as the resumed queue plays; if nothing does (the saved queue
-     *  would not load), the service shows a quiet one of its own for a
-     *  moment and lets go, instead of being killed for it. */
+    /** Started for a media button with the app closed (EmberMediaButtonReceiver),
+     *  or at the device's start (BootReceiver): Android requires the
+     *  notification within seconds. Media3 shows it as soon as the resumed
+     *  queue plays; if nothing does (the saved queue would not load, or it
+     *  was resumed paused), the service shows a quiet one of its own for a
+     *  moment, instead of being killed for it, and lets go when there is
+     *  nothing loaded. */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val result = super.onStartCommand(intent, flags, startId)
         // Only the start the service was created for: the notification's
         // own buttons are media button starts too, of a running service.
         val first = firstStart
         firstStart = false
-        if (first && intent?.action == Intent.ACTION_MEDIA_BUTTON) {
+        if (intent?.action == ACTION_BOOT_RESUME) resumeSaved(play = intent.getBooleanExtra(EXTRA_PLAY, false), why = "the device start")
+        if (first && (intent?.action == Intent.ACTION_MEDIA_BUTTON || intent?.action == ACTION_BOOT_RESUME)) {
             handler.removeCallbacks(foregroundGuard)
             handler.postDelayed(foregroundGuard, MEDIA_BUTTON_GUARD_MS)
         }
