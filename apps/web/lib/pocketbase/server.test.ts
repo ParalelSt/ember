@@ -21,6 +21,8 @@ interface FakePb {
   playlists: Record<string, unknown>[];
 }
 let pb: FakePb;
+/** Row ids whose answer is held back a moment (once each). */
+const slow = new Set<string>();
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -48,7 +50,10 @@ function fakeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
   const one = /^\/api\/collections\/playlists\/records\/(\w+)$/.exec(path);
   if (one) {
     const row = rows.find((r) => r.id === one[1]);
-    return Promise.resolve(row ? json(200, row) : json(404, { message: "The requested resource wasn't found." }));
+    const answer = row ? json(200, row) : json(404, { message: "The requested resource wasn't found." });
+    // Decided now, with the token the request carried; delivered later.
+    if (slow.delete(one[1])) return new Promise((resolve) => setTimeout(() => resolve(answer), 30));
+    return Promise.resolve(answer);
   }
   if (path === '/api/collections/playlists/records') {
     return Promise.resolve(json(200, { page: 1, perPage: 1000, totalItems: -1, totalPages: -1, items: rows }));
@@ -132,6 +137,26 @@ describe('createCatalogClient', () => {
     const rows = await Promise.all(clients.map((c) => c.collection('playlists').getOne('p1', { requestKey: null })));
 
     expect(rows.every((r) => r.name === 'Road trip')).toBe(true);
+    expect(pb.logins).toBe(2);
+  });
+
+  it('two requests on one client: the slower one, sent with the dead token, is healed too', async () => {
+    const { createCatalogClient } = await fresh();
+    await (await createCatalogClient()).collection('playlists').getOne('p1');
+    pb.playlists.push({ id: 'p2', name: 'Night drive' });
+    pb.live = 'after-restore';
+    later();
+    // p2's guest answer arrives only after the p1 request has signed in
+    // again and put the new token on the shared client.
+    slow.add('p2');
+
+    const client = await createCatalogClient();
+    const rows = await Promise.all([
+      client.collection('playlists').getOne('p1', { requestKey: null }),
+      client.collection('playlists').getOne('p2', { requestKey: null }),
+    ]);
+
+    expect(rows.map((r) => r.name)).toEqual(['Road trip', 'Night drive']);
     expect(pb.logins).toBe(2);
   });
 });

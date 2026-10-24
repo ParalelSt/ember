@@ -135,6 +135,10 @@ function guardCatalog(pb: PocketBase): PocketBase {
   if (typeof pb.send !== 'function') return pb;
   const send = pb.send.bind(pb);
   pb.send = (async (path: string, options: Parameters<typeof send>[1]) => {
+    // The token this request goes with. Read after the answer, it could be
+    // the new one another request on this client has just put in, and the
+    // guest answer would be taken as that live token's.
+    const token = pb.authStore.token;
     let answer: unknown;
     let failure: unknown = null;
     try {
@@ -145,7 +149,6 @@ function guardCatalog(pb: PocketBase): PocketBase {
     const status = failure ? (failure as { status?: number } | null)?.status : 200;
     const refused = status === 401 || status === 403;
     const suspicious = failure ? refused || status === 404 : looksEmpty(answer);
-    const token = pb.authStore.token;
     if (suspicious && token && (await catalogTokenDead(token, refused))) {
       pb.authStore.save(await replacementToken(token), null);
       return send(path, options);
