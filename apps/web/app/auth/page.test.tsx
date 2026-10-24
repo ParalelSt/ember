@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
 /** After sign-in /auth?next= sends you on, but only to a page on this site
  *  (bughunt V2). */
@@ -151,5 +152,23 @@ describe('AuthPage QR on phones', () => {
     render(<AuthPage />);
     expect(screen.getByTestId('qr-sign-in')).toBeInTheDocument();
     await waitFor(() => expect(f.mock.calls.some((c) => String((c as unknown[])[0]).includes('/api/auth/qr/start'))).toBe(true));
+  });
+});
+
+describe('AuthPage email step when something else answers', () => {
+  it.each([
+    ['a Wi-Fi sign-in page', () => new Response('<!DOCTYPE html><p>Sign in</p>', { status: 200, headers: { 'content-type': 'text/html' } })],
+    ["the Funnel's 502 while the server restarts", () => new Response(null, { status: 502 })],
+  ])('%s says the server cannot be reached, not a raw parse or status error', async (_label, answer) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).includes('/api/auth/check-email')) return answer();
+      return new Response(JSON.stringify({ error: 'down' }), { status: 503 });
+    }));
+    nav.search = new URLSearchParams();
+    render(<AuthPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use password instead' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b.test' } });
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!);
+    expect(await screen.findByText(NO_ANSWER_MESSAGE)).toBeInTheDocument();
   });
 });
