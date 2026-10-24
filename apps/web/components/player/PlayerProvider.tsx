@@ -33,6 +33,7 @@ import {
   showUnplayable,
 } from '@/stores/useUnplayableStore';
 import { logger } from '@/lib/logger/client';
+import { onAccountPlaybackCleared } from '@/lib/playback/accountPlayback';
 import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
 import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, playedWalk, prevIndex, previousFromHistory, rememberPlayed, repeatsCurrent } from '@/lib/playback/queueNav';
@@ -974,6 +975,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!backendReady) return;
     return setCastSessionListener({ start: startCasting, end: stopCasting });
   }, [backendReady, startCasting, stopCasting]);
+
+  // The last account's queue was dropped (sign-out, another account signing
+  // in). The native Android player keeps a queue of its own: stop it and hand
+  // it an empty one, so the old songs neither play on (lock screen, car) nor
+  // count as the next account's plays. Not on a cold start with nothing
+  // saved: native may be playing for the car then. Registered at mount, before
+  // AuthProvider's own effects can say it.
+  useEffect(
+    () =>
+      onAccountPlaybackCleared(() => {
+        const b = backendRef.current;
+        if (backendKindRef.current !== 'android' || !b?.setQueue) return;
+        b.stop();
+        b.setQueue([], 0, false);
+        sentQueueRef.current = [];
+        loadedTrackRef.current = null;
+      }),
+    [],
+  );
 
   // Drives load+autoplay on track changes nobody loaded yet: cold-load
   // hydration of a persisted queue, and index changes that did not go through

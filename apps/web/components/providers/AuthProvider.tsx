@@ -11,6 +11,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { registerThemeCookieWriter, useThemeStore } from '@/stores/useThemeStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { accountPlaybackCleared } from '@/lib/playback/accountPlayback';
 import { parseThemeDoc, sameDoc } from '@/lib/theme/model';
 import { logger } from '@/lib/logger/client';
 import { flushNativeCookies } from '@/lib/nativeCookies';
@@ -84,6 +85,8 @@ function clearAccountPlayback(): void {
     orderBackup: null,
     played: [],
   });
+  // The Android app's native player holds its own copy of the queue.
+  accountPlaybackCleared();
 }
 
 export function AuthProvider({ children, initialUser }: { children: ReactNode; initialUser: AuthUser | null }) {

@@ -60,6 +60,20 @@ describe('AuthProvider: the saved queue belongs to one account', () => {
     expect(s.volume).toBe(0.6);
   });
 
+  it('tells the player, so the Android app\'s native queue is dropped too', async () => {
+    const { onAccountPlaybackCleared } = await import('@/lib/playback/accountPlayback');
+    const heard = vi.fn();
+    const off = onAccountPlaybackCleared(heard);
+    try {
+      render(<AuthProvider initialUser={member('u1')}><div /></AuthProvider>).unmount();
+      expect(heard).not.toHaveBeenCalled();
+      render(<AuthProvider initialUser={member('u2')}><div /></AuthProvider>);
+      expect(heard).toHaveBeenCalledTimes(1);
+    } finally {
+      off();
+    }
+  });
+
   it('the same account coming back keeps its queue', () => {
     const first = render(<AuthProvider initialUser={member('u1')}><div /></AuthProvider>);
     first.unmount();

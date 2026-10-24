@@ -441,7 +441,9 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     load() {},
     setQueue(tracks, i, play, origin, startSec) {
       if (!p) return;
-      if (!settled && !play) {
+      // An empty queue is a clear (sign-out, another account): it never
+      // waits, or native's answer would hand its old queue straight back.
+      if (!settled && !play && tracks.length > 0) {
         held = { tracks, i, origin, startSec };
         return;
       }

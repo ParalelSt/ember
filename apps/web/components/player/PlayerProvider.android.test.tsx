@@ -368,3 +368,25 @@ describe('android: the queue sheet\'s played history', () => {
     expect(usePlayerStore.getState().index).toBe(2);
   });
 });
+
+describe('android: the last account\'s queue is dropped', () => {
+  it('sign-out, or another account signing in, stops native and hands it an empty queue', async () => {
+    const { accountPlaybackCleared } = await import('@/lib/playback/accountPlayback');
+    render(<PlayerProvider><div /></PlayerProvider>);
+    native.setQueue.mockClear();
+    vi.mocked(fake.stop).mockClear();
+    act(() => {
+      usePlayerStore.setState({ queue: [], index: -1, position: 0 });
+      accountPlaybackCleared();
+    });
+    expect(fake.stop).toHaveBeenCalled();
+    expect(native.setQueue).toHaveBeenCalledWith([], 0, false);
+  });
+
+  it('a cold start with nothing saved leaves native alone (it may be playing for the car)', () => {
+    usePlayerStore.setState({ queue: [], index: -1 });
+    native.setQueue.mockClear();
+    render(<PlayerProvider><div /></PlayerProvider>);
+    expect(native.setQueue).not.toHaveBeenCalledWith([], 0, false);
+  });
+});

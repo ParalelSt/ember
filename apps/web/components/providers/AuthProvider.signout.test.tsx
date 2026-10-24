@@ -69,6 +69,26 @@ describe('AuthProvider sign-out', () => {
     expect(saved.state?.queue).toEqual([]);
   });
 
+  it('tells the player, so the Android app\'s native player stops and drops the queue too', async () => {
+    const { onAccountPlaybackCleared } = await import('@/lib/playback/accountPlayback');
+    const heard = vi.fn();
+    const off = onAccountPlaybackCleared(heard);
+    let signOut: (() => Promise<void>) | null = null;
+    function Grab() {
+      signOut = useAuth().signOut;
+      return null;
+    }
+    try {
+      render(<AuthProvider initialUser={user}><Grab /></AuthProvider>);
+      await act(async () => {
+        await signOut!();
+      });
+      expect(heard).toHaveBeenCalled();
+    } finally {
+      off();
+    }
+  });
+
   it('tells the other open tabs, which drop the queue too instead of saving it back', async () => {
     let signOut: (() => Promise<void>) | null = null;
     function Grab() {

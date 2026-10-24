@@ -87,6 +87,12 @@ class QueueSyncTest {
         assertEquals("the playing song must not start again", emptyList<String?>(), transitions)
     }
 
+    @Test fun `an empty queue from the app (sign-out, another account) empties the player`() {
+        playing("abc", 1)
+        QueueSync.apply(player, emptyList(), 0)
+        assertEquals("", ids())
+    }
+
     @Test fun `shuffle keeps the song and its position`() {
         playing("abcde", 1)
         QueueSync.apply(player, items("abdec"), 1)

@@ -72,7 +72,11 @@ class SavedQueue(private val file: File) {
             io.execute { runCatching { save(s) }.onFailure { Log.w(EmberPlaybackService.TAG, "saved queue: ${it.message}") } }
         }
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {
-            if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) saveNow()
+            if (reason != Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) return
+            // The app emptied the queue (sign-out, another account signing
+            // in): the old one must not come back on the next media button.
+            if (player.mediaItemCount == 0) io.execute { runCatching { file.delete() } }
+            else saveNow()
         }
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = saveNow()
         override fun onIsPlayingChanged(isPlaying: Boolean) = saveNow()
