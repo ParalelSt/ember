@@ -77,4 +77,18 @@ describe('crash handlers', () => {
     expect(() => handlers.onUncaughtException(new Error('boom'))).not.toThrow();
     expect(() => handlers.onUnhandledRejection(new Error('boom'))).not.toThrow();
   });
+
+  // The text goes to the poster as one command-line argument. Linux refuses
+  // an argument over 128 KB (E2BIG), so a rejection carrying a big object
+  // (stringified whole) lost its report. Discord shows 4000 characters of it
+  // anyway.
+  it('keeps the text it hands the poster short enough to be an argument', () => {
+    const { spawnReport, handlers } = setup();
+    handlers.onUnhandledRejection({ rows: 'x'.repeat(500_000) });
+    expect(spawnReport).toHaveBeenCalledTimes(1);
+    const [title, text] = spawnReport.mock.calls[0] as [string, string];
+    expect(title.length).toBeLessThanOrEqual(200);
+    expect(text.length).toBeLessThanOrEqual(8000);
+    expect(text.startsWith('unhandledRejection\n')).toBe(true);
+  });
 });
