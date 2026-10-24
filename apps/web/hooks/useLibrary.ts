@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -239,8 +240,11 @@ export function useExecuteToggleLike() {
       qc.setQueryData(QK.likes, next);
       return { prev };
     },
-    onError: (_e, _vars, ctx) => {
+    onError: (_e, { wasLiked }, ctx) => {
       if (ctx?.prev) qc.setQueryData(QK.likes, ctx.prev);
+      // The heart goes back: said, or a like lost to a dropped connection
+      // went unnoticed.
+      toast.error(wasLiked ? "Couldn't remove that like" : "Couldn't like that song");
     },
     onSettled: () => {
       // Another toggle still on its way: the server's list does not have it
