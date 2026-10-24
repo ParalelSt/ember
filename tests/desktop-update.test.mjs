@@ -60,6 +60,57 @@ const RELEASES = () => [
   },
 ];
 
+// Per-app releases (windows-v0.4.26, android-v0.4.27) next to the last
+// shared one (v0.4.25), newest first as GitHub lists them. Asset names keep
+// the bare version.
+const MIXED = () => [
+  {
+    tag_name: 'android-v0.4.27',
+    name: 'Ember Android 0.4.27',
+    body: 'Android only',
+    draft: false,
+    prerelease: false,
+    published_at: '2026-10-26T10:00:00Z',
+    assets: [{ id: 301, name: 'Ember-v0.4.27-android.apk', size: 10 }],
+  },
+  {
+    tag_name: 'windows-v0.4.26',
+    name: 'Ember Windows 0.4.26',
+    body: 'Windows only',
+    draft: false,
+    prerelease: false,
+    published_at: '2026-10-25T10:00:00Z',
+    assets: [
+      { id: 311, name: 'Ember-v0.4.26-windows-x64-setup.exe', size: 10 },
+      { id: 312, name: 'Ember-v0.4.26-windows-x64-setup.exe.sig', size: 10 },
+    ],
+  },
+  {
+    tag_name: 'linux-v0.4.28',
+    name: 'Ember Linux 0.4.28 (draft)',
+    draft: true,
+    prerelease: false,
+    assets: [{ id: 331, name: 'Ember-v0.4.28-linux-x86_64.AppImage', size: 10 }],
+  },
+  {
+    tag_name: 'v0.4.25',
+    name: 'Ember v0.4.25',
+    body: 'Every app',
+    draft: false,
+    prerelease: false,
+    published_at: '2026-10-24T10:00:00Z',
+    assets: [
+      { id: 321, name: 'Ember-v0.4.25-windows-x64-setup.exe', size: 10 },
+      { id: 322, name: 'Ember-v0.4.25-windows-x64-setup.exe.sig', size: 10 },
+      { id: 323, name: 'Ember-v0.4.25-macos-arm64.app.tar.gz', size: 10 },
+      { id: 324, name: 'Ember-v0.4.25-macos-arm64.app.tar.gz.sig', size: 10 },
+      { id: 325, name: 'Ember-v0.4.25-linux-x86_64.AppImage', size: 10 },
+      { id: 326, name: 'Ember-v0.4.25-linux-x86_64.AppImage.sig', size: 10 },
+      { id: 327, name: 'Ember-v0.4.25-android.apk', size: 10 },
+    ],
+  },
+];
+
 const github = http.createServer((req, res) => {
   seen.push({ url: req.url, auth: req.headers.authorization ?? null });
   const json = (code, body) => {
@@ -72,6 +123,7 @@ const github = http.createServer((req, res) => {
     if (mode === 'draft-only') {
       return json(200, [{ ...RELEASES()[0], draft: true }]);
     }
+    if (mode === 'mixed') return json(200, MIXED());
     if (mode === 'no-sig') {
       const r = RELEASES()[0];
       return json(200, [{ ...r, assets: r.assets.filter((a) => !a.name.endsWith('.sig')) }]);
@@ -81,11 +133,11 @@ const github = http.createServer((req, res) => {
 
   if (/\/releases\/assets\/\d+$/.test(req.url)) {
     const id = Number(req.url.split('/').pop());
-    if ([103, 105, 107].includes(id)) {
+    if ([103, 105, 107, 312, 322, 324, 326].includes(id)) {
       res.writeHead(200, { 'content-type': 'application/octet-stream' });
       return res.end(SIGNATURE);
     }
-    if ([101, 102, 104, 106, 201].includes(id)) {
+    if ([101, 102, 104, 106, 201, 301, 311, 321, 323, 325, 327, 331].includes(id)) {
       res.writeHead(200, {
         'content-type': 'application/octet-stream',
         'content-length': String(INSTALLER.length),
@@ -160,7 +212,44 @@ check('E4 unknown asset → 404', (await fetch(`${APP}/api/desktop/asset/999`)).
   check('E8 the update bundle .sig is still served', sig.status === 200 && (await sig.text()) === SIGNATURE, `status ${sig.status}`);
 }
 
+// ── per-app releases next to the old shared tag ───────────────────────────
+mode = 'mixed';
+{
+  const win = await feed('windows', 'x86_64', '0.4.25');
+  const winBody = win.status === 200 ? await win.json() : null;
+  check('G1 a 0.4.25 Windows app (on the shared v0.4.25 tag) gets windows-v0.4.26',
+    winBody?.version === '0.4.26' && winBody?.url?.endsWith('/api/desktop/asset/311'), `${win.status} ${winBody?.version} ${winBody?.url}`);
+  check('G2 the Mac app sees neither the Windows nor the Android release',
+    (await feed('darwin', 'aarch64', '0.4.25')).status === 204);
+  check('G3 an Android-only release is invisible to the desktop apps',
+    (await feed('linux', 'x86_64', '0.4.25')).status === 204);
+  const older = await feed('darwin', 'aarch64', '0.4.24');
+  const olderBody = older.status === 200 ? await older.json() : null;
+  check('G4 an older Mac app still gets the shared v0.4.25', olderBody?.version === '0.4.25' && olderBody?.url?.endsWith('/api/desktop/asset/323'),
+    `${older.status} ${olderBody?.version}`);
+
+  const phone = await fetch(`${APP}/api/android/update?version=0.4.25`);
+  const phoneBody = phone.status === 200 ? await phone.json() : null;
+  check('G5 the phone gets android-v0.4.27', phoneBody?.version === '0.4.27' && phoneBody?.url === '/api/android/apk/301',
+    `${phone.status} ${phoneBody?.version} ${phoneBody?.url}`);
+
+  const gate = await fetch(`${APP}/api/app/update?platform=windows&version=0.4.25&install=nsis&arch=x86_64`).then((r) => r.json());
+  check('G6 the launch gate tells Windows about 0.4.26', gate.latest === '0.4.26' && gate.update?.version === '0.4.26', JSON.stringify(gate.update));
+  const macGate = await fetch(`${APP}/api/app/update?platform=macos&version=0.4.25&install=app`).then((r) => r.json());
+  check('G7 the launch gate tells the Mac it is current', macGate.latest === '0.4.25' && macGate.update === null, JSON.stringify(macGate));
+
+  const upstreamBefore = seen.length;
+  check('G8 the proxy serves the Windows release bundle', (await fetch(`${APP}/api/desktop/asset/311`)).status === 200);
+  check('G9 the proxy serves the shared release the Mac is still on', (await fetch(`${APP}/api/desktop/asset/323`)).status === 200);
+  check('G10 the APK proxy serves the current Android APK', (await fetch(`${APP}/api/android/apk/301`)).status === 200);
+  check('G11 the APK proxy refuses the shared release APK Android moved past', (await fetch(`${APP}/api/android/apk/327`)).status === 404);
+  check('G12 a draft release asset is never served', (await fetch(`${APP}/api/desktop/asset/331`)).status === 404);
+  const asked = seen.slice(upstreamBefore).filter((r) => /\/releases\/assets\/(327|331)$/.test(r.url));
+  check('G13 GitHub was never asked for them', asked.length === 0, asked.map((r) => r.url).join(','));
+}
+
 // ── reachable without a session (the updater has none) ────────────────────
+mode = 'ok';
 check('F1 feed needs no login', (await feed('darwin', 'aarch64', '0.2.0')).status === 200);
 
 github.close();
