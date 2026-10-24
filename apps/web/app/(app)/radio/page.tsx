@@ -8,7 +8,7 @@ import { OnlineOnly } from '@/components/OnlineOnly';
 import { EmptyState } from '@/components/page/EmptyState';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
-import { StationGrid } from '@/components/radio/StationGrid';
+import { StationList } from '@/components/radio/StationList';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
   locationAlreadyAllowed,
@@ -23,9 +23,8 @@ import type { RadioStation } from '@/lib/radio/station';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-/** Live internet radio: the listener's favourites first, then stations near
- *  them (their country's until they share where they are), and a search by
- *  name; every list a grid of station logos (components/radio/StationGrid). The
+/** Live internet radio: stations near the listener (their country's until
+ *  they share where they are), their favourites, and a search by name. The
  *  location is only ever read when they tap "Use my location", or when this
  *  site already has their permission (which asks nothing). */
 export default function RadioPage() {
@@ -72,7 +71,7 @@ export default function RadioPage() {
     if (failed && !stations?.length) return <EmptyState className="text-sm">{"Radio isn't reachable right now. Try again in a moment."}</EmptyState>;
     if (loading && !stations?.length) return <EmptyState className="text-sm">Loading…</EmptyState>;
     if (!stations?.length) return <EmptyState className="text-sm">{empty}</EmptyState>;
-    return <StationGrid stations={stations} name={name} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} />;
+    return <StationList stations={stations} name={name} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} />;
   };
 
   const nearbyName = place ? 'Nearby' : 'Croatia';

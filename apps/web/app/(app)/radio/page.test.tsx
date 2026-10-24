@@ -91,16 +91,22 @@ describe('Radio page', () => {
     expect(await screen.findByText('Favourites')).toBeTruthy();
   });
 
-  it('lists the favourites first, then the stations around, each as a grid of logos', async () => {
+  it('lists the favourites first, then the stations around, as rows with logo, name, town and distance', async () => {
     api.radioFavorites.mockResolvedValue({ stations: [HR[1]] });
+    const near = { ...NEAR[0], distanceKm: 3.2, state: 'Zagreb' };
+    const nearRows = [{ ...near, track: stationTrack(near) }, { ...station(5, 'HR 2'), distanceKm: 0.4 }];
+    api.radioNearby.mockResolvedValue({ stations: nearRows });
+    permission = 'granted';
     renderPage();
     await screen.findByText('Favourites');
-    await waitFor(() => expect(screen.getAllByTestId('station-grid')).toHaveLength(2));
-    const [favs, around] = screen.getAllByTestId('station-grid');
-    expect(within(favs).getAllByTestId('station-tile').map((t) => t.textContent)).toEqual(['NarodniCroatia']);
-    expect(within(around).getAllByTestId('station-tile')).toHaveLength(2);
+    await screen.findByText('Radio Sljeme');
+    const [favs, around] = screen.getAllByTestId('station-list');
+    expect(within(favs).getByText('Narodni')).toBeTruthy();
+    expect(within(favs).queryByTestId('station-distance')).toBeNull();
+    expect(within(around).getByText('Zagreb, Croatia')).toBeTruthy();
+    expect(within(around).getAllByTestId('station-distance').map((d) => d.textContent)).toEqual(['3 km', 'Under 1 km']);
     const headings = screen.getAllByRole('heading').map((h) => h.textContent);
-    expect(headings.indexOf('Favourites')).toBeLessThan(headings.indexOf('Croatia'));
+    expect(headings.indexOf('Favourites')).toBeLessThan(headings.indexOf('Nearby'));
   });
 
   it('searches stations by name', async () => {
