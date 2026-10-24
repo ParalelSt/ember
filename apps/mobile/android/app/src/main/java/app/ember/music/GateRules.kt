@@ -321,10 +321,21 @@ object GateRules {
         else -> null
     }
 
+    /** How Ember comes back after it updated itself (UpdatedReceiver). */
+    enum class Comeback { REOPENS, NOTIFICATION, NONE }
+
+    fun comeback(sdk: Int, notificationsOn: Boolean): Comeback = when {
+        UpdateRules.relaunchDirectly(sdk) -> Comeback.REOPENS
+        notificationsOn -> Comeback.NOTIFICATION
+        else -> Comeback.NONE
+    }
+
     fun megabytes(bytes: Long?): String? = bytes?.takeIf { it > 0 }?.let { "${(it + 524_288) / 1_048_576} MB" }
 
-    /** What the dialog says, or null for no dialog (the splash). */
-    fun copy(m: Machine, silent: Boolean): Copy? {
+    /** What the dialog says, or null for no dialog (the splash).
+     *  [askingNotifications]: Android's notification dialog is up, right
+     *  before the install. */
+    fun copy(m: Machine, silent: Boolean, back: Comeback = Comeback.NOTIFICATION, askingNotifications: Boolean = false): Copy? {
         val o = m.offer ?: return null
         val cancel = if (m.mandatory) "Quit Ember" else "Not now"
         val reason = reasonLine(m.mandatory, o.reason, m.recovery)
@@ -347,8 +358,13 @@ object GateRules {
             )
             is Phase.Installing -> Copy(
                 "Installing update", null,
-                if (silent) "Ember closes for a moment. Tap the notification to open it again."
-                else "Android will ask you to confirm",
+                when {
+                    askingNotifications -> "Allow notifications so Ember can tell you when it's back"
+                    !silent -> "Android will ask you to confirm"
+                    back == Comeback.REOPENS -> "Ember closes for a moment and opens again."
+                    back == Comeback.NOTIFICATION -> "Ember closes for a moment. Tap the notification to open it again."
+                    else -> "Ember closes for a moment. Open it again from your home screen."
+                },
                 cancel, "Update now", false, false, null,
             )
             is Phase.Permission -> Copy(

@@ -169,6 +169,12 @@ object AppUpdater {
     /** The version of the downloaded, verified APK that waits, if any. */
     fun readyVersion(): String? = ready?.takeIf { it.file.exists() }?.version
 
+    /** The launch gate asks for the notification permission before
+     *  installFromGate: states published meanwhile are from before the
+     *  install too. Released when the gate goes away without installing. */
+    fun holdForGate() { gatePending = true }
+    fun releaseGateHold() { gatePending = false }
+
     /** A version refused for good (UpdateRules.isPermanent), if any. */
     fun rejectedVersion(): String? = prefs().getString(KEY_REJECTED, null)
 
@@ -418,8 +424,10 @@ object AppUpdater {
 
     // ── Installing ──────────────────────────────────────────────────────
 
-    /** The person tapped Install. */
+    /** The person tapped Install, and waits for Ember to come back
+     *  (UpdatedReceiver's "Ember updated" notice). */
     fun installNow() {
+        GateHistory.installStarted(app)
         main.post {
             autoBlocked = false
             val confirm = pendingConfirm

@@ -341,6 +341,21 @@ class GateRulesTest {
         assertEquals("Allow", pc.primary)
     }
 
+    @Test fun `the installing line says how Ember comes back`() {
+        val m = Machine(false, true)
+        shown(m, ready = true)
+        m.handle(Input.UpdateNow)
+        assertEquals(GateRules.Comeback.REOPENS, GateRules.comeback(sdk = 28, notificationsOn = false))
+        assertEquals(GateRules.Comeback.NOTIFICATION, GateRules.comeback(sdk = 34, notificationsOn = true))
+        assertEquals(GateRules.Comeback.NONE, GateRules.comeback(sdk = 34, notificationsOn = false))
+        assertEquals("Ember closes for a moment and opens again.", GateRules.copy(m, true, GateRules.Comeback.REOPENS)!!.detail)
+        assertEquals("Ember closes for a moment. Tap the notification to open it again.", GateRules.copy(m, true, GateRules.Comeback.NOTIFICATION)!!.detail)
+        assertEquals("Ember closes for a moment. Open it again from your home screen.", GateRules.copy(m, true, GateRules.Comeback.NONE)!!.detail)
+        assertEquals("Android will ask you to confirm", GateRules.copy(m, false, GateRules.Comeback.NONE)!!.detail)
+        // Asked right before the install, with the reason in one line.
+        assertEquals("Allow notifications so Ember can tell you when it's back", GateRules.copy(m, true, askingNotifications = true)!!.detail)
+    }
+
     @Test fun `no copy has an em dash`() {
         val src = java.io.File("src/main/java/app/ember/music/GateRules.kt").readText()
         assertFalse(src.contains('\u2014'))
