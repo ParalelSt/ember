@@ -87,7 +87,11 @@ export function useQrSignIn({ shell, onApproved }: Options) {
         });
         const j = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         if (cancelled) return;
-        const expiresAtMs = Date.parse(String(j?.expiresAt ?? ''));
+        // The deadline on this device's own clock: a TV or car whose clock
+        // runs minutes ahead of the server read the server's time as already
+        // past and burned through every renewal in seconds.
+        const inMs = Number(j?.expiresInMs);
+        const expiresAtMs = Number.isFinite(inMs) && inMs > 0 ? Date.now() + inMs : Date.parse(String(j?.expiresAt ?? ''));
         if (
           !res.ok || !j ||
           typeof j.id !== 'string' || typeof j.code !== 'string' ||

@@ -12,6 +12,8 @@ let statusCalls = 0;
 const statusUrls: string[] = [];
 let statusAnswers: Array<() => Response | Promise<Response>> = [];
 const startBodies: unknown[] = [];
+/** How far the server's clock is behind this device's. */
+let serverBehindMs = 0;
 
 function jsonRes(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -31,6 +33,7 @@ beforeEach(() => {
   statusUrls.length = 0;
   statusAnswers = [];
   startBodies.length = 0;
+  serverBehindMs = 0;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/api/auth/qr/start')) {
       startCount++;
@@ -39,7 +42,8 @@ beforeEach(() => {
         id: `req${String(startCount).padStart(12, '0')}`,
         code: 'ABCDEFGH',
         approveUrl: `https://ember.example/link/${'t'.repeat(42)}${startCount}`,
-        expiresAt: new Date(Date.now() + 180_000).toISOString(),
+        expiresAt: new Date(Date.now() - serverBehindMs + 180_000).toISOString(),
+        expiresInMs: 180_000,
         device: 'Ember on Android Automotive',
       });
     }
@@ -217,5 +221,18 @@ describe('useQrSignIn', () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(onApproved).not.toHaveBeenCalled();
+  });
+
+  it('a device whose clock runs ahead of the server keeps its code for the full 3 minutes', async () => {
+    // The server's 3-minute deadline is already past by this device's clock:
+    // it used to renew five times in ten seconds and then say expired.
+    serverBehindMs = 10 * 60_000;
+    const { result } = await mount();
+    await advance(60_000);
+    expect(startCount).toBe(1);
+    expect(result.current.state.kind).toBe('waiting');
+    await advance(125_000);
+    expect(startCount).toBe(2);
+    expect(result.current.state.kind).toBe('waiting');
   });
 });
