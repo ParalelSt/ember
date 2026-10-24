@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import RadioPage from './page';
 import { stationTrack, type RadioStation } from '@/lib/radio/station';
@@ -89,6 +89,18 @@ describe('Radio page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Favourite Otvoreni' }));
     await waitFor(() => expect(api.addRadioFavorite).toHaveBeenCalledWith(HR[0].id));
     expect(await screen.findByText('Favourites')).toBeTruthy();
+  });
+
+  it('lists the favourites first, then the stations around, each as a grid of logos', async () => {
+    api.radioFavorites.mockResolvedValue({ stations: [HR[1]] });
+    renderPage();
+    await screen.findByText('Favourites');
+    await waitFor(() => expect(screen.getAllByTestId('station-grid')).toHaveLength(2));
+    const [favs, around] = screen.getAllByTestId('station-grid');
+    expect(within(favs).getAllByTestId('station-tile').map((t) => t.textContent)).toEqual(['NarodniCroatia']);
+    expect(within(around).getAllByTestId('station-tile')).toHaveLength(2);
+    const headings = screen.getAllByRole('heading').map((h) => h.textContent);
+    expect(headings.indexOf('Favourites')).toBeLessThan(headings.indexOf('Croatia'));
   });
 
   it('searches stations by name', async () => {
