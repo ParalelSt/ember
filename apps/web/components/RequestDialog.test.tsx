@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RequestDialog } from './RequestDialog';
+import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 vi.mock('@/lib/logger/client', () => ({
@@ -194,6 +195,29 @@ describe('RequestDialog: submit', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+});
+
+describe('RequestDialog: something other than the server answers', () => {
+  it('a Wi-Fi sign-in page answering 200 is not "request sent": the dialog stays open and says so', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<!DOCTYPE html><p>Sign in to the Wi-Fi</p>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    })));
+    const onOpenChange = vi.fn();
+    render(<RequestDialog open onOpenChange={onOpenChange} />);
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByText(NO_ANSWER_MESSAGE)).toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(screen.getByPlaceholderText('Short name, e.g. Sleep timer')).toHaveValue('Sleep timer');
   });
 });
 

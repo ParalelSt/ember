@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { useUiStore } from '@/stores/useUiStore';
 import type { ClientSnapshot } from '@/lib/logger/types';
 import { BugReportDialog } from './BugReportDialog';
+import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
 // The desktop bridge: the shell is Tauri and `invoke` is whatever the test
 // sets. Both are module-level imports of BugReportDialog's dependency chain,
@@ -204,5 +205,25 @@ describe('BugReportDialog: closed while sending', () => {
     useUiStore.setState({ bugReportOpen: true });
     expect(await screen.findByRole('button', { name: 'Send report' })).toBeInTheDocument();
     expect(screen.queryByText('Report sent')).toBeNull();
+  });
+});
+
+describe('BugReportDialog: something other than the server answers', () => {
+  it('a Wi-Fi sign-in page answering 200 is not "Report sent": the note stays and it says so', async () => {
+    const { toast } = await import('sonner');
+    tauri.invoke.mockResolvedValue('');
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<!DOCTYPE html><p>Sign in to the Wi-Fi</p>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    })));
+    render(<BugReportDialog />);
+    await userEvent.type(screen.getByPlaceholderText('What happened? (optional)'), 'The queue jumped');
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(`Couldn't send report: ${NO_ANSWER_MESSAGE}`));
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText('What happened? (optional)')).toHaveValue('The queue jumped');
   });
 });
