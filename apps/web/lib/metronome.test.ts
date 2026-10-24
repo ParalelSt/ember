@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { clockJumped, planClicks, playClick, type ClickAudio } from './metronome';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { clickContext, clockJumped, planClicks, playClick, releaseClickContext, type ClickAudio } from './metronome';
 
 const beats = (...at: number[]) => at.map((a, i) => ({ at: a, accent: i === 0 }));
 
@@ -74,5 +74,41 @@ describe('the click', () => {
     expect(log.filter((l) => l.startsWith('start'))).toEqual(['start 2.5 1760 square', 'start 2 1320 square']);
     expect(log.filter((l) => l.startsWith('gain '))).toEqual(['gain 0.5 @2.5', 'gain 0.3 @2']);
     expect(log).toContain('gain>out');
+  });
+});
+
+describe('the clicks\' AudioContext', () => {
+  afterEach(() => {
+    releaseClickContext();
+    vi.unstubAllGlobals();
+  });
+
+  it('is woken after an iPhone call or Siri left it "interrupted", not only when "suspended"', () => {
+    // WebKit's own state: a call, Siri or the app going to the background
+    // interrupts the context, and only resume() on a gesture brings it back.
+    const resume = vi.fn(() => Promise.resolve());
+    class InterruptedContext {
+      state = 'running';
+      resume = resume;
+      close = () => Promise.resolve();
+    }
+    vi.stubGlobal('AudioContext', InterruptedContext);
+    const ctx = clickContext() as unknown as InterruptedContext;
+    resume.mockClear();
+    ctx.state = 'interrupted';
+    expect(clickContext()).toBe(ctx);
+    expect(resume).toHaveBeenCalledTimes(1);
+  });
+
+  it('a running context is left alone', () => {
+    const resume = vi.fn(() => Promise.resolve());
+    vi.stubGlobal('AudioContext', class {
+      state = 'running';
+      resume = resume;
+      close = () => Promise.resolve();
+    });
+    clickContext();
+    clickContext();
+    expect(resume).not.toHaveBeenCalled();
   });
 });

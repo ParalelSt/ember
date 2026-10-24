@@ -2,17 +2,16 @@ import 'server-only';
 import type PocketBase from 'pocketbase';
 import type { Track } from '@/types/track';
 import { upsertTrack } from '@/lib/upsertTrack';
-import { countItems, playlistPosition, type ItemStatus } from '@/lib/import/jobState';
+import { COUNTED_STATUSES, countsFrom, playlistPosition, type ItemStatus } from '@/lib/import/jobState';
 import { itemFromRecord, itemRecord, jobFromRecord, pbDate, pbMillis, readyItem } from '@/lib/import/records';
 import { syntheticLikedAt, transferBase, type SourceOrder } from '@/lib/import/likedAt';
 import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, JobKind, SourceItem } from '@/lib/import/types';
 import type { ItemResult, JobCounts, JobPatch, JobStore, PendingItem, RunnerJob } from '@/lib/import/runner';
+import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
 
 // PocketBase side of imports. Every write goes through the admin client:
 // the collections have no create/update rules (ensure_imports.pb.js), so
 // only the server moves a job along.
-
-const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
 function status(e: unknown): number | undefined {
   return (e as { status?: number } | undefined)?.status;
@@ -85,9 +84,16 @@ export async function likeTrack(
   }
 }
 
+/** Counted by PocketBase, one small query per status, not read: the runner
+ *  asks after every batch of 8, and reading every item each time made a
+ *  transfer of thousands of songs read millions of rows. */
 export async function jobCounts(pb: PocketBase, jobId: string): Promise<JobCounts> {
-  const rows = await pb.collection('import_items').getFullList({ filter: `job = "${esc(jobId)}"`, fields: 'status' });
-  return countItems(rows.map((r) => r.status as ItemStatus));
+  const count = (status: ItemStatus) =>
+    pb
+      .collection('import_items')
+      .getList(1, 1, { filter: `job = "${esc(jobId)}" && status = "${status}"`, fields: 'id', requestKey: null })
+      .then((l) => [status, l.totalItems] as const);
+  return countsFrom(Object.fromEntries(await Promise.all(COUNTED_STATUSES.map(count))));
 }
 
 /** The runner's heartbeat and its own writes can touch the same record at
@@ -262,7 +268,7 @@ export async function createImportJob(
   // Uploads a Google likes transfer created waiting for a look count from
   // the start, so the banner is right before the runner gets to it.
   const review = rows.filter((r) => r.item.status === 'review').length;
-  const likedAt = kind === 'liked' ? await transferDates(pb, n, rows.length) : null;
+  const likedAt = kind === 'liked' ? await transferDates(pb, n, rows.map((r) => r.item.position)) : null;
 
   const playlist =
     kind === 'liked'
@@ -291,6 +297,10 @@ export async function createImportJob(
     existing: kind === 'liked' ? Math.max(0, n.existing ?? 0) : 0,
     ...(playlist ? { playlist: playlist.id } : {}),
     dismissed: false,
+  }).catch(async (e) => {
+    // No job, so no import: the playlist made for it goes again.
+    if (playlist) await pb.collection('playlists').delete(playlist.id).catch(() => {});
+    throw e;
   });
   try {
     if (playlist) await pb.collection('playlists').update(playlist.id, { import_job: job.id });
@@ -319,17 +329,22 @@ export async function createImportJob(
 
 /** The like date for every source position of a transfer: what the source
  *  says where it says anything, else one placed below the person's existing
- *  likes, in source order (lib/import/likedAt.ts). */
-async function transferDates(pb: PocketBase, n: NewImport, total: number): Promise<Record<number, number>> {
+ *  likes, in source order (lib/import/likedAt.ts). `positions` are the
+ *  items' own, which can skip numbers (a Spotify link keeps the places of
+ *  the podcast episodes it left out), so they are dated by rank. */
+async function transferDates(pb: PocketBase, n: NewImport, positions: number[]): Promise<Record<number, number>> {
   const given = new Map<number, number>();
   for (const item of n.items ?? []) if (typeof item.likedAt === 'number') given.set(item.position, item.likedAt);
   const out: Record<number, number> = {};
-  if (given.size === total) {
+  if (positions.every((p) => given.has(p))) {
     for (const [position, ms] of given) out[position] = ms;
     return out;
   }
   const base = transferBase(await oldestLikedAt(pb, n.userId), Date.now());
-  for (let i = 0; i < total; i++) out[i] = given.get(i) ?? syntheticLikedAt(base, n.order ?? 'unknown', total, i);
+  const ordered = [...positions].sort((a, b) => a - b);
+  ordered.forEach((p, rank) => {
+    out[p] = given.get(p) ?? syntheticLikedAt(base, n.order ?? 'unknown', ordered.length, rank);
+  });
   return out;
 }
 

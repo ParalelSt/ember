@@ -36,6 +36,11 @@ vi.mock('@/lib/logger/server', () => ({
   serverLogger: { info: (...args: unknown[]) => infoSpy(...args), error: (...args: unknown[]) => errorSpy(...args) },
 }));
 
+const cancelApprovedFor = vi.fn<(pb: unknown, id: string) => Promise<void>>(async () => {});
+vi.mock('@/lib/qrLogin/server', () => ({
+  cancelApprovedFor: (pb: unknown, id: string) => cancelApprovedFor(pb, id),
+}));
+
 const { POST } = await import('./route');
 
 function request(body: unknown): NextRequest {
@@ -71,5 +76,21 @@ describe('POST /api/admin/users/[id]/password body checks', () => {
     const res = await POST(request(null), ctx('u1'));
     expect(res.status).toBe(400);
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/admin/users/[id]/password and QR sign-in', () => {
+  it('cancels sign-in requests the member approved that no device has collected yet', async () => {
+    update.mockResolvedValue({ id: 'u1', email: 'target@ember.test' });
+    const res = await POST(request({ password: 'a-good-password' }), ctx('u1'));
+    expect(res.status).toBe(200);
+    expect(cancelApprovedFor).toHaveBeenCalledWith(expect.anything(), 'u1');
+    // Before the reset, so a device cannot collect one in between.
+    expect(cancelApprovedFor.mock.invocationCallOrder[0]).toBeLessThan(update.mock.invocationCallOrder[0]);
+  });
+
+  it('cancels nothing for a refused password', async () => {
+    await POST(request({ password: 'short' }), ctx('u1'));
+    expect(cancelApprovedFor).not.toHaveBeenCalled();
   });
 });

@@ -73,19 +73,34 @@ object GateHistory {
         installAt > 0 && now >= installAt && now - installAt <= 10 * 60 * 1000L
 }
 
-/** Android does not reopen an app that updated itself, and an app may not
- *  open its own window from the background. So after an update started from
- *  the launch gate, the new version posts "Ember updated, tap to open" (S3).
- *  Not exported: MY_PACKAGE_REPLACED comes from the system only. */
+/** Android does not reopen an app that updated itself. After an update the
+ *  person started (the launch gate, or Install in the page), the new version
+ *  opens itself again where Android allows it (before Android 10); from 10
+ *  on an app may not open a window from the background, so it posts "Ember
+ *  updated, tap to open" (S3), for which the install asked for the
+ *  notification permission first. Not exported: MY_PACKAGE_REPLACED comes
+ *  from the system only. */
 class UpdatedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val at = GateHistory.takeInstallAt(context)
         if (!GateHistory.relaunchNoticeDue(System.currentTimeMillis(), at)) return
         AppUpdater.init(context)
-        val posted = runCatching { post(context) }.getOrDefault(false)
-        AppUpdater.gateEvent("update.gate.relaunch", "update in, relaunch notice ${if (posted) "posted" else "not allowed"}",
-            JSONObject().put("posted", posted).put("version", AppVersion.name(context)))
+        val reopened = UpdateRules.relaunchDirectly(Build.VERSION.SDK_INT) && runCatching { reopen(context) }.getOrDefault(false)
+        val posted = !reopened && runCatching { post(context) }.getOrDefault(false)
+        val said = when {
+            reopened -> "reopened"
+            posted -> "relaunch notice posted"
+            else -> "relaunch notice not allowed"
+        }
+        AppUpdater.gateEvent("update.gate.relaunch", "update in, $said",
+            JSONObject().put("reopened", reopened).put("posted", posted).put("version", AppVersion.name(context)))
+    }
+
+    private fun reopen(context: Context): Boolean {
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return false
+        context.startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        return true
     }
 
     private fun post(context: Context): Boolean {

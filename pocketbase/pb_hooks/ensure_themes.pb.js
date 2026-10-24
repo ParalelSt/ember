@@ -63,39 +63,45 @@ onAfterBootstrap((e) => {
   }
 
   const VISIBLE = '@request.auth.id != "" && (owner = @request.auth.id || shared = true)';
-  dao.saveCollection(
-    new Collection({
-      name: "themes",
-      type: "base",
-      listRule: VISIBLE,
-      viewRule: VISIBLE,
-      createRule: null,
-      updateRule: null,
-      deleteRule: null,
-      indexes: [
-        "CREATE INDEX idx_themes_owner ON themes (owner)",
-        "CREATE INDEX idx_themes_shared ON themes (shared)",
-      ],
-      schema: [
-        {
-          name: "owner",
-          type: "relation",
-          required: true,
-          options: { collectionId: users.id, maxSelect: 1, cascadeDelete: true },
-        },
-        { name: "name", type: "text", required: true, options: { min: 1, max: 40 } },
-        {
-          name: "base",
-          type: "select",
-          required: true,
-          options: { maxSelect: 1, values: ["ember", "midnight", "forest", "nebula", "mono"] },
-        },
-        { name: "inputs", type: "json", required: true, options: { maxSize: 2000 } },
-        { name: "shared", type: "bool", options: {} },
-      ],
-    }),
-  );
-  console.log("[ensure_themes] created themes");
+  // A failed first-time create must not stop PocketBase from booting: warn
+  // and carry on (bughunt X11); the next boot tries again.
+  try {
+    dao.saveCollection(
+      new Collection({
+        name: "themes",
+        type: "base",
+        listRule: VISIBLE,
+        viewRule: VISIBLE,
+        createRule: null,
+        updateRule: null,
+        deleteRule: null,
+        indexes: [
+          "CREATE INDEX idx_themes_owner ON themes (owner)",
+          "CREATE INDEX idx_themes_shared ON themes (shared)",
+        ],
+        schema: [
+          {
+            name: "owner",
+            type: "relation",
+            required: true,
+            options: { collectionId: users.id, maxSelect: 1, cascadeDelete: true },
+          },
+          { name: "name", type: "text", required: true, options: { min: 1, max: 40 } },
+          {
+            name: "base",
+            type: "select",
+            required: true,
+            options: { maxSelect: 1, values: ["ember", "midnight", "forest", "nebula", "mono"] },
+          },
+          { name: "inputs", type: "json", required: true, options: { maxSize: 2000 } },
+          { name: "shared", type: "bool", options: {} },
+        ],
+      }),
+    );
+    console.log("[ensure_themes] created themes");
+  } catch (err) {
+    console.warn("[ensure_themes] could not create themes: " + err);
+  }
 });
 
 // The cap, enforced where no client can get round it. The route says the

@@ -83,6 +83,23 @@ describe('useRemoteCommands', () => {
     expect(backend.seek).toHaveBeenCalledWith(42);
   });
 
+  it('sends play/pause/seek to the engine playing NOW (a cast device), not the one that registered them', () => {
+    const local = makeFakeBackend();
+    const { backendRef } = setup(local, { backendReady: true, current: a });
+    // Casting: the provider puts a cast engine in the ref; the local engine
+    // that registered the lock screen's commands is stopped and waiting.
+    const cast = makeFakeBackend();
+    backendRef.current = cast;
+    local.remote!.pause();
+    local.remote!.play();
+    local.remote!.seek(30);
+    expect(cast.pause).toHaveBeenCalledTimes(1);
+    expect(cast.play).toHaveBeenCalledTimes(1);
+    expect(cast.seek).toHaveBeenCalledWith(30);
+    expect(local.play).not.toHaveBeenCalled();
+    expect(local.pause).not.toHaveBeenCalled();
+  });
+
   it('sets media metadata for the current track and on every track change', () => {
     const backend = makeFakeBackend();
     const { view } = setup(backend, { backendReady: true, current: a });

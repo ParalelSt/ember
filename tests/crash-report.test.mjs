@@ -11,9 +11,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import {
   resolveWebhook,
   extractDefaultWebhook,
+  readEnvFile,
   scrubText,
   takeRateSlot,
   RATE_LIMIT,
@@ -65,6 +67,47 @@ const FIXTURE_ROUTE = 'tests/fixtures/crash-report/bug-report-route.txt';
     resolveWebhook({ env: {}, envFile: missing, routeFile: FIXTURE_ROUTE }) === 'http://127.0.0.1:9/fixture-default-hook',
   );
   check('a missing route file resolves to empty, not a throw', extractDefaultWebhook(path.join(TMP, 'none.ts')) === '');
+
+  // The web app reads .env.local with Next's loader (@next/env), where a `#`
+  // after an unquoted value, or after a quoted one, starts a comment. This
+  // script has no dependencies, but must read the same line the same way, or
+  // the crash reports go to a webhook URL with the comment glued on.
+  const commented = path.join(TMP, 'env-commented.local');
+  fs.writeFileSync(
+    commented,
+    [
+      'DISCORD_CRASH_WEBHOOK_URL=http://file-crash/hook # crash channel',
+      'DISCORD_BUG_REPORT_WEBHOOK_URL="http://file-bug/hook" # bugs',
+      "export POCKETBASE_URL='http://pb/x#y' # quoted hash stays",
+      'PLAIN=a#b',
+      'SPACED =  spaced value  ',
+      '',
+    ].join('\n'),
+  );
+  const parsed = readEnvFile(commented);
+  const require = createRequire(path.join(process.cwd(), 'apps/web/package.json'));
+  const nextDir = path.join(TMP, 'next-env');
+  fs.mkdirSync(nextDir, { recursive: true });
+  fs.copyFileSync(commented, path.join(nextDir, '.env.local'));
+  const { loadEnvConfig } = require('@next/env');
+  const keys = ['DISCORD_CRASH_WEBHOOK_URL', 'DISCORD_BUG_REPORT_WEBHOOK_URL', 'POCKETBASE_URL', 'PLAIN', 'SPACED'];
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  for (const k of keys) delete process.env[k];
+  // parsedEnv, not combinedEnv: that one is process.env itself, restored below.
+  const nextEnv = { ...loadEnvConfig(nextDir, false, { info() {}, error() {} }, true).parsedEnv };
+  for (const k of keys) {
+    if (saved[k] === undefined) delete process.env[k];
+    else process.env[k] = saved[k];
+  }
+  check(
+    'a comment after an unquoted or quoted value is not part of it (as Next reads it)',
+    keys.every((k) => parsed[k] === nextEnv[k]),
+    JSON.stringify({ parsed: Object.fromEntries(keys.map((k) => [k, parsed[k]])), next: Object.fromEntries(keys.map((k) => [k, nextEnv[k]])) }),
+  );
+  check(
+    'the commented crash webhook resolves to the bare URL',
+    resolveWebhook({ env: {}, envFile: commented, routeFile: FIXTURE_ROUTE }) === 'http://file-crash/hook',
+  );
   // Webhooks are env-only now (the hardcoded default was removed after a
   // public secret scanner found it and Discord deleted that webhook): the
   // real lib/reports/discord.ts no longer defines DEFAULT_WEBHOOK_URL at

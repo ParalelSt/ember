@@ -44,7 +44,6 @@ vi.mock('@/lib/upsertTrack', () => ({ fromError: (e: Error) => Response.json({ e
 
 const { GET } = await import('./route');
 const { _resetFailureMemo } = await import('@/lib/sources/failureMemo');
-const { POST: DOWNLOAD } = await import('../../download/[videoId]/route');
 const { _resetBuckets } = await import('@/lib/rateLimit');
 
 let seq = 0;
@@ -52,10 +51,6 @@ function get(videoId: string, query = '') {
   seq += 1;
   const req = new NextRequest(`http://localhost/api/youtube/stream/${videoId}${query}`, { headers: { 'x-forwarded-for': `10.1.0.${seq % 250}` } });
   return GET(req, { params: Promise.resolve({ videoId }) } as never);
-}
-function download(videoId: string) {
-  const req = new NextRequest(`http://localhost/api/youtube/download/${videoId}`, { method: 'POST' });
-  return DOWNLOAD(req, { params: Promise.resolve({ videoId }) } as never);
 }
 const cold = (n: number) => `coldacc${String(n).padStart(4, '0')}`;
 
@@ -94,11 +89,6 @@ describe('stream route: signed out', () => {
     expect((await get(cold(2))).status).toBe(401);
     expect(resolveStreamUrl).not.toHaveBeenCalled();
   });
-
-  it('the download route is 401 too', async () => {
-    expect((await download(cold(3))).status).toBe(401);
-    expect(ensureDownloaded).not.toHaveBeenCalled();
-  });
 });
 
 describe('stream route: a member', () => {
@@ -119,12 +109,6 @@ describe('stream route: a member', () => {
     expect((await get(CACHED_ID)).status).toBe(200);
     member = 'm-other';
     expect((await get(cold(201))).status).toBe(200);
-  });
-
-  it('shares the budget with the download route', async () => {
-    member = 'm-both';
-    for (let i = 0; i < 60; i++) await get(cold(300 + i));
-    expect((await download(cold(400))).status).toBe(429);
   });
 
   it('gets 429 once over 600 new songs in an hour', async () => {
@@ -163,11 +147,5 @@ describe('stream route: a member', () => {
     vi.stubEnv('STREAM_MODE', 'proxy');
     resolveStreamUrl.mockRejectedValue(tooLarge());
     expect((await get(cold(22))).status).toBe(413);
-  });
-
-  it('the download route answers 413 for one over the cap', async () => {
-    member = 'm-long';
-    ensureDownloaded.mockRejectedValue(tooLarge());
-    expect((await download(cold(23))).status).toBe(413);
   });
 });

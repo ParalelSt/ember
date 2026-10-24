@@ -67,7 +67,9 @@ export function remainingEmbedBudget(used: number): number {
 export function codeFields(name: string, text: string, maxFields = 6, maxChars?: number): EmbedField[] {
   const fence = '```\n';
   const budget = DISCORD_FIELD_CHARS - fence.length * 2;
-  const lines = text.split('\n');
+  // A line longer than a whole field is cut: on its own it would make a
+  // field Discord refuses, and the whole message with it.
+  const lines = text.split('\n').map((l) => (l.length > budget ? `${l.slice(0, budget - 1)}…` : l));
   const chunks: string[] = [];
   let current = '';
   let dropped = 0;

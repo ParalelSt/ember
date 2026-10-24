@@ -28,7 +28,10 @@ vi.mock('@/components/player/LyricsPanel', () => ({
 vi.mock('@/components/search/SearchOverlayContainer', () => ({
   SearchOverlayContainer: () => <div role="search" data-testid="search-box" />,
 }));
-vi.mock('@/lib/offline', () => ({ hydrateOfflineStore: vi.fn(async () => {}) }));
+const offline = vi.hoisted(() => ({ hydrateOfflineStore: vi.fn(async () => {}) }));
+vi.mock('@/lib/offline', () => offline);
+const logger = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn(), breadcrumb: vi.fn() }));
+vi.mock('@/lib/logger/client', () => ({ logger }));
 vi.mock('@/hooks/useChangelog', () => ({ useChangelog: () => ({ hasNew: false }) }));
 vi.mock('@/hooks/useSession', () => ({ useReleaseStaleHosting: () => {} }));
 vi.mock('@/components/session/SessionHostBridge', () => ({ SessionHostBridge: () => null }));
@@ -207,5 +210,21 @@ describe('app shell, car head unit', () => {
     act(() => useSettingsStore.setState({ headUnitControls: false }));
     expect(screen.getByTestId('sidebar')).toBeInTheDocument();
     expect(screen.queryByTestId('car-rail')).toBeNull();
+  });
+});
+
+describe('app shell, offline store', () => {
+  it('a failed offline hydrate is logged, not left as an unhandled rejection', async () => {
+    offline.hydrateOfflineStore.mockImplementationOnce(() => Promise.reject(new Error('no OPFS')));
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      renderShell();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith('offline', expect.any(String), expect.objectContaining({ message: 'no OPFS' }));
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 });

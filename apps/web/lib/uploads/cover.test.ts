@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { describe, expect, it, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -55,6 +55,13 @@ describe('coverExtFor', () => {
 });
 
 describe('extractCover', () => {
+  // The tag parser loads on first use. Under a full parallel run that first
+  // load alone can pass the 5 s test timeout, so it is loaded here, with
+  // room, rather than inside the first test.
+  beforeAll(async () => {
+    await import('music-metadata');
+  }, 30_000);
+
   it('reads an ID3v2 APIC picture out of an MP3', async () => {
     const cover = await extractCover(makeMp3WithApic());
     expect(cover?.ext).toBe('jpg');

@@ -23,6 +23,11 @@ describe('attachments', () => {
     expect(formatBytes(10)).toBe('1 KB');
   });
 
+  it('a file just under a megabyte reads "1 MB", not "1024 KB"', () => {
+    expect(formatBytes(MB - 1)).toBe('1 MB');
+    expect(formatBytes(MB - 600)).toBe('1023 KB');
+  });
+
   it('allows images and videos only', () => {
     expect(isAllowedType('image/png')).toBe(true);
     expect(isAllowedType('video/webm')).toBe(true);

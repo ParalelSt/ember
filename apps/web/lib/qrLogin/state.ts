@@ -8,6 +8,8 @@
  *  Expiry is decided here, on the Next server's clock, against the expires
  *  date the start route wrote; the PocketBase sweep is only housekeeping. */
 
+import { parsePbDate } from '@/lib/pocketbase/dates';
+
 export type QrStatus = 'pending' | 'approved' | 'used' | 'denied' | 'expired';
 export type QrEvent = 'approve' | 'deny' | 'deliver';
 export type QrError = 'expired' | 'used' | 'denied' | 'not_pending';
@@ -32,11 +34,7 @@ export function qrTtlMs(raw: string | undefined): number {
   return Math.min(MAX_TTL_MS, Math.round(s * 1000));
 }
 
-/** A PocketBase date ("2026-10-07 12:03:00.000Z") or an ISO one, as ms. */
-export function parsePbDate(value: unknown): number {
-  if (typeof value !== 'string' || !value) return NaN;
-  return Date.parse(value.replace(' ', 'T'));
-}
+export { parsePbDate };
 
 /** The status as of `now`: a pending row past its expiry is expired, an
  *  approved one past the delivery grace too. Anything unreadable counts as

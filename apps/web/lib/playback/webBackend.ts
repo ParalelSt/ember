@@ -295,8 +295,10 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       // A seek in progress (repeat one's seek back to 0 at the end) drops
       // readyState to HAVE_METADATA until the data at the new spot is
       // decoded. That is not a suspended element: rebuilding it there
-      // loaded the whole song again.
-      if (a.src && !a.error && (a.readyState >= 2 || (a.seeking && a.readyState >= 1))) {
+      // loaded the whole song again. Nor is a load still fetching (a cold
+      // start's paused load on a slow line): rebuilding restarted its request.
+      const fetching = a.networkState === 2; // NETWORK_LOADING
+      if (a.src && !a.error && (a.readyState >= 2 || fetching || (a.seeking && a.readyState >= 1))) {
         a.play().then(() => events.onPlay()).catch(() => {});
         return;
       }

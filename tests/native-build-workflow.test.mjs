@@ -182,3 +182,28 @@ test('the plan script writes its outputs for GitHub, and fails on a wrong tag', 
   assert.throws(() => run('android-v9.9.9'), (e) => e.status === 1 && /::error::Tag android-v9\.9\.9/.test(e.stdout));
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('an Android release is never signed with a throwaway debug key', () => {
+  // Without keystore.properties build.gradle signs with the debug key, which
+  // a CI runner makes anew on every run. v0.4.17 and v0.4.18 shipped that
+  // way: no phone could ever update to or from them. A branch build may
+  // still fall back; a release tag must fail instead.
+  const steps = jobs.android.steps;
+  const at = (re) => steps.findIndex((s) => re.test(s.name ?? ''));
+  const guard = steps[at(/^Require the release key/)];
+  assert.ok(guard, 'no release key guard in the android job');
+  assert.ok(at(/^Restore release keystore/) < at(/^Require the release key/));
+  assert.ok(at(/^Require the release key/) < at(/^Build release APK/));
+  assert.equal(guard['working-directory'], 'apps/mobile/android');
+  const runsOn = (ref) => evaluate(guard.if, { ref, results: { plan: 'success' }, plan: {} });
+  assert.equal(runsOn('refs/tags/android-v0.4.25'), true);
+  assert.equal(runsOn('refs/tags/v0.4.26'), true);
+  assert.equal(runsOn('refs/heads/main'), false);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'android-key-'));
+  const run = () => execFileSync('bash', ['-e', '-c', guard.run], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  assert.throws(run, (e) => e.status === 1 && /::error::/.test(e.stdout));
+  fs.writeFileSync(path.join(dir, 'keystore.properties'), 'storeFile=ember-release.keystore\n');
+  assert.doesNotThrow(run);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

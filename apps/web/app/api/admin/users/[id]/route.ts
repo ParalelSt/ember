@@ -9,7 +9,7 @@ import {
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fileUrl } from '@/lib/pocketbase/fileUrl';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { deletePrivateTabs } from '@/lib/tabStore';
+import { deleteMember } from '@/lib/tabStore';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const MAX_NAME_LEN = 50;
@@ -62,8 +62,7 @@ export const DELETE = withRequestLog('admin/users/[id]', async (_req: NextReques
       return jsonError("You can't delete your own account from the admin panel", 400);
     }
     const pb = await createAdminClient();
-    await deletePrivateTabs(pb, id);
-    await pb.collection('users').delete(id);
+    await deleteMember(pb, id);
     return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

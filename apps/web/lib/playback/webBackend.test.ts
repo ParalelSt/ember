@@ -273,6 +273,37 @@ describe('webBackend play() before the song has loaded (bughunt 2026-09-25 P7)',
   });
 });
 
+describe('webBackend play() while a paused load is still buffering', () => {
+  // A cold start loads the saved song paused. Play pressed while that load
+  // is still fetching (readyState below HAVE_CURRENT_DATA, no error) took the
+  // "suspended, rebuild" path: the src was set again and the request began
+  // over, so a slow connection never got far enough to play.
+  function element() {
+    const all = document.body.querySelectorAll('audio');
+    return all[all.length - 1] as HTMLAudioElement;
+  }
+
+  it('just plays the load in progress', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve());
+    const b = createWebBackend(makeFakeEvents());
+    const a = element();
+    b.load('/s/a', { autoplay: false, startAt: 95 });
+    const srcSet = vi.fn();
+    const proto = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src')!;
+    Object.defineProperty(a, 'src', {
+      configurable: true,
+      get: () => proto.get!.call(a),
+      set: (v: string) => { srcSet(v); proto.set!.call(a, v); },
+    });
+    Object.defineProperty(a, 'readyState', { configurable: true, get: () => 1 });
+    Object.defineProperty(a, 'networkState', { configurable: true, get: () => 2 });
+    b.play();
+    expect(srcSet).not.toHaveBeenCalled();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+    b.destroy();
+  });
+});
+
 describe('webBackend remote commands (lock screen)', () => {
   /** A navigator.mediaSession that records every handler set on it. */
   function fakeMediaSession() {

@@ -99,12 +99,17 @@ function mapHeader(header: string[]): Partial<Record<Column, number>> {
   return out;
 }
 
-/** "3:45", "225000" (ms), "225" (seconds) to milliseconds. */
+/** "3:45", "1:02:33" or "00:03:45", "225000" (ms), "225" (seconds) to
+ *  milliseconds. */
 function readDuration(raw: string, headerName: string): number | null {
   const value = raw.trim();
   if (!value) return null;
-  const clock = /^(\d+):([0-5]\d)$/.exec(value);
-  if (clock) return (Number(clock[1]) * 60 + Number(clock[2])) * 1000;
+  const clock = /^(?:(\d+):([0-5]\d)|(\d+)):([0-5]\d)$/.exec(value);
+  if (clock) {
+    const [, h, hm, m, s] = clock;
+    const mins = h !== undefined ? Number(h) * 60 + Number(hm) : Number(m);
+    return (mins * 60 + Number(s)) * 1000 || null;
+  }
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
   // Only the header says which unit a bare number is in, and a song is never

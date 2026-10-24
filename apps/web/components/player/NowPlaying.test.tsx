@@ -230,6 +230,8 @@ describe('NowPlaying: the More sheet', () => {
     openMore();
     expect(within(sheet()).getByText('Copper Sky')).toBeInTheDocument();
     expect(within(sheet()).getByText('Coastline')).toBeInTheDocument();
+    // One of the player's own sheets: its keyboard shortcuts keep working.
+    expect(sheet()).toHaveAttribute('data-player-view');
     expect(rows()).toEqual(['add', 'queue', 'tabs', 'eq', 'share', 'artist', 'album', 'report']);
     expect(sheet().querySelectorAll('[role="group"]')).toHaveLength(0);
     expect(row('share')).toHaveTextContent('Copy link');

@@ -29,10 +29,3 @@ export const useCastStore = create<CastState>()((set) => ({
   deviceName: null,
   set: (patch) => set(patch),
 }));
-
-/** Whether the cast button belongs on screen: a way to cast, and a device
- *  to cast to (or no way of knowing yet), or a session already going. */
-export function castButtonVisible(s: Pick<CastState, 'path' | 'availability' | 'connection'>): boolean {
-  if (!s.path) return false;
-  return s.connection !== 'idle' || s.availability !== 'none';
-}

@@ -10,7 +10,7 @@ const row = (kind: RecentPrank['kind'], secAgo: number, status: RecentPrank['sta
 describe('PRANK_LIMITS (owner decisions)', () => {
   it('holds the decided numbers', () => {
     expect(PRANK_LIMITS).toMatchObject({
-      expirySec: 45, duck: 0.3, soundMaxSec: 30, swapMinSec: 5, swapMaxSec: 300,
+      expirySec: 45, duck: 0.3, soundMaxSec: 30, swapMaxSec: 300,
       perTargetPerHour: 20, soundGapSec: 15, scheduleMinIntervalSec: 60, scheduleMaxSpanSec: 7200,
     });
   });

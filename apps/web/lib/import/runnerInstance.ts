@@ -1,7 +1,7 @@
 import 'server-only';
 import os from 'node:os';
 import type PocketBase from 'pocketbase';
-import { createAdminClient } from '@/lib/pocketbase/server';
+import { createCatalogClient } from '@/lib/pocketbase/server';
 import { serverLogger } from '@/lib/logger/server';
 import { outsideRequest } from '@/lib/logger/context';
 import { matchItems } from '@/lib/import/match';
@@ -15,7 +15,6 @@ import { ImportRunner } from '@/lib/import/runner';
 const KEY = Symbol.for('ember.importRunner');
 const POLL_MS = 5_000;
 const HEARTBEAT_MS = 5_000;
-const ADMIN_TTL_MS = 20 * 60_000;
 
 interface Slot {
   runner: ImportRunner;
@@ -27,15 +26,16 @@ const envMs = (name: string): number | undefined => {
   return Number.isFinite(n) && n >= 0 && process.env[name] !== '' ? n : undefined;
 };
 
-let admin: { pb: PocketBase; at: number } | null = null;
+/** The shared admin client (one sign-in, reused). Not a client of its own
+ *  kept for 20 minutes: after a restore that gives the superuser a new token
+ *  key, PocketBase reads the old token as a guest's, so the runner found no
+ *  queued jobs and imports stalled silently. The shared one checks such
+ *  answers and signs in again (lib/pocketbase/server.ts guardCatalog). */
 async function adminClient(): Promise<PocketBase> {
-  if (!admin || Date.now() - admin.at > ADMIN_TTL_MS) {
-    const pb = await createAdminClient();
-    // The heartbeat and the runner write the same job record concurrently.
-    pb.autoCancellation(false);
-    admin = { pb, at: Date.now() };
-  }
-  return admin.pb;
+  const pb = await createCatalogClient();
+  // The heartbeat and the runner write the same job record concurrently.
+  pb.autoCancellation(false);
+  return pb;
 }
 
 function slot(): Slot {

@@ -113,6 +113,24 @@ describe('SearchPage', () => {
     expect(trackActions.onPlay).toHaveBeenCalledWith(track);
   });
 
+  // The page's recents drifted from the overlay's: the song playing right
+  // now still offered Play there, and pressing it started it over.
+  it('the recent row of the song playing now pauses it instead of starting it over', () => {
+    const track = makeTrack();
+    recents.tracks = [track];
+    trackActions.currentId = track.id;
+    trackActions.isPlaying = true;
+    try {
+      renderPage();
+      fireEvent.click(screen.getByRole('button', { name: `Pause ${track.title}` }));
+      expect(trackActions.onToggle).toHaveBeenCalledTimes(1);
+      expect(trackActions.onPlay).not.toHaveBeenCalled();
+    } finally {
+      trackActions.currentId = null;
+      trackActions.isPlaying = false;
+    }
+  });
+
   it('shows the rate-limit message instead of results when the search hook reports a 429', async () => {
     api.search.mockRejectedValue({ status: 429 });
     renderPage();

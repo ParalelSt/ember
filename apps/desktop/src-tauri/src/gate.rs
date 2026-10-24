@@ -632,9 +632,15 @@ fn now_ms() -> u64 {
 
 const EVENTS_FILE: &str = "gate-events.json";
 
+/// The gate pushes from its own task while the page takes the batch on a
+/// command thread, and both are a read, a change and a write of the file:
+/// unserialized, an event pushed in between was lost.
+static EVENTS_LOCK: Mutex<()> = Mutex::new(());
+
 /// Telemetry for the page to send once it is signed in. Kept on disk, so a
 /// launch that ends in an install (the process goes away) still reports.
 pub fn push_event(dir: &Path, event: GateEvent) {
+    let _held = EVENTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut all = read_events(dir);
     all.push(event);
     let skip = all.len().saturating_sub(MAX_EVENTS);
@@ -653,6 +659,7 @@ fn read_events(dir: &Path) -> Vec<GateEvent> {
 
 /// Everything kept, and forget it.
 pub fn take_events(dir: &Path) -> Vec<GateEvent> {
+    let _held = EVENTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let all = read_events(dir);
     let _ = std::fs::remove_file(dir.join(EVENTS_FILE));
     all
@@ -1560,6 +1567,47 @@ mod tests {
         assert_eq!(all.len(), MAX_EVENTS);
         assert_eq!(all.last().unwrap().ts, (MAX_EVENTS + 4) as u64);
         assert!(take_events(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The gate pushes from its own task while the page takes the batch on a
+    /// command thread: each is a read, a change and a write of one file, so an
+    /// event that landed in between was lost.
+    #[test]
+    fn events_pushed_while_the_page_takes_them_are_not_lost() {
+        let dir = scratch("events-race");
+        let done = Arc::new(AtomicBool::new(false));
+        let taker = {
+            let (dir, done) = (dir.clone(), done.clone());
+            std::thread::spawn(move || {
+                let mut got = Vec::new();
+                while !done.load(Ordering::SeqCst) {
+                    got.extend(take_events(&dir));
+                }
+                got
+            })
+        };
+        let pushers: Vec<_> = (0..4u64)
+            .map(|t| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    for i in 0..10u64 {
+                        push_event(&dir, GateEvent { ts: t * 100 + i, event: "update.gate.check".into(), data: json!({}) });
+                    }
+                })
+            })
+            .collect();
+        for p in pushers {
+            p.join().unwrap();
+        }
+        done.store(true, Ordering::SeqCst);
+        let mut got = taker.join().unwrap();
+        got.extend(take_events(&dir));
+        let mut ts: Vec<u64> = got.iter().map(|e| e.ts).collect();
+        ts.sort_unstable();
+        ts.dedup();
+        assert_eq!(ts.len(), 40, "every pushed event is taken exactly once");
+        assert_eq!(got.len(), 40, "and none twice");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -14,7 +14,8 @@ interface Props {
 export function EqualizerSheet({ open, onOpenChange }: Props) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0">
+      {/* The player's own sheet: its shortcuts keep working (OPEN_MODAL). */}
+      <SheetContent data-player-view side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0">
         <SheetHeader className="px-block pt-block pb-0">
           <SheetTitle className="text-base">Sound</SheetTitle>
         </SheetHeader>

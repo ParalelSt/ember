@@ -323,11 +323,11 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # 2. Android (Capacitor 7), RELEASE APK. Signed with the Ember release key
-  #    when the secrets below exist; falls back to a debug-signed release APK
-  #    otherwise (still installable, but uninstall/reinstall needed when the
-  #    signature changes later, set the secrets before sharing widely).
+  #    when the secrets below exist; a branch build falls back to a
+  #    debug-signed release APK otherwise (still installable, but it can never
+  #    update or be updated by a release). A tag build fails without them.
   #
-  #    Optional secrets (Settings → Secrets → Actions):
+  #    Secrets (Settings → Secrets → Actions), required for a release:
   #      • ANDROID_KEYSTORE_B64      , base64 of ember-release.keystore
   #                                     (make with: base64 -i ember-release.keystore)
   #      • ANDROID_KEYSTORE_PASSWORD , the store/key password
@@ -397,6 +397,19 @@ jobs:
             echo "keyAlias=ember"
             echo "keyPassword=$KEYSTORE_PASSWORD"
           } > keystore.properties
+
+      # A release must carry the Ember key. Android installs an update only
+      # when it is signed like the installed app, and the debug fallback is
+      # a new key on every runner: v0.4.17 and v0.4.18 shipped that way and
+      # no phone could update to or from them. Branch builds may fall back.
+      - name: Require the release key on a tag
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: apps/mobile/android
+        run: |
+          if [ ! -s keystore.properties ]; then
+            echo "::error::No release keystore (ANDROID_KEYSTORE_B64 is unset): a debug-signed APK could never update the phones"
+            exit 1
+          fi
 
       - name: Build release APK
         working-directory: apps/mobile/android

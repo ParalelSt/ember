@@ -22,17 +22,33 @@ export async function writeActive(pb: PocketBase, userId: string, doc: ThemeDoc)
  *  round trips, and a theme switch landing in between gets overwritten by
  *  the stale write that follows (bughunt N2). Everything below that reads
  *  then conditionally writes users.theme goes through here so the two can
- *  never interleave. */
-const locks = new Map<string, Promise<unknown>>();
+ *  never interleave. POST /api/themes runs its cap check and create here
+ *  too, so two creates at once cannot both pass the cap. */
+const LOCKS_KEY = Symbol.for('ember.themeLocks');
+/** The process's map, not this module copy's: PATCH /api/theme and the
+ *  /api/themes routes each bundle their own copy (lib/sources/failureMemo),
+ *  and a map per copy serialized nothing between them. */
+const locks = ((globalThis as Record<symbol, unknown>)[LOCKS_KEY] ??= new Map()) as Map<string, Promise<unknown>>;
 
-function withThemeLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+export function withThemeLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   const prior = locks.get(userId) ?? Promise.resolve();
   const run = prior.then(fn, fn);
-  locks.set(userId, run.then(
+  const settled = run.then(
     () => {},
     () => {},
-  ));
+  );
+  locks.set(userId, settled);
+  // The last call in line removes the entry, so the map holds only users
+  // with a call in flight instead of everyone who ever changed a theme.
+  void settled.then(() => {
+    if (locks.get(userId) === settled) locks.delete(userId);
+  });
   return run;
+}
+
+/** How many users have a lock entry right now (for tests). */
+export function themeLocksHeld(): number {
+  return locks.size;
 }
 
 /** A switch (PATCH /api/theme): always writes, but still queued behind any

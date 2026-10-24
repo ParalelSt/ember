@@ -256,7 +256,7 @@ export function TransferFlow({
     } catch (e) {
       // Server messages here are written for people (private, not found,
       // Spotify unreachable): show them as they are.
-      if (asked.current === token) setLookup({ step: 'error', message: transferErrorMessage(e) });
+      if (asked.current === token) setLookup({ step: 'error', message: transferErrorMessage(e, 'link') });
     }
   }, []);
 
@@ -472,7 +472,7 @@ export function TransferFlow({
         setLookup({ step: 'idle' });
         setSignIn({ step: 'failed', message: googleLikesErrorMessage(e) });
       } else {
-        setStartError(transferErrorMessage(e));
+        setStartError(transferErrorMessage(e, lookup.step === 'link' ? 'link' : 'upload'));
       }
     } finally {
       setStarting(false);

@@ -11,7 +11,7 @@ import { useOfflineStore } from '@/stores/useOfflineStore';
 
 vi.mock('@/lib/api', () => ({ apiUrl: (u: string) => u }));
 
-import { downloadPlaylist, hydrateOfflineStore, removeDownload } from './offline';
+import { cancelDownload, downloadPlaylist, hydrateOfflineStore, removeDownload } from './offline';
 
 type Node = FakeDir | FakeFile;
 class FakeFile {
@@ -22,7 +22,10 @@ class FakeFile {
   async createWritable() {
     const chunks: Uint8Array[] = [];
     return {
-      write: async (c: Uint8Array | string) => { chunks.push(typeof c === 'string' ? new TextEncoder().encode(c) : c); },
+      write: async (c: Uint8Array | string) => {
+        if (diskFull && this.name.endsWith('.m4a')) throw new DOMException('quota', 'QuotaExceededError');
+        chunks.push(typeof c === 'string' ? new TextEncoder().encode(c) : c);
+      },
       close: async () => {
         const out = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0));
         let at = 0;
@@ -60,6 +63,8 @@ class FakeDir {
 }
 
 let root: FakeDir;
+/** A full disk: every audio write is refused. */
+let diskFull = false;
 const fetchMock = vi.fn();
 let urlCount = 0;
 
@@ -72,6 +77,7 @@ const PL = { id: 'pl1', name: 'Mix', created_at: '', artwork_url: null };
 
 beforeEach(() => {
   root = new FakeDir();
+  diskFull = false;
   Object.defineProperty(navigator, 'storage', {
     configurable: true,
     value: { getDirectory: async () => root, persist: async () => true },
@@ -122,6 +128,44 @@ describe('downloadPlaylist (browser storage)', () => {
     expect(result).toEqual({ saved: 1, failed: 1 });
   });
 
+  it('stops asking the server for songs once the disk is full', async () => {
+    const more = ['q1', 'q2', 'q3'].map((id) => makeTrack({ id: `youtube:${id}`, sourceId: id, title: id, streamUrl: `/api/youtube/stream/${id}` }));
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/q1')) diskFull = true;
+      return audio();
+    });
+
+    const result = await downloadPlaylist(PL, [YT, ...more]);
+
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['/api/youtube/stream/a1', '/api/youtube/stream/q1']);
+    expect(result).toEqual({ saved: 1, failed: 3 });
+    expect(await manifestIds()).toEqual(['youtube:a1']);
+  });
+
+  it('two playlists downloaded at once both stay on the downloaded list', async () => {
+    const PL2 = { id: 'pl2', name: 'Other', created_at: '', artwork_url: null };
+
+    await Promise.all([downloadPlaylist(PL, [YT]), downloadPlaylist(PL2, [UP])]);
+
+    const meta = JSON.parse(await (await (await root.getFileHandle('meta.json')).getFile()).text()) as {
+      downloadedPlaylistIds: string[];
+      totalBytes: number;
+    };
+    expect(meta.downloadedPlaylistIds.sort()).toEqual(['pl1', 'pl2']);
+    expect(meta.totalBytes).toBe(8);
+  });
+
+  it('a cancelled download rejects as aborted, so the app does not say "Downloaded"', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/u1')) cancelDownload('pl1');
+      return audio();
+    });
+
+    await expect(downloadPlaylist(PL, [YT, UP])).rejects.toMatchObject({ name: 'AbortError' });
+    expect(useOfflineStore.getState().downloaded).not.toContain('pl1');
+    expect(useOfflineStore.getState().inFlight.pl1).toBeUndefined();
+  });
+
   it('still fails outright when nothing at all could be saved', async () => {
     await expect(downloadPlaylist(PL, [BAD])).rejects.toThrow();
     expect(useOfflineStore.getState().downloaded).not.toContain('pl1');
@@ -144,11 +188,111 @@ describe('downloadPlaylist (browser storage)', () => {
     expect(Object.keys(useOfflineStore.getState().webFiles).sort()).toEqual(['upload:u1', 'youtube:a1']);
   });
 
+  it('updating a download counts its size once, not once per update', async () => {
+    await downloadPlaylist(PL, [YT, UP]);
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+
+    await downloadPlaylist(PL, [YT, UP]);
+
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+    // And the size kept on disk for the next start agrees.
+    useOfflineStore.setState({ totalBytes: 0 });
+    await hydrateOfflineStore();
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+  });
+
+  it('a download cancelled part way and then started again counts its size in full', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (!url.includes('/u1')) return audio();
+      cancelDownload('pl1');
+      throw new DOMException('Aborted', 'AbortError');
+    });
+    await expect(downloadPlaylist(PL, [YT, UP])).rejects.toMatchObject({ name: 'AbortError' });
+    expect(useOfflineStore.getState().totalBytes).toBe(0);
+
+    fetchMock.mockImplementation(async () => audio());
+    await downloadPlaylist(PL, [YT, UP]);
+
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+    useOfflineStore.setState({ totalBytes: 0 });
+    await hydrateOfflineStore();
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+  });
+
+  it('an update where a song now fails keeps the copy it already had', async () => {
+    await downloadPlaylist(PL, [YT, UP]);
+    fetchMock.mockImplementation(async (url: string) =>
+      url.includes('/a1') ? new Response('nope', { status: 500 }) : audio());
+
+    const result = await downloadPlaylist(PL, [YT, UP]);
+
+    // Counted once: "1 of 2 couldn't be saved", not "1 of 3" for a
+    // two-song playlist (the kept copy is not a song saved this time).
+    expect(result).toEqual({ saved: 1, failed: 1 });
+    expect((await manifestIds()).sort()).toEqual(['upload:u1', 'youtube:a1']);
+    expect(Object.keys(useOfflineStore.getState().webFiles).sort()).toEqual(['upload:u1', 'youtube:a1']);
+    expect(useOfflineStore.getState().totalBytes).toBe(8);
+  });
+
+  it('an update where nothing could be fetched leaves the earlier download in place', async () => {
+    await downloadPlaylist(PL, [YT]);
+    fetchMock.mockImplementation(async () => new Response('nope', { status: 500 }));
+
+    await downloadPlaylist(PL, [YT, UP]).catch(() => {});
+
+    expect(await manifestIds()).toEqual(['youtube:a1']);
+    expect(useOfflineStore.getState().downloaded).toContain('pl1');
+  });
+
+  it('an update that fails outright puts the earlier download back', async () => {
+    await downloadPlaylist(PL, [YT]);
+
+    await expect(downloadPlaylist(PL, [BAD])).rejects.toThrow();
+
+    expect(await manifestIds()).toEqual(['youtube:a1']);
+    expect(useOfflineStore.getState().downloaded).toContain('pl1');
+  });
+
   it('forgets the local URLs of a removed download', async () => {
     await downloadPlaylist(PL, [YT]);
 
     await removeDownload('pl1');
 
     expect(useOfflineStore.getState().webFiles).toEqual({});
+  });
+});
+
+describe('cancelDownload (Android app)', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('a cancel the app refuses is swallowed, not left as an unhandled error', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      Plugins: { EmberOffline: { cancel: () => Promise.reject(new Error('plugin gone')) } },
+    };
+    try {
+      cancelDownload('pl1');
+      await new Promise((r) => setTimeout(r, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+});
+
+describe('downloadPlaylist, storage that will not open', () => {
+  it('a download that fails before its first song does not stay "downloading" forever', async () => {
+    // A private window: the browser has navigator.storage but refuses OPFS.
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { getDirectory: async () => { throw new DOMException('denied', 'SecurityError'); }, persist: async () => true },
+    });
+
+    await expect(downloadPlaylist(PL, [YT])).rejects.toThrow('denied');
+
+    expect(useOfflineStore.getState().inFlight.pl1).toBeUndefined();
   });
 });

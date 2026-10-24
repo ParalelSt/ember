@@ -16,13 +16,14 @@ export const sessionKey = (id: string) => ['session', id] as const;
 export const liveCarlistKey = ['carlist', 'live'] as const;
 
 /** Live session state, polled every 2s. The session page and the app-level
- *  host (useSessionHost) share this cache entry; `null` switches it off. */
+ *  host (useSessionHost) share this cache entry; `null` switches it off.
+ *  An ended carlist never comes back, so its page stops asking. */
 export function useQuerySession(id: string | null) {
   return useQuery({
     queryKey: sessionKey(id ?? ''),
     queryFn: () => api.getSession(id as string),
     enabled: !!id,
-    refetchInterval: POLL_MS,
+    refetchInterval: (q) => (q.state.data?.session.active === false ? false : POLL_MS),
     refetchIntervalInBackground: true,
   });
 }

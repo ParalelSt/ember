@@ -1203,6 +1203,8 @@ APP_URL=http://127.0.0.1:3053 PB_URL=http://127.0.0.1:8086 node tests/pb-admin-e
   with `is_admin`; a later different `EMBER_ADMIN_PASSWORD` never overwrites
   the existing password.
 - **S4**: neither hook carries a password literal.
+- **S5**: a brand new data dir (no `migrate up` first, as `start-static.sh`
+  runs it) boots, and the next boot creates the superuser.
 
 `watchdog.test.sh` scenario 9 checks that `start-static.sh` hands those
 values (from the environment or `.env.local`) to PocketBase alone, never to
@@ -1228,7 +1230,8 @@ PB_URL=http://127.0.0.1:8148 EMBER_PB_SUPERUSER_EMAIL=su@sandbox.test \
   to members and signed-out callers, on lists and realtime subscriptions:
   likes, history and playlist rows through the `tracks` catalog, private
   playlist names, name and `is_admin` through a shared upload, a joined sort,
-  a join hidden behind a quoted string. What the app sends (own-field
+  a join hidden behind a quoted string, a subscription join under a
+  capitalised `Query` options key. What the app sends (own-field
   filters, the prank inbox filter and subscription, a dot inside a quoted
   value) still works, and so does the superuser.
 - **S2**: an update cannot hand a playlist, like, play or recent search to

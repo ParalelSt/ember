@@ -55,6 +55,15 @@ export function SearchOverlayContainer() {
     if (pathname !== openedAt.current) close();
   }, [pathname, open, close]);
 
+  // On /search the page's own box is the search: "/" and the sidebar's
+  // Search link (which only raise the flag) put the caret there instead of
+  // opening a panel that stands down here.
+  useEffect(() => {
+    if (!hidden || !open) return;
+    close();
+    document.querySelector<HTMLInputElement>('input[data-search-page-box]')?.focus();
+  }, [hidden, open, close]);
+
   const {
     q,
     setQ,

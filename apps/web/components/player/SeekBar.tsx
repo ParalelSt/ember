@@ -29,7 +29,10 @@ export function SeekBar({ position, duration, onSeek, labels = 'none', className
   // Non-null only while a drag is in flight, so the slider snaps back to the
   // real playback position the moment the seek is handed over.
   const [scrubPct, setScrubPct] = useState<number | null>(null);
-  const playbackPct = duration ? (position / duration) * 100 : 0;
+  // Held to the bar: the catalog's length can be shorter than the file
+  // (lib/playback/chooseDuration), and the slider does not clamp an array
+  // value, so the thumb ran off the end.
+  const playbackPct = duration ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0;
   const displayPct = scrubPct ?? playbackPct;
   const displaySec = (displayPct / 100) * (duration || 0);
 

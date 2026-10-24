@@ -17,7 +17,11 @@ export const GET = withRequestLog('import/liked/google/[flowId]', async (_req: N
     if (limited) return limited;
     const { flowId } = await ctx.params;
     const status = FLOW_ID_RE.test(flowId) ? flowStatus(user.id, flowId) : null;
-    if (!status) return Response.json({ state: 'expired', message: GOOGLE_MESSAGES.gone }, { status: 404 });
+    // `error` is what the app's request helper reads from a refusal;
+    // `message` keeps the shape of the other states.
+    if (!status) {
+      return Response.json({ state: 'expired', error: GOOGLE_MESSAGES.gone, message: GOOGLE_MESSAGES.gone }, { status: 404 });
+    }
     return Response.json(status);
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

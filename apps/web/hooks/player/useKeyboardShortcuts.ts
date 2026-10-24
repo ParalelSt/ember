@@ -6,6 +6,22 @@ import { shortcutFor, type TypingTarget } from '@/lib/playback/shortcuts';
 import { isLiveTrack } from '@/lib/radio/station';
 import type { AudioBackend } from '@/lib/playback/types';
 
+/** An open modal: a dialog or sheet (components/ui, ReviewSheet; base-ui
+ *  marks the open popup `data-open`, a closing one `data-closed`) or a
+ *  hand-made `aria-modal` one (the QR scanner). Its keys are its own, never
+ *  the player's. The player's own views (`data-player-view`: the
+ *  full-screen player, and its queue, equalizer, devices and More sheets)
+ *  are the player itself, so its shortcuts keep working there. */
+export const OPEN_MODAL = [
+  '[data-slot="dialog-content"][data-open]:not([data-player-view])',
+  '[data-slot="sheet-content"][data-open]:not([data-player-view])',
+  '[role="dialog"][aria-modal="true"]:not([aria-hidden="true"]):not([data-player-view])',
+].join(',');
+
+function modalOpen(): boolean {
+  return typeof document !== 'undefined' && document.querySelector(OPEN_MODAL) !== null;
+}
+
 /** Global keyboard shortcuts. The map itself is pure (lib/playback/shortcuts);
  *  this hook only performs the action it names. preventDefault stays exactly
  *  where it was: on a seek it is called only when a backend exists, so with no
@@ -22,9 +38,10 @@ export function useKeyboardShortcuts({
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (modalOpen()) return;
       const st = usePlayerStore.getState();
       const action = shortcutFor(
-        { key: e.key, code: e.code, repeat: e.repeat, target: e.target as TypingTarget | null },
+        { key: e.key, code: e.code, repeat: e.repeat, target: e.target as TypingTarget | null, defaultPrevented: e.defaultPrevented },
         {
           hasCurrent: Boolean(st.queue[st.index]),
           volume: st.volume,

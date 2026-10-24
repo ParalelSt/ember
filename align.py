@@ -72,9 +72,16 @@ REFINE_S = 0.1               # each start is refined this far on the first bars
 FOLLOW_SHIFT_S = 0.12        # a bar may start this far from where the one before put it
 FOLLOW_PACE = 0.03           # and its window run this much faster or slower
 HIT_S = 0.05                 # an onset "lands" within 50 ms
+# ffmpeg decoding the recording: seconds for a song, so this only stops one
+# that hangs. Well under the 5 minutes after which lib/tabAlign.ts kills
+# align.py, which would leave ffmpeg running on alone.
+DECODE_TIMEOUT_S = 120
 
 
 def fail(msg: str) -> None:
+    """One line on stderr (what lib/tabAlign.ts shows), the same as JSON on
+    stdout, exit 1."""
+    print(json.dumps({"error": msg}))
     print(msg, file=sys.stderr)
     sys.exit(1)
 
@@ -93,8 +100,12 @@ def load_audio(path: str) -> np.ndarray:
         fail(FFMPEG_MISSING)
     with tempfile.TemporaryDirectory(prefix="ember-align-") as tmp:
         wav = os.path.join(tmp, "mix.wav")
-        r = subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", str(SR), wav],
-                           capture_output=True, text=True)
+        try:
+            r = subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", str(SR), wav],
+                               capture_output=True, text=True, timeout=DECODE_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            # subprocess.run has killed ffmpeg; leaving the block removes the wav.
+            fail(f"decoding the audio took longer than {DECODE_TIMEOUT_S} s")
         if r.returncode != 0:
             detail = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "ffmpeg failed"
             fail(f"could not decode the audio: {detail}")

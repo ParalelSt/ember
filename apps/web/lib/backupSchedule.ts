@@ -1,6 +1,7 @@
 /** Plain words for PocketBase's backup schedule, for the admin Backups
- *  section. The common "M H * * *" becomes "every night at HH:MM"; anything
- *  else is shown as the cron line itself. */
+ *  section. The common "M H * * *" becomes "every night at HH:MM UTC" (the
+ *  zone PocketBase's cron runs in, whatever the host's own); anything else
+ *  is shown as the cron line itself. */
 export function describeBackupSchedule(cron: string, keep: number): string | null {
   const c = cron.trim();
   if (!c) return null;
@@ -9,7 +10,7 @@ export function describeBackupSchedule(cron: string, keep: number): string | nul
   if (m && Number(m[1]) < 60 && Number(m[2]) < 24) {
     const hh = m[2].padStart(2, '0');
     const mm = m[1].padStart(2, '0');
-    return `Every night at ${hh}:${mm} (server time)${keeps}.`;
+    return `Every night at ${hh}:${mm} UTC${keeps}.`;
   }
   return `On the schedule "${c}"${keeps}.`;
 }

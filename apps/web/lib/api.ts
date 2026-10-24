@@ -1,11 +1,12 @@
 import type { AlbumDetail, ArtistPayload, CollectionTrack, LiveCarlist, Playlist, SessionState, Track } from '@/types/track';
 import type { AddPosition } from '@/lib/carlist';
-import type { CopyOutcome } from '@/lib/playlistCopy';
+import { MAX_BULK, type CopyOutcome } from '@/lib/playlistCopy';
 import type { CandidatePerson, CollabState, InvitePreview } from '@/lib/collab';
 import { logger } from '@/lib/logger/client';
 import { isPublicPage } from '@/lib/publicPaths';
 import { sessionExpired } from '@/lib/sessionExpired';
-import { connectionOk } from '@/lib/connectionBlip';
+import { GATEWAY_STATUSES, NO_ANSWER_MESSAGE, connectionOk } from '@/lib/connectionBlip';
+import { clipSearchQuery } from '@/lib/searchLimits';
 import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/google/flows';
@@ -97,13 +98,21 @@ export const NETWORK_RETRY_DELAYS_MS = [300, 1000];
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** A body that is not JSON. */
+const UNREADABLE = Symbol('unreadable');
+
+const isAbort = (e: unknown, signal?: AbortSignal) =>
+  !!signal?.aborted || (e instanceof Error && e.name === 'AbortError');
+
 async function req<T>(path: string, { method = 'GET', body, signal, expected, background }: ReqOptions = {}): Promise<T> {
   let res: Response;
+  let data: unknown;
   // A FormData body carries its own multipart boundary: setting the header
   // by hand would strip it and the upload would arrive unreadable.
   const form = body instanceof FormData;
   const retryDelays = method === 'GET' || background ? NETWORK_RETRY_DELAYS_MS : [];
   for (let attempt = 0; ; attempt++) {
+    let failure: unknown;
     try {
       res = await fetch(`${API_BASE}/api${path}`, {
         method,
@@ -112,38 +121,57 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected, ba
         credentials: 'include',
         signal,
       });
-      break;
+      // A body that stopped arriving is a network failure (thrown on); one
+      // that arrived but is not JSON came from something else.
+      data = await res.json().catch((e: unknown) => {
+        if (e instanceof SyntaxError) return UNREADABLE;
+        throw e;
+      });
+      // Ember answers every call with JSON. A success that is not JSON (a
+      // Wi-Fi sign-in page answering in its place), or a gateway status
+      // without it (the Tailscale
+      // Funnel while Next restarts), is no answer from the server: as one
+      // it showed "Unexpected token '<'" in toasts, sent a bug report per
+      // call, and told the offline player the server was back.
+      if (data !== UNREADABLE || !(res.ok || GATEWAY_STATUSES.includes(res.status))) break;
+      // `answered`: something did answer (a server restart, a sign-in
+      // page), which the player tells apart from being offline.
+      failure = Object.assign(new Error(NO_ANSWER_MESSAGE), { answered: res.status });
     } catch (e) {
-      // Network-level failure (offline, DNS, CORS, a dropped connection), or
-      // the caller aborting, which is never retried. `network` tells
-      // autoReport this is a possible blip, not a fault on its own.
-      const aborted = !!signal?.aborted || (e instanceof Error && e.name === 'AbortError');
-      const data = { method, path, network: !aborted };
-      if (!aborted && attempt < retryDelays.length) {
-        logger.warn('api', `${method} ${path} network error, retrying`, { ...data, attempt: attempt + 1 });
-        await sleep(retryDelays[attempt]);
-        continue;
-      }
-      if (background) {
-        logger.warn('api', `${method} ${path} network error`, { ...data, error: (e as Error)?.message });
-      } else {
-        logger.error('api', `${method} ${path} network error`, data, e as Error);
-      }
-      throw e;
+      failure = e;
     }
+    // Network-level failure (offline, DNS, CORS, a dropped connection, no
+    // answer from Ember), or the caller aborting, which is never retried.
+    // `network` tells autoReport this is a possible blip, not a fault on its
+    // own.
+    const aborted = isAbort(failure, signal);
+    const entry = { method, path, network: !aborted };
+    if (!aborted && attempt < retryDelays.length) {
+      logger.warn('api', `${method} ${path} network error, retrying`, { ...entry, attempt: attempt + 1 });
+      await sleep(retryDelays[attempt]);
+      continue;
+    }
+    if (background) {
+      logger.warn('api', `${method} ${path} network error`, { ...entry, error: (failure as Error)?.message });
+    } else {
+      logger.error('api', `${method} ${path} network error`, entry, failure as Error);
+    }
+    throw failure;
   }
   // Any HTTP answer, even an error status, means the connection is back.
   connectionOk();
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+    const err = (data !== UNREADABLE && data && typeof data === 'object' ? data : { error: res.statusText }) as { error?: string };
     // proxy.ts stamps every response with x-request-id; surfacing it here
     // lets triage line up this client-side entry with the matching
     // server-side withRequestLog entry for the same request.
     const reqId = res.headers.get('x-request-id') || undefined;
     const entry = { method, path, status: res.status, body: err.error, reqId };
     // A 401 is an answer too (the session is gone), not a fault: as an error
-    // it sent an automatic bug report per call (bughunt V5).
-    if (res.status === 401 || expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
+    // it sent an automatic bug report per call (bughunt V5). So is a 429:
+    // the route's own limit said no, which the server logs as a warning too
+    // (withRequestLog).
+    if (res.status === 401 || res.status === 429 || expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
     else logger.error('api', `${method} ${path} → ${res.status}`, entry);
     // Attach the HTTP status so callers can branch on it (e.g. 409 = already
     // in the playlist → a friendly toast instead of the raw server text).
@@ -164,7 +192,7 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected, ba
     }
     throw error;
   }
-  return (await res.json()) as T;
+  return data as T;
 }
 
 /** Like req, but silent: no client log entry on failure. The target's side
@@ -197,6 +225,25 @@ export interface LinkLikedCounts {
   newSample: { title: string; artist: string }[];
 }
 
+/** The bulk routes take MAX_BULK songs a request (Select all on a long
+ *  Liked songs picks more): the rest follow in order, one request at a
+ *  time, and the answers add up. */
+async function inBatches(tracks: Track[], send: (batch: Track[]) => Promise<CopyOutcome>): Promise<CopyOutcome> {
+  if (tracks.length <= MAX_BULK) return send(tracks);
+  const out: CopyOutcome = { added: 0, skipped: [] };
+  for (let i = 0; i < tracks.length; i += MAX_BULK) {
+    const r = await send(tracks.slice(i, i + MAX_BULK));
+    out.added += r.added;
+    out.skipped.push(...r.skipped);
+  }
+  return out;
+}
+
+/** A pasted link's refusals that are answers (lib/sources/spotify.ts and
+ *  the YouTube Music playlist reader): not a playlist, private, gone, or
+ *  nothing in it to import. */
+const LINK_REFUSALS = [400, 403, 404, 422];
+
 function transferBody(input: {
   file?: File;
   text?: string;
@@ -218,14 +265,21 @@ function transferBody(input: {
 }
 
 export const api = {
-  search: (q: string) => req<{ tracks: Track[] }>(`/search?q=${encodeURIComponent(q ?? '')}`),
+  /** A pasted paragraph is cut to what the route takes, rather than
+   *  refused with a 400 that read as "search failed". */
+  search: (q: string) =>
+    req<{ tracks: Track[] }>(`/search?q=${encodeURIComponent(clipSearchQuery(q ?? ''))}`),
   getTrending: () =>
     req<{ tracks: Track[]; title: string | null; country: string; fetchedAt: string | null; stale: boolean }>('/youtube/trending'),
   getRecommended: (seedSourceId?: string) =>
     req<{ tracks: Track[] }>(`/youtube/recommended${seedSourceId ? `?seed=${encodeURIComponent(seedSourceId)}` : ''}`),
-  getArtist: (channelId: string) => req<ArtistPayload>(`/youtube/artist/${encodeURIComponent(channelId)}`),
-  getAlbum: (browseId: string) => req<AlbumDetail>(`/youtube/album/${encodeURIComponent(browseId)}`),
-  getTrack: (videoId: string) => req<{ track: Track }>(`/youtube/track/${encodeURIComponent(videoId)}`),
+  // 404 (and 400, an id that is not one) is an answer: the page says
+  // "not found" (BrowseError, the shared track page), not a fault.
+  getArtist: (channelId: string) =>
+    req<ArtistPayload>(`/youtube/artist/${encodeURIComponent(channelId)}`, { expected: [400, 404] }),
+  getAlbum: (browseId: string) => req<AlbumDetail>(`/youtube/album/${encodeURIComponent(browseId)}`, { expected: [400, 404] }),
+  getTrack: (videoId: string) =>
+    req<{ track: Track }>(`/youtube/track/${encodeURIComponent(videoId)}`, { expected: [400, 404] }),
   getTrackAvailability: (id: string) =>
     req<{ unavailable: boolean; reason: string | null }>(`/tracks/${encodeURIComponent(id)}/availability`),
   /** Volume normalization gain in dB (null: not measured yet). Quiet: it is
@@ -236,8 +290,6 @@ export const api = {
     quiet<{ gainDb: number | null }>(`/tracks/${encodeURIComponent(id)}/loudness?v=2`),
   getReplacements: (id: string) =>
     req<{ candidates: Track[] }>(`/tracks/${encodeURIComponent(id)}/replacements`),
-  saveToServer: (videoId: string) =>
-    req<{ ok: true }>(`/youtube/download/${encodeURIComponent(videoId)}`, { method: 'POST' }),
 
   listPlaylists: () => req<{ playlists: Playlist[] }>('/playlists'),
   createPlaylist: (name: string) =>
@@ -279,11 +331,15 @@ export const api = {
   /** Copy songs into a playlist: the server skips the ones already there
    *  (lib/playlistCopy's rule) and says which. */
   bulkAddToPlaylist: (id: string, tracks: Track[]) =>
-    req<CopyOutcome>(`/playlists/${encodeURIComponent(id)}/tracks/bulk`, { method: 'POST', body: { tracks } }),
+    inBatches(tracks, (batch) =>
+      req<CopyOutcome>(`/playlists/${encodeURIComponent(id)}/tracks/bulk`, { method: 'POST', body: { tracks: batch }, expected: [404] }),
+    ),
   /** 409 (`isAlreadyInPlaylist`): the song is already there. An answer the
-   *  app shows as "Already in <playlist>", never an automatic bug report. */
+   *  app shows as "Already in <playlist>", never an automatic bug report.
+   *  404 on adds and removes: the playlist was deleted, or you were taken
+   *  off it, since the list on screen was read. An answer too. */
   addToPlaylist: (id: string, track: Track) =>
-    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks`, { method: 'POST', body: { track }, expected: [409] }),
+    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks`, { method: 'POST', body: { track }, expected: [404, 409] }),
   /** Songs per playlist (yours and shared ones), for the head unit's
    *  covers sidebar. */
   playlistSongCounts: () => req<{ counts: Record<string, number> }>('/playlists/counts'),
@@ -292,7 +348,7 @@ export const api = {
   playlistsContaining: (trackId: string) =>
     req<{ playlistIds: string[] }>(`/playlists/containing?track=${encodeURIComponent(trackId)}`),
   removeFromPlaylist: (id: string, trackId: string) =>
-    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
+    req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE', expected: [404] }),
   replaceInPlaylist: (playlistId: string, trackId: string, track: Track) =>
     req<{ ok: true; merged: boolean; track: Track }>(
       `/playlists/${encodeURIComponent(playlistId)}/tracks/${encodeURIComponent(trackId)}/replace`,
@@ -309,12 +365,17 @@ export const api = {
     }),
   /** The live carlist you host or joined (the Carlist button), or null. */
   getLiveCarlist: () => req<{ carlist: LiveCarlist | null }>('/sessions'),
-  getSession: (id: string) => req<SessionState>(`/sessions/${encodeURIComponent(id)}`),
+  /** 404 (gone) and 403 (not joined): the carlist page says "Carlist not
+   *  found". Asked every 2 s, so a fault here would file a report a poll. */
+  getSession: (id: string) => req<SessionState>(`/sessions/${encodeURIComponent(id)}`, { expected: [403, 404] }),
+  // 410 on the calls below: the carlist ended (by its host, or left idle)
+  // between two polls. An answer, not a fault.
   /** `ahead`: songs that play before it (-1: it is the first). */
   addToSession: (id: string, track: Track, position: AddPosition = 'end') =>
     req<{ ok: true; position: AddPosition; ahead: number }>(`/sessions/${encodeURIComponent(id)}/tracks`, {
       method: 'POST',
       body: { track, position },
+      expected: [410],
     }),
   /** `index`: the queue row the skipper sees playing, so a skip that
    *  arrives after the song already changed skips nothing more. */
@@ -322,19 +383,26 @@ export const api = {
     req<{ ok: true; stale?: boolean }>(`/sessions/${encodeURIComponent(id)}/skip`, {
       method: 'POST',
       body: index === undefined ? undefined : { index },
+      expected: [410],
     }),
   consumeSessionCommands: (id: string) =>
-    req<{ commands: { type: string }[] }>(`/sessions/${encodeURIComponent(id)}/commands/consume`, { method: 'POST' }),
+    req<{ commands: { type: string }[] }>(`/sessions/${encodeURIComponent(id)}/commands/consume`, {
+      method: 'POST',
+      expected: [410],
+    }),
   publishSessionNow: (id: string, index: number) =>
-    req<{ ok: true }>(`/sessions/${encodeURIComponent(id)}/now`, { method: 'POST', body: { index } }),
+    req<{ ok: true }>(`/sessions/${encodeURIComponent(id)}/now`, { method: 'POST', body: { index }, expected: [410] }),
   endSession: (id: string) => req<{ ok: true }>(`/sessions/${encodeURIComponent(id)}/end`, { method: 'POST' }),
   saveSession: (id: string, name?: string) =>
     req<{ playlist: { id: string; name: string } }>(`/sessions/${encodeURIComponent(id)}/save`, { method: 'POST', body: { name } }),
-  /** Inspect a pasted playlist link for the create dialog's preview. */
+  /** Inspect a pasted playlist link for the create dialog's preview. A link
+   *  that is not a playlist (400), private (403), gone (404) or empty (422)
+   *  is an answer, said in the route's own sentence. */
   importInspect: (url: string, opts: { liked?: boolean } = {}) =>
     req<InspectResult & { liked?: LinkLikedCounts }>('/import/inspect', {
       method: 'POST',
       body: opts.liked ? { url, liked: true } : { url },
+      expected: LINK_REFUSALS,
     }),
   /** Queue the import of a pasted link. The default destination creates the
    *  playlist now; `liked` makes its songs likes and returns no playlist. */
@@ -342,14 +410,20 @@ export const api = {
     req<{ job: ImportJob; playlistId: string | null }>('/import/jobs', {
       method: 'POST',
       body: opts.skipLiked ? { url, destination, skipLiked: true } : { url, destination },
+      expected: LINK_REFUSALS,
     }),
   /** What is in an uploaded file or a pasted list, without starting
-   *  anything. */
+   *  anything. Over 20 MB (413) or nothing readable in it (422) is an
+   *  answer, in the route's own sentence. */
   transferPreview: (input: { file?: File; text?: string }) =>
-    req<{ preview: TransferPreview }>('/import/upload?preview=1', { method: 'POST', body: transferBody(input) }),
+    req<{ preview: TransferPreview }>('/import/upload?preview=1', { method: 'POST', body: transferBody(input), expected: [413, 422] }),
   /** Queue a transfer from an uploaded file or a pasted list. */
   transferStart: (input: { file?: File; text?: string; destination?: JobKind; skipLiked?: boolean }) =>
-    req<{ job: ImportJob; playlistId: string | null }>('/import/upload', { method: 'POST', body: transferBody(input) }),
+    req<{ job: ImportJob; playlistId: string | null }>('/import/upload', {
+      method: 'POST',
+      body: transferBody(input),
+      expected: [413, 422],
+    }),
   /** Is Google sign-in set up on this server? */
   googleLikesConfig: () => req<{ configured: boolean }>('/import/liked/google'),
   /** A new Google sign-in for the YouTube Music likes: the code to type on
@@ -364,12 +438,16 @@ export const api = {
   googleLikesStatus: (flowId: string) =>
     req<{ state: GoogleFlowState; preview?: GooglePreview; checking?: { done: number; total: number }; message?: string }>(
       `/import/liked/google/${encodeURIComponent(flowId)}`,
+      // 404: the sign-in is over (ran out, or the server restarted), an
+      // answer the dialog says in words.
+      { expected: [404] },
     ),
-  /** Queue the transfer of the likes that sign-in read. */
+  /** Queue the transfer of the likes that sign-in read. 404: the sign-in
+   *  is over, said in words. */
   googleLikesStart: (flowId: string) =>
     req<{ job: ImportJob; playlistId: null; truncated: boolean; note: string | null }>(
       `/import/liked/google/${encodeURIComponent(flowId)}/start`,
-      { method: 'POST' },
+      { method: 'POST', expected: [404] },
     ),
   /** Cancel it: the server revokes whatever Google handed out. */
   googleLikesCancel: (flowId: string) =>
@@ -417,21 +495,16 @@ export const api = {
   listening: () =>
     req<{ items: { userName: string; playedAt: string; track: Track }[] }>('/listening'),
   deletePlaylist: (id: string) => req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  /** Upload (or replace) a playlist cover image. Multipart, so it bypasses
-   *  the JSON `req` helper. */
-  updatePlaylistArtwork: async (id: string, file: File): Promise<{ playlist: Playlist }> => {
+  /** Upload (or replace) a playlist cover image, multipart. 413 and 415 (too
+   *  large, not an image it takes) are answers the toast says. */
+  updatePlaylistArtwork: (id: string, file: File) => {
     const fd = new FormData();
     fd.append('artwork', file);
-    const res = await fetch(`${API_BASE}/api/playlists/${encodeURIComponent(id)}/artwork`, {
+    return req<{ playlist: Playlist }>(`/playlists/${encodeURIComponent(id)}/artwork`, {
       method: 'PATCH',
       body: fd,
-      credentials: 'include',
+      expected: [413, 415],
     });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-      throw new Error(err.error || `Request failed: ${res.status}`);
-    }
-    return (await res.json()) as { playlist: Playlist };
   },
 
   listLikes: () => req<{ tracks: CollectionTrack[] }>('/likes'),
@@ -439,7 +512,7 @@ export const api = {
    *  member's yes to "this likes every one of them": the route refuses
    *  without it. */
   bulkLike: (tracks: Track[]) =>
-    req<CopyOutcome>('/likes/bulk', { method: 'POST', body: { tracks, confirmed: true } }),
+    inBatches(tracks, (batch) => req<CopyOutcome>('/likes/bulk', { method: 'POST', body: { tracks: batch, confirmed: true } })),
   like: (track: Track) => req<{ ok: true }>('/likes', { method: 'POST', body: { track } }),
   unlike: (trackId: string) =>
     req<{ ok: true }>(`/likes/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
@@ -455,20 +528,21 @@ export const api = {
     req<{ tabs: TabFile[] }>(
       `/tabs/files?kind=all&trackId=${encodeURIComponent(trackId)}&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
     ),
-  /** Add a Guitar Pro or MusicXML file for a song. Multipart, so it
-   *  bypasses the JSON `req` helper. */
+  /** Add a Guitar Pro or MusicXML file for a song, multipart. 413 and 415
+   *  (too large, not a tab file) are answers the page says. */
   uploadTabFile: async (file: File, meta: { title: string; artist: string; trackId?: string }): Promise<{ tab: TabFile }> => {
     const form = new FormData();
     form.append('file', file);
     form.append('title', meta.title || file.name);
     form.append('artist', meta.artist);
     if (meta.trackId) form.append('trackId', meta.trackId);
-    const res = await fetch(`${API_BASE}/api/tabs/files`, { method: 'POST', body: form, credentials: 'include' });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(body.error ?? 'That file could not be added.');
+    try {
+      return await req<{ tab: TabFile }>('/tabs/files', { method: 'POST', body: form, expected: [413, 415] });
+    } catch (e) {
+      // No sentence from the server (a proxy's page): still one for people.
+      if (e instanceof Error && e.message.startsWith('Request failed')) e.message = 'That file could not be added.';
+      throw e;
     }
-    return (await res.json()) as { tab: TabFile };
   },
   /** Add a text tab someone pasted (POST /api/tabs/text): the server reads
    *  it with the same parser as the preview (lib/tabText.ts) and keeps it
@@ -499,24 +573,19 @@ export const api = {
   listUploads: () => req<{ tracks: Track[] }>('/uploads'),
   deleteUpload: (id: string) =>
     req<{ ok: true }>(`/uploads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  /** Multipart, so it bypasses the JSON `req` helper. `durationSec` is read
-   *  in the browser, the server has no ffprobe to rely on. */
-  uploadTrack: async (
+  /** Multipart. `durationSec` is read in the browser, the server has no
+   *  ffprobe to rely on. 413 and 415 (too large, not audio) are answers. */
+  uploadTrack: (
     file: File,
     meta: { title: string; artist: string; album?: string; durationSec: number },
-  ): Promise<{ track: Track }> => {
+  ) => {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('title', meta.title);
     fd.append('artist', meta.artist);
     if (meta.album) fd.append('album', meta.album);
     fd.append('durationSec', String(Math.round(meta.durationSec)));
-    const res = await fetch(`${API_BASE}/api/uploads`, { method: 'POST', body: fd, credentials: 'include' });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-      throw new Error(err.error || `Upload failed: ${res.status}`);
-    }
-    return (await res.json()) as { track: Track };
+    return req<{ track: Track }>('/uploads', { method: 'POST', body: fd, expected: [413, 415] });
   },
 
   getHistory: () => req<{ tracks: Track[] }>('/history'),
@@ -579,37 +648,25 @@ export const api = {
     req<{ theme: SavedTheme; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: patch,
-      expected: [422],
+      expected: [404, 422],
     }),
+  // 404 on these two: the theme was deleted meanwhile (another device), an
+  // answer the page says ("that theme is gone").
   deleteSavedTheme: (id: string) =>
-    req<{ ok: true; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    req<{ ok: true; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, { method: 'DELETE', expected: [404] }),
 
-  updateProfile: async ({
-    name,
-    avatar,
-    removeAvatar,
-  }: {
-    name?: string;
-    avatar?: File;
-    removeAvatar?: boolean;
-  }): Promise<{
-    ok: true;
-    user: { id: string; email: string; name: string; avatarUrl: string | null };
-  }> => {
+  /** Multipart. 413 and 415 (a picture too large, or not one it takes) are
+   *  answers. `user` is absent when nothing changed. */
+  updateProfile: ({ name, avatar, removeAvatar }: { name?: string; avatar?: File; removeAvatar?: boolean }) => {
     const fd = new FormData();
     if (name !== undefined) fd.set('name', name);
     if (avatar) fd.set('avatar', avatar);
     if (removeAvatar) fd.set('removeAvatar', 'true');
-    const res = await fetch(`${API_BASE}/api/profile`, {
+    return req<{ ok: true; user?: { id: string; email: string; name: string; avatarUrl: string | null } }>('/profile', {
       method: 'PATCH',
       body: fd,
-      credentials: 'include',
+      expected: [413, 415],
     });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-      throw new Error(err.error || `Request failed: ${res.status}`);
-    }
-    return res.json();
   },
 
   admin: {
@@ -654,8 +711,10 @@ export const api = {
       req<{ ok: true }>(`/admin/tracks/${encodeURIComponent(recordId)}`, { method: 'DELETE' }),
 
     listInvites: () => req<{ invites: AdminInvite[] }>('/admin/invites'),
+    // Already on the list (409) or not an address the route takes (400):
+    // the page shows the sentence.
     addInvite: (email: string) =>
-      req<{ ok: true; invite: AdminInvite }>('/admin/invites', { method: 'POST', body: { email } }),
+      req<{ ok: true; invite: AdminInvite }>('/admin/invites', { method: 'POST', body: { email }, expected: [400, 409] }),
     deleteInvite: (id: string) =>
       req<{ ok: true }>(`/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 

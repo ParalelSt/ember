@@ -17,13 +17,14 @@ import {
   useQueryAdminUsers,
 } from '@/hooks/useAdmin';
 import type { AdminUser } from '@/lib/api';
+import { pbDateLabel } from '@/lib/pocketbase/dates';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function AdminUsersPage() {
   const { user: actor, signOut } = useAuth();
-  const { data: users = [], isLoading } = useQueryAdminUsers();
+  const { data: users = [], isLoading, error } = useQueryAdminUsers();
   const updateUser = useExecuteUpdateAdminUser();
   const deleteUser = useExecuteDeleteAdminUser();
   const resetPassword = useExecuteResetAdminUserPassword();
@@ -55,7 +56,8 @@ export default function AdminUsersPage() {
       </div>
 
       {isLoading && <EmptyState>Loading…</EmptyState>}
-      {!isLoading && filtered.length === 0 && (
+      {error && <EmptyState>Couldn&apos;t load users: {(error as Error).message}</EmptyState>}
+      {!isLoading && !error && filtered.length === 0 && (
         <EmptyState>No users match.</EmptyState>
       )}
 
@@ -183,7 +185,7 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassw
       />
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold">{user.email}</div>
-        <div className="text-xs text-muted-foreground">{new Date(user.created).toLocaleDateString()}</div>
+        <div className="text-xs text-muted-foreground">{pbDateLabel(user.created)}</div>
       </div>
       <Input
         value={name}

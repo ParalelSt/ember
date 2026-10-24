@@ -218,7 +218,7 @@ describe('GET /api/import/liked/google/:flowId, through every state', () => {
     for (const id of ['x'.repeat(24), '../../etc', 'short']) {
       const r = await status(id);
       expect(r.status).toBe(404);
-      expect(r.body).toEqual({ state: 'expired', message: GOOGLE_MESSAGES.gone });
+      expect(r.body).toEqual({ state: 'expired', error: GOOGLE_MESSAGES.gone, message: GOOGLE_MESSAGES.gone });
     }
     currentUser = { id: 'someone-else' };
     expect((await status(body.flowId)).status).toBe(404);

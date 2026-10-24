@@ -201,18 +201,6 @@ export function sheetRows(tabs: TabSummary[], o: SheetRowsOptions = {}): TabShee
   });
 }
 
-/** The sheet's rows under their headings, in the order the rows came in
- *  (so the group holding the best tab comes first). */
-export function groupRows(rows: TabSheetRow[]): { group: TabSheetGroup; label: string; rows: TabSheetRow[] }[] {
-  const out: { group: TabSheetGroup; label: string; rows: TabSheetRow[] }[] = [];
-  for (const row of rows) {
-    const last = out.find((g) => g.group === row.group);
-    if (last) last.rows.push(row);
-    else out.push({ group: row.group, label: row.groupLabel, rows: [row] });
-  }
-  return out;
-}
-
 // ── the listener's own pick ───────────────────────────────────────────────
 
 /** Where a listener's pick for a song is kept: this browser, keyed by the

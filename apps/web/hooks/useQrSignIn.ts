@@ -55,6 +55,13 @@ export function useQrSignIn({ shell, onApproved }: Options) {
   useEffect(() => {
     onApprovedRef.current = onApproved;
   }, [onApproved]);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const onChange = () => {
@@ -80,7 +87,11 @@ export function useQrSignIn({ shell, onApproved }: Options) {
         });
         const j = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         if (cancelled) return;
-        const expiresAtMs = Date.parse(String(j?.expiresAt ?? ''));
+        // The deadline on this device's own clock: a TV or car whose clock
+        // runs minutes ahead of the server read the server's time as already
+        // past and burned through every renewal in seconds.
+        const inMs = Number(j?.expiresInMs);
+        const expiresAtMs = Number.isFinite(inMs) && inMs > 0 ? Date.now() + inMs : Date.parse(String(j?.expiresAt ?? ''));
         if (
           !res.ok || !j ||
           typeof j.id !== 'string' || typeof j.code !== 'string' ||
@@ -138,7 +149,10 @@ export function useQrSignIn({ shell, onApproved }: Options) {
         schedule(BACKOFF_MS);
         return;
       }
-      if (cancelled) return;
+      // A poll stopped while its answer was on the way (the tab was hidden,
+      // a new code asked for) still reads that answer: an approved one is
+      // the session, which the server hands over only once.
+      if (cancelled && !res.ok) return;
       if (res.status === 404) {
         renewOrGiveUp();
         return;
@@ -149,15 +163,16 @@ export function useQrSignIn({ shell, onApproved }: Options) {
         return;
       }
       const j = (await res.json().catch(() => null)) as { status?: string; token?: unknown; record?: unknown } | null;
-      if (cancelled) return;
       const status = j?.status;
       if (status === 'approved' && typeof j?.token === 'string' && j.record && typeof j.record === 'object') {
+        if (!mounted.current) return;
         const record = j.record as QrSession['record'];
         const name = typeof record.name === 'string' && record.name ? record.name : String(record.email ?? '');
         setState({ kind: 'approved', name });
         onApprovedRef.current(j.token, record);
         return;
       }
+      if (cancelled) return;
       if (status === 'denied') {
         setState({ kind: 'denied' });
         return;

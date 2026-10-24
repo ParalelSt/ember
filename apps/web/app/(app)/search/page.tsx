@@ -41,9 +41,14 @@ export default function SearchPage() {
             key={t.id}
             track={t}
             density="compact"
+            // Same player as the results below, as in the overlay: the row
+            // of the song playing now pauses it rather than starting over.
+            active={trackActions.currentId === t.id}
+            playing={trackActions.isPlaying}
             artworkFallback={RECENTS_FALLBACK}
             artworkSrc={trackActions.artworkSrcFor(t)}
             onPlay={() => trackActions.onPlay(t)}
+            onToggle={trackActions.onToggle}
             onRemove={() => removeRecentTrack.mutate(t.id)}
             removeLabel={`Remove "${t.title}" from recent searches`}
             trailingPlayControl
@@ -77,6 +82,8 @@ export default function SearchPage() {
           <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             autoFocus
+            // The overlay hands "/" and the sidebar's Search to this box.
+            data-search-page-box
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="What do you want to listen to?"

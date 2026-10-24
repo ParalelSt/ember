@@ -176,6 +176,21 @@ class PlaybackLogTest {
         assertTrue(data.getJSONObject("nested").getString("note").length <= LogRedact.MAX_STRING + 1)
     }
 
+    @Test fun `one event's data stays under the server's cap, so it cannot get the batch refused`() {
+        val log = logger()
+        val big = JSONObject().put("first", "kept")
+        repeat(20) { big.put("k$it", "x".repeat(250)) }
+        log.error("player.error", "big", big)
+        val data = events(sent[0])[0].getJSONObject("data")
+        assertTrue(data.toString(), data.toString().length <= 2048)
+        assertTrue(data.getBoolean("truncated"))
+        assertEquals("kept", data.getString("first"))
+        assertTrue(data.has("k0"))
+        // Small data is left as it is.
+        log.error("player.error", "small", JSONObject().put("a", 1))
+        assertFalse(events(sent[1])[0].getJSONObject("data").has("truncated"))
+    }
+
     @Test fun `a source is a host or file, never a path`() {
         assertEquals("10.0.2.2", LogRedact.source("http://10.0.2.2:3069/api/youtube/stream/abc?x=1"))
         assertEquals("file", LogRedact.source("file:///data/user/0/app.ember.music/files/a.m4a"))

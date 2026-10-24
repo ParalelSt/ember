@@ -26,6 +26,23 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'steadier-everywhere',
+    version: '0.7.32',
+    date: '2026-10-24',
+    title: 'Steadier everywhere',
+    summary: 'A long list of fixes across the app, and phone updates that finish instead of failing.',
+    bullets: [
+      'Android: updating from inside the app no longer says "Couldn\'t update" after you allow installing, and Ember tells you when the new version is ready to open.',
+      'Bad Wi-Fi or a server restart no longer shows raw errors; Ember says it can\'t reach the server and keeps what you typed.',
+      'Carlists and shared playlists keep up when several people add, skip and reorder at once.',
+      'Copying a long list into a playlist works in one go, and a playlist that fails to save no longer leaves an empty copy behind.',
+      'Signing up or signing in on a shaky connection no longer gets stuck.',
+      'Dates show your own day, and big file sizes read right.',
+      'Desktop: an update that stalls gives up after a minute, and the window never waits on Discord.',
+      'Many smaller fixes in search, lyrics, tabs, uploads, themes and the admin pages.',
+    ],
+  },
+  {
     id: 'add-to-queue',
     version: '0.7.31',
     date: '2026-10-24',

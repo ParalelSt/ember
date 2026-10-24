@@ -8,6 +8,7 @@ import { listUnavailableIds } from '@/lib/trackAvailability';
 import { songKey } from '@/lib/songKey';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
 
 export const GET = withRequestLog('tracks/[id]/replacements', async (_req: NextRequest, ctx: RouteContext<'/api/tracks/[id]/replacements'>) => {
   try {
@@ -49,7 +50,3 @@ export const GET = withRequestLog('tracks/[id]/replacements', async (_req: NextR
     return fromError(e);
   }
 });
-
-function esc(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}

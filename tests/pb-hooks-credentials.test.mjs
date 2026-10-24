@@ -183,6 +183,25 @@ try {
     check('S3d an existing owner password is never overwritten by the env', initialStill);
   }
 
+  // ── S5: a brand new pb_data, no `migrate up` first ─────────────────────
+  // start-static.sh only runs `serve`, and PocketBase fires the boot hooks
+  // before it makes its own tables. ensure_superuser's superuser count used
+  // to throw there, so a fresh install never booted at all.
+  {
+    const dir = join(WORK, 's5');
+    const env = { EMBER_PB_SUPERUSER_EMAIL: 'owner-su@w14.test', EMBER_PB_SUPERUSER_PASSWORD: 'Fresh-Install-Pass-2026' };
+    let up = true;
+    try {
+      await boot(dir, env);
+    } catch {
+      up = false;
+    }
+    check('S5a a brand new pb_data boots', up);
+    let ok = false;
+    if (up) await boot(dir, env, async () => { ok = !!(await suSignIn(env.EMBER_PB_SUPERUSER_EMAIL, env.EMBER_PB_SUPERUSER_PASSWORD)); });
+    check('S5b the next boot creates the superuser', ok);
+  }
+
   // ── S4: nothing secret left in the source ──────────────────────────────
   for (const f of ['ensure_superuser.pb.js', 'ensure_admin.pb.js']) {
     const src = readFileSync(join(HOOKS, f), 'utf8');

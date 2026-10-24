@@ -20,8 +20,6 @@ export const TAB_DIR = path.join(MUSIC_DIR, 'tabs');
 /** Tabs are small, a big Guitar Pro file is a couple of hundred KB. */
 export const MAX_TAB_BYTES = Number(process.env.MAX_TAB_MB ?? 5) * 1024 * 1024;
 
-export const TAB_EXTS = ['.gp3', '.gp4', '.gp5', '.gpx', '.gp', '.musicxml', '.mxl'] as const;
-
 /** Magic-byte sniff, same reasoning as sniffAudio: the browser's
  *  Content-Type is a claim, and this file is streamed back later.
  *

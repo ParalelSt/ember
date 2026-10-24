@@ -18,7 +18,7 @@ vi.mock('@/lib/auth', async (importOriginal) => {
 });
 
 vi.mock('@/lib/pocketbase/server', () => ({
-  createAdminClient: async () => ({ collection: () => ({ getOne: (id: string) => getOne(id) }) }),
+  createCatalogClient: async () => ({ collection: () => ({ getOne: (id: string) => getOne(id) }) }),
 }));
 
 const { GET } = await import('./route');

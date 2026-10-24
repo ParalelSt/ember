@@ -131,6 +131,8 @@ describe('DevicesButton', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Devices: playing on Pixel Buds' }));
     expect(actions.refreshOutputs).toHaveBeenCalled();
     const list = screen.getByTestId('devices-list');
+    // One of the player's own sheets: its keyboard shortcuts keep working.
+    expect(list).toHaveAttribute('data-player-view');
     expect(within(list).getByText('This phone', { selector: 'span' })).toBeInTheDocument();
     const buds = within(list).getByText('Pixel Buds').closest('button')!;
     expect(buds).toHaveAttribute('aria-current', 'true');

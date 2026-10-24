@@ -1,7 +1,7 @@
 import type { ComponentProps, PropsWithChildren } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SearchOverlayContainer } from './SearchOverlayContainer';
 import { useUiStore } from '@/stores/useUiStore';
 import type { Track } from '@/types/track';
@@ -449,6 +449,29 @@ describe('SearchOverlayContainer, desktop dropdown', () => {
 
     expect(screen.queryByPlaceholderText('What do you want to listen to?')).toBeNull();
     expect(panel()).toBeNull();
+  });
+
+  // "/" and the sidebar's Search did nothing there: they opened a panel
+  // that stands down on /search, and left the flag up behind it.
+  it('on /search, "/" and the sidebar Search put the caret in the page\'s own box', () => {
+    pathname.value = '/search';
+    useUiStore.setState({ searchOpen: false });
+    const page = document.createElement('input');
+    page.setAttribute('data-search-page-box', '');
+    document.body.appendChild(page);
+    try {
+      renderOverlay();
+      fireEvent.keyDown(window, { key: '/' });
+      expect(page).toHaveFocus();
+      expect(useUiStore.getState().searchOpen).toBe(false);
+
+      page.blur();
+      act(() => useUiStore.getState().setSearchOpen(true));
+      expect(page).toHaveFocus();
+      expect(useUiStore.getState().searchOpen).toBe(false);
+    } finally {
+      page.remove();
+    }
   });
 });
 

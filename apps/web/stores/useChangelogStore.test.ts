@@ -86,4 +86,47 @@ describe('useChangelogStore', () => {
     await useChangelogStore.getState().setHideNew(true);
     expect(useChangelogStore.getState().hideNew).toBe(false);
   });
+
+  describe('answers that arrive out of order', () => {
+    type Patch = { seenVersion?: string; hideNew?: boolean };
+    /** Every write waits until the test answers it, in any order. */
+    function heldWrites() {
+      const held: { patch: Patch; answer: () => void; fail: () => void }[] = [];
+      updateChangelog.mockImplementation(
+        (patch: Patch) =>
+          new Promise((resolve, reject) => {
+            held.push({
+              patch,
+              answer: () => resolve({ seenVersion: patch.seenVersion ?? '0.0.1', hideNew: patch.hideNew ?? false }),
+              fail: () => reject(new Error('offline')),
+            });
+          }),
+      );
+      return held;
+    }
+
+    it('flipping the New tags switch twice fast ends where it was flipped to', async () => {
+      useChangelogStore.setState({ seenVersion: '0.0.1', loaded: true, hideNew: false });
+      const held = heldWrites();
+      const on = useChangelogStore.getState().setHideNew(true);
+      const off = useChangelogStore.getState().setHideNew(false);
+      held[1].answer();
+      await off;
+      held[0].answer();
+      await on;
+      expect(useChangelogStore.getState().hideNew).toBe(false);
+    });
+
+    it('a Mark all read reply does not put back an older New tags switch', async () => {
+      useChangelogStore.setState({ seenVersion: '0.0.1', loaded: true, hideNew: false });
+      const held = heldWrites();
+      const read = useChangelogStore.getState().markAllRead();
+      const hide = useChangelogStore.getState().setHideNew(true);
+      held[1].answer();
+      await hide;
+      held[0].answer();
+      await read;
+      expect(useChangelogStore.getState().hideNew).toBe(true);
+    });
+  });
 });

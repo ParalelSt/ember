@@ -4,6 +4,8 @@ import sys
 import json
 import time
 import shutil
+import atexit
+import tempfile
 import argparse
 import contextlib
 import concurrent.futures
@@ -35,12 +37,132 @@ def _cookie_opts():
     anonymous path is unchanged by default."""
     cookie_file = os.environ.get("YTDLP_COOKIE_FILE", "").strip()
     if cookie_file:
-        return {"cookiefile": cookie_file}
+        return {"cookiefile": _cookie_copy(cookie_file)}
     browser = os.environ.get("YTDLP_COOKIES_FROM_BROWSER", "").strip()
     if browser:
         name, _, profile = browser.partition(":")
         return {"cookiesfrombrowser": (name, profile or None, None, None)}
     return {}
+
+
+# yt-dlp saves its cookie jar back to the cookie file when a run ends, by
+# truncating the file and writing it again. Several player.py runs share the
+# file at once, so a run that loaded it mid-save read it empty and then saved
+# that empty jar back, and the session was gone for good. Each run hands
+# yt-dlp its own copy instead (yt-dlp writes back to the copy), removed when
+# the run ends. A run killed outright (the web server's timeout) cannot
+# remove its copy, so each run first sweeps the copies of runs that are gone.
+# Beside the cookie file by default (None), not in a shared /tmp.
+# A run that ends well hands the cookies YouTube rotated back to the
+# original (_save_cookie_copy), so the session stays as fresh as before.
+COOKIE_COPY_DIR: Path | None = None
+_cookie_copy_path: str | None = None
+# (the original, resolved; the bytes this run's copy started from)
+_cookie_copy_source: tuple[Path, bytes] | None = None
+
+
+def _cookie_copy(cookie_file: str) -> str:
+    """This run's private copy of the cookie file. The original when no copy
+    can be made (yt-dlp then reports an unreadable file itself)."""
+    global _cookie_copy_path, _cookie_copy_source
+    if _cookie_copy_path:
+        return _cookie_copy_path
+    folder = COOKIE_COPY_DIR or Path(cookie_file).resolve().parent / ".ember-cookies"
+    try:
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        _sweep_cookie_copies(folder)
+        fd, copy = tempfile.mkstemp(dir=folder, prefix=f"{os.getpid()}-", suffix=".txt")
+    except OSError as e:
+        print(f"[cookies] no private copy ({e}); using {cookie_file} itself", file=sys.stderr)
+        return cookie_file
+    try:
+        with os.fdopen(fd, "wb") as out, open(cookie_file, "rb") as src:
+            started_from = src.read()
+            out.write(started_from)
+    except OSError:
+        _remove_quietly(copy)
+        return cookie_file
+    atexit.register(_remove_quietly, copy)
+    _cookie_copy_path = copy
+    _cookie_copy_source = (Path(cookie_file).resolve(), started_from)
+    return copy
+
+
+def _looks_like_cookie_jar(data: bytes) -> bool:
+    """A Netscape cookie file with at least one cookie in it: the header
+    line yt-dlp writes, then a line of seven tab-separated fields (a
+    "#HttpOnly_" prefix is still a cookie)."""
+    try:
+        lines = data.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return False
+    if not lines or not re.match(r"#\s*(Netscape )?HTTP Cookie File", lines[0]):
+        return False
+    return any(
+        len(line.split("\t")) == 7
+        for line in lines[1:]
+        if line and (not line.startswith("#") or line.startswith("#HttpOnly_"))
+    )
+
+
+def _save_cookie_copy():
+    """After a run that ended well: the cookies yt-dlp saved into this run's
+    copy (YouTube rotates some on every visit) replace the original, so the
+    session does not age out. Only a changed copy that is still a real jar,
+    and only while the original is still what this run started from (the
+    owner may have exported a new file, or another run saved first). Under
+    a lock, written beside the original and renamed over it, 0600."""
+    if not _cookie_copy_path or not _cookie_copy_source:
+        return
+    original, started_from = _cookie_copy_source
+    try:
+        data = Path(_cookie_copy_path).read_bytes()
+    except OSError:
+        return
+    if data == started_from or not _looks_like_cookie_jar(data):
+        return
+    try:
+        import fcntl
+    except ImportError:
+        return  # No lock to take here (Windows): keep the original as it is.
+    tmp = None
+    try:
+        with open(Path(_cookie_copy_path).parent / "save.lock", "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if original.read_bytes() != started_from:
+                return
+            fd, tmp = tempfile.mkstemp(dir=original.parent, prefix=f".{original.name}-", suffix=".tmp")
+            with os.fdopen(fd, "wb") as out:
+                out.write(data)
+                out.flush()
+                os.fsync(out.fileno())
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, original)
+            tmp = None
+    except OSError as e:
+        print(f"[cookies] could not save the refreshed cookies ({e})", file=sys.stderr)
+    finally:
+        if tmp:
+            _remove_quietly(tmp)
+
+
+def _sweep_cookie_copies(folder: Path):
+    """Remove the copies of runs whose process is gone."""
+    for p in folder.glob("*-*.txt"):
+        pid = p.name.split("-", 1)[0]
+        if not pid.isdigit():
+            continue
+        try:
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            _remove_quietly(p)
+        except OSError:
+            pass  # alive, someone else's
+
+
+def _remove_quietly(path):
+    with contextlib.suppress(OSError):
+        os.unlink(path)
 
 
 def _ffmpeg_opts():
@@ -1365,5 +1487,17 @@ def main():
     else:
         cmd_interactive()
 
+def run():
+    """main, then the cookie save only a run that ended well makes (a
+    command that fails exits non-zero, and its jar is not trusted)."""
+    try:
+        main()
+    except SystemExit as e:
+        if e.code in (None, 0):
+            _save_cookie_copy()
+        raise
+    _save_cookie_copy()
+
+
 if __name__ == "__main__":
-    main()
+    run()

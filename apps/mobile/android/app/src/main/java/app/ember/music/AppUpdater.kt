@@ -143,6 +143,11 @@ object AppUpdater {
     /** When the current install began; a confirm screen left without an
      *  answer must not leave the page on "Installing" for ever. */
     @Volatile private var installStartedAt = 0L
+    /** The launch gate asked for the install and evaluate(true) has not run
+     *  for it yet. States published meanwhile (onStart's and refresh()'s
+     *  re-evaluation, still "ready") say so, so the gate does not read them
+     *  as the install having failed. */
+    @Volatile private var gatePending = false
     private var activity: WeakReference<Activity>? = null
     private var lastDecision: UpdateRules.Decision? = null
     private val idleCheck = Runnable { evaluate(false) }
@@ -164,6 +169,15 @@ object AppUpdater {
     /** The version of the downloaded, verified APK that waits, if any. */
     fun readyVersion(): String? = ready?.takeIf { it.file.exists() }?.version
 
+    /** The launch gate asks for the notification permission before
+     *  installFromGate: states published meanwhile are from before the
+     *  install too. Released when the gate goes away without installing. */
+    fun holdForGate() { gatePending = true }
+    fun releaseGateHold() { gatePending = false }
+
+    /** A version refused for good (UpdateRules.isPermanent), if any. */
+    fun rejectedVersion(): String? = prefs().getString(KEY_REJECTED, null)
+
     /** The launch gate's countdown ended, or the person pressed "Update
      *  now" (LaunchGateActivity): install the waiting APK now, as a tap on
      *  Install would. The person is looking at the gate and chose it, so the
@@ -171,6 +185,7 @@ object AppUpdater {
      *  permission still do (UpdateRules.decide). False when nothing waits. */
     fun installFromGate(a: Activity): Boolean {
         if (readyVersion() == null) return false
+        gatePending = true
         attachActivity(a)
         UpdatePresence.setForeground(true)
         var tries = 0
@@ -179,6 +194,7 @@ object AppUpdater {
                 // The check that downloaded it may still be finishing.
                 if (busy.get() && tries++ < 50) { main.postDelayed(this, 200); return }
                 autoBlocked = false
+                gatePending = false
                 evaluate(true)
             }
         })
@@ -211,6 +227,7 @@ object AppUpdater {
         o.put("checkedAt", prefs().getLong(KEY_LAST_CHECK, 0L))
         o.put("needsPermission", !canInstall())
         o.put("silent", silentLikely())
+        if (gatePending) o.put("gatePending", true)
         return o
     }
 
@@ -407,8 +424,10 @@ object AppUpdater {
 
     // ── Installing ──────────────────────────────────────────────────────
 
-    /** The person tapped Install. */
+    /** The person tapped Install, and waits for Ember to come back
+     *  (UpdatedReceiver's "Ember updated" notice). */
     fun installNow() {
+        GateHistory.installStarted(app)
         main.post {
             autoBlocked = false
             val confirm = pendingConfirm

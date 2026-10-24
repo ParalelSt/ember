@@ -1,4 +1,5 @@
 import { detectShell } from './detectShell';
+import { coarsePointer } from '@/lib/coarsePointer';
 import { androidPluginPresent } from './androidBackend';
 import type { BackendKind } from '@/lib/autoCache/select';
 import type { EqSettings } from './eq';
@@ -12,9 +13,6 @@ import type { EqSettings } from './eq';
  *  or an Android app build from before the native player), the account's
  *  equalizer is only applied once it has been chosen there: switching it on
  *  on the desktop must not quietly cost the phone its background playback. */
-
-const coarsePointer = () =>
-  typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches ?? false);
 
 /** For the engine that is playing (PlayerProvider). */
 export function eqNeedsConsent(kind: BackendKind | null): boolean {

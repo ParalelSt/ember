@@ -93,36 +93,42 @@ onAfterBootstrap((e) => {
   }
 
   if (!find("playlist_members")) {
-    dao.saveCollection(
-      new Collection({
-        name: "playlist_members",
-        type: "base",
-        listRule: null,
-        viewRule: null,
-        createRule: null,
-        updateRule: null,
-        deleteRule: null,
-        indexes: [
-          "CREATE UNIQUE INDEX idx_playlist_members_pair ON playlist_members (playlist, user)",
-          "CREATE INDEX idx_playlist_members_user ON playlist_members (user)",
-        ],
-        schema: [
-          {
-            name: "playlist",
-            type: "relation",
-            required: true,
-            options: { collectionId: playlists.id, maxSelect: 1, cascadeDelete: true },
-          },
-          {
-            name: "user",
-            type: "relation",
-            required: true,
-            options: { collectionId: users.id, maxSelect: 1, cascadeDelete: true },
-          },
-        ],
-      }),
-    );
-    console.log("[ensure_collab_playlists] created playlist_members");
+    // A failed first-time create must not stop PocketBase from booting:
+    // warn and carry on (bughunt X11); the next boot tries again.
+    try {
+      dao.saveCollection(
+        new Collection({
+          name: "playlist_members",
+          type: "base",
+          listRule: null,
+          viewRule: null,
+          createRule: null,
+          updateRule: null,
+          deleteRule: null,
+          indexes: [
+            "CREATE UNIQUE INDEX idx_playlist_members_pair ON playlist_members (playlist, user)",
+            "CREATE INDEX idx_playlist_members_user ON playlist_members (user)",
+          ],
+          schema: [
+            {
+              name: "playlist",
+              type: "relation",
+              required: true,
+              options: { collectionId: playlists.id, maxSelect: 1, cascadeDelete: true },
+            },
+            {
+              name: "user",
+              type: "relation",
+              required: true,
+              options: { collectionId: users.id, maxSelect: 1, cascadeDelete: true },
+            },
+          ],
+        }),
+      );
+      console.log("[ensure_collab_playlists] created playlist_members");
+    } catch (err) {
+      console.warn("[ensure_collab_playlists] could not create playlist_members: " + err);
+    }
   }
 
   // An existing install may have made the collection by hand with rules:
@@ -140,8 +146,12 @@ onAfterBootstrap((e) => {
     members.createRule = null;
     members.updateRule = null;
     members.deleteRule = null;
-    dao.saveCollection(members);
-    console.log("[ensure_collab_playlists] playlist_members is server-only now");
+    try {
+      dao.saveCollection(members);
+      console.log("[ensure_collab_playlists] playlist_members is server-only now");
+    } catch (err) {
+      console.warn("[ensure_collab_playlists] could not save playlist_members: " + err);
+    }
   }
 });
 

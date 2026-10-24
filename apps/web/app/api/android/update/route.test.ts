@@ -119,6 +119,13 @@ describe('GET /api/android/update', () => {
     expect((await (await get('?version=0.4.18')).json()).versionCode).toBe(24);
   });
 
+  it('shows the notes without the release markers', async () => {
+    feed.releases = [release('v0.4.19', { body: '## Fixes\n\nFaster start.\n\nmandatory: true\nminVersion: 0.4.10\nversionCode: 24' })];
+    const body = await (await get('?version=0.4.18')).json();
+    expect(body.versionCode).toBe(24);
+    expect(body.notes).toBe('Fixes\nFaster start.');
+  });
+
   it('degrades every GitHub failure to 204', async () => {
     feed.status = 500;
     expect((await get('?version=0.4.18')).status).toBe(204);

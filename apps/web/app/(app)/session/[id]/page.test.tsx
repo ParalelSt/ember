@@ -155,4 +155,19 @@ describe('/session/[id] Skip', () => {
       data.session.nowIndex = 0;
     }
   });
+
+  it('a skip the server calls stale says nothing was skipped, not "Skip sent"', async () => {
+    data.queue = [{ id: 'st1', position: 1, played: false, addedByName: 'Hana', addedBy: null, track: midnight }];
+    try {
+      await open();
+      fireEvent.click(screen.getByTestId('skip'));
+      const opts = idle.mutate.mock.calls[0][1] as { onSuccess: (r: { ok: true; stale?: boolean }) => void };
+      opts.onSuccess({ ok: true, stale: true });
+      expect(toast.message).toHaveBeenLastCalledWith('The song already changed, so nothing was skipped');
+      opts.onSuccess({ ok: true });
+      expect(toast.message).toHaveBeenLastCalledWith('Skip sent');
+    } finally {
+      data.queue = [];
+    }
+  });
 });

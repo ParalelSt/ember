@@ -690,7 +690,8 @@ function splitBars(lines: StringLine[], noBarLines: boolean): { segs: { text: st
 
 // ── the parser ────────────────────────────────────────────────────────────
 
-function escapeTex(s: string): string {
+/** Text for a double-quoted alphaTex string: one line, quotes escaped. */
+export function escapeTex(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ');
 }
 

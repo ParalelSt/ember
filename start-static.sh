@@ -249,6 +249,19 @@ run_service() {
       export EMBER_ADMIN_EMAIL="$PB_OWNER_EMAIL" EMBER_ADMIN_PASSWORD="$PB_OWNER_PASSWORD"
       export EMBER_BACKUP_CRON="$PB_BACKUP_CRON" EMBER_BACKUP_KEEP="$PB_BACKUP_KEEP"
       if [ -n "$WATCHDOG_CMD_PB" ]; then cd "$ROOT" && exec_detached bash -c "$WATCHDOG_CMD_PB"; fi
+      # A brand new install: PocketBase fires the boot hooks before it makes
+      # its own tables, so on the very first serve every ensure_* hook found
+      # nothing (no superuser for Next, none of Ember's collections) until a
+      # restart. Make the tables first, with no hooks loaded, then serve.
+      # Only while there is no database yet: an existing one is migrated by
+      # serve itself, as before.
+      if [ ! -f "$PB_DIR/pb_data/data.db" ]; then
+        local no_hooks
+        no_hooks="$(mktemp -d)"
+        (cd "$PB_DIR" && "$PB" migrate up --dir "$PB_DIR/pb_data" --migrationsDir "$PB_DIR/pb_migrations" --hooksDir "$no_hooks" >/dev/null) \
+          || echo "✗ pocketbase migrate up failed on the new pb_data; serve will try again"
+        rmdir "$no_hooks" 2>/dev/null || true
+      fi
       # --automigrate=0: the boot hooks create and change collections, and
       # with automigrate on PocketBase wrote a migration file for each change.
       # Two in the same second got the same name and crashed the boot.
@@ -331,6 +344,8 @@ supervise() {
       sup_stop_child
       exit 0
     fi
+    # It exited on its own: whatever it had started goes with it.
+    stop_leftovers "$SUP_CHILD"
     SUP_CHILD=""
 
     # A shutdown signal can reach the service a moment before it reaches the
@@ -452,7 +467,25 @@ sup_stop_child() {
   # a `wait` interrupted by a trap can drop the job, which is exactly why
   # this polls instead of waiting again.
   wait "$SUP_CHILD" 2>/dev/null
+  stop_leftovers "$SUP_CHILD"
   say "■ $SUP_LABEL stopped"
+}
+
+# stop_leftovers PID: once a service has exited, stops what it started and
+# left running in its process group (exec_detached made it the group's
+# leader): Next's Python helpers, their ffmpeg. Next does not stop them
+# itself, and a download or align.py would otherwise run on for minutes after
+# a stop or a crash, beside the next start's own. SIGTERM, then SIGKILL after
+# 2 s. With no group of its own (no setsid or perl) there is none to stop.
+stop_leftovers() {
+  local group="$1"
+  kill -TERM -- "-$group" 2>/dev/null || return 0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 -- "-$group" 2>/dev/null || return 0
+    sleep 0.2
+  done
+  kill -KILL -- "-$group" 2>/dev/null
+  return 0
 }
 
 SUPERVISORS=""
@@ -524,7 +557,9 @@ kill_tree() {
 UNCLEAN_SINCE=""
 if [ -f "$LOCK_FILE" ]; then
   old_pid="$(sed -n 's/^pid=//p' "$LOCK_FILE" | head -1)"
-  if is_watchdog_pid "$old_pid"; then
+  # After a reboot the pid can be this very run's (pids start over at boot):
+  # that is the previous run's lock, not a second copy.
+  if [ "$old_pid" != "$$" ] && is_watchdog_pid "$old_pid"; then
     echo "✗ Ember is already running here (watchdog pid $old_pid)."
     echo "  Stop it first: Ctrl+C in its terminal, or: kill $old_pid"
     exit 1

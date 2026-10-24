@@ -17,8 +17,9 @@ export interface AttachmentLike {
 
 /** "1.2 MB", "10 MB", "840 KB": at most one decimal for MB, none for KB. */
 export function formatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`;
-  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  const kb = Math.max(1, Math.round(bytes / 1024));
+  if (kb >= 1024) return `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`;
+  return `${kb} KB`;
 }
 
 export function totalBytes(files: AttachmentLike[]): number {

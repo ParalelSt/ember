@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { describeBackupSchedule } from './backupSchedule';
 
 describe('describeBackupSchedule', () => {
-  it('reads the nightly default as a time of day', () => {
-    expect(describeBackupSchedule('0 4 * * *', 7)).toBe('Every night at 04:00 (server time), keeping the last 7.');
-    expect(describeBackupSchedule('30 23 * * *', 3)).toBe('Every night at 23:30 (server time), keeping the last 3.');
+  it('reads the nightly default as a time of day, in UTC as PocketBase runs its cron', () => {
+    expect(describeBackupSchedule('0 4 * * *', 7)).toBe('Every night at 04:00 UTC, keeping the last 7.');
+    expect(describeBackupSchedule('30 23 * * *', 3)).toBe('Every night at 23:30 UTC, keeping the last 3.');
   });
 
   it('shows any other schedule as the cron line', () => {
@@ -18,6 +18,6 @@ describe('describeBackupSchedule', () => {
   });
 
   it('leaves the keep count out when there is none', () => {
-    expect(describeBackupSchedule('0 4 * * *', 0)).toBe('Every night at 04:00 (server time).');
+    expect(describeBackupSchedule('0 4 * * *', 0)).toBe('Every night at 04:00 UTC.');
   });
 });

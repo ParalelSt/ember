@@ -7,7 +7,7 @@ import {
   unauthorizedResponse,
 } from '@/lib/auth';
 import { serverLogger } from '@/lib/logger/server';
-import { groupNativeLog, SURFACES } from '@/lib/logger/nativeLog';
+import { groupNativeLog, NATIVE_CATEGORY, SURFACES } from '@/lib/logger/nativeLog';
 import type { NativeSurface } from '@/lib/logger/types';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
@@ -26,7 +26,9 @@ export const GET = withRequestLog('admin/native-log', async (request: NextReques
     }
     const hours = params.get('hours') === '24' ? 24 : 48;
     const since = Date.now() - hours * 60 * 60 * 1000;
-    const entries = await serverLogger.entriesSince(since);
+    // Only the app's own entries, picked while reading: the web's warnings
+    // must not push them past the read cap.
+    const entries = await serverLogger.entriesSince(since, (e) => e.category === NATIVE_CATEGORY);
     const devices = groupNativeLog(entries, { surface: surfaceParam as NativeSurface | undefined });
     return Response.json({ since, hours, devices });
   } catch (e) {

@@ -82,12 +82,16 @@ export function ApproveSignIn({
 
   useEffect(() => {
     // Once per credential, even when React runs effects twice in development.
+    // The answer is dropped only once another credential is being looked up:
+    // a cleanup flag dropped it under that double run too, and the second
+    // run (skipped by the guard) never asked again, so the card stayed on
+    // "Looking up the request...".
     if (looked.current === credential) return;
     looked.current = credential;
-    let cancelled = false;
+    const stale = () => looked.current !== credential;
     qrPost<QrFacts & { error?: string }>('lookup', credential)
       .then(({ status, body }) => {
-        if (cancelled) return;
+        if (stale()) return;
         if (status !== 200 || !body) {
           setPhase({ kind: 'result', result: resultFor(status, body) });
           return;
@@ -98,11 +102,8 @@ export function ApproveSignIn({
         else setPhase({ kind: 'result', result: 'used' });
       })
       .catch(() => {
-        if (!cancelled) setPhase({ kind: 'result', result: 'error' });
+        if (!stale()) setPhase({ kind: 'result', result: 'error' });
       });
-    return () => {
-      cancelled = true;
-    };
   }, [credential]);
 
   const showing = phase.kind === 'card';

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatAddedDate, formatAgo, formatBytes, formatCount, formatTime, formatTotalDuration } from './format';
+import { pinTz } from '@/test-utils/tz';
 
 describe('formatTime', () => {
   it('formats whole seconds as m:ss', () => {
@@ -69,6 +70,12 @@ describe('formatBytes', () => {
     expect(formatBytes(1.5 * 1024 * 1024)).toBe('1.5 MB');
   });
 
+  it('a size that rounds up to the next unit says so, never "1024 KB"', () => {
+    expect(formatBytes(1024 * 1024 - 1)).toBe('1.0 MB');
+    expect(formatBytes(1024 * 1024 * 1024 - 1)).toBe('1.00 GB');
+    expect(formatBytes(1024 * 1024 - 600)).toBe('1023 KB');
+  });
+
   it('formats gigabytes with two decimals', () => {
     expect(formatBytes(2.25 * 1024 * 1024 * 1024)).toBe('2.25 GB');
   });
@@ -125,16 +132,36 @@ describe('formatAgo', () => {
 });
 
 describe('formatAddedDate', () => {
+  // The listener's own day: these read in UTC, the zones below in theirs.
+  pinTz('UTC');
   const now = Date.parse('2026-09-24T12:00:00Z');
   it('day and month this year, with the year before it', () => {
     expect(formatAddedDate('2026-06-12 10:00:00.000Z', now)).toBe('12 Jun');
     expect(formatAddedDate('2026-06-12T10:00:00.000Z', now)).toBe('12 Jun');
-    expect(formatAddedDate('2025-12-31 23:59:59.000Z', now)).toBe('31 Dec 2025');
+    expect(formatAddedDate('2025-12-31 12:00:00.000Z', now)).toBe('31 Dec 2025');
   });
   it('empty for nothing or nonsense', () => {
     expect(formatAddedDate('', now)).toBe('');
     expect(formatAddedDate(undefined, now)).toBe('');
     expect(formatAddedDate('not a date', now)).toBe('');
+  });
+
+  describe('east of UTC (Zagreb, summer time)', () => {
+    pinTz('Europe/Zagreb');
+    it('a song liked at 01:30 on 12 June says 12 Jun, not the UTC day before', () => {
+      expect(formatAddedDate('2026-06-11 23:30:00.000Z', now)).toBe('12 Jun');
+    });
+  });
+
+  describe('west of UTC (Los Angeles)', () => {
+    pinTz('America/Los_Angeles');
+    it('a chart saved at 8 pm on 23 October is named for 23 Oct, not the UTC day after', () => {
+      expect(formatAddedDate('2026-10-24T03:00:00.000Z', now)).toBe('23 Oct');
+    });
+    it('on New Year\'s Eve evening a like from that morning is this year (no year shown)', () => {
+      const newYearsEve = Date.parse('2026-01-01T05:00:00Z');
+      expect(formatAddedDate('2025-12-31 20:00:00.000Z', newYearsEve)).toBe('31 Dec');
+    });
   });
 });
 

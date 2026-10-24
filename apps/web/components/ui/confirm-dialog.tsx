@@ -22,7 +22,8 @@ interface Props {
   /** "destructive" turns the confirm button red, for deletes etc. */
   variant?: 'default' | 'destructive';
   /** Called when the user confirms. The dialog awaits the promise and closes
-   *  on resolve. Throw to keep it open. */
+   *  on resolve. Throw to keep it open (after saying why: the dialog shows
+   *  nothing itself). */
   onConfirm: () => void | Promise<void>;
 }
 
@@ -46,6 +47,10 @@ export function ConfirmDialog({
     try {
       await onConfirm();
       onOpenChange(false);
+    } catch {
+      // The caller said why (its own toast); stay open to try again. Not
+      // rethrown: the click handler's promise has no one to catch it, so
+      // it became an unhandled rejection and an automatic bug report.
     } finally {
       setBusy(false);
     }

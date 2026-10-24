@@ -25,6 +25,18 @@ onAfterBootstrap((e) => {
     }
   };
 
+  // A failed first-time create must not stop PocketBase from booting: warn
+  // and carry on (bughunt X11). A collection whose relation target could not
+  // be made is skipped too, and the next boot tries again.
+  const create = (def) => {
+    try {
+      dao.saveCollection(new Collection(def));
+      console.log(`[ensure_sessions] created ${def.name}`);
+    } catch (err) {
+      console.warn(`[ensure_sessions] could not create ${def.name}: ` + err);
+    }
+  };
+
   const users = find("users");
   const tracks = find("tracks");
   if (!users || !tracks) {
@@ -33,7 +45,7 @@ onAfterBootstrap((e) => {
   }
 
   if (!find("sessions")) {
-    dao.saveCollection(new Collection({
+    create({
       name: "sessions",
       type: "base",
       indexes: ["CREATE UNIQUE INDEX idx_sessions_code ON sessions (code)"],
@@ -49,14 +61,13 @@ onAfterBootstrap((e) => {
         { name: "active", type: "bool", options: {} },
         { name: "now_index", type: "number", options: { noDecimal: true } },
       ],
-    }));
-    console.log("[ensure_sessions] created sessions");
+    });
   }
 
   const sessionsCol = find("sessions");
 
-  if (!find("session_tracks")) {
-    dao.saveCollection(new Collection({
+  if (sessionsCol && !find("session_tracks")) {
+    create({
       name: "session_tracks",
       type: "base",
       indexes: ["CREATE INDEX idx_session_tracks_session ON session_tracks (session)"],
@@ -82,12 +93,11 @@ onAfterBootstrap((e) => {
         },
         { name: "played", type: "bool", options: {} },
       ],
-    }));
-    console.log("[ensure_sessions] created session_tracks");
+    });
   }
 
-  if (!find("session_commands")) {
-    dao.saveCollection(new Collection({
+  if (sessionsCol && !find("session_commands")) {
+    create({
       name: "session_commands",
       type: "base",
       indexes: ["CREATE INDEX idx_session_commands_session ON session_commands (session)"],
@@ -106,14 +116,13 @@ onAfterBootstrap((e) => {
           options: { collectionId: users.id, maxSelect: 1, cascadeDelete: false },
         },
       ],
-    }));
-    console.log("[ensure_sessions] created session_commands");
+    });
   }
 
   // The roster: who actually joined, so knowing a session id is not
   // membership.
-  if (!find("session_members")) {
-    dao.saveCollection(new Collection({
+  if (sessionsCol && !find("session_members")) {
+    create({
       name: "session_members",
       type: "base",
       indexes: ["CREATE UNIQUE INDEX idx_session_members_pair ON session_members (session, user)"],
@@ -131,8 +140,7 @@ onAfterBootstrap((e) => {
           options: { collectionId: users.id, maxSelect: 1, cascadeDelete: true },
         },
       ],
-    }));
-    console.log("[ensure_sessions] created session_members");
+    });
   }
 
   // Deleting a member who queued a song or skipped used to fail, because
@@ -146,6 +154,7 @@ onAfterBootstrap((e) => {
   // same as ensure_superuser (bughunt X11).
   for (const o of OPTIONAL) {
     const col = find(o.collection);
+    if (!col) continue;
     const field = col.schema.getFieldByName(o.field);
     if (!field || !field.required) continue;
     field.required = false;
@@ -171,6 +180,7 @@ onAfterBootstrap((e) => {
   const rule = (r) => (r === null || r === undefined ? null : JSON.parse(JSON.stringify(r)));
   for (const name in RULES) {
     const col = find(name);
+    if (!col) continue;
     const read = RULES[name];
     if (
       rule(col.listRule) === read &&

@@ -26,12 +26,15 @@ export function formatTotalDuration(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-/** Ported from the downloads settings page exactly. */
+/** Ported from the downloads settings page. A size moves up a unit once
+ *  it rounds to 1024 of the smaller one ("1.0 MB", not "1024 KB"). */
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  const kb = n / 1024;
+  if (Math.round(kb) < 1024) return `${kb.toFixed(0)} KB`;
+  const mb = kb / 1024;
+  if (Number(mb.toFixed(1)) < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
 }
 
 /** `'7 songs'`, `'1 track'`. Pass `plural` for an irregular plural; defaults
@@ -55,16 +58,18 @@ export function formatAgo(iso: string, now: number = Date.now()): string {
 
 /** "12 Jun" for a date this year, "12 Jun 2025" before it: when a song was
  *  added to a playlist or liked. Takes PocketBase's `2026-06-12 10:00:00.000Z`
- *  as well as ISO. Empty for a missing or unreadable date. */
+ *  as well as ISO. Empty for a missing or unreadable date. The day is the
+ *  listener's own: a like at 01:30 in Zagreb is that day, not the UTC day
+ *  before. Only rendered in the browser (the lists load there), so server
+ *  and client never disagree on the zone. */
 export function formatAddedDate(value: string | null | undefined, now: number = Date.now()): string {
   if (!value) return '';
   const d = new Date(value.replace(' ', 'T'));
   if (Number.isNaN(d.getTime())) return '';
-  const sameYear = d.getUTCFullYear() === new Date(now).getUTCFullYear();
+  const sameYear = d.getFullYear() === new Date(now).getFullYear();
   return d.toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
     ...(sameYear ? {} : { year: 'numeric' }),
-    timeZone: 'UTC',
   });
 }

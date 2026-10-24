@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { createAdminClient } from '@/lib/pocketbase/server';
+import { nullIfNotFound } from '@/lib/pocketbase/notFound';
 import { itemFromRecord, jobFromRecord } from '@/lib/import/records';
 import { canTransition, isActive, transition, type JobEvent } from '@/lib/import/jobState';
 import { kickImportRunner } from '@/lib/import/runnerInstance';
@@ -17,7 +18,7 @@ export const GET = withRequestLog('import/jobs/[id]', async (_req: NextRequest, 
     const { pb } = await requireUser();
     const { id } = await ctx.params;
     // The collection rules only show a user their own jobs.
-    const rec = await pb.collection('import_jobs').getOne(id).catch(() => null);
+    const rec = await pb.collection('import_jobs').getOne(id).catch(nullIfNotFound);
     if (!rec) return jsonError('That import does not exist.', 404);
     const items = await pb.collection('import_items').getFullList({ filter: `job = "${rec.id}"`, sort: 'position' });
     return Response.json({ job: jobFromRecord(rec), items: items.map(itemFromRecord) });
@@ -36,7 +37,7 @@ export const PATCH = withRequestLog('import/jobs/[id]', async (request: NextRequ
     const action = ACTIONS.find((a) => a === body?.action) as Action | undefined;
     if (!action) return jsonError('action must be cancel, retry or dismiss', 400);
 
-    const rec = await pb.collection('import_jobs').getOne(id).catch(() => null);
+    const rec = await pb.collection('import_jobs').getOne(id).catch(nullIfNotFound);
     if (!rec || rec.user !== user.id) return jsonError('That import does not exist.', 404);
     const job = jobFromRecord(rec);
     const admin = await createAdminClient();

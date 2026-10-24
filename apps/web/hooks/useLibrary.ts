@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -254,8 +255,11 @@ export function useExecuteToggleLike() {
       qc.setQueryData(QK.likes, next);
       return { prev };
     },
-    onError: (_e, _vars, ctx) => {
+    onError: (_e, { wasLiked }, ctx) => {
       if (ctx?.prev) qc.setQueryData(QK.likes, ctx.prev);
+      // The heart goes back: said, or a like lost to a dropped connection
+      // went unnoticed.
+      toast.error(wasLiked ? "Couldn't remove that like" : "Couldn't like that song");
     },
     onSettled: () => {
       // Another toggle still on its way: the server's list does not have it
@@ -283,7 +287,8 @@ function syncLikedPin(qc: QueryClient) {
   // Compare against the playable set: pinList drops unavailable tracks,
   // so the raw likes would never match once one liked song is dead.
   if (sameTrackIds(pin.trackIds, playableFor(likes).map((t) => t.id))) return;
-  void pinLiked(likes);
+  // A refusal waits for the next like, which tries the sync again.
+  void pinLiked(likes).catch(() => {});
 }
 
 export function useExecuteRecordPlay() {
@@ -310,7 +315,8 @@ export function useExecuteRecordPlay() {
       if (!pin) return;
       const history = qc.getQueryData<Track[]>(QK.history) ?? [];
       if (sameTrackIds(pin.trackIds, playableFor(history).map((t) => t.id))) return;
-      void pinList(RECENT_PIN, 'Recently played', history);
+      // A refusal waits for the next play, which tries the sync again.
+      void pinList(RECENT_PIN, 'Recently played', history).catch(() => {});
     },
   });
 }
@@ -345,6 +351,8 @@ export function useExecuteAddToPlaylist() {
     mutationFn: ({ id, track }: { id: string; track: Track }) => api.addToPlaylist(id, track),
     onSuccess: (_d, { id, track }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      // The list's song counts and cover mosaics.
+      qc.invalidateQueries({ queryKey: QK.playlists });
       logger.breadcrumb('library', 'playlist.add', { playlistId: id, trackId: track.id });
     },
     // Added, or found already there (409): either way the menu's marks
@@ -404,6 +412,7 @@ export function useExecuteRemoveFromPlaylist() {
     onSettled: (_d, _e, { id, trackId }) => {
       editEnded(id);
       qc.invalidateQueries({ queryKey: QK.containing(trackId) });
+      qc.invalidateQueries({ queryKey: QK.playlists });
     },
   });
 }
@@ -415,6 +424,7 @@ export function useExecuteReplaceInPlaylist() {
       api.replaceInPlaylist(id, trackId, track),
     onSuccess: (_d, { id, trackId, track }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      qc.invalidateQueries({ queryKey: QK.playlists });
       qc.invalidateQueries({ queryKey: QK.containingAll });
       logger.breadcrumb('library', 'playlist.replace', { playlistId: id, from: trackId, to: track.id });
     },
@@ -466,6 +476,8 @@ export function useExecuteReorderPlaylist() {
     },
     onSettled: (_d, _e, { id }) => {
       editEnded(id);
+      // The first songs' covers (the list's mosaics) may have moved.
+      void qc.invalidateQueries({ queryKey: QK.playlists });
       return qc.invalidateQueries({ queryKey: QK.playlist(id) });
     },
   });

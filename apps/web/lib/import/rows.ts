@@ -45,20 +45,21 @@ export function importRows(items: ImportItem[], tracks: Track[], status: JobStat
   return rows;
 }
 
-/** The rows of the "Transferring" block on the Liked page: only the songs
- *  that are not likes yet. A transfer has no playlist of its own, and every
- *  song it accepted is already in the likes list underneath, so the block
- *  holds what is still being matched, waiting for a look, or was not found.
- *  Same shape as a playlist import's rows, so ImportTrackList draws both. */
-export function transferRows(items: ImportItem[], status: JobStatus): ImportRow[] {
-  return importRows(items, [], status);
-}
-
 /** The import item behind a playlist track, for "Wrong song? Re-match". */
 export function itemForTrack(items: ImportItem[], track: Track): ImportItem | null {
-  return (
-    items.find((i) => (i.status === 'accepted' || i.status === 'resolved') && i.videoId === track.sourceId) ?? null
-  );
+  return importItemFinder(items)(track);
+}
+
+/** itemForTrack for every row of a list: the items are read once, then each
+ *  row is a lookup. Asked row by row, a Liked list during a transfer or an
+ *  imported playlist walked every item for every song (thousands times
+ *  thousands, on each render). */
+export function importItemFinder(items: ImportItem[]): (track: Track) => ImportItem | null {
+  const byVideo = new Map<string | null, ImportItem>();
+  for (const i of items) {
+    if ((i.status === 'accepted' || i.status === 'resolved') && !byVideo.has(i.videoId)) byVideo.set(i.videoId, i);
+  }
+  return (track) => byVideo.get(track.sourceId) ?? null;
 }
 
 /** The review sheet's queue: songs that need a look, then the not-found

@@ -5,6 +5,7 @@ import { PeopleIcon } from '@/components/icons';
 import { PinIcon } from 'lucide-react';
 import { useHold } from '@/hooks/useHold';
 import { cn } from '@/lib/utils';
+import { formatCount } from '@/lib/format';
 import type { NavImportState } from '@/lib/import/nav';
 
 export type { NavImportState };
@@ -56,7 +57,7 @@ export function ImportTail({ state }: { state: NavImportState }) {
     return <span className="shrink-0 text-[11px] text-sidebar-foreground/55">Import failed</span>;
   }
   return (
-    <span className="inline-flex shrink-0 items-center gap-inset text-[11px] text-ember" title={`${state.count} songs to review`}>
+    <span className="inline-flex shrink-0 items-center gap-inset text-[11px] text-ember" title={`${formatCount(state.count, 'song')} to review`}>
       <span className="size-1.5 rounded-full bg-ember" />
       {state.count} to review
     </span>

@@ -3,6 +3,8 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { notFound, playlistAccess } from '@/lib/playlistAccess';
+import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
+import { nullIfNotFound } from '@/lib/pocketbase/notFound';
 
 export const DELETE = withRequestLog('playlists/[id]/tracks/[trackId]', async (
   _req: NextRequest,
@@ -22,18 +24,16 @@ export const DELETE = withRequestLog('playlists/[id]/tracks/[trackId]', async (
       .collection('tracks')
       .getFirstListItem(`external_id = "${esc(trackId)}"`);
 
+    // Already gone (on a shared playlist, someone else removed it a moment
+    // ago) is what was asked for, not a failure. Any other error still is.
     const junction = await db
       .collection('playlist_tracks')
-      .getFirstListItem(`playlist = "${id}" && track = "${trackRec.id}"`);
-
-    await db.collection('playlist_tracks').delete(junction.id);
+      .getFirstListItem(`playlist = "${id}" && track = "${trackRec.id}"`)
+      .catch(nullIfNotFound);
+    if (junction) await db.collection('playlist_tracks').delete(junction.id).catch(nullIfNotFound);
     return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
 });
-
-function esc(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}

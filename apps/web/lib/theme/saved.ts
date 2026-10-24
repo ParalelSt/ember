@@ -1,4 +1,4 @@
-import { cleanThemeName, isPresetId, isRecordId, THEME_NAME_MAX, type PresetId, type ThemeDoc, type ThemeInputs } from '@/lib/theme/model';
+import { cleanThemeName, clipName, isPresetId, isRecordId, THEME_NAME_MAX, type PresetId, type ThemeDoc, type ThemeInputs } from '@/lib/theme/model';
 
 /** Saved themes (the owner's decision 4): a named list per person in the
  *  `themes` collection, each optionally shared with everyone. Shapes shared
@@ -67,7 +67,7 @@ export function copyName(name: string): string {
   const base = cleanThemeName(name) ?? 'Theme';
   return base.length + suffix.length <= THEME_NAME_MAX
     ? base + suffix
-    : base.slice(0, THEME_NAME_MAX - suffix.length).trimEnd() + suffix;
+    : clipName(base, THEME_NAME_MAX - suffix.length).trimEnd() + suffix;
 }
 
 /** The same colours and name with the link to the original dropped: what

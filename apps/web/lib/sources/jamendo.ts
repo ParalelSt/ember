@@ -55,20 +55,6 @@ async function callJamendo(params: Record<string, string>, errMsg: string): Prom
   return data.results ?? [];
 }
 
-export async function searchTracks(query: string, { limit = 30, offset = 0 } = {}): Promise<Track[]> {
-  const results = await callJamendo(
-    { limit: String(limit), offset: String(offset), search: query, include: 'musicinfo' },
-    'Jamendo search failed',
-  );
-  return results.map(normalize);
-}
-
-export async function getTrack(sourceId: string): Promise<Track | null> {
-  const results = await callJamendo({ id: sourceId }, 'Jamendo lookup failed');
-  const t = results[0];
-  return t ? normalize(t) : null;
-}
-
 export async function featured({ limit = 30 } = {}): Promise<Track[]> {
   const results = await callJamendo(
     { limit: String(limit), order: 'popularity_total' },

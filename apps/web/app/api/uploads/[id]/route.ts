@@ -1,11 +1,13 @@
 import fs from 'node:fs/promises';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
+import { nullIfNotFound } from '@/lib/pocketbase/notFound';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
-import { resolveUploadPath } from '@/lib/uploads';
+import { COVER_EXTS, resolveUploadPath } from '@/lib/uploads';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { deleteUploadCover } from '@/lib/uploads/cover';
+import { markTrackUnavailable } from '@/lib/trackAvailability';
 
 /** Removes an upload, the record and the file on disk. Uploader or admin
  *  only; other people may have it in a playlist, so this is deliberate. */
@@ -15,13 +17,17 @@ export const DELETE = withRequestLog('uploads/[id]', async (_request: Request, c
     const { id } = await ctx.params;
 
     const pb = await createAdminClient();
-    const row = await pb.collection('uploads').getOne(id).catch(() => null);
+    const row = await pb.collection('uploads').getOne(id).catch(nullIfNotFound);
     if (!row) return jsonError('Upload not found', 404);
     if (row.uploader !== user.id && !user.isAdmin) {
       return jsonError('Only the person who uploaded this can remove it', 403);
     }
 
     await pb.collection('uploads').delete(id);
+    // Its row in the shared catalog stays (it may sit in someone's playlist
+    // or likes), flagged unavailable so those lists stop offering a song
+    // whose stream is now a 404. Best effort, never throws.
+    await markTrackUnavailable(`upload:${id}`, 'unavailable');
 
     // Record first, file second: a leftover file is harmless, a record
     // pointing at a missing file is a broken song in someone's playlist.
@@ -32,8 +38,10 @@ export const DELETE = withRequestLog('uploads/[id]', async (_request: Request, c
       });
     }
 
-    // The extracted cover goes with it, for the same reason.
-    await deleteUploadCover(id, String(row.artwork_ext ?? ''));
+    // The cover goes with it, for the same reason. Every format: covers
+    // are named after this record, and one written at upload time whose
+    // artwork_ext save failed is on disk without the record saying so.
+    for (const ext of COVER_EXTS) await deleteUploadCover(id, ext);
 
     return Response.json({ ok: true });
   } catch (e) {

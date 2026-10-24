@@ -48,6 +48,14 @@ class SavedQueueTest {
         assertEquals(2, saved.resume("https://ember.example")!!.startIndex)
     }
 
+    @Test fun `an emptied queue (sign-out, another account) is forgotten, so a media button does not bring it back`() {
+        player.addListener(saved.Saver(player, direct))
+        player.setMediaItems(listOf(item("a"), item("b")), 0, 0)
+        assertEquals(2, saved.resume("https://e")!!.mediaItems.size)
+        player.setMediaItems(emptyList(), 0, 0)
+        assertNull(saved.resume("https://e"))
+    }
+
     @Test fun `nothing saved, or a broken file, resumes nothing`() {
         assertNull(saved.resume("https://e"))
         File(dir, "q.json").writeText("{not json")

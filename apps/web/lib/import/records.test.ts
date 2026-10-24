@@ -60,6 +60,13 @@ describe('import records', () => {
     expect(j.notMusic).toBeUndefined();
   });
 
+  it('never reports more songs gone through than the job has (a Spotify link skips its podcast episodes\' places)', () => {
+    // 97 songs whose source positions run to 99: the cursor is a position.
+    const j = jobFromRecord({ id: 'j9', status: 'running', total: 97, cursor: 100 });
+    expect(j.cursor).toBe(97);
+    expect(jobFromRecord({ id: 'j9', status: 'running', total: 97, cursor: 40 }).cursor).toBe(40);
+  });
+
   it('a Google likes transfer counts the likes it got through that were not music', () => {
     const row = { id: 'j4', kind: 'liked', source: 'ytmusic', source_id: 'ytmusic-liked', status: 'done', total: 16, cursor: 16 };
     expect(jobFromRecord({ ...row, accepted: 5, review: 5, missing: 0 }).notMusic).toBe(6);

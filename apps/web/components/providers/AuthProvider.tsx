@@ -11,9 +11,11 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { registerThemeCookieWriter, useThemeStore } from '@/stores/useThemeStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { accountPlaybackCleared } from '@/lib/playback/accountPlayback';
 import { parseThemeDoc, sameDoc } from '@/lib/theme/model';
 import { logger } from '@/lib/logger/client';
 import { flushNativeCookies } from '@/lib/nativeCookies';
+import { GATEWAY_STATUSES, NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
 /** Minimal user shape exposed to the app, matches the old Supabase one
  *  closely enough that consumers don't care which backend produced it. */
@@ -83,6 +85,8 @@ function clearAccountPlayback(): void {
     orderBackup: null,
     played: [],
   });
+  // The Android app's native player holds its own copy of the queue.
+  accountPlaybackCleared();
 }
 
 export function AuthProvider({ children, initialUser }: { children: ReactNode; initialUser: AuthUser | null }) {
@@ -164,12 +168,14 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
     if (userId) claimAccountPlayback(userId);
   }, [userId]);
 
-  // Pull the privacy switches once there's a session. Presence publishing
+  // Pull the privacy switches once per account. Presence publishing
   // assumes "don't share" until this lands, so the cost of it being late is
-  // silence, never an unwanted broadcast.
+  // silence, never an unwanted broadcast. Keyed on the id, not the user
+  // object: a theme change or profile refresh rewrites the record, and a
+  // reload racing a switch just flipped could put the old value back.
   useEffect(() => {
-    if (user) void usePrivacyStore.getState().load();
-  }, [user]);
+    if (userId) void usePrivacyStore.getState().load();
+  }, [userId]);
 
   // What's new read state, per user. Until it lands nothing shows as New.
   useEffect(() => {
@@ -228,9 +234,27 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
           return { error: { message: extractPbError(e) } };
         }
       },
-      signUp: async (email, password) => {
+      signUp: async (typed, password) => {
+        // Invites are stored lower-case (pb_hooks/ensure_invite_emails) and
+        // PocketBase 0.22's createRule compares the email as written.
+        const email = typed.trim().toLowerCase();
         try {
-          await pb.collection('users').create({ email, password, passwordConfirm: password });
+          try {
+            await pb.collection('users').create({ email, password, passwordConfirm: password });
+          } catch (e) {
+            // The email is taken: most likely an earlier Register made the
+            // account and only its sign-in was lost (a dropped connection,
+            // the sign-in limit). Pressing Register again signs in with it;
+            // any other password still gets the email message.
+            if (!(e as { data?: Record<string, unknown> } | null)?.data?.email) throw e;
+            try {
+              await pb.collection('users').authWithPassword(email, password);
+            } catch {
+              throw e;
+            }
+            logger.breadcrumb('auth', 'signup', { userId: pb.authStore.record?.id, existing: true });
+            return { error: null, needsConfirmation: false };
+          }
           // PocketBase doesn't gate on email verification out of the box,
           // sign the user straight in. If you enable "require verified" in
           // the admin UI, swap this for a verification flow.
@@ -301,7 +325,18 @@ function mapRecord(
  *  per-field info lives in `.data.<field>.message`. */
 function extractPbError(e: unknown): string {
   if (!e || typeof e !== 'object') return 'Unexpected error';
-  const err = e as { message?: string; data?: Record<string, { message?: string }> };
+  const err = e as {
+    message?: string;
+    status?: unknown;
+    isAbort?: boolean;
+    response?: { message?: unknown };
+    data?: Record<string, { message?: string }>;
+  };
+  // No connection (status 0), or a gateway answering while the server
+  // restarts, with nothing from PocketBase itself: the SDK calls both
+  // "Something went wrong.", the email step says it plainly.
+  const noAnswer = err.status === 0 || (typeof err.status === 'number' && GATEWAY_STATUSES.includes(err.status));
+  if (noAnswer && !err.isAbort && !err.response?.message) return NO_ANSWER_MESSAGE;
   const fieldMsgs = Object.entries(err.data ?? {})
     .map(([field, info]) => info?.message ? `${field}: ${info.message}` : null)
     .filter(Boolean)

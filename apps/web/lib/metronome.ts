@@ -111,7 +111,10 @@ export function clickContext(): AudioContext | null {
   if (!Ctor) return null;
   try {
     if (!shared || shared.state === 'closed') shared = new Ctor();
-    if (shared.state === 'suspended') void shared.resume().catch(() => {});
+    // Not only 'suspended': WebKit leaves a context 'interrupted' after a
+    // call, Siri or the app going to the background, and the clicks stayed
+    // silent until the tab page was opened again.
+    if (shared.state !== 'running') void shared.resume().catch(() => {});
     return shared;
   } catch {
     return null;

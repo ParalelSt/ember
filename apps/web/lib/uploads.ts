@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import type PocketBase from 'pocketbase';
 import type { RecordModel } from 'pocketbase';
 import type { Track } from '@/types/track';
+import { escapeFilterValue as escape } from '@/lib/pocketbase/filterValue';
 
 /** Member-uploaded songs.
  *
@@ -111,11 +112,6 @@ export function mapUpload(row: RecordModel): Track {
     artworkUrl: hasUploadArt(row) ? `/api/uploads/${row.id}/art` : null,
     streamUrl: `/api/uploads/${row.id}/stream`,
   };
-}
-
-// PB filter strings interpolate raw, escape user-controlled text.
-function escape(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 /** Uploads matching a search query, newest first. Errors return [], a

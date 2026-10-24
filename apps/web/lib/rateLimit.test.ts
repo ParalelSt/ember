@@ -123,3 +123,28 @@ describe('rateLimit consume:false / recordRateLimitHit', () => {
     expect(checkRateLimit(key, quotaCfg, { consume: false }).ok).toBe(false);
   });
 });
+
+describe('rateLimitResponse wording', () => {
+  it('an hourly limit says minutes, not "about 3600s"', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2026-10-24T10:00:00Z'));
+    const cfg = { windowMs: 60 * 60 * 1000, max: 1 };
+    expect(rateLimitResponse('upload:u1', cfg)).toBeNull();
+    vi.setSystemTime(Date.parse('2026-10-24T10:02:30Z'));
+    const res = rateLimitResponse('upload:u1', cfg)!;
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('3450');
+    expect(await res.json()).toEqual({ error: 'Slow down, try again in about 58 minutes.' });
+  });
+
+  it('a short wait stays in seconds, and one minute is singular', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2026-10-24T10:00:00Z'));
+    const cfg = { windowMs: 30_000, max: 1 };
+    rateLimitResponse('bug:u1', cfg);
+    expect(await rateLimitResponse('bug:u1', cfg)!.json()).toEqual({ error: 'Slow down, try again in about 30s.' });
+    const minute = { windowMs: 60_000, max: 1 };
+    rateLimitResponse('lyrics:u1', minute);
+    expect(await rateLimitResponse('lyrics:u1', minute)!.json()).toEqual({ error: 'Slow down, try again in about 1 minute.' });
+  });
+});

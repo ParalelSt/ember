@@ -69,6 +69,15 @@ pub struct DiscordState {
     /// latest matters: a seek supersedes the seek before it.
     pending: Option<Presence>,
     flush_scheduled: bool,
+    /// "no app id" has been logged: it is said once per run, not per update.
+    no_app_id_logged: bool,
+}
+
+impl DiscordState {
+    /// True the first time only.
+    fn first_no_app_id(&mut self) -> bool {
+        !std::mem::replace(&mut self.no_app_id_logged, true)
+    }
 }
 
 pub struct DiscordPresence(pub Mutex<DiscordState>, Worker);
@@ -150,6 +159,27 @@ fn trim(s: &str, max: usize) -> String {
     s.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
 }
 
+/// Discord refuses the WHOLE activity when a text is under 2 characters (a
+/// song called "7", an empty album) or the image is over 256: the card then
+/// stayed on the previous song.
+const MIN_TEXT: usize = 2;
+const MAX_IMAGE: usize = 256;
+
+/// `trim`, padded to Discord's minimum with a braille blank (not whitespace,
+/// so Discord does not trim it away).
+fn text(s: &str, max: usize) -> String {
+    let mut t = trim(s, max);
+    for _ in t.chars().count()..MIN_TEXT {
+        t.push('\u{2800}');
+    }
+    t
+}
+
+/// The artwork URL when Discord takes it; none (no image) otherwise.
+fn image(url: Option<&str>) -> Option<&str> {
+    url.filter(|u| !u.is_empty() && u.chars().count() <= MAX_IMAGE)
+}
+
 /// What the webview asked `discord_update` for, and when.
 struct Update {
     title: Option<String>,
@@ -202,7 +232,9 @@ fn apply<R: Runtime>(app: &AppHandle<R>, update: Update) {
     let Some(state) = app.try_state::<DiscordPresence>() else { return };
     let Update { title, artist, album, artwork_url, is_playing, position_sec, duration_sec, received_ms } = update;
     let Some(app_id) = app_id() else {
-        log_discord(app, "no app id: presence disabled");
+        if state.0.lock().map(|mut st| st.first_no_app_id()).unwrap_or(false) {
+            log_discord(app, "no app id: presence disabled");
+        }
         return;
     };
     let Ok(mut st) = state.0.lock() else { return };
@@ -253,18 +285,57 @@ fn apply<R: Runtime>(app: &AppHandle<R>, update: Update) {
     send(&mut st, app, &app_id, presence);
 }
 
+/// What the flush timer does when it wakes.
+#[derive(Debug, PartialEq, Eq)]
+enum Flush {
+    /// Nothing is waiting (a track change or a pause sent or dropped it).
+    Nothing,
+    /// The window is not over yet: sleep this much longer.
+    Wait(u64),
+    Send,
+}
+
+/// The window is counted from the LAST send, not from when the timer was
+/// set: a track change goes out at once in between, and a seek in the new
+/// song queued behind that timer used to go out with it, seconds after the
+/// track change, inside the window Discord drops updates in.
+fn flush_due(st: &DiscordState, now: u128) -> Flush {
+    if st.pending.is_none() {
+        return Flush::Nothing;
+    }
+    let since = now.saturating_sub(st.last_update_ms);
+    if since < RATE_LIMIT_MS {
+        Flush::Wait((RATE_LIMIT_MS - since) as u64)
+    } else {
+        Flush::Send
+    }
+}
+
 /// Wake up when the rate-limit window has passed and send whatever is newest.
 fn schedule_flush<R: Runtime>(app: AppHandle<R>, wait_ms: u64) {
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(wait_ms));
-        use tauri::Manager;
-        let Some(state) = app.try_state::<DiscordPresence>() else { return };
-        let Ok(mut st) = state.0.lock() else { return };
-        st.flush_scheduled = false;
-        let Some(presence) = st.pending.take() else { return };
-        let Some(app_id) = app_id() else { return };
-        log_discord(&app, &format!("flush {:?} pos={:.1}", presence.key(), presence.position_sec));
-        send(&mut st, &app, &app_id, presence);
+        let mut wait = wait_ms;
+        loop {
+            std::thread::sleep(Duration::from_millis(wait));
+            use tauri::Manager;
+            let Some(state) = app.try_state::<DiscordPresence>() else { return };
+            let Ok(mut st) = state.0.lock() else { return };
+            match flush_due(&st, now_ms()) {
+                Flush::Wait(ms) => wait = ms,
+                Flush::Nothing => {
+                    st.flush_scheduled = false;
+                    return;
+                }
+                Flush::Send => {
+                    st.flush_scheduled = false;
+                    let Some(presence) = st.pending.take() else { return };
+                    let Some(app_id) = app_id() else { return };
+                    log_discord(&app, &format!("flush {:?} pos={:.1}", presence.key(), presence.position_sec));
+                    send(&mut st, &app, &app_id, presence);
+                    return;
+                }
+            }
+        }
     });
 }
 
@@ -294,13 +365,13 @@ fn send<R: Runtime>(st: &mut DiscordState, app: &AppHandle<R>, app_id: &str, pre
         }
     }
 
-    let details = trim(&presence.title, 128);
+    let details = text(&presence.title, 128);
     let state_line = if presence.artist.is_empty() {
         String::new()
     } else {
-        trim(&format!("by {}", presence.artist), 128)
+        text(&format!("by {}", presence.artist), 128)
     };
-    let large_text = trim(presence.album.as_deref().unwrap_or(&presence.title), 128);
+    let large_text = text(presence.album.as_deref().filter(|a| !a.is_empty()).unwrap_or(&presence.title), 128);
 
     // Anchored to where the playhead is rather than to when the track was
     // first loaded: that is what makes a seek show up.
@@ -315,10 +386,8 @@ fn send<R: Runtime>(st: &mut DiscordState, app: &AppHandle<R>, app_id: &str, pre
         let Some(client) = st.client.as_mut() else { return };
 
         let mut assets = Assets::new().large_text(&large_text);
-        if let Some(url) = presence.artwork_url.as_deref() {
-            if !url.is_empty() {
-                assets = assets.large_image(url);
-            }
+        if let Some(url) = image(presence.artwork_url.as_deref()) {
+            assets = assets.large_image(url);
         }
         let mut activity = Activity::new()
             .activity_type(ActivityType::Listening)
@@ -365,6 +434,24 @@ mod tests {
         }
     }
 
+    #[test]
+    fn short_texts_are_padded_to_discords_minimum() {
+        assert_eq!(text("7", 128).chars().count(), 2);
+        assert!(text("7", 128).starts_with('7'));
+        assert_eq!(text("", 128).chars().count(), 2);
+        assert_eq!(text("🎵", 128).chars().count(), 2);
+        assert_eq!(text("Song", 128), "Song");
+    }
+
+    #[test]
+    fn an_image_over_discords_limit_is_dropped() {
+        let long = format!("https://lh3.googleusercontent.com/{}", "a".repeat(300));
+        assert_eq!(image(Some(&long)), None);
+        assert_eq!(image(Some("")), None);
+        assert_eq!(image(None), None);
+        assert_eq!(image(Some("https://i.ytimg.com/vi/x/hq.jpg")), Some("https://i.ytimg.com/vi/x/hq.jpg"));
+    }
+
     fn secs(ms: u128) -> i64 {
         (ms / 1000) as i64
     }
@@ -393,6 +480,22 @@ mod tests {
         let (start, end) = presence(30.0, 240.0, sent).timestamps();
         assert_eq!(start, secs(sent) - 30);
         assert_eq!(end, Some(secs(sent) - 30 + 240));
+    }
+
+    #[test]
+    fn a_seek_queued_after_a_track_change_waits_out_the_new_songs_window() {
+        // A seek in song A queued a flush for 0:15. Song B went out at once
+        // at 0:10, and a seek in B at 0:12 queued behind A's timer: at 0:15
+        // it must wait until 0:25, 15 s after B's send, not go out then.
+        let st = DiscordState { last_update_ms: 10_000, pending: Some(presence(30.0, 240.0, 12_000)), flush_scheduled: true, ..Default::default() };
+        assert_eq!(flush_due(&st, 15_000), Flush::Wait(10_000));
+        assert_eq!(flush_due(&st, 25_000), Flush::Send);
+    }
+
+    #[test]
+    fn a_timer_with_nothing_left_to_send_ends() {
+        let st = DiscordState { last_update_ms: 10_000, flush_scheduled: true, ..Default::default() };
+        assert_eq!(flush_due(&st, 15_000), Flush::Nothing);
     }
 
     #[test]
@@ -459,5 +562,15 @@ mod tests {
         drop(conn);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(returned, "discord_update waited for Discord to answer");
+    }
+
+    /// A build without an app id wrote "no app id" on every update, which
+    /// crowded the log tail a bug report attaches. Said once per run.
+    #[test]
+    fn a_missing_app_id_is_logged_once() {
+        let mut st = DiscordState::default();
+        assert!(st.first_no_app_id());
+        assert!(!st.first_no_app_id());
+        assert!(!st.first_no_app_id());
     }
 }

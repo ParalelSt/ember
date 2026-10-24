@@ -145,7 +145,7 @@ afterEach(() => {
 describe('POST start', () => {
   it('creates a request: the token only inside approveUrl, the poll secret only in an httpOnly cookie', async () => {
     const r = await newRequest();
-    expect(Object.keys(r.body).sort()).toEqual(['approveUrl', 'code', 'device', 'expiresAt', 'id']);
+    expect(Object.keys(r.body).sort()).toEqual(['approveUrl', 'code', 'device', 'expiresAt', 'expiresInMs', 'id']);
     expect(r.body.approveUrl).toBe(`${ORIGIN}/link/${r.token}`);
     expect(r.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(r.code).toMatch(/^[0-9A-HJKMNP-TV-Z]{8}$/);
@@ -193,6 +193,7 @@ describe('POST start', () => {
     const ttl = Date.parse(String(r.body.expiresAt)) - t0;
     expect(ttl).toBeGreaterThan(179_000);
     expect(ttl).toBeLessThanOrEqual(181_000);
+    expect(r.body.expiresInMs).toBe(180_000);
     process.env.QR_LOGIN_TTL_S = '3600';
     const long = await newRequest({ ip: '203.0.113.6' });
     expect(Date.parse(String(long.body.expiresAt)) - Date.now()).toBeLessThanOrEqual(181_000);
