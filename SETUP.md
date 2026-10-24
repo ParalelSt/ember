@@ -693,14 +693,14 @@ download. `./update.sh` upgrades yt-dlp on every run; to do it by hand:
 ```
 
 Disk: roughly 3-7 MB per song. The cache grows with listening, so pair it with
-the weekly cleanup of tracks nobody has played.
+the daily cleanup of tracks nobody has played.
 
 ### Automatic cleanup of unplayed songs
 
 Once a day the server deletes tracks **nobody has played in 14 days**, along
 with their cached audio in `my_music/`. Anything liked, in a playlist, in a
-live session, or in someone's recent searches is kept regardless of age, as is
-anything played inside the window.
+live session, or in someone's recent searches is kept regardless of age, as
+is anything played inside the window and every member upload.
 
 It runs an hour after boot and then daily. To disable, set `CLEANUP_DISABLED=1`
 in `apps/web/.env.local`.
