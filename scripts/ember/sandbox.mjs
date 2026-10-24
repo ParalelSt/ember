@@ -131,7 +131,8 @@ async function start() {
       POCKETBASE_URL: `http://127.0.0.1:${SANDBOX_PB_PORT}`,
       POCKETBASE_ADMIN_EMAIL: env.POCKETBASE_ADMIN_EMAIL,
       POCKETBASE_ADMIN_PASSWORD: env.POCKETBASE_ADMIN_PASSWORD,
-      PUBLIC_ORIGIN: `http://${ip}:${port}`,
+      // --origin https://x.trycloudflare.com when the copy is reached through a tunnel.
+      PUBLIC_ORIGIN: typeof flags.origin === 'string' ? flags.origin : `http://${ip}:${port}`,
       // Reports and requests never reach Discord from a sandbox.
       DISCORD_BUG_REPORT_WEBHOOK_URL: `${sink}/bug`,
       DISCORD_FEATURE_WEBHOOK_URL: `${sink}/feature`,
