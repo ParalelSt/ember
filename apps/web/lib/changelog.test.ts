@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APP_VERSION, CHANGELOG } from './changelog';
+import { APP_VERSION, CHANGELOG, CHANGELOG_SCOPES } from './changelog';
 import { isNewer, parseVersion } from './semver';
 import pkg from '../package.json';
 
@@ -37,6 +37,13 @@ describe('CHANGELOG invariants', () => {
     for (let i = 1; i < CHANGELOG.length; i++) {
       expect(CHANGELOG[i].date <= CHANGELOG[i - 1].date, CHANGELOG[i].id).toBe(true);
     }
+  });
+
+  it('a scope is one of the apps, and the version stays the web version', () => {
+    for (const e of CHANGELOG) {
+      if (e.scope !== undefined) expect(CHANGELOG_SCOPES, e.id).toContain(e.scope);
+    }
+    expect(CHANGELOG_SCOPES).toEqual(['desktop', 'android', 'ios', 'windows', 'macos', 'linux']);
   });
 
   it('every entry has a title, a summary and at least one bullet, with no em dashes', () => {

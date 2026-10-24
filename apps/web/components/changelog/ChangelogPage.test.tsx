@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { ChangelogPage } from './ChangelogPage';
-import { computeNewIds, type ChangelogEntry } from '@/lib/changelog';
+import { ChangelogPage, SCOPE_LABEL } from './ChangelogPage';
+import { CHANGELOG_SCOPES, computeNewIds, type ChangelogEntry } from '@/lib/changelog';
 
 const entries: ChangelogEntry[] = [
   { id: 'b', version: '0.3.1', date: '2026-09-20', title: 'Second', summary: 's', bullets: ['two a', 'two b'] },
@@ -41,6 +41,21 @@ describe('ChangelogPage', () => {
     expect(within(card('Second')).getByText('0.3.1 · 2026-09-20')).toBeInTheDocument();
     expect(within(card('First')).getByText('0.3.0 · 2026-09-18 · Desktop app')).toBeInTheDocument();
     expect(within(card('Second')).getByText('two b')).toBeInTheDocument();
+  });
+
+  it('names each app scope, one per app now that each has its own version', () => {
+    const scoped: ChangelogEntry[] = [
+      { id: 'w', version: '0.7.32', date: '2026-10-25', title: 'Win', summary: 's', bullets: ['x'], scope: 'windows' },
+      { id: 'm', version: '0.7.32', date: '2026-10-25', title: 'Mac', summary: 's', bullets: ['x'], scope: 'macos' },
+      { id: 'l', version: '0.7.32', date: '2026-10-25', title: 'Lin', summary: 's', bullets: ['x'], scope: 'linux' },
+      { id: 'i', version: '0.7.32', date: '2026-10-25', title: 'Pho', summary: 's', bullets: ['x'], scope: 'ios' },
+    ];
+    render(<ChangelogPage entries={scoped} newIds={new Set()} hideTags={false} onHideTagsChange={() => {}} onMarkAllRead={() => {}} />);
+    expect(within(card('Win')).getByText('0.7.32 · 2026-10-25 · Windows app')).toBeInTheDocument();
+    expect(within(card('Mac')).getByText('0.7.32 · 2026-10-25 · Mac app')).toBeInTheDocument();
+    expect(within(card('Lin')).getByText('0.7.32 · 2026-10-25 · Linux app')).toBeInTheDocument();
+    expect(within(card('Pho')).getByText('0.7.32 · 2026-10-25 · iPhone app')).toBeInTheDocument();
+    for (const s of CHANGELOG_SCOPES) expect(SCOPE_LABEL[s], s).toBeTruthy();
   });
 
   it('tags exactly the entries in newIds', () => {

@@ -15,9 +15,14 @@ export interface ChangelogEntry {
   summary: string;
   /** Two or three short lines for the full page. */
   bullets: string[];
-  /** Omit for the web app (which every shell shows too). */
-  scope?: 'desktop' | 'android';
+  /** Omit for the web app (which every shell shows too). 'desktop' is all
+   *  three desktop apps; each app also has its own scope, since each has its
+   *  own version now. `version` stays the web version either way. */
+  scope?: ChangelogScope;
 }
+
+export const CHANGELOG_SCOPES = ['desktop', 'android', 'ios', 'windows', 'macos', 'linux'] as const;
+export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
