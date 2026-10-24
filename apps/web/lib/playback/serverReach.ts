@@ -26,11 +26,18 @@ let watching = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 async function answers(): Promise<boolean> {
+  // A request on a dead connection (a phone that changed networks) can wait
+  // for minutes before it fails, and the watch waited with it: the player
+  // stayed offline long after the server was back. A probe gets PROBE_MS.
+  const ctl = new AbortController();
+  const limit = setTimeout(() => ctl.abort(), PROBE_MS);
   try {
-    await fetch(`${BASE}${PROBE_PATH}`, { method: 'HEAD', cache: 'no-store', credentials: 'include' });
+    await fetch(`${BASE}${PROBE_PATH}`, { method: 'HEAD', cache: 'no-store', credentials: 'include', signal: ctl.signal });
     return true;
   } catch {
     return false;
+  } finally {
+    clearTimeout(limit);
   }
 }
 

@@ -68,4 +68,19 @@ describe('serverReach', () => {
     await vi.advanceTimersByTimeAsync(5 * PROBE_MS);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('a probe that never answers is given up on, and the next one still goes', async () => {
+    // A dead pooled connection (a phone that changed networks) can leave a
+    // request waiting for minutes: the watch must not wait with it.
+    fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    })).mockResolvedValueOnce(new Response(null, { status: 200 }));
+    serverUnreachable();
+    await vi.advanceTimersByTimeAsync(PROBE_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2 * PROBE_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(useAutoCacheStore.getState().online).toBe(true);
+  });
+
 });
