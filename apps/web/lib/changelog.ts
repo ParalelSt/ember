@@ -26,6 +26,18 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'radio-and-car',
+    version: '0.7.33',
+    date: '2026-10-24',
+    title: 'Radio and the car',
+    summary: 'Live radio stations near you, and Ember on your car\'s screen.',
+    bullets: [
+      'Radio: listen to live stations near you, in the app and in the car. Tap the heart to keep your favourites on top.',
+      'Android Auto: For you, Library, Radio and Recent tabs, with Like, Shuffle and Repeat on the player.',
+      'Car screens: Ember can run on the car\'s own screen with big buttons, and you swipe the cover to skip.',
+    ],
+  },
+  {
     id: 'steadier-everywhere',
     version: '0.7.32',
     date: '2026-10-24',

@@ -1,3 +1,11 @@
+# 0.7.33: Radio and the car (android 0.4.27)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh as usual and restart PocketBase with it (new
+radio favourites collection). New apps: Android 0.4.27 (versionCode 32).
+Unchanged: iOS 0.4.24, Windows 0.4.26, macOS 0.4.26, Linux 0.4.26. Tags:
+`android-v0.4.27`.
+
 # 0.7.32: Steadier everywhere (android, windows, macos, linux 0.4.26)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
