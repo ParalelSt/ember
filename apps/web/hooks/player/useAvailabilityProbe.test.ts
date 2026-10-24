@@ -254,17 +254,29 @@ describe('useAvailabilityProbe: no answer from the server at all', () => {
     expect(reach.serverUnreachable).not.toHaveBeenCalled();
   });
 
-  // A server restart is not the device going offline: the Funnel's 502 (or
-  // a page in Ember's place) is something answering, so the song stops with
-  // "tap to retry", as before, instead of skipping to a downloaded song.
-  it.each([502, 200])('something answering in Ember\'s place (%i, no JSON) is the song not loading, not offline', async (answered) => {
-    api.getTrackAvailability.mockRejectedValue(Object.assign(new Error("Can't reach Ember right now."), { answered }));
+  // A server restart is not the device going offline: the Funnel's 502 is
+  // something answering, so the song stops with "tap to retry", as before,
+  // instead of skipping to a downloaded song.
+  it('a gateway answering for Ember (502, no JSON) is the song not loading, not offline', async () => {
+    api.getTrackAvailability.mockRejectedValue(Object.assign(new Error("Can't reach Ember right now."), { answered: 502 }));
     const { probe, onOffline } = withHandler();
     const stillPlayable = vi.fn();
     probe(stillPlayable);
     await waitFor(() => expect(stillPlayable).toHaveBeenCalledTimes(1));
     expect(onOffline).not.toHaveBeenCalled();
     expect(reach.serverUnreachable).not.toHaveBeenCalled();
+  });
+
+  // A Wi-Fi sign-in page's 200 HTML means the internet is out of reach:
+  // offline, and the downloaded songs play.
+  it('a sign-in page answering 200 goes the offline way', async () => {
+    api.getTrackAvailability.mockRejectedValue(Object.assign(new Error("Can't reach Ember right now."), { answered: 200 }));
+    const { probe, onOffline } = withHandler();
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+    await waitFor(() => expect(onOffline).toHaveBeenCalledWith(dead));
+    expect(reach.serverUnreachable).toHaveBeenCalledTimes(1);
+    expect(stillPlayable).not.toHaveBeenCalled();
   });
 
   it('a song the listener already moved on from is left where it is', async () => {
