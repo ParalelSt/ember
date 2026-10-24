@@ -232,7 +232,22 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
       },
       signUp: async (email, password) => {
         try {
-          await pb.collection('users').create({ email, password, passwordConfirm: password });
+          try {
+            await pb.collection('users').create({ email, password, passwordConfirm: password });
+          } catch (e) {
+            // The email is taken: most likely an earlier Register made the
+            // account and only its sign-in was lost (a dropped connection,
+            // the sign-in limit). Pressing Register again signs in with it;
+            // any other password still gets the email message.
+            if (!(e as { data?: Record<string, unknown> } | null)?.data?.email) throw e;
+            try {
+              await pb.collection('users').authWithPassword(email, password);
+            } catch {
+              throw e;
+            }
+            logger.breadcrumb('auth', 'signup', { userId: pb.authStore.record?.id, existing: true });
+            return { error: null, needsConfirmation: false };
+          }
           // PocketBase doesn't gate on email verification out of the box,
           // sign the user straight in. If you enable "require verified" in
           // the admin UI, swap this for a verification flow.
