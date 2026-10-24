@@ -37,10 +37,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 const NOTES = `# a comment
-id: add-to-queue
-title: Add to queue
+id: sleep-timer
+title: Sleep timer
 summary: Put a song next in line from any list.
-- The ... menu on a song now has Add to queue.
+- A sleep timer stops the music after a set time.
 - It's played after the songs you already queued.
 host: Nothing else to do.
 `;
@@ -134,8 +134,8 @@ test('the tags are one per app whose version moved, never a bare vX', () => {
 
 test('notes are read from the simple file format', () => {
   const notes = parseNotes(NOTES);
-  assert.equal(notes.id, 'add-to-queue');
-  assert.equal(notes.title, 'Add to queue');
+  assert.equal(notes.id, 'sleep-timer');
+  assert.equal(notes.title, 'Sleep timer');
   assert.equal(notes.bullets.length, 2);
   assert.equal(notes.host, 'Nothing else to do.');
   assert.throws(() => parseNotes('this line means nothing'));
@@ -155,7 +155,7 @@ test('notes that break the house rules are refused, each with the reason', () =>
 
 test('the What\'s new entry goes on top, quotes escaped, and stays valid TypeScript-ish', () => {
   const text = insertChangelog(read(FILES.changelog), parseNotes(NOTES), '0.9.0', '2026-10-22');
-  assert.equal(changelogIds(text)[0], 'add-to-queue');
+  assert.equal(changelogIds(text)[0], 'sleep-timer');
   assert.match(text, /version: '0\.9\.0',\n {4}date: '2026-10-22',/);
   assert.ok(text.includes("'It\\'s played after the songs you already queued.',"));
 });
