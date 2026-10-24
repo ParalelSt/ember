@@ -72,6 +72,41 @@ function unsafeQueryExpr(expr) {
   return '';
 }
 
+/** Whether an object in this JSON text names a key twice (in any letter
+ *  case, escapes read). JSON.parse keeps only the last copy, but
+ *  PocketBase's Go decoder merges a repeated `query` object into the first
+ *  and leaves a string `filter` in place when a later copy is null or a
+ *  number, so the copy checked here would not be the one PocketBase runs.
+ *  Only called on text JSON.parse has read. */
+function repeatsKey(text) {
+  const objects = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      const literal = text.slice(i, j + 1);
+      i = j;
+      const keys = objects[objects.length - 1];
+      if (!keys) continue;
+      let k = j + 1;
+      while (k < text.length && ' \t\n\r'.indexOf(text[k]) >= 0) k++;
+      if (text[k] !== ':') continue;
+      let key;
+      try {
+        key = String(JSON.parse(literal)).toLowerCase();
+      } catch (_) {
+        return true;
+      }
+      if (keys[key]) return true;
+      keys[key] = true;
+    } else if (ch === '{') objects.push(Object.create(null));
+    else if (ch === '[') objects.push(null);
+    else if (ch === '}' || ch === ']') objects.pop();
+  }
+  return false;
+}
+
 /** Why a realtime subscription topic (`<collection>/<id or *>?options=<json>`)
  *  is refused, or '' when it is fine. Its options carry a filter and sort
  *  that PocketBase checks each event against, the same oracle as a list.
@@ -89,13 +124,16 @@ function unsafeSubscription(topic) {
       return 'unreadable options';
     }
     if (key !== 'options') continue;
+    let raw;
     let opts;
     try {
-      opts = JSON.parse(decodeURIComponent((eq < 0 ? '' : part.slice(eq + 1)).replace(/\+/g, ' ')));
+      raw = decodeURIComponent((eq < 0 ? '' : part.slice(eq + 1)).replace(/\+/g, ' '));
+      opts = JSON.parse(raw);
     } catch (_) {
       return 'unreadable options';
     }
     if (!opts || typeof opts !== 'object') continue;
+    if (repeatsKey(raw)) return 'repeated keys in options';
     // PocketBase decodes the options with Go's encoding/json, which takes
     // `Query` or `QUERY` for `query` too (and merges repeats), so check
     // every key that folds to it, not only the lower-case one.

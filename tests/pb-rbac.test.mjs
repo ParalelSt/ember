@@ -146,6 +146,12 @@ const rtCased = await subscribe(bob.token, [
   `tracks/*?options=${encodeURIComponent(JSON.stringify({ Query: { filter: `likes_via_track.user ?= "${alice.id}"` } }))}`,
 ]);
 check('S1 a join under a capitalised "Query" key is refused too', rtCased === 400, `status ${rtCased}`);
+// Repeated keys: JSON.parse keeps the last copy, Go's decoder merges a
+// repeated "query" into the first, so the join in the first one ran.
+const rtRepeated = await subscribe(bob.token, [
+  `tracks/*?options=${encodeURIComponent(`{"query":{"filter":${JSON.stringify(`likes_via_track.user ?= "${alice.id}"`)}},"query":{}}`)}`,
+]);
+check('S1 a join followed by a second, empty "query" key is refused too', rtRepeated === 400, `status ${rtRepeated}`);
 const rtOk = await subscribe(alice.token, [
   `pranks/*?options=${encodeURIComponent(JSON.stringify({ query: { filter: `target = "${alice.id}" && status = "pending"` } }))}`,
 ]);

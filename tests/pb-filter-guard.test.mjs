@@ -95,6 +95,19 @@ for (const key of ['Query', 'QUERY', 'qUeRy']) {
 }
 check('a join under a second, differently cased query key is refused',
   unsafeSubscription(rawTopic('{"query":{"filter":"id != \\"\\""},"Query":{"filter":"uploader.name = \\"x\\""}}')) !== '');
+// Go's decoder merges a repeated `query` object into the first one, and a
+// later null or number for `filter` leaves the first string in place, while
+// JSON.parse keeps only the last copy: the copy checked was not the one run.
+check('a join followed by a second, empty "query" is refused',
+  unsafeSubscription(rawTopic('{"query":{"filter":"likes_via_track.user ?= \\"a\\""},"query":{}}')) !== '');
+check('a join followed by "filter": null is refused',
+  unsafeSubscription(rawTopic('{"query":{"filter":"likes_via_track.user ?= \\"a\\"","filter":null}}')) !== '');
+check('a join followed by a numeric "filter" is refused',
+  unsafeSubscription(rawTopic('{"query":{"filter":"uploader.name = \\"x\\"","filter":5}}')) !== '');
+check('a repeat spelled with an escape is refused too',
+  unsafeSubscription(rawTopic('{"query":{"filter":"uploader.name = \\"x\\""},"q\\u0075ery":{}}')) !== '');
+check('the same words inside a filter string are not a repeat',
+  unsafeSubscription(rawTopic(JSON.stringify({ query: { filter: 'title = "\\"query\\": \\"filter\\":"' } }))) === '');
 check('a plain filter under "Query" is still fine',
   unsafeSubscription(rawTopic(JSON.stringify({ Query: { filter: 'target = "a"' } }))) === '');
 
