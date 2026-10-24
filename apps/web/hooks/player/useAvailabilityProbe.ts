@@ -9,9 +9,15 @@ import { logger } from '@/lib/logger/client';
 import { isUnavailable } from '@/lib/playback/queueNav';
 import { serverUnreachable } from '@/lib/playback/serverReach';
 
-/** api errors carry the HTTP status of the answer; a network failure has none. */
+/** api errors carry the HTTP status of the answer; a network failure has
+ *  none. Something answering in Ember's place (the Funnel's 502 while the
+ *  server restarts, a sign-in page) is marked `answered`: an answer too, so
+ *  a server restart stops the song with "tap to retry" instead of taking
+ *  the offline way to a downloaded song. */
 function hasHttpStatus(e: unknown): boolean {
-  return typeof e === 'object' && e !== null && typeof (e as { status?: unknown }).status === 'number';
+  if (typeof e !== 'object' || e === null) return false;
+  const { status, answered } = e as { status?: unknown; answered?: unknown };
+  return typeof status === 'number' || typeof answered === 'number';
 }
 
 /** The engine failed on the current track for a reason other than "we

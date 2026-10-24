@@ -97,7 +97,7 @@ export const NETWORK_RETRY_DELAYS_MS = [300, 1000];
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** A body that is not JSON (or never fully arrived). */
+/** A body that is not JSON. */
 const UNREADABLE = Symbol('unreadable');
 
 const isAbort = (e: unknown, signal?: AbortSignal) =>
@@ -120,18 +120,22 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected, ba
         credentials: 'include',
         signal,
       });
+      // A body that stopped arriving is a network failure (thrown on); one
+      // that arrived but is not JSON came from something else.
       data = await res.json().catch((e: unknown) => {
-        if (isAbort(e, signal)) throw e;
-        return UNREADABLE;
+        if (e instanceof SyntaxError) return UNREADABLE;
+        throw e;
       });
       // Ember answers every call with JSON. A success that is not JSON (a
-      // Wi-Fi sign-in page answering in its place, a body cut off by a
-      // dropped connection), or a gateway status without it (the Tailscale
+      // Wi-Fi sign-in page answering in its place), or a gateway status
+      // without it (the Tailscale
       // Funnel while Next restarts), is no answer from the server: as one
       // it showed "Unexpected token '<'" in toasts, sent a bug report per
       // call, and told the offline player the server was back.
       if (data !== UNREADABLE || !(res.ok || GATEWAY_STATUSES.includes(res.status))) break;
-      failure = new Error(NO_ANSWER_MESSAGE);
+      // `answered`: something did answer (a server restart, a sign-in
+      // page), which the player tells apart from being offline.
+      failure = Object.assign(new Error(NO_ANSWER_MESSAGE), { answered: res.status });
     } catch (e) {
       failure = e;
     }

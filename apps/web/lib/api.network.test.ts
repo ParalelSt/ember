@@ -113,4 +113,19 @@ describe('req(): an answer that is not from Ember', () => {
 
     await expect(api.listPlaylists()).rejects.toMatchObject({ status: 500 });
   });
+
+  it('the no-answer error says what answered, so the player can tell a server restart from being offline', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(null, { status: 502 })));
+    await expect(api.createPlaylist('Mix')).rejects.toMatchObject({ message: NO_ANSWER_MESSAGE, answered: 502 });
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => html(200)));
+    await expect(api.createPlaylist('Mix')).rejects.toMatchObject({ answered: 200 });
+  });
+
+  it('a body cut off mid-read is a network failure, not something answering in its place', async () => {
+    const cut = { ok: true, status: 200, headers: new Headers(), json: () => Promise.reject(new TypeError('network error')) };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(cut));
+    const err = (await api.createPlaylist('Mix').then(() => null, (e: unknown) => e)) as { answered?: number; message: string };
+    expect(err.answered).toBeUndefined();
+    expect(err.message).toBe('network error');
+  });
 });
