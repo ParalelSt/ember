@@ -122,8 +122,21 @@ export async function startServerLife(opts: {
   });
 
   const beat = (extra: Partial<Heartbeat> = {}): Heartbeat => ({ ts: now(), startedAt, pid: process.pid, ...extra });
-  await writeHeartbeat(opts.dir, beat()).catch(() => {});
-  const timer = setInterval(() => void writeHeartbeat(opts.dir, beat()).catch(() => {}), HEARTBEAT_MS);
+  // Once a stop signal came, its marker must stay the last word: Next keeps
+  // the process up after SIGTERM until its open requests end (up to the
+  // watchdog's SIGKILL), and a heartbeat written meanwhile, or one already
+  // on its way, made a clean stop read as an unclean one at the next start.
+  let stoppedBeat: Heartbeat | null = null;
+  const pulse = () =>
+    writeHeartbeat(opts.dir, beat())
+      .then(() => {
+        if (stoppedBeat) writeHeartbeatSync(opts.dir, stoppedBeat);
+      })
+      .catch(() => {});
+  await pulse();
+  const timer = setInterval(() => {
+    if (!stoppedBeat) void pulse();
+  }, HEARTBEAT_MS);
   timer.unref?.();
 
   for (const signal of SIGNALS) {
@@ -133,7 +146,9 @@ export async function startServerLife(opts: {
           pid: process.pid,
           uptime: fmtDuration(now() - startedAt),
         });
-        writeHeartbeatSync(opts.dir, beat({ stopped: true, signal }));
+        clearInterval(timer);
+        stoppedBeat = beat({ stopped: true, signal });
+        writeHeartbeatSync(opts.dir, stoppedBeat);
       } catch {
         // Never block shutdown on bookkeeping.
       }
