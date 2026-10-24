@@ -206,3 +206,24 @@ test('appVersions: own tag or old shared tag, newest wins, other tags ignored', 
   assert.equal(appsLabel(appVersions(['v0.4.25'])), 'apps 0.4.25');
   assert.equal(appsLabel({ android: '0.4.25' }), 'apps: android 0.4.25');
 });
+
+// The host runs more than apps/web and player.py: the start and update
+// scripts, the other Python helpers and their requirements, the root
+// lockfile. A fix to one of those alone (a start-static.sh fix, say) never
+// pinged, so the host never heard to update for it.
+test('run: a change to what the host runs outside apps/web pings', async () => {
+  for (const p of ['start-static.sh', 'update.sh', 'align.py', 'loudness.py', 'ffmpeg_path.py', 'requirements.txt', 'package-lock.json', 'deploy/ember.service']) {
+    const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+    f.state.diff = p;
+    const r = await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') });
+    assert.equal(r.pinged, true, p);
+    assert.match(r.text, /Pull and run \.\/update\.sh/, p);
+  }
+});
+test('run: the apps, tests and docs alone still do not ping', async () => {
+  for (const p of ['apps/desktop/src-tauri/src/main.rs', 'apps/mobile/android/app/build.gradle', 'tests/watchdog.test.sh', 'docs/a.md', 'tests/test_align.py']) {
+    const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+    f.state.diff = p;
+    assert.equal((await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') })).pinged, false, p);
+  }
+});

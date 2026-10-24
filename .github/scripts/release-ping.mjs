@@ -70,7 +70,10 @@ export function extraNotes(src, sinceVersion) {
   return out;
 }
 
-const NEEDS_UPDATE = /^(apps\/web\/|pocketbase\/|player\.py$|scripts\/)/;
+// What the host runs: the web app, PocketBase's hooks, the Python helpers at
+// the root and their requirements, the start/update scripts and the unit,
+// the root lockfile. Not the apps (CI builds those), tests or docs.
+const NEEDS_UPDATE = /^(apps\/web\/|pocketbase\/|scripts\/|deploy\/|[^/]+\.py$|requirements\.txt$|start-static\.sh$|update\.sh$|package(-lock)?\.json$)/;
 
 export const APPS = ['android', 'ios', 'windows', 'macos', 'linux'];
 
