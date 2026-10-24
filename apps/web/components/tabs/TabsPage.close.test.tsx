@@ -1,5 +1,8 @@
 import type { ComponentProps, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Loads the real tab score engine (AlphaTab); slow on a busy machine.
+vi.setConfig({ testTimeout: 20_000 });
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TabSummary } from '@/lib/tabSources';
