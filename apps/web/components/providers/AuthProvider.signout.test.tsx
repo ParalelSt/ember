@@ -103,4 +103,24 @@ describe('AuthProvider sign-out', () => {
     });
     expect(usePlayerStore.getState().queue).toHaveLength(1);
   });
+
+  it('a sign-out heard late (a tab the browser had frozen), after someone signed in again, leaves the new session and its queue alone', () => {
+    authStore.clear.mockClear();
+    render(<AuthProvider initialUser={user}><div /></AuthProvider>);
+    // Another tab signed out, then someone signed in there: the cookie is
+    // theirs now, and so is the saved queue.
+    const fresh = { token: 'tok-new', record: { id: 'u2' } };
+    document.cookie = `pb_auth=${encodeURIComponent(JSON.stringify(fresh))}; path=/`;
+    localStorage.setItem('ember.player.v1', JSON.stringify({ state: { queue: [{ id: 'youtube:new' }] }, version: 0 }));
+    try {
+      act(() => {
+        window.dispatchEvent(new StorageEvent('storage', { key: 'ember.signedOut', newValue: String(Date.now() - 60_000) }));
+      });
+      expect(authStore.clear).not.toHaveBeenCalled();
+      const saved = JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}') as { state?: { queue?: { id: string }[] } };
+      expect(saved.state?.queue).toEqual([{ id: 'youtube:new' }]);
+    } finally {
+      document.cookie = 'pb_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    }
+  });
 });

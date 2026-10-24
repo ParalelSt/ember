@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
-import type { RecordModel } from 'pocketbase';
+import { BaseAuthStore, type RecordModel } from 'pocketbase';
 import { createClient } from '@/lib/pocketbase/client';
 import { onSessionExpired } from '@/lib/sessionExpired';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
@@ -93,6 +93,12 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== SIGNED_OUT_KEY || !e.newValue) return;
+      // Heard late (a tab the browser had frozen gets it when it wakes),
+      // after someone signed in again: the cookie and the saved queue are
+      // that session's now. Clearing here signed them out and emptied it.
+      const now = new BaseAuthStore();
+      now.loadFromCookie(document.cookie);
+      if (now.token && now.token !== pb.authStore.token) return;
       clearAccountPlayback();
       useSessionStore.getState().setHostingSessionId(null);
       if (pb.authStore.token || pb.authStore.record) pb.authStore.clear();
