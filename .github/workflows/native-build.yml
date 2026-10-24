@@ -9,10 +9,18 @@
 # REMOTE server URL (server.url / set-url.mjs model), so no web `dist` is bundled.
 #
 # Triggers:
-#   • push of a tag matching v*  → builds every platform, then the `release` job
-#     publishes ONE draft GitHub Release with one clearly-named asset per build
-#     (Ember-v0.2.0-macos-arm64.dmg, -windows-x64-setup.exe, -android.apk, …)
+#   • push of an app's tag, <os>-vX.Y.Z (android, ios, windows, macos, linux)
+#     → builds that app only, then the `release` job publishes its GitHub
+#     Release ("Ember Windows 0.4.26") with clearly-named assets
+#     (Ember-v0.4.26-windows-x64-setup.exe, …). Each app has its own version
+#     (docs/automation.md, "App versions and tags").
+#   • push of an old-style vX.Y.Z tag → builds every platform, as before
+#     (the release tools no longer make these)
 #   • workflow_dispatch          → builds + uploads workflow artifacts only (no Release)
+#
+# The `plan` job reads the tag first (.github/scripts/native-plan.mjs): it
+# decides which jobs run, and fails the run at once when the tag's version
+# is not the one in that app's version file.
 #
 # Required GitHub config (Settings → Secrets and variables → Actions):
 #   • Variable  EMBER_APP_URL , the public URL the native apps should load
@@ -28,6 +36,11 @@ on:
   push:
     tags:
       - "v*"
+      - "android-v*"
+      - "ios-v*"
+      - "windows-v*"
+      - "macos-v*"
+      - "linux-v*"
     # Build on pushes to this branch too, so the installers can be produced and
     # downloaded without cutting a release tag. `workflow_dispatch` only works
     # once the workflow file is on the DEFAULT branch, which it isn't yet,
@@ -42,6 +55,34 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # 0. Plan: which apps this ref builds, at which version.
+  #    outputs: version        x.y.z of the tag ('' on a branch or manual run)
+  #             desktop_matrix JSON list of runners ('[]' builds no desktop)
+  #             android, ios   'true' when that app builds
+  #             title          the GitHub release's title
+  # ---------------------------------------------------------------------------
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      desktop_matrix: ${{ steps.plan.outputs.desktop_matrix }}
+      android: ${{ steps.plan.outputs.android }}
+      ios: ${{ steps.plan.outputs.ios }}
+      title: ${{ steps.plan.outputs.title }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Plan the build (and check the tag against the app version)
+        id: plan
+        run: node .github/scripts/native-plan.mjs
+
+  # ---------------------------------------------------------------------------
   # 1. Desktop (Tauri 2), matrix across the three desktop OSes.
   #    Uses the official tauri-apps/tauri-action, pinned to its current major (v0;
   #    latest release is v0.6.x, there is no published v1 despite some doc samples).
@@ -49,9 +90,12 @@ jobs:
   #    is set) creates/updates a GitHub Release and uploads them as assets.
   # ---------------------------------------------------------------------------
   desktop:
+    needs: plan
+    if: needs.plan.outputs.desktop_matrix != '[]'
     strategy:
       fail-fast: false
-      # Release tags build all three desktop OSes:
+      # From the plan: a windows-v/macos-v/linux-v tag builds that OS, an
+      # old-style vX tag all three:
       #   macos-latest   → .dmg / .app     windows-latest → .msi / .exe (NSIS)
       #   ubuntu-latest  → .AppImage / .deb / .rpm
       # Branch pushes build Windows + Linux. The repo is private so minutes are
@@ -59,10 +103,7 @@ jobs:
       # headers) otherwise stays hidden until a tag. macOS is excluded at 10x,
       # it can be built locally on the Mac.
       matrix:
-        platform: >-
-          ${{ fromJSON(startsWith(github.ref, 'refs/tags/')
-              && '["macos-latest","ubuntu-latest","windows-latest"]'
-              || '["windows-latest","ubuntu-latest"]') }}
+        platform: ${{ fromJSON(needs.plan.outputs.desktop_matrix) }}
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -292,6 +333,8 @@ jobs:
   #      • ANDROID_KEYSTORE_PASSWORD , the store/key password
   # ---------------------------------------------------------------------------
   android:
+    needs: plan
+    if: needs.plan.outputs.android == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -388,11 +431,14 @@ jobs:
   #    The key needs the App Manager role; the App Store Connect app record
   #    for app.ember.music must exist before the first upload (docs/APPS.md).
   #
-  #    Version: apps/web/package.json (same as the release tag); build number:
-  #    the workflow run number, which only ever goes up, as TestFlight needs.
+  #    Version: the tag's (ios-v0.4.25, or an old-style v0.4.25; the plan job
+  #    checks it against MARKETING_VERSION), else the project's
+  #    MARKETING_VERSION on a branch or manual run; build number: the workflow
+  #    run number, which only ever goes up, as TestFlight needs.
   # ---------------------------------------------------------------------------
   ios:
-    if: vars.BUILD_IOS == 'true'
+    needs: plan
+    if: vars.BUILD_IOS == 'true' && needs.plan.outputs.ios == 'true'
     runs-on: macos-latest
     env:
       TEAM_ID: 8B8D2GSC9U
@@ -418,8 +464,16 @@ jobs:
         run: node ../../node_modules/@capacitor/cli/bin/capacitor sync ios
 
       - name: Version and build number
+        env:
+          TAG_VERSION: ${{ needs.plan.outputs.version }}
         run: |
-          echo "IOS_VERSION=$(node -p "require('./apps/web/package.json').version")" >> "$GITHUB_ENV"
+          set -euo pipefail
+          VERSION="$TAG_VERSION"
+          if [ -z "$VERSION" ]; then
+            VERSION="$(sed -n 's/.*MARKETING_VERSION = \([0-9.]*\);.*/\1/p' apps/mobile/ios/App/App.xcodeproj/project.pbxproj | head -n 1)"
+          fi
+          echo "iOS version $VERSION"
+          echo "IOS_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "IOS_BUILD=${{ github.run_number }}" >> "$GITHUB_ENV"
 
       # ATS script (plain http only to the configured server).
@@ -517,13 +571,18 @@ jobs:
   # ---------------------------------------------------------------------------
   # 4. Release, one asset per build, clearly named.
   #
-  #    Runs only for tags, after every platform has finished. Collecting the
+  #    Runs only for tags, after the platforms the tag builds have finished
+  #    (jobs the plan skipped do not hold it back; a failed or cancelled one
+  #    does, and so does a failed plan). Collecting the
   #    artifacts here (rather than letting each job upload as it finishes)
   #    means: no races over creating the release, consistent naming across
   #    platforms, and a release that appears complete rather than filling in
   #    over ten minutes.
   #
-  #    Assets look like:
+  #    The release is named after its tag (windows-v0.2.0, title "Ember
+  #    Windows 0.2.0"); the assets keep the bare version, which the server's
+  #    update feeds match on (lib/androidUpdate.ts, lib/updatePolicy.ts,
+  #    lib/desktopUpdate.ts):
   #      Ember-v0.2.0-macos-arm64.dmg
   #      Ember-v0.2.0-windows-x64-setup.exe
   #      Ember-v0.2.0-windows-x64.msi
@@ -534,45 +593,54 @@ jobs:
   #    auto-updater reads and humans can ignore.
   # ---------------------------------------------------------------------------
   release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: [desktop, android]
+    needs: [plan, desktop, android]
+    if: >-
+      always()
+      && startsWith(github.ref, 'refs/tags/')
+      && !contains(needs.*.result, 'failure')
+      && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     steps:
+      # An ios- tag builds nothing here (TestFlight is the iPhone's
+      # release), so there may be no artifact at all.
       - name: Download every build artifact
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           path: incoming
 
       - name: Rename into one clearly-labelled set
         env:
-          TAG: ${{ github.ref_name }}
+          # The bare x.y.z, also for windows-v0.4.26: the asset names stay
+          # the ones the update feeds look for.
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
           set -euo pipefail
-          mkdir -p dist
+          mkdir -p dist incoming
           # Flatten: artifacts arrive as incoming/<artifact-name>/<bundle-dir>/<file>
           while IFS= read -r src; do
             base="$(basename "$src")"
             case "$base" in
-              *.dmg)            out="Ember-${TAG}-macos-arm64.dmg" ;;
-              *-setup.exe)      out="Ember-${TAG}-windows-x64-setup.exe" ;;
-              *.msi)            out="Ember-${TAG}-windows-x64.msi" ;;
-              *.AppImage)       out="Ember-${TAG}-linux-x86_64.AppImage" ;;
-              *.deb)            out="Ember-${TAG}-linux-amd64.deb" ;;
+              *.dmg)            out="Ember-v${VERSION}-macos-arm64.dmg" ;;
+              *-setup.exe)      out="Ember-v${VERSION}-windows-x64-setup.exe" ;;
+              *.msi)            out="Ember-v${VERSION}-windows-x64.msi" ;;
+              *.AppImage)       out="Ember-v${VERSION}-linux-x86_64.AppImage" ;;
+              *.deb)            out="Ember-v${VERSION}-linux-amd64.deb" ;;
               # Fedora / RHEL / openSUSE, .deb alone only covers Debian-likes.
-              *.rpm)            out="Ember-${TAG}-linux-x86_64.rpm" ;;
-              *.apk)            out="Ember-${TAG}-android.apk" ;;
+              *.rpm)            out="Ember-v${VERSION}-linux-x86_64.rpm" ;;
+              *.apk)            out="Ember-v${VERSION}-android.apk" ;;
               # Updater payloads: keep the platform in the name but leave the
               # extension chain intact, the updater matches on it.
-              *.app.tar.gz)     out="Ember-${TAG}-macos-arm64.app.tar.gz" ;;
-              *.app.tar.gz.sig) out="Ember-${TAG}-macos-arm64.app.tar.gz.sig" ;;
-              *-setup.exe.sig)  out="Ember-${TAG}-windows-x64-setup.exe.sig" ;;
-              *.msi.sig)        out="Ember-${TAG}-windows-x64.msi.sig" ;;
-              *.AppImage.sig)   out="Ember-${TAG}-linux-x86_64.AppImage.sig" ;;
-              *.rpm.sig)        out="Ember-${TAG}-linux-x86_64.rpm.sig" ;;
+              *.app.tar.gz)     out="Ember-v${VERSION}-macos-arm64.app.tar.gz" ;;
+              *.app.tar.gz.sig) out="Ember-v${VERSION}-macos-arm64.app.tar.gz.sig" ;;
+              *-setup.exe.sig)  out="Ember-v${VERSION}-windows-x64-setup.exe.sig" ;;
+              *.msi.sig)        out="Ember-v${VERSION}-windows-x64.msi.sig" ;;
+              *.AppImage.sig)   out="Ember-v${VERSION}-linux-x86_64.AppImage.sig" ;;
+              *.rpm.sig)        out="Ember-v${VERSION}-linux-x86_64.rpm.sig" ;;
               # The .deb's signature: a .deb install updates itself from the
               # .deb since the launch gate (pkexec asks for the password).
               # The bundler always made it; this job used to skip it.
-              *.deb.sig)        out="Ember-${TAG}-linux-amd64.deb.sig" ;;
+              *.deb.sig)        out="Ember-v${VERSION}-linux-amd64.deb.sig" ;;
               *)                echo "skipping $base"; continue ;;
             esac
             cp "$src" "dist/$out"
@@ -591,15 +659,20 @@ jobs:
           # with "not a git repository". Tell it explicitly.
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
+          TITLE: ${{ needs.plan.outputs.title }}
         run: |
           set -euo pipefail
           # Published, not draft: GitHub only attaches the "Source code
           # (zip/tar.gz)" assets to a real release. --clobber makes a re-run of
           # the same tag idempotent.
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "Ember $TAG" \
-              --notes "Ember $TAG, one installer per platform. Desktop apps auto-update from here."
+            gh release create "$TAG" --title "$TITLE" \
+              --notes "$TITLE. The apps update themselves from here."
           fi
-          gh release upload "$TAG" dist/* --clobber
+          if compgen -G "dist/*" >/dev/null; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            echo "No assets for $TAG (an iOS release ships through TestFlight)."
+          fi
           echo "Assets now on $TAG:"
           gh release view "$TAG" --json assets -q '.assets[].name'

@@ -14,6 +14,7 @@
     "test:privacy": "node tests/privacy.test.mjs",
     "test:no-em-dashes": "node tests/no-em-dashes.test.mjs",
     "test:release-scripts": "node tests/release-scripts.test.mjs",
+    "test:native-build": "node tests/native-build-workflow.test.mjs",
     "release": "node scripts/release/release.mjs",
     "release:check": "bash scripts/release/check-all.sh",
     "test-apk": "bash scripts/test-apk.sh",

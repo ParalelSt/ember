@@ -32,7 +32,7 @@ run() {
 }
 
 run web       bash -c 'cd apps/web && npx vitest run'
-run guards    bash -c 'node tests/no-em-dashes.test.mjs && node tests/release-scripts.test.mjs && node tests/ember-tools.test.mjs'
+run guards    bash -c 'node tests/no-em-dashes.test.mjs && node tests/release-scripts.test.mjs && node tests/native-build-workflow.test.mjs && node tests/ember-tools.test.mjs'
 if [ -x "$PY" ]; then
   run python  "$PY" -m unittest discover -s tests -p 'test_*.py'
 else
