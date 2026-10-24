@@ -14,8 +14,10 @@
 // rate-limit window are kept as `pending` and flushed once the window ends, so
 // the newest state always lands.
 
-use std::sync::Mutex;
+use std::sync::{mpsc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use tauri::{AppHandle, Runtime};
 
 use discord_rich_presence::{
     activity::{Activity, ActivityType, Assets, Timestamps},
@@ -69,11 +71,45 @@ pub struct DiscordState {
     flush_scheduled: bool,
 }
 
-pub struct DiscordPresence(pub Mutex<DiscordState>);
+pub struct DiscordPresence(pub Mutex<DiscordState>, Worker);
 
 impl Default for DiscordPresence {
     fn default() -> Self {
-        DiscordPresence(Mutex::new(DiscordState::default()))
+        DiscordPresence(Mutex::new(DiscordState::default()), Worker::default())
+    }
+}
+
+type Job = Box<dyn FnOnce() + Send>;
+
+/// The one thread that talks to Discord, so a Discord that is slow to answer
+/// holds up nobody else. Updates run there in the order they came in.
+#[derive(Default)]
+struct Worker(Mutex<Option<mpsc::Sender<Job>>>);
+
+impl Worker {
+    /// Queues `job`, starting the thread on first use (and again should it
+    /// ever have gone away).
+    fn run(&self, job: Job) {
+        let Ok(mut slot) = self.0.lock() else { return };
+        let job = match slot.as_ref() {
+            Some(tx) => match tx.send(job) {
+                Ok(()) => return,
+                Err(mpsc::SendError(job)) => job,
+            },
+            None => job,
+        };
+        let (tx, rx) = mpsc::channel::<Job>();
+        let spawned = std::thread::Builder::new().name("ember-discord".into()).spawn(move || {
+            for job in rx {
+                job();
+            }
+        });
+        if spawned.is_err() {
+            *slot = None;
+            return;
+        }
+        let _ = tx.send(job);
+        *slot = Some(tx);
     }
 }
 
@@ -91,7 +127,7 @@ fn app_id() -> Option<String> {
 /// Presence bugs are "the card shows the wrong song" with nothing to go on.
 /// Every decision here is one line in the desktop log, next to the audio
 /// loads it should line up with.
-fn log_discord(app: &tauri::AppHandle, msg: &str) {
+fn log_discord<R: Runtime>(app: &AppHandle<R>, msg: &str) {
     use tauri::Manager;
     if let Some(state) = app.try_state::<crate::applog::LogFile>() {
         if let Ok(path) = state.0.lock() {
@@ -114,12 +150,28 @@ fn trim(s: &str, max: usize) -> String {
     s.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
 }
 
+/// What the webview asked `discord_update` for, and when.
+struct Update {
+    title: Option<String>,
+    artist: Option<String>,
+    album: Option<String>,
+    artwork_url: Option<String>,
+    is_playing: bool,
+    position_sec: Option<f64>,
+    duration_sec: Option<f64>,
+    received_ms: u128,
+}
+
 /// Publish (or clear) the current track on the user's own Discord.
 /// Every failure path is a no-op: Discord not running, not installed, or no
 /// app id configured must never disturb playback.
+///
+/// A sync command runs on the window's main thread, and connecting waits for
+/// Discord to answer with no time limit, so the work goes to `Worker`.
 #[tauri::command]
-pub fn discord_update(
-    app: tauri::AppHandle,
+#[allow(clippy::too_many_arguments)] // the webview's invoke arguments, one each
+pub fn discord_update<R: Runtime>(
+    app: AppHandle<R>,
     state: tauri::State<'_, DiscordPresence>,
     title: Option<String>,
     artist: Option<String>,
@@ -129,8 +181,28 @@ pub fn discord_update(
     position_sec: Option<f64>,
     duration_sec: Option<f64>,
 ) {
+    // The playhead is true now, however long the update waits to go out.
+    let update = Update {
+        title,
+        artist,
+        album,
+        artwork_url,
+        is_playing,
+        position_sec,
+        duration_sec,
+        received_ms: now_ms(),
+    };
+    let worker_app = app.clone();
+    state.1.run(Box::new(move || apply(&worker_app, update)));
+}
+
+/// `discord_update`, on the Discord thread.
+fn apply<R: Runtime>(app: &AppHandle<R>, update: Update) {
+    use tauri::Manager;
+    let Some(state) = app.try_state::<DiscordPresence>() else { return };
+    let Update { title, artist, album, artwork_url, is_playing, position_sec, duration_sec, received_ms } = update;
     let Some(app_id) = app_id() else {
-        log_discord(&app, "no app id: presence disabled");
+        log_discord(app, "no app id: presence disabled");
         return;
     };
     let Ok(mut st) = state.0.lock() else { return };
@@ -145,7 +217,7 @@ pub fn discord_update(
                 result = if c.clear_activity().is_ok() { "cleared" } else { "clear FAILED" };
             }
         }
-        log_discord(&app, &format!("update playing=false title={:?} -> {result}", title));
+        log_discord(app, &format!("update playing=false title={:?} -> {result}", title));
         st.last_key.clear();
         return;
     }
@@ -157,7 +229,7 @@ pub fn discord_update(
         artwork_url,
         position_sec: position_sec.unwrap_or(0.0).max(0.0),
         duration_sec: duration_sec.unwrap_or(0.0).max(0.0),
-        received_ms: now_ms(),
+        received_ms,
     };
     let key = presence.key();
     let same_track = key == st.last_key;
@@ -169,7 +241,7 @@ pub fn discord_update(
     if same_track && since_last < RATE_LIMIT_MS {
         let wait = (RATE_LIMIT_MS - since_last) as u64;
         st.pending = Some(presence);
-        log_discord(&app, &format!("update {key:?} pos={:.1} -> queued ({wait}ms)", position_sec.unwrap_or(0.0)));
+        log_discord(app, &format!("update {key:?} pos={:.1} -> queued ({wait}ms)", position_sec.unwrap_or(0.0)));
         if !st.flush_scheduled {
             st.flush_scheduled = true;
             schedule_flush(app.clone(), wait);
@@ -178,11 +250,11 @@ pub fn discord_update(
     }
     st.pending = None;
 
-    send(&mut st, &app, &app_id, presence);
+    send(&mut st, app, &app_id, presence);
 }
 
 /// Wake up when the rate-limit window has passed and send whatever is newest.
-fn schedule_flush(app: tauri::AppHandle, wait_ms: u64) {
+fn schedule_flush<R: Runtime>(app: AppHandle<R>, wait_ms: u64) {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(wait_ms));
         use tauri::Manager;
@@ -198,7 +270,7 @@ fn schedule_flush(app: tauri::AppHandle, wait_ms: u64) {
 
 /// One activity to Discord, connecting first if needed. Records the send time
 /// and key whether or not Discord took it, so the throttle stays honest.
-fn send(st: &mut DiscordState, app: &tauri::AppHandle, app_id: &str, presence: Presence) {
+fn send<R: Runtime>(st: &mut DiscordState, app: &AppHandle<R>, app_id: &str, presence: Presence) {
     let key = presence.key();
     let now = now_ms();
     st.last_key = key.clone();
@@ -327,5 +399,65 @@ mod tests {
     fn no_length_means_no_end() {
         let (_, end) = presence(0.0, 0.0, now_ms()).timestamps();
         assert_eq!(end, None);
+    }
+
+    /// `discord_update` is a sync command, so it runs on the window's main
+    /// thread, and connecting waits for Discord to answer the handshake with
+    /// no time limit. A Discord that was slow to answer (starting up, busy,
+    /// hung) froze the whole window, music controls included, until it did.
+    /// The command now hands the work to a thread of its own and returns.
+    /// Needs tauri's mock app, which is off on Windows (see Cargo.toml).
+    #[cfg(not(windows))]
+    #[test]
+    fn a_discord_that_does_not_answer_does_not_hold_up_the_command() {
+        use std::os::unix::net::UnixListener;
+        use std::time::Instant;
+        use tauri::Manager;
+
+        // A short path: a unix socket path is limited to about 100 bytes.
+        let dir = std::path::PathBuf::from(format!("/tmp/ember-dc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("dir");
+        let listener = UnixListener::bind(dir.join("discord-ipc-0")).expect("bind");
+        listener.set_nonblocking(true).expect("nonblocking");
+        // The first place the client looks for Discord, and an app id so it
+        // tries at all. Only this test calls discord_update.
+        std::env::set_var("XDG_RUNTIME_DIR", &dir);
+        std::env::set_var("DISCORD_APP_ID", "1");
+
+        let app = tauri::test::mock_app();
+        app.manage(DiscordPresence::default());
+        let handle = app.handle().clone();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let state = handle.state::<DiscordPresence>();
+            discord_update(
+                handle.clone(),
+                state,
+                Some("Song".into()),
+                Some("Artist".into()),
+                None,
+                None,
+                true,
+                Some(0.0),
+                Some(180.0),
+            );
+            let _ = done_tx.send(());
+        });
+
+        // "Discord" takes the connection and never answers the handshake.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let conn = loop {
+            match listener.accept() {
+                Ok((conn, _)) => break Some(conn),
+                Err(_) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
+                Err(_) => break None,
+            }
+        };
+        let returned = done_rx.recv_timeout(Duration::from_secs(2)).is_ok();
+        // Closing it ends a handshake still waiting, so nothing is left hanging.
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(returned, "discord_update waited for Discord to answer");
     }
 }
