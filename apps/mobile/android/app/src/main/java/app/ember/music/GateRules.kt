@@ -264,8 +264,19 @@ object GateRules {
     /** AppUpdater's published state (stateJson) as the gate's input, for the
      *  phase the gate is in; null when it changes nothing. [latest] is the
      *  version the updater is on and [offered] the gate's: an APK of another
-     *  version that was already waiting is not this download finishing. */
-    fun fromUpdater(phase: Phase, status: String, waiting: String?, progress: Double?, latest: String? = null, offered: String? = null): Input? = when (phase) {
+     *  version that was already waiting is not this download finishing.
+     *  [gatePending]: the state was published after the gate asked for the
+     *  install but before the updater acted on it (AppUpdater.installFromGate),
+     *  so its "ready" is from before the install, not its outcome. */
+    fun fromUpdater(
+        phase: Phase,
+        status: String,
+        waiting: String?,
+        progress: Double?,
+        latest: String? = null,
+        offered: String? = null,
+        gatePending: Boolean = false,
+    ): Input? = when (phase) {
         is Phase.Downloading -> when (status) {
             "downloading", "checking" -> Input.Progress(progress?.let { (it * 100).toInt() })
             "ready" -> if (latest == null || offered == null || latest == offered) Input.Downloaded else null
@@ -273,6 +284,7 @@ object GateRules {
             else -> null
         }
         is Phase.Installing -> when {
+            gatePending -> null
             status == "ready" && waiting == "permission" -> Input.NeedsPermission
             status == "ready" || status == "failed" -> Input.InstallFailed
             else -> null

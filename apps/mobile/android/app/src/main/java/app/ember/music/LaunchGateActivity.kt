@@ -197,7 +197,7 @@ class LaunchGateActivity : ComponentActivity() {
         val progress = if (s.has("progress") && !s.isNull("progress")) s.optDouble("progress") else null
         val waiting = if (s.isNull("waiting")) null else s.optString("waiting").takeIf { it.isNotEmpty() }
         val latest = if (s.isNull("latest")) null else s.optString("latest").takeIf { it.isNotEmpty() }
-        GateRules.fromUpdater(m.phase, s.optString("status"), waiting, progress, latest, m.offer?.version)?.let { feed(it) }
+        GateRules.fromUpdater(m.phase, s.optString("status"), waiting, progress, latest, m.offer?.version, s.optBoolean("gatePending"))?.let { feed(it) }
         if (m.phase is Phase.Installing) render()
     }
 

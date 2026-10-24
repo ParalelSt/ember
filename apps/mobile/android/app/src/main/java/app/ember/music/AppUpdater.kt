@@ -143,6 +143,11 @@ object AppUpdater {
     /** When the current install began; a confirm screen left without an
      *  answer must not leave the page on "Installing" for ever. */
     @Volatile private var installStartedAt = 0L
+    /** The launch gate asked for the install and evaluate(true) has not run
+     *  for it yet. States published meanwhile (onStart's and refresh()'s
+     *  re-evaluation, still "ready") say so, so the gate does not read them
+     *  as the install having failed. */
+    @Volatile private var gatePending = false
     private var activity: WeakReference<Activity>? = null
     private var lastDecision: UpdateRules.Decision? = null
     private val idleCheck = Runnable { evaluate(false) }
@@ -171,6 +176,7 @@ object AppUpdater {
      *  permission still do (UpdateRules.decide). False when nothing waits. */
     fun installFromGate(a: Activity): Boolean {
         if (readyVersion() == null) return false
+        gatePending = true
         attachActivity(a)
         UpdatePresence.setForeground(true)
         var tries = 0
@@ -179,6 +185,7 @@ object AppUpdater {
                 // The check that downloaded it may still be finishing.
                 if (busy.get() && tries++ < 50) { main.postDelayed(this, 200); return }
                 autoBlocked = false
+                gatePending = false
                 evaluate(true)
             }
         })
@@ -211,6 +218,7 @@ object AppUpdater {
         o.put("checkedAt", prefs().getLong(KEY_LAST_CHECK, 0L))
         o.put("needsPermission", !canInstall())
         o.put("silent", silentLikely())
+        if (gatePending) o.put("gatePending", true)
         return o
     }
 

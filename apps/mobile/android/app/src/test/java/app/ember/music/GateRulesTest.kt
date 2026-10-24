@@ -216,6 +216,25 @@ class GateRulesTest {
         assertNull(GateRules.fromUpdater(Phase.Countdown(5, false), "ready", null, null))
     }
 
+    @Test fun `back from the install setting, the updater's states from before the install are not a failure`() {
+        // The person allowed "Install unknown apps" and came back: onStart
+        // and refresh() each re-evaluated (still "ready, tap") just before
+        // the gate's install ran, and those states arrive after it.
+        val m = Machine(false, true)
+        m.handle(Input.Checked(Offer("0.4.25", false, null, null), ready = true))
+        m.handle(Input.UpdateNow)
+        m.handle(Input.NeedsPermission)
+        m.handle(Input.Resumed(false))
+        assertTrue(Effect.Install in m.handle(Input.Resumed(true)))
+        assertEquals(Phase.Installing, m.phase)
+        assertNull(GateRules.fromUpdater(m.phase, "ready", "tap", null, "0.4.25", "0.4.25", gatePending = true))
+        assertNull(GateRules.fromUpdater(m.phase, "ready", "permission", null, "0.4.25", "0.4.25", gatePending = true))
+        assertNull(GateRules.fromUpdater(m.phase, "installing", null, null, "0.4.25", "0.4.25", gatePending = false))
+        assertEquals(Phase.Installing, m.phase)
+        // Once the gate's install has been answered, "ready" again is a real failure.
+        assertEquals(Input.InstallFailed, GateRules.fromUpdater(m.phase, "ready", "tap", null, "0.4.25", "0.4.25", gatePending = false))
+    }
+
     // ── Launch history ──────────────────────────────────────────────────
 
     @Test fun `two launches that died after the gate make a recovery launch`() {
