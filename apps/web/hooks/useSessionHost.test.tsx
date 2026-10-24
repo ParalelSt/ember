@@ -74,6 +74,24 @@ describe('useSessionHost (app shell, no session page open)', () => {
     expect(next).toHaveBeenCalled();
   });
 
+  it('does not ask for guest commands while the device is offline, and asks again once it is back', async () => {
+    api.getSession.mockResolvedValue(state());
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.getSession).toHaveBeenCalled());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    // Each try would only fail and fill the log the bug report carries.
+    expect(api.consumeSessionCommands).not.toHaveBeenCalled();
+    onLine.mockReturnValue(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(api.consumeSessionCommands).toHaveBeenCalled();
+    onLine.mockRestore();
+  });
+
   it('publishes the playing row to a NEW carlist even when it is the same row number as the last one', async () => {
     api.getSession.mockImplementation(async (id: string) => state({ id, nowIndex: 0 }));
     usePlayerStore.setState({ queue: [a, b], index: 1 });

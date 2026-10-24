@@ -73,6 +73,9 @@ export function useSessionHost() {
   useEffect(() => {
     if (!isActiveHost || !sessionId) return;
     const timer = setInterval(() => {
+      // Offline every try only fails, and each failure filled the log a bug
+      // report carries. The guests' commands wait on the server.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       api
         .consumeSessionCommands(sessionId)
         .then(({ commands }) => {
