@@ -89,6 +89,14 @@ describe('CreatePlaylistDialog tabs', () => {
     expect(screen.getByRole('button', { name: 'Create, import 42 songs' })).toBeEnabled();
   });
 
+  it('a one-song playlist offers to import 1 song, not "1 songs"', async () => {
+    api.importInspect.mockResolvedValue({ source: 'spotify', id: 'x', name: 'Single', coverUrl: null, items: items.slice(0, 1), truncated: false });
+    setup();
+    fireEvent.click(screen.getByRole('tab', { name: /Import from a link/ }));
+    fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
+    expect(await screen.findByRole('button', { name: 'Create, import 1 song' })).toBeEnabled();
+  });
+
   it('a Spotify playlist cut at 100 says so', async () => {
     api.importInspect.mockResolvedValue({ source: 'spotify', id: 'x', name: 'Long', coverUrl: null, items, truncated: true });
     setup();

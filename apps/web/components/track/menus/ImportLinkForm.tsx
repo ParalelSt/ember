@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { LinkIcon } from '@/components/icons';
 import { LinkPreview } from '@/components/import/LinkPreview';
 import { api } from '@/lib/api';
+import { formatCount } from '@/lib/format';
 import { QK } from '@/hooks/useLibrary';
 import { IMPORT_QK } from '@/hooks/useImports';
 import { logger } from '@/lib/logger/client';
@@ -151,7 +152,7 @@ export function ImportLinkForm({ onCancel, onCreated }: ImportLinkFormProps) {
           Cancel
         </Button>
         <Button type="button" disabled={!preview || creating} onClick={() => void create()} variant="ember">
-          {creating ? 'Creating…' : preview ? `Create, import ${preview.count} songs` : 'Create'}
+          {creating ? 'Creating…' : preview ? `Create, import ${formatCount(preview.count, 'song')}` : 'Create'}
         </Button>
       </DialogFooter>
     </div>
