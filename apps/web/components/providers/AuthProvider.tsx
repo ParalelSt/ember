@@ -231,7 +231,10 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
           return { error: { message: extractPbError(e) } };
         }
       },
-      signUp: async (email, password) => {
+      signUp: async (typed, password) => {
+        // Invites are stored lower-case (pb_hooks/ensure_invite_emails) and
+        // PocketBase 0.22's createRule compares the email as written.
+        const email = typed.trim().toLowerCase();
         try {
           try {
             await pb.collection('users').create({ email, password, passwordConfirm: password });

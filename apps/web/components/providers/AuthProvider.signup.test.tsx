@@ -159,3 +159,19 @@ describe('AuthProvider sign-in when nothing answers', () => {
     expect(results).toEqual(['Failed to authenticate.', 'Too many attempts. Try again in about 15 min.']);
   });
 });
+
+/** Invites are stored lower-case (pb_hooks/ensure_invite_emails), and
+ *  PocketBase 0.22 compares the users createRule's email as written: an
+ *  address with a capital never met its invite. */
+describe('AuthProvider sends the email lower-cased', () => {
+  it('to sign-up and the sign-in after it, whoever calls them', async () => {
+    const { signUp } = mount();
+    create.mockResolvedValueOnce({ id: 'u1' });
+    authWithPassword.mockResolvedValue({ token: 't', record: { id: 'u1' } });
+    await act(async () => {
+      await signUp(' Ana@Example.COM ', 'correct horse');
+    });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ email: 'ana@example.com' }));
+    expect(authWithPassword).toHaveBeenLastCalledWith('ana@example.com', 'correct horse');
+  });
+});
