@@ -81,6 +81,23 @@ describe('serverLogger.entriesSince (EMBER_LOG_DIR override)', () => {
     expect(out).toHaveLength(20_000);
   }, 15_000);
 
+  // A day with an error storm (PocketBase down for hours under polling
+  // clients) writes well over 125 000 lines. Spreading them into push() as
+  // arguments overflowed the stack, the catch answered [], and the digest
+  // called the worst day of the year a quiet one (bug reports and the Car
+  // page lost their server entries too).
+  it('reads a day file with hundreds of thousands of lines', async () => {
+    const now = Date.now();
+    const line = (ts: number) => `{"ts":${ts},"kind":"error","level":"error","category":"api","message":"boom","sessionId":"server","side":"server","reqId":"r"}`;
+    const lines: string[] = [];
+    for (let i = 0; i < 200_000; i++) lines.push(line(now - i));
+    fs.writeFileSync(path.join(logDir, fileFor(new Date())), `${lines.join('\n')}\n`, 'utf8');
+    const out = await serverLogger.entriesSince(now - 300_000);
+    expect(out).toHaveLength(20_000);
+    expect(out[0].ts).toBe(now);
+    expect(await serverLogger.recentSince(now - 10)).toHaveLength(10);
+  }, 30_000);
+
   it('skips corrupt lines and missing files without throwing', async () => {
     const now = Date.now();
     fs.writeFileSync(

@@ -200,21 +200,25 @@ function filesForWindow(sinceMs: number): string[] {
  *  lines the same way both recentSince and entriesSince always have. */
 async function readEntriesFromFiles(files: string[]): Promise<ServerLogEntry[]> {
   const dir = logDir();
-  const lines: string[] = [];
+  const out: ServerLogEntry[] = [];
   for (const f of files) {
+    let text: string;
     try {
-      const text = await fs.readFile(path.join(dir, f), 'utf8');
-      lines.push(...text.split('\n').filter(Boolean));
+      text = await fs.readFile(path.join(dir, f), 'utf8');
     } catch {
       // Missing file: fine, skip.
+      continue;
     }
-  }
-  const out: ServerLogEntry[] = [];
-  for (const line of lines) {
-    try {
-      out.push(JSON.parse(line) as ServerLogEntry);
-    } catch {
-      // Corrupt line: skip.
+    // Line by line, never push(...lines): a day file of an error storm has
+    // more lines than a call may take arguments, and the stack overflow
+    // made every reader answer with nothing.
+    for (const line of text.split('\n')) {
+      if (!line) continue;
+      try {
+        out.push(JSON.parse(line) as ServerLogEntry);
+      } catch {
+        // Corrupt line: skip.
+      }
     }
   }
   return out;
