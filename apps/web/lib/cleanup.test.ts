@@ -207,3 +207,80 @@ describe('stale-track sweep', () => {
     expect(report.protectedCount).toBe(1);
   });
 });
+
+describe('stale-track sweep, while people use the app', () => {
+  it('keeps a song someone likes after the sweep read the likes', async () => {
+    const dir = tmpMusicDir();
+    writeCacheFile(dir, `${VIDEO_A}.m4a`);
+    const { runCleanup } = await freshCleanup(dir);
+    const fake = fakePocketBase({ tracks: [{ id: 't1', external_id: `youtube:${VIDEO_A}` }], likes: [] });
+    // The like lands between the sweep reading the likes and it reaching
+    // this song: deleting the row now would take the new like with it.
+    const pb = {
+      ...fake.pb,
+      collection: (name: string) => {
+        const col = fake.pb.collection(name);
+        if (name !== 'tracks') return col;
+        return {
+          ...col,
+          getFullList: async (opts?: { fields?: string }) => {
+            const rows = await col.getFullList(opts);
+            if (opts?.fields === 'id,external_id') fake.rows.get('likes')!.push({ id: 'l1', track: 't1' } as never);
+            return rows;
+          },
+        };
+      },
+    } as typeof fake.pb;
+
+    const report = await runCleanup(pb);
+
+    expect(report.deletedRows).toBe(0);
+    expect(fake.rows.get('tracks')).toHaveLength(1);
+    expect(fake.rows.get('likes')).toHaveLength(1);
+    expect(fs.existsSync(path.join(dir, `${VIDEO_A}.m4a`))).toBe(true);
+  });
+
+  it('keeps a song played after the sweep read the plays', async () => {
+    const dir = tmpMusicDir();
+    const { runCleanup } = await freshCleanup(dir);
+    const fake = fakePocketBase({ tracks: [{ id: 't1', external_id: `youtube:${VIDEO_A}` }], plays: [] });
+    const pb = {
+      ...fake.pb,
+      collection: (name: string) => {
+        const col = fake.pb.collection(name);
+        if (name !== 'tracks') return col;
+        return {
+          ...col,
+          getFullList: async (opts?: { fields?: string }) => {
+            const rows = await col.getFullList(opts);
+            const now = new Date().toISOString().replace('T', ' ');
+            if (opts?.fields === 'id,external_id') fake.rows.get('plays')!.push({ id: 'p1', track: 't1', played_at: now } as never);
+            return rows;
+          },
+        };
+      },
+    } as typeof fake.pb;
+
+    const report = await runCleanup(pb);
+
+    expect(report.deletedRows).toBe(0);
+    expect(fake.rows.get('tracks')).toHaveLength(1);
+  });
+
+  it('still deletes a stale song nothing points at', async () => {
+    const dir = tmpMusicDir();
+    writeCacheFile(dir, `${VIDEO_A}.m4a`);
+    const { runCleanup } = await freshCleanup(dir);
+    const old = new Date(Date.now() - 40 * 86_400_000).toISOString().replace('T', ' ');
+    const fake = fakePocketBase({
+      tracks: [{ id: 't1', external_id: `youtube:${VIDEO_A}` }],
+      plays: [{ id: 'p1', track: 't1', played_at: old }],
+    });
+
+    const report = await runCleanup(fake.pb);
+
+    expect(report.deletedRows).toBe(1);
+    expect(fake.rows.get('tracks')).toHaveLength(0);
+    expect(fs.existsSync(path.join(dir, `${VIDEO_A}.m4a`))).toBe(false);
+  });
+});

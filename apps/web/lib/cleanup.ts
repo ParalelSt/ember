@@ -35,6 +35,9 @@ export interface CleanupReport {
   dryRun: boolean;
 }
 
+/** The collections whose rows keep a track (their `track` relation). */
+const PROTECTING = ['likes', 'playlist_tracks', 'session_tracks', 'recent_searches'] as const;
+
 /** Every track id referenced by something a user would miss. Liked songs,
  *  playlist entries, live-session queues and recent searches are all kept
  *  regardless of age, deleting those would visibly break someone's library. */
@@ -56,11 +59,27 @@ async function protectedTrackIds(pb: PocketBase): Promise<Set<string>> {
       if ((e as { status?: number } | null)?.status !== 404) throw e;
     }
   };
-  await collect('likes');
-  await collect('playlist_tracks');
-  await collect('session_tracks');
-  await collect('recent_searches');
+  for (const name of PROTECTING) await collect(name);
   return keep;
+}
+
+/** Whether something took hold of this track since the sweep read the
+ *  lists above: a like, a playlist add, a play. The sweep goes song by song
+ *  and can take a while, and deleting the row would take that new like or
+ *  playlist entry with it (cascade). So each song is asked about again just
+ *  before it goes. Anything but a clear "nothing" keeps it. */
+async function referencedNow(pb: PocketBase, id: string, since: string): Promise<boolean> {
+  const any = async (collection: string, filter: string) => {
+    try {
+      const page = await pb.collection(collection).getList(1, 1, { filter, fields: 'id', skipTotal: true });
+      return page.items.length > 0;
+    } catch (e) {
+      return (e as { status?: number } | null)?.status !== 404;
+    }
+  };
+  const track = pb.filter('track = {:id}', { id });
+  for (const name of PROTECTING) if (await any(name, track)) return true;
+  return any('plays', `${track} && played_at >= "${since}"`);
 }
 
 /** Track record ids played within the window, these stay. */
@@ -201,6 +220,10 @@ export async function runCleanup(pb: PocketBase, { dryRun = false } = {}): Promi
     // or an auto-cache prefetch): not stale, and its file may still be
     // mid-write. Checked here, after the awaits above, like the orphan sweep.
     if (videoId && isDownloading(videoId)) {
+      report.protectedCount += 1;
+      continue;
+    }
+    if (await referencedNow(pb, id, cutoff)) {
       report.protectedCount += 1;
       continue;
     }
