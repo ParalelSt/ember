@@ -34,12 +34,12 @@ class BrowseTreeCarTest {
     private fun json(body: String) = server.enqueue(MockResponse().setBody(body))
 
     @Test fun `a car that shows fewer tabs gets the first ones`() {
-        assertEquals(listOf(BrowseTree.LIBRARY, BrowseTree.RADIO), BrowseTree.tabsFor(2))
-        // No limit, or room for all (Android Auto's four): all three.
-        assertEquals(3, BrowseTree.tabsFor(0).size)
-        assertEquals(3, BrowseTree.tabsFor(4).size)
+        assertEquals(listOf(BrowseTree.FOR_YOU, BrowseTree.LIBRARY), BrowseTree.tabsFor(2))
+        // No limit, or room for all (Android Auto's four): all four.
+        assertEquals(4, BrowseTree.tabsFor(0).size)
+        assertEquals(4, BrowseTree.tabsFor(4).size)
         val tree = BrowseTree(api)
-        assertEquals(listOf(BrowseTree.LIBRARY), tree.children(BrowseTree.ROOT, rootLimit = 1).map { it.mediaId })
+        assertEquals(listOf(BrowseTree.FOR_YOU), tree.children(BrowseTree.ROOT, rootLimit = 1).map { it.mediaId })
     }
 
     @Test fun `the root asks for lists by default, and the car may search`() {
@@ -134,7 +134,7 @@ class BrowseTreeCarTest {
     @Test fun `offline, the server's lists become the downloads, and search looks through them`() {
         val songs = listOf(JSONObject(t("youtube:d1")).put("title", "Night Drive"), JSONObject(t("youtube:d2")).put("title", "Morning"))
         val tree = BrowseTree(api, auth, downloads = { songs }, online = { false })
-        for (tab in listOf(BrowseTree.LIBRARY, BrowseTree.LIKED, BrowseTree.RECENT, "playlist:p1")) {
+        for (tab in listOf(BrowseTree.FOR_YOU, BrowseTree.FOR_YOU_MIX, BrowseTree.LIBRARY, BrowseTree.LIKED, BrowseTree.RECENT, "playlist:p1")) {
             val list = tree.children(tab)
             assertEquals("You're offline. Songs on this phone:", list[0].mediaMetadata.title.toString())
             assertFalse(list[0].mediaMetadata.isPlayable == true)

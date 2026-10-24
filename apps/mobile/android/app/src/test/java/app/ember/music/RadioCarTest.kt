@@ -72,8 +72,9 @@ class RadioCarTest {
 
     @Test fun `Radio is a tab on every car, Android Auto's four-tab limit included`() {
         val t = tree()
-        assertEquals(listOf(BrowseTree.LIBRARY, BrowseTree.RADIO, BrowseTree.RECENT), t.children(BrowseTree.ROOT).map { it.mediaId })
-        assertEquals(listOf(BrowseTree.LIBRARY, BrowseTree.RADIO, BrowseTree.RECENT), t.children(BrowseTree.ROOT, rootLimit = 4).map { it.mediaId })
+        val tabs = listOf(BrowseTree.FOR_YOU, BrowseTree.LIBRARY, BrowseTree.RADIO, BrowseTree.RECENT)
+        assertEquals(tabs, t.children(BrowseTree.ROOT).map { it.mediaId })
+        assertEquals(tabs, t.children(BrowseTree.ROOT, rootLimit = 4).map { it.mediaId })
     }
 
     @Test fun `Radio holds Nearby, favourites and Croatia, without asking the server`() {

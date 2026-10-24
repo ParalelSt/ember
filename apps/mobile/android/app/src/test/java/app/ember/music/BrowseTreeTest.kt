@@ -12,15 +12,15 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class BrowseTreeTest {
-    @Test fun rootHasTheThreeTabsAndAPlaylistExpandsToTracks() {
+    @Test fun rootHasTheFourTabsAndAPlaylistExpandsToTracks() {
         val server = MockWebServer()
         server.enqueue(MockResponse().setBody("""{"playlists":[{"id":"p1","name":"Road","artwork_url":null}]}"""))
         server.enqueue(MockResponse().setBody("""{"playlist":{"id":"p1","name":"Road"},"tracks":[{"id":"youtube:a","title":"A","artist":"X","streamUrl":"/api/youtube/stream/a"}]}"""))
         server.start()
         val tree = BrowseTree(ServerApi(server.url("/").toString().trimEnd('/')) { "pb_auth=x" })
-        // Android Auto shows up to four tabs: all three fit.
+        // Android Auto shows up to four tabs: all four fit.
         val root = tree.children(BrowseTree.ROOT, rootLimit = 4).map { it.mediaId }
-        assertEquals(listOf(BrowseTree.LIBRARY, BrowseTree.RADIO, BrowseTree.RECENT), root)
+        assertEquals(listOf(BrowseTree.FOR_YOU, BrowseTree.LIBRARY, BrowseTree.RADIO, BrowseTree.RECENT), root)
         assertTrue(tree.children(BrowseTree.ROOT).all { it.mediaMetadata.isBrowsable == true })
         val playlists = tree.children(BrowseTree.LIBRARY)
         assertEquals("playlist:p1", playlists[1].mediaId)

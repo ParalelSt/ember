@@ -31,9 +31,9 @@ import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * The owner's Android Auto picks (carlayout2): tabs Library, Radio and
- * Recent; covers (a grid) for playlists and radio, rows for songs; Like and
- * Shuffle beside the player's controls.
+ * The owner's Android Auto picks (carlayout2, re-sent): tabs For you,
+ * Library, Radio and Recent; covers (a grid) for mixes, playlists and radio,
+ * rows for songs; Like, Shuffle and Repeat beside the player's controls.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -57,7 +57,7 @@ class CarLayoutTest {
         runCatching { server.shutdown() }
     }
 
-    private fun t(id: String) = """{"id":"$id","title":"T $id","artist":"A","durationSec":120,"streamUrl":"/api/youtube/stream/$id"}"""
+    private fun t(id: String) = """{"id":"$id","sourceId":"$id","title":"T $id","artist":"A","durationSec":120,"streamUrl":"/api/youtube/stream/$id"}"""
 
     private fun serve() {
         server.dispatcher = object : Dispatcher() {
@@ -66,6 +66,8 @@ class CarLayoutTest {
                 asked.add("${request.method} $path")
                 return when {
                     path == "/api/playlists" -> MockResponse().setBody("""{"playlists":[{"id":"p1","name":"Road trip","artwork_url":null},{"id":"p2","name":"Night drive","artwork_url":null}]}""")
+                    path == "/api/youtube/recommended?seed=a" -> MockResponse().setBody("""{"tracks":[${t("m1")},${t("m2")}]}""")
+                    path == "/api/youtube/trending" -> MockResponse().setBody("""{"tracks":[${t("c1")},${t("c2")},${t("c3")}]}""")
                     path == "/api/history" -> MockResponse().setBody("""{"tracks":[${t("a")},${t("b")},${t("a")}]}""")
                     path.startsWith("/api/likes") && request.method != "GET" -> MockResponse().setResponseCode(likeStatus).setBody("{}")
                     path == "/api/likes" -> MockResponse().setBody("""{"tracks":[${t("a")}]}""")
@@ -83,12 +85,40 @@ class CarLayoutTest {
 
     // ── The tree ────────────────────────────────────────────────────────
 
-    @Test fun `the tabs are Library, Radio and Recent`() {
+    @Test fun `the tabs are For you, Library, Radio and Recent`() {
         serve()
         val tabs = tree().children(BrowseTree.ROOT, rootLimit = 4)
-        assertEquals(listOf("Library", "Radio", "Recent"), tabs.map { it.mediaMetadata.title.toString() })
+        assertEquals(listOf("For you", "Library", "Radio", "Recent"), tabs.map { it.mediaMetadata.title.toString() })
         assertTrue(tabs.all { it.mediaMetadata.isBrowsable == true && it.mediaMetadata.isPlayable == false })
         assertEquals(0, server.requestCount)
+    }
+
+    @Test fun `For you holds Home's mixes, a mix from the song played last and today's chart`() {
+        serve()
+        val tree = tree()
+        val mixes = tree.children(BrowseTree.FOR_YOU)
+        assertEquals(listOf(BrowseTree.FOR_YOU_MIX, BrowseTree.FOR_YOU_CHART), mixes.map { it.mediaId })
+        assertEquals(listOf("Because you played \"T a\"", "Trending right now"), mixes.map { it.mediaMetadata.title.toString() })
+        assertTrue(mixes.all { it.mediaMetadata.isBrowsable == true })
+        assertEquals(listOf("for-you-mix|m1", "for-you-mix|m2"), tree.children(BrowseTree.FOR_YOU_MIX).map { it.mediaId })
+        assertTrue(asked.contains("GET /api/youtube/recommended?seed=a"))
+        assertEquals(listOf("for-you-chart|c1", "for-you-chart|c2", "for-you-chart|c3"), tree.children(BrowseTree.FOR_YOU_CHART).map { it.mediaId })
+        // A tap plays on through the mix.
+        assertEquals(listOf("m1", "m2"), tree.queueFor("for-you-mix|m1").map { it.getString("id") })
+    }
+
+    @Test fun `with nothing played yet, the mix is the chart`() {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                "/api/history" -> MockResponse().setBody("""{"tracks":[]}""")
+                "/api/youtube/trending" -> MockResponse().setBody("""{"tracks":[${t("c1")}]}""")
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        server.start()
+        val tree = tree()
+        assertEquals("Recommended for you", tree.children(BrowseTree.FOR_YOU)[0].mediaMetadata.title.toString())
+        assertEquals(listOf("for-you-mix|c1"), tree.children(BrowseTree.FOR_YOU_MIX).map { it.mediaId })
     }
 
     @Test fun `Library is Liked songs and the playlists, Radio its three folders, Recent the songs played lately`() {
@@ -106,6 +136,9 @@ class CarLayoutTest {
         serve()
         val tree = tree()
         val tabs = tree.children(BrowseTree.ROOT).associateBy { it.mediaId }
+        // For you: its mixes as a grid, each listing its songs as rows.
+        assertEquals(grid, style(tabs.getValue(BrowseTree.FOR_YOU), browsable))
+        tree.children(BrowseTree.FOR_YOU).forEach { assertEquals(it.mediaId, list, style(it, playable)) }
         // Library: its folders (Liked songs, playlists) as a grid.
         assertEquals(grid, style(tabs.getValue(BrowseTree.LIBRARY), browsable))
         // Radio: its folders, and the stations in them, as a grid.

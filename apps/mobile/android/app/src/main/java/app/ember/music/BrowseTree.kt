@@ -10,11 +10,13 @@ import org.json.JSONObject
  *  we only supply ids, titles, covers and playability. Lists are fetched on
  *  demand, each tab straight from the API the web app already uses.
  *
- *  Three tabs (the owner's pick): Library (Liked songs, the playlists, then
- *  uploads and the songs downloaded to the phone), Radio (live stations:
- *  nearby, favourites, Croatia) and Recent (recently played songs). Places to
- *  start from (Library's folders, Radio's folders and stations) show as a grid
- *  of covers, songs as rows. A list longer than [PAGE_SIZE] comes in folders
+ *  Four tabs (the owner's pick, Android Auto's limit): For you (the mixes
+ *  Home shows: a mix from the song played last, and today's chart), Library
+ *  (Liked songs, the playlists, then uploads and the songs downloaded to the
+ *  phone), Radio (live stations: nearby, favourites, Croatia) and Recent
+ *  (recently played songs). Places to start from (the mixes, Library's
+ *  folders, Radio's folders and stations) show as a grid of covers, songs as
+ *  rows. A list longer than [PAGE_SIZE] comes in folders
  *  of that many ("Songs 1-100"), which the car pages through; a tap still
  *  plays on through the whole list.
  *
@@ -87,6 +89,9 @@ class BrowseTree(
 
     companion object {
         const val ROOT = "root"
+        const val FOR_YOU = "for-you"
+        const val FOR_YOU_MIX = "for-you-mix"
+        const val FOR_YOU_CHART = "for-you-chart"
         const val LIKED = "liked"
         const val LIBRARY = "library"
         const val RECENT = "recent"
@@ -120,9 +125,9 @@ class BrowseTree(
         }
 
         /** The root tabs a car that shows [limit] of them gets (0 or less:
-         *  no limit given; Android Auto allows four, so all three fit). */
+         *  no limit given; Android Auto allows four, so all of them fit). */
         fun tabsFor(limit: Int): List<String> {
-            val all = listOf(LIBRARY, RADIO, RECENT)
+            val all = listOf(FOR_YOU, LIBRARY, RADIO, RECENT)
             if (limit !in 1 until all.size) return all
             return all.take(limit)
         }
@@ -182,6 +187,9 @@ class BrowseTree(
                 stationFolder(RADIO_COUNTRY, "Croatia"),
             )
             !online() -> offline()
+            parentId == FOR_YOU -> forYou()
+            parentId == FOR_YOU_MIX -> tracks(parentId, mixSeed()?.let { api.recommended(it.optString("sourceId")) } ?: api.trending())
+            parentId == FOR_YOU_CHART -> tracks(parentId, api.trending())
             parentId == LIBRARY -> withNotice(library())
             parentId == RADIO_NEARBY -> stations(parentId, location()?.let { (la, lo) -> api.radioNearby(la, lo) }
                 ?: api.radioCountry(RadioPlaces.HOME_COUNTRY), "No stations found nearby")
@@ -201,9 +209,26 @@ class BrowseTree(
     /** The tabs. Library and Radio hold places to start from, shown as a
      *  grid of covers (Radio's stations too); Recent is songs, in rows. */
     private fun tab(id: String): MediaItem = when (id) {
+        FOR_YOU -> folder(FOR_YOU, "For you", styleExtras(browsable = GRID, playable = LIST))
         LIBRARY -> folder(LIBRARY, "Library", styleExtras(browsable = GRID, playable = LIST))
         RADIO -> folder(RADIO, "Radio", styleExtras(browsable = GRID, playable = GRID))
         else -> folder(RECENT, "Recent", styleExtras(browsable = LIST, playable = LIST))
+    }
+
+    /** The song the mix starts from: the one played last (Home's "Because
+     *  you played ..."), or null with no history (the mix is then the chart,
+     *  like Home's "Recommended for you" with no seed). */
+    private fun mixSeed(): JSONObject? = api.history().firstOrNull { it.optString("sourceId").isNotBlank() }
+
+    /** For you: Home's mixes as covers, each a folder of songs. */
+    private fun forYou(): List<MediaItem> {
+        val seed = mixSeed()
+        val mixArt = seed?.let { TrackItems.metadata(it, api.baseUrl, artAuthority).build().artworkUri }
+        return listOf(
+            folder(FOR_YOU_MIX, seed?.let { "Because you played \"${it.optString("title")}\"" } ?: "Recommended for you",
+                songListStyle(), artworkUri = mixArt, subtitle = "Mix"),
+            folder(FOR_YOU_CHART, "Trending right now", songListStyle(), subtitle = "Chart"),
+        )
     }
 
     /** Library: Liked songs and every playlist (covers in a grid), then the

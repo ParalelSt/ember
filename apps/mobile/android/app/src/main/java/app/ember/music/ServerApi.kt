@@ -118,6 +118,8 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
     fun history(): List<JSONObject> = tracks(getJson("/api/history"))
     fun uploads(): List<JSONObject> = tracks(getJson("/api/uploads"))
     fun search(q: String): List<JSONObject> = tracks(getJson("/api/search?q=" + java.net.URLEncoder.encode(q, "UTF-8")))
+    /** Today's chart (Home's "Trending right now"), in rank order. */
+    fun trending(): List<JSONObject> = tracks(getJson("/api/youtube/trending"))
     fun recommended(seedSourceId: String): List<JSONObject> =
         tracks(getJson("/api/youtube/recommended?seed=" + java.net.URLEncoder.encode(seedSourceId, "UTF-8")))
     /** The song's normalization gain in dB; null when not measured yet. */
