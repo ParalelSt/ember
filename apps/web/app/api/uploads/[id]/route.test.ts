@@ -22,8 +22,9 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
 }));
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
-vi.mock('@/lib/uploads/cover', () => ({ deleteUploadCover: vi.fn(async () => {}) }));
-vi.mock('@/lib/uploads', () => ({ resolveUploadPath: () => null }));
+const cover = vi.hoisted(() => ({ deleteUploadCover: vi.fn(async () => {}) }));
+vi.mock('@/lib/uploads/cover', () => cover);
+vi.mock('@/lib/uploads', () => ({ COVER_EXTS: ['jpg', 'png'], resolveUploadPath: () => null }));
 const availability = vi.hoisted(() => ({ markTrackUnavailable: vi.fn(async () => {}) }));
 vi.mock('@/lib/trackAvailability', () => availability);
 
@@ -58,6 +59,15 @@ describe('DELETE /api/uploads/[id]', () => {
     const res = await del('up1');
     expect(res.status).toBe(200);
     expect(availability.markTrackUnavailable).toHaveBeenCalledWith('upload:up1', 'unavailable');
+  });
+
+  it('removes every cover file of the song, also one the record never pointed at', async () => {
+    // A cover written at upload time whose artwork_ext save failed: the
+    // record says none.
+    const res = await del('up1');
+    expect(res.status).toBe(200);
+    expect(cover.deleteUploadCover).toHaveBeenCalledWith('up1', 'jpg');
+    expect(cover.deleteUploadCover).toHaveBeenCalledWith('up1', 'png');
   });
 
   it('still answers 404 for an upload that really does not exist', async () => {

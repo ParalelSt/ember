@@ -124,7 +124,8 @@ export const POST = withRequestLog('uploads', async (request: NextRequest) => {
         .update(created.id, { artwork_ext: artExt })
         .catch((e) => {
           // The file is on disk but the record does not point at it. Harmless:
-          // the art route only serves what the record admits to.
+          // the art route only serves what the record admits to, and deleting
+          // the upload removes every cover format.
           serverLogger.error('api', 'upload artwork_ext update failed', { id: created.id }, e);
           return created;
         });

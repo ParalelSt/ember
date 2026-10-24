@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { nullIfNotFound } from '@/lib/pocketbase/notFound';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
-import { resolveUploadPath } from '@/lib/uploads';
+import { COVER_EXTS, resolveUploadPath } from '@/lib/uploads';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { deleteUploadCover } from '@/lib/uploads/cover';
 import { markTrackUnavailable } from '@/lib/trackAvailability';
@@ -38,8 +38,10 @@ export const DELETE = withRequestLog('uploads/[id]', async (_request: Request, c
       });
     }
 
-    // The extracted cover goes with it, for the same reason.
-    await deleteUploadCover(id, String(row.artwork_ext ?? ''));
+    // The cover goes with it, for the same reason. Every format: covers
+    // are named after this record, and one written at upload time whose
+    // artwork_ext save failed is on disk without the record saying so.
+    for (const ext of COVER_EXTS) await deleteUploadCover(id, ext);
 
     return Response.json({ ok: true });
   } catch (e) {
