@@ -55,16 +55,18 @@ export function formatAgo(iso: string, now: number = Date.now()): string {
 
 /** "12 Jun" for a date this year, "12 Jun 2025" before it: when a song was
  *  added to a playlist or liked. Takes PocketBase's `2026-06-12 10:00:00.000Z`
- *  as well as ISO. Empty for a missing or unreadable date. */
+ *  as well as ISO. Empty for a missing or unreadable date. The day is the
+ *  listener's own: a like at 01:30 in Zagreb is that day, not the UTC day
+ *  before. Only rendered in the browser (the lists load there), so server
+ *  and client never disagree on the zone. */
 export function formatAddedDate(value: string | null | undefined, now: number = Date.now()): string {
   if (!value) return '';
   const d = new Date(value.replace(' ', 'T'));
   if (Number.isNaN(d.getTime())) return '';
-  const sameYear = d.getUTCFullYear() === new Date(now).getUTCFullYear();
+  const sameYear = d.getFullYear() === new Date(now).getFullYear();
   return d.toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
     ...(sameYear ? {} : { year: 'numeric' }),
-    timeZone: 'UTC',
   });
 }
