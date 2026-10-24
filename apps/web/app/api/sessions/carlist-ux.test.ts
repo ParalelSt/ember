@@ -361,13 +361,27 @@ describe('the live carlist behind the Carlist button', () => {
   });
 
   it('a host who also joined a friend\'s carlist gets their own, even when the friend\'s moved on later', async () => {
-    db.sessions.push({ id: 's3', code: 'FRIEND', name: 'Friend', host: 'u3', active: true, now_index: 4, updated: '2026-10-02 10:30:00.000Z' });
+    // Theirs is playing: it moved on ten minutes ago.
+    db.sessions[0].updated = '2026-10-02 10:50:00.000Z';
+    db.sessions.push({ id: 's3', code: 'FRIEND', name: 'Friend', host: 'u3', active: true, now_index: 4, updated: '2026-10-02 10:55:00.000Z' });
     db.session_members.push({ id: 'm3', session: 's3', user: 'u1' });
     const GET = await handler(import('./route'), 'GET');
     expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's1', isHost: true });
     // Once theirs is over, the friend's is the live one.
     db.sessions[0].active = false;
     expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's3', isHost: false });
+  });
+
+  it('a hosted carlist left alone (the app just closed) does not hide one joined since', async () => {
+    // Theirs has not moved on for three hours; the friend's is playing.
+    db.sessions[0].updated = '2026-10-02 08:00:00.000Z';
+    db.sessions.push({ id: 's3', code: 'FRIEND', name: 'Friend', host: 'u3', active: true, now_index: 4, updated: '2026-10-02 10:55:00.000Z' });
+    db.session_members.push({ id: 'm3', session: 's3', user: 'u1' });
+    const GET = await handler(import('./route'), 'GET');
+    expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's3', isHost: false });
+    // With nothing joined, the idle one they host is still theirs.
+    db.session_members = db.session_members.filter((m) => m.id !== 'm3');
+    expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's1', isHost: true });
   });
 
   it('nobody else, and not an ended one', async () => {

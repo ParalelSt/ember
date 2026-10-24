@@ -117,6 +117,12 @@ export function carlistPerson(user: RecordModel | Record<string, unknown> | null
  *  alive. */
 export const LIVE_WINDOW_MS = 12 * 60 * 60 * 1000;
 
+/** A hosted carlist that moved on (a song change, an add) within this long
+ *  is being played: the live lookup (GET /api/sessions) puts it before one
+ *  the host joined. Songs change every few minutes while it plays; one left
+ *  alone longer was most likely closed, not ended. */
+export const HOST_ACTIVE_MS = 30 * 60 * 1000;
+
 /** Milliseconds since a PocketBase timestamp ("2026-10-02 12:00:00.000Z"),
  *  null when it does not parse. */
 export function msSince(stamp: unknown, now = Date.now()): number | null {

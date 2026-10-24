@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { newSessionCode, addMember, sessionsClient, LIVE_WINDOW_MS } from '@/lib/sessions';
+import { newSessionCode, addMember, sessionsClient, HOST_ACTIVE_MS, LIVE_WINDOW_MS, msSince } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { playlistAccess, type PlaylistAccess } from '@/lib/playlistAccess';
 import { rateLimitResponse } from '@/lib/rateLimit';
@@ -102,10 +102,11 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
 /** The live carlist the caller hosts or joined, for the Carlist button in
  *  Your library: {carlist: {id, code, name, isHost} | null}. One that has
  *  not moved on in LIVE_WINDOW_MS no longer counts (hosts often just close
- *  the app instead of ending it). The one they host comes first: the host's
- *  device lets go of hosting (useReleaseStaleHosting) when this answers
- *  another carlist, so a host who had also joined a friend's carlist lost
- *  the role whenever the friend's moved on more recently. */
+ *  the app instead of ending it). The one they host comes first while it is
+ *  being played (HOST_ACTIVE_MS): the host's device lets go of hosting
+ *  (useReleaseStaleHosting) when this answers another carlist, so a host who
+ *  had also joined a friend's carlist lost the role whenever the friend's
+ *  moved on more recently. */
 export const GET = withRequestLog('sessions', async () => {
   try {
     const { user } = await requireUser();
@@ -118,7 +119,18 @@ export const GET = withRequestLog('sessions', async () => {
           sort: '-updated',
         })
       ).items[0];
-    const row = (await latest('host = {:u}')) ?? (await latest('session_members_via_session.user ?= {:u}'));
+    // Their own comes first only while it is being played; one left alone
+    // (the app just closed) must not hide a carlist joined since, nor keep
+    // this device hosting it: then the most recent of the two, as before.
+    const hosted = await latest('host = {:u}');
+    const idle = hosted ? msSince(hosted.updated) : null;
+    let row = hosted && (idle === null || idle <= HOST_ACTIVE_MS) ? hosted : undefined;
+    if (!row) {
+      const joined = await latest('session_members_via_session.user ?= {:u}');
+      row = [hosted, joined]
+        .filter((r) => r !== undefined)
+        .sort((a, b) => String(b.updated).localeCompare(String(a.updated)))[0];
+    }
     return Response.json({
       carlist: row
         ? { id: row.id, code: String(row.code), name: String(row.name), isHost: row.host === user.id }
