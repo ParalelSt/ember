@@ -160,6 +160,17 @@ describe('a playlist that is gone (404) is an answer on adds and removes', () =>
   });
 });
 
+describe('a long pasted search is cut without breaking a character', () => {
+  it('an emoji across the 200th place is left out whole, not cut in half (which threw "URI malformed")', async () => {
+    const fetch = answer(200, { tracks: [] });
+    vi.stubGlobal('fetch', fetch);
+    await expect(api.search(`${'a'.repeat(199)}\u{1F600}more`)).resolves.toEqual({ tracks: [] });
+    const url = String((fetch.mock.calls[0] as unknown[])[0]);
+    const q = new URL(url, 'http://x').searchParams.get('q');
+    expect(q).toBe('a'.repeat(199));
+  });
+});
+
 describe('ids in the path are encoded', () => {
   // A playlist or carlist id comes from the page's own URL, so a link can
   // carry anything: "../x" must not step out to another route.
