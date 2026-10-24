@@ -218,6 +218,28 @@ describe('createImportJob', () => {
     expect(f.table('playlists')).toHaveLength(0);
     expect(f.table('import_jobs')).toHaveLength(0);
   });
+
+  it('removes the new empty playlist when the job itself cannot be written', async () => {
+    const f = fakePb();
+    const real = f.pb.collection.bind(f.pb) as unknown as (name: string) => Record<string, (...a: never[]) => unknown>;
+    (f.pb as unknown as { collection: unknown }).collection = (name: string) => {
+      const c = real(name);
+      if (name !== 'import_jobs') return c;
+      return { ...c, create: async () => Promise.reject(new Error('PocketBase is down')) };
+    };
+    await expect(
+      createImportJob(f.pb, {
+        userId: 'u1',
+        source: 'spotify',
+        sourceId: 'sp1',
+        sourceUrl: 'x',
+        name: 'Broken',
+        coverUrl: null,
+        items: [source(0), source(1)],
+      }),
+    ).rejects.toThrow('PocketBase is down');
+    expect(f.table('playlists')).toHaveLength(0);
+  });
 });
 
 describe('position-preserving inserts', () => {

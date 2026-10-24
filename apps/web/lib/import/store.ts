@@ -297,6 +297,10 @@ export async function createImportJob(
     existing: kind === 'liked' ? Math.max(0, n.existing ?? 0) : 0,
     ...(playlist ? { playlist: playlist.id } : {}),
     dismissed: false,
+  }).catch(async (e) => {
+    // No job, so no import: the playlist made for it goes again.
+    if (playlist) await pb.collection('playlists').delete(playlist.id).catch(() => {});
+    throw e;
   });
   try {
     if (playlist) await pb.collection('playlists').update(playlist.id, { import_job: job.id });
