@@ -99,7 +99,7 @@ class ServiceCarTest {
         start()
         val order = listOf("a", "b", "c", "d", "e", "f", "g", "h")
         load(*order.toTypedArray(), index = 1)
-        assertEquals(listOf("Shuffle off", "Repeat off"), buttonNames())
+        assertEquals(listOf("Shuffle off"), buttonNames())
 
         player().shuffleModeEnabled = true // what Media3 calls for a controller's shuffle
         idle()
@@ -109,7 +109,7 @@ class ServiceCarTest {
         assertEquals("b", player().currentMediaItem!!.mediaId)
         assertTrue(player().shuffleModeEnabled)
         assertTrue(session().sessionExtras.getBoolean(EmberPlaybackService.EXTRA_SHUFFLE))
-        assertEquals(listOf("Shuffle on", "Repeat off"), buttonNames())
+        assertEquals(listOf("Shuffle on"), buttonNames())
         // The flag does not reorder play a second time: next is the next in the list.
         assertEquals(2, player().nextMediaItemIndex)
 
@@ -120,7 +120,7 @@ class ServiceCarTest {
         assertEquals("b", player().currentMediaItem!!.mediaId)
         assertFalse(player().shuffleModeEnabled)
         assertFalse(session().sessionExtras.getBoolean(EmberPlaybackService.EXTRA_SHUFFLE))
-        assertEquals(listOf("Shuffle off", "Repeat off"), buttonNames())
+        assertEquals(listOf("Shuffle off"), buttonNames())
     }
 
     @Test fun `the app's own shuffle only sets the flag, and the car can undo it`() {
@@ -182,19 +182,16 @@ class ServiceCarTest {
         assertFalse(session().sessionExtras.getBoolean(EmberPlaybackService.EXTRA_SHUFFLE))
     }
 
-    @Test fun `repeat cycles from the car and the button follows`() {
+    @Test fun `the car's repeat command still cycles, with no repeat button on the screen`() {
         start()
         load("a", "b")
         command(EmberPlaybackService.COMMAND_REPEAT, who = car); idle()
         assertEquals(Player.REPEAT_MODE_ALL, player().repeatMode)
-        assertEquals("Repeat all", buttonNames().last())
         command(EmberPlaybackService.COMMAND_REPEAT, who = car); idle()
-        assertEquals("Repeat one", buttonNames().last())
+        assertEquals(Player.REPEAT_MODE_ONE, player().repeatMode)
         command(EmberPlaybackService.COMMAND_REPEAT, who = car); idle()
         assertEquals(Player.REPEAT_MODE_OFF, player().repeatMode)
-        // The app's loop button lands on the same button.
-        player().repeatMode = Player.REPEAT_MODE_ONE; idle()
-        assertEquals("Repeat one", buttonNames().last())
+        assertFalse(buttonNames().any { it.startsWith("Repeat") })
     }
 
     @Test fun `the heart waits until the liked songs are known`() {
@@ -387,7 +384,7 @@ class ServiceCarTest {
         assertEquals(MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM, root.params!!.extras.getInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE))
         val f = service.Callback().onGetChildren(session(), own, BrowseTree.ROOT, 1, 2, null)
         until { f.isDone }
-        assertEquals(listOf(BrowseTree.PLAYLISTS, BrowseTree.RADIO), f.get().value!!.map { it.mediaId })
+        assertEquals(listOf(BrowseTree.RECENT), f.get().value!!.map { it.mediaId })
     }
 
     @Test fun `a song the car was shown can be looked up by id`() {

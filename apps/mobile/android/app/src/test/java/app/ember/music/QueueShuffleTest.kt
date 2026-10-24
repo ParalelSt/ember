@@ -68,24 +68,22 @@ class QueueShuffleTest {
     }
 
     @Test fun `the buttons show their state in icon and name`() {
-        val off = CarButtons.layout(liked = null, shuffle = false, repeatMode = Player.REPEAT_MODE_OFF)
-        assertEquals(listOf("Shuffle off", "Repeat off"), off.map { it.displayName.toString() })
+        val off = CarButtons.layout(liked = null, shuffle = false)
+        assertEquals(listOf("Shuffle off"), off.map { it.displayName.toString() })
         assertEquals(CommandButton.ICON_SHUFFLE_OFF, off[0].icon)
-        assertEquals(CommandButton.ICON_REPEAT_OFF, off[1].icon)
         assertEquals(EmberPlaybackService.COMMAND_SHUFFLE, off[0].sessionCommand!!.customAction)
 
-        val on = CarButtons.layout(liked = true, shuffle = true, repeatMode = Player.REPEAT_MODE_ONE)
-        assertEquals(listOf("Remove from Liked songs", "Shuffle on", "Repeat one"), on.map { it.displayName.toString() })
+        val on = CarButtons.layout(liked = true, shuffle = true)
+        assertEquals(listOf("Remove from Liked songs", "Shuffle on"), on.map { it.displayName.toString() })
         assertEquals(CommandButton.ICON_HEART_FILLED, on[0].icon)
         assertEquals(CommandButton.ICON_SHUFFLE_ON, on[1].icon)
-        assertEquals(CommandButton.ICON_REPEAT_ONE, on[2].icon)
         assertEquals(CarButtons.COMMAND_LIKE, on[0].sessionCommand!!.customAction)
         // Legacy controllers (Android Auto, the notification before Android 13)
         // need a drawable for each.
         on.forEach { assertTrue(it.iconResId != 0) }
 
-        assertEquals("Add to Liked songs", CarButtons.layout(false, false, Player.REPEAT_MODE_ALL)[0].displayName.toString())
-        assertEquals(CommandButton.ICON_REPEAT_ALL, CarButtons.layout(false, false, Player.REPEAT_MODE_ALL)[2].icon)
+        assertEquals("Add to Liked songs", CarButtons.layout(false, false)[0].displayName.toString())
+        assertEquals(CommandButton.ICON_HEART_UNFILLED, CarButtons.layout(false, false)[0].icon)
     }
 
     @Test fun `repeat cycles off, all, one`() {

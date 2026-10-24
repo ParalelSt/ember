@@ -75,41 +75,40 @@ class UpdaterWiringTest {
         assertTrue(UpdatePresence.playing)
     }
 
-    @Test fun `the car's Home shows the update notice on top, and nothing when there is none`() {
+    @Test fun `the car's Library shows the update notice on top, and nothing when there is none`() {
         val server = MockWebServer().apply { start() }
         try {
             val api = ServerApi(server.url("/").toString().trimEnd('/')) { "pb_auth=x" }
-            fun home() {
-                server.enqueue(MockResponse().setBody("""{"tracks":[{"id":"a","title":"T","artist":"A","streamUrl":"/s/a"}]}"""))
+            fun library() {
                 server.enqueue(MockResponse().setBody("""{"playlists":[]}"""))
             }
+            val lib = listOf(BrowseTree.LIKED, BrowseTree.UPLOADS, BrowseTree.DOWNLOADS)
             var ready = false
             val tree = BrowseTree(api, notice = { UpdateRules.carNotice(ready) })
-            home()
-            assertEquals(listOf("home-recent|a"), tree.children(BrowseTree.HOME).map { it.mediaId })
+            library()
+            assertEquals(lib, tree.children(BrowseTree.LIBRARY).map { it.mediaId })
             ready = true
-            home()
-            val items = tree.children(BrowseTree.HOME)
-            assertEquals(2, items.size)
+            library()
+            val items = tree.children(BrowseTree.LIBRARY)
+            assertEquals(4, items.size)
             val notice = items[0].mediaMetadata
             assertEquals("Ember update ready", notice.title.toString())
             assertTrue(notice.subtitle.toString().contains("parked"))
             assertEquals(false, notice.isPlayable)
             assertEquals(false, notice.isBrowsable)
-            assertEquals("home-recent|a", items[1].mediaId)
+            assertEquals(BrowseTree.LIKED, items[1].mediaId)
         } finally {
             server.shutdown()
         }
     }
 
-    @Test fun `a notice that fails to build leaves Home as it was`() {
+    @Test fun `a notice that fails to build leaves Library as it was`() {
         val server = MockWebServer().apply { start() }
         try {
             val api = ServerApi(server.url("/").toString().trimEnd('/')) { "pb_auth=x" }
-            server.enqueue(MockResponse().setBody("""{"tracks":[{"id":"a","title":"T","artist":"A","streamUrl":"/s/a"}]}"""))
             server.enqueue(MockResponse().setBody("""{"playlists":[]}"""))
             val tree = BrowseTree(api, notice = { throw IllegalStateException("updater not ready") })
-            assertEquals(listOf("home-recent|a"), tree.children(BrowseTree.HOME).map { it.mediaId })
+            assertEquals(listOf(BrowseTree.LIKED, BrowseTree.UPLOADS, BrowseTree.DOWNLOADS), tree.children(BrowseTree.LIBRARY).map { it.mediaId })
         } finally {
             server.shutdown()
         }

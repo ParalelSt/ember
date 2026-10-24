@@ -70,19 +70,17 @@ class RadioCarTest {
         return BrowseTree(ServerApi(server.url("/").toString().trimEnd('/')) { "pb_auth=x" }, location = { location })
     }
 
-    @Test fun `a car with room for five shows Radio as a tab, a four-tab car keeps its tabs and finds Radio in Library`() {
+    @Test fun `Radio is a tab on every car, Android Auto's four-tab limit included`() {
         val t = tree()
-        assertEquals(listOf(BrowseTree.HOME, BrowseTree.LIKED, BrowseTree.PLAYLISTS, BrowseTree.RADIO, BrowseTree.LIBRARY), t.children(BrowseTree.ROOT).map { it.mediaId })
-        assertEquals(listOf(BrowseTree.HOME, BrowseTree.LIKED, BrowseTree.PLAYLISTS, BrowseTree.LIBRARY), t.children(BrowseTree.ROOT, rootLimit = 4).map { it.mediaId })
-        assertEquals(BrowseTree.RADIO, t.children(BrowseTree.LIBRARY, rootLimit = 4).first().mediaId)
-        assertFalse(t.children(BrowseTree.LIBRARY).any { it.mediaId == BrowseTree.RADIO })
+        assertEquals(listOf(BrowseTree.LIBRARY, BrowseTree.RADIO, BrowseTree.RECENT), t.children(BrowseTree.ROOT).map { it.mediaId })
+        assertEquals(listOf(BrowseTree.LIBRARY, BrowseTree.RADIO, BrowseTree.RECENT), t.children(BrowseTree.ROOT, rootLimit = 4).map { it.mediaId })
     }
 
     @Test fun `Radio holds Nearby, favourites and Croatia, without asking the server`() {
         val t = tree()
         val folders = t.children(BrowseTree.RADIO)
         assertEquals(listOf(BrowseTree.RADIO_NEARBY, BrowseTree.RADIO_FAVORITES, BrowseTree.RADIO_COUNTRY), folders.map { it.mediaId })
-        assertEquals(listOf("Nearby", "Favourite stations", "Croatia"), folders.map { it.mediaMetadata.title.toString() })
+        assertEquals(listOf("Nearby", "Favourites", "Croatia"), folders.map { it.mediaMetadata.title.toString() })
         assertTrue(folders.all { it.mediaMetadata.isBrowsable == true })
         assertEquals(0, server.requestCount)
     }

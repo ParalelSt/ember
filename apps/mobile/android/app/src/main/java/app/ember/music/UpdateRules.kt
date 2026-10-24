@@ -230,7 +230,7 @@ object UpdateRules {
     fun checkDue(now: Long, lastCheck: Long, minGapMs: Long): Boolean =
         lastCheck <= 0 || now < lastCheck || now - lastCheck >= minGapMs
 
-    /** The line the car's Home shows while an update waits, or null. Only
+    /** The line the car's Library shows while an update waits, or null. Only
      *  for a downloaded, verified update: nothing to read about a check.
      *  Where Android will ask before installing ([silent] false), the
      *  person finishes it on the phone once parked. */

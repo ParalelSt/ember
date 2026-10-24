@@ -6,16 +6,16 @@ import androidx.media3.session.CommandButton
 import androidx.media3.session.SessionCommand
 
 /** The buttons beside play/pause and skip on the car's now-playing screen,
- *  the notification and the lock screen: like, shuffle, repeat. Each one
- *  shows its state (a filled heart, shuffle on, repeat one) and says it in
- *  its name, which the car reads out and shows as a label. */
+ *  the notification and the lock screen: like and shuffle (the owner's pick;
+ *  repeat stays on the app's loop button and the car's own repeat command).
+ *  Each one shows its state (a filled heart, shuffle on) and says it in its
+ *  name, which the car reads out and shows as a label. */
 object CarButtons {
     const val COMMAND_LIKE = "ember.like"
 
-    fun layout(liked: Boolean?, shuffle: Boolean, repeatMode: Int): List<CommandButton> = listOfNotNull(
+    fun layout(liked: Boolean?, shuffle: Boolean): List<CommandButton> = listOfNotNull(
         liked?.let { like(it) },
         shuffle(shuffle),
-        repeat(repeatMode),
     )
 
     fun like(liked: Boolean): CommandButton =
@@ -30,25 +30,7 @@ object CarButtons {
             .setSessionCommand(SessionCommand(EmberPlaybackService.COMMAND_SHUFFLE, Bundle.EMPTY))
             .build()
 
-    fun repeat(mode: Int): CommandButton =
-        CommandButton.Builder(
-            when (mode) {
-                Player.REPEAT_MODE_ALL -> CommandButton.ICON_REPEAT_ALL
-                Player.REPEAT_MODE_ONE -> CommandButton.ICON_REPEAT_ONE
-                else -> CommandButton.ICON_REPEAT_OFF
-            },
-        )
-            .setDisplayName(
-                when (mode) {
-                    Player.REPEAT_MODE_ALL -> "Repeat all"
-                    Player.REPEAT_MODE_ONE -> "Repeat one"
-                    else -> "Repeat off"
-                },
-            )
-            .setSessionCommand(SessionCommand(EmberPlaybackService.COMMAND_REPEAT, Bundle.EMPTY))
-            .build()
-
-    /** The repeat button's next mode: off, all, one, off. */
+    /** The car's repeat command's next mode: off, all, one, off. */
     fun nextRepeat(mode: Int): Int = when (mode) {
         Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
         Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
