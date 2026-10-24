@@ -130,6 +130,32 @@ describe('useSessionHost (app shell, no session page open)', () => {
     expect(serverNow).toBe(0);
   });
 
+  it('tells the server again once a send that failed (no signal) can get through', async () => {
+    // The song changed in a tunnel: the send failed, and nothing sent it
+    // again until the NEXT song, so guests saw the old song (and their Play
+    // next went in before the one playing, where it never played).
+    let serverNow = 0;
+    api.getSession.mockImplementation(async () => state({ nowIndex: serverNow }));
+    api.publishSessionNow.mockRejectedValueOnce(new Error('offline'));
+    api.publishSessionNow.mockImplementation(async (_id: string, row: number) => {
+      serverNow = row;
+      return { ok: true };
+    });
+    usePlayerStore.setState({ queue: [a, b], index: 0 });
+    const { rerender } = renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.getSession).toHaveBeenCalled());
+
+    act(() => usePlayerStore.setState({ index: 1 }));
+    rerender();
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenCalledTimes(1));
+    expect(serverNow).toBe(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4500);
+    });
+    await waitFor(() => expect(serverNow).toBe(1));
+  });
+
   it('does nothing while this device hosts nothing', async () => {
     useSessionStore.setState({ hostingSessionId: null });
     renderHook(() => useSessionHost(), { wrapper });

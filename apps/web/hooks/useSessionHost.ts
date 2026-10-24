@@ -32,7 +32,7 @@ const COMMAND_POLL_MS = 2500;
 export function useSessionHost() {
   const { next, current } = usePlayer();
   const hostingId = useSessionStore((s) => s.hostingSessionId);
-  const { data } = useQuerySession(hostingId);
+  const { data, dataUpdatedAt } = useQuerySession(hostingId);
   // An answer for another carlist (cached while the flag changed) says
   // nothing about this one.
   const state = data && data.session.id === hostingId ? data : undefined;
@@ -102,7 +102,9 @@ export function useSessionHost() {
   // says nothing about this one (the host of a new one may well be on the
   // same row number). Remembering every row as told, even one skipped
   // because a stale poll agreed with it, left the server on a row the host
-  // had already left (forward and straight back inside one poll).
+  // had already left (forward and straight back inside one poll). Checked
+  // again on every poll answer: a send that failed (no signal in a tunnel)
+  // changes none of the rows, so it waited for the next song.
   const lastPublished = useRef<{ sessionId: string; row: number; sending: boolean } | null>(null);
   useEffect(() => {
     if (!isActiveHost || !sessionId || playingRow < 0 || playingRow === serverNow) return;
@@ -118,7 +120,7 @@ export function useSessionHost() {
         if (lastPublished.current === mine) lastPublished.current = null;
       },
     );
-  }, [isActiveHost, sessionId, playingRow, serverNow]);
+  }, [isActiveHost, sessionId, playingRow, serverNow, dataUpdatedAt]);
 }
 
 /** Session page: a host looking at their own live carlist claims the host
