@@ -1,9 +1,11 @@
-# 0.7.31: Safer and smoother (apps 0.4.25)
+# 0.7.31: Add to queue, safer and smoother (android, windows, macos, linux 0.4.25)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
 `.env.local`).** Restart PocketBase with it, so the new realtime guard and
-sign-up limit hooks load. The Android and desktop fixes need the new apps,
-0.4.25 (Android versionCode 30), which the `v0.4.25` tag builds.
+sign-up limit hooks load. The Android and desktop fixes need the new apps; the
+iPhone app has none and stays as it is. New apps: Android 0.4.25 (versionCode
+30), Windows 0.4.25, macOS 0.4.25, Linux 0.4.25. Unchanged: iOS 0.4.24. Tags:
+`android-v0.4.25`, `windows-v0.4.25`, `macos-v0.4.25`, `linux-v0.4.25`.
 
 # 0.7.30: Keeps playing through dead zones (apps 0.4.24)
 

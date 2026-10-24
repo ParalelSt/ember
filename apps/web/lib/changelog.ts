@@ -26,12 +26,15 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    id: 'safer-and-smoother',
+    id: 'add-to-queue',
     version: '0.7.31',
     date: '2026-10-24',
-    title: 'Safer and smoother',
-    summary: 'Your likes and playlists are better protected, and the app stays smooth while music plays.',
+    title: 'Add to queue, safer and smoother',
+    summary: 'Any song can go into your queue from its ... menu, your likes and playlists are better protected, and the app stays smooth while music plays.',
     bullets: [
+      'Tap ... on a song and pick Add to queue. It plays right after the current song, and songs you add after it line up behind it. With nothing playing, it just plays the song.',
+      "Spotify's export .zip can be imported as it is, no need to unzip it.",
+      "The sidebar's playlists stay put while you click through them.",
       'Your likes, history and private playlists are better protected.',
       'The nightly cleanup can no longer remove songs you just liked or added.',
       'Losing the connection when Ember starts no longer signs you out.',
