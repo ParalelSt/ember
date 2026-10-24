@@ -574,6 +574,8 @@ describe('playlist row access', () => {
     const row = screen.getByTestId('track-row');
     expect(row).toHaveAttribute('tabindex', '0');
     fireEvent.click(row);
+    // Reached with Tab: it shows its focus ring (:focus-visible).
+    row.focus();
     fireEvent.keyDown(row, { key: 'Enter' });
     fireEvent.keyDown(row, { key: ' ' });
     expect(onPlay).toHaveBeenCalledTimes(3);
@@ -582,6 +584,21 @@ describe('playlist row access', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Like' }));
     expect(onPlay).toHaveBeenCalledTimes(3);
     expect(onLike).toHaveBeenCalledTimes(1);
+  });
+
+  it('after a mouse click on the row (no focus ring), Space is the player\'s play/pause, not a restart of the song', () => {
+    const onPlay = vi.fn();
+    render(<TrackRow track={track} onPlay={onPlay} />);
+    const row = screen.getByTestId('track-row');
+    fireEvent.click(row);
+    row.focus();
+    // A click focuses the row without a focus ring.
+    row.matches = (selector: string) => selector !== ':focus-visible' && Element.prototype.matches.call(row, selector);
+    expect(fireEvent.keyDown(row, { key: ' ' })).toBe(true);
+    expect(onPlay).toHaveBeenCalledTimes(1);
+    // Enter still plays the focused row.
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(onPlay).toHaveBeenCalledTimes(2);
   });
 });
 

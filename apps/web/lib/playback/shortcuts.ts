@@ -77,7 +77,13 @@ export function isKeyboardFocusedControl(el: TypingTarget | null | undefined): b
   if (!el) return false;
   const role = el.getAttribute?.('role') ?? null;
   const control = el.tagName === 'BUTTON' || el.tagName === 'SUMMARY' || (role !== null && SPACE_CONTROL_ROLES.has(role));
-  if (!control) return false;
+  return control && showsFocusRing(el);
+}
+
+/** Focused with the keyboard (:focus-visible), not by a mouse click. A song
+ *  row uses it too: Space plays a row reached with Tab, but after a click
+ *  on a row it is the player's play/pause, not a restart of that song. */
+export function showsFocusRing(el: Pick<TypingTarget, 'matches'>): boolean {
   try {
     return el.matches?.(':focus-visible') === true;
   } catch {

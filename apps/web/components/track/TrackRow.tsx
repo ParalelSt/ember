@@ -14,6 +14,7 @@ import { formatTime } from '@/lib/format';
 import type { PlaylistPerson, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 import { reasonLabel, reasonPhrase } from '@/lib/playback/unplayable';
+import { showsFocusRing } from '@/lib/playback/shortcuts';
 
 export type TrackRowDensity = 'list' | 'compact';
 /** Which palette the row sits in. The queue sheet paints its own sidebar
@@ -343,6 +344,9 @@ export function TrackRow({
       aria-label={track.title}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        // Space on a row focused by a click (no focus ring) is left to the
+        // player's play/pause (lib/playback/shortcuts).
+        if (e.key === ' ' && !showsFocusRing(e.currentTarget)) return;
         e.preventDefault();
         if (selecting) onSelect?.();
         else playOrToast?.();
