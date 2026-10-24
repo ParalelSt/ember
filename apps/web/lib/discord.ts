@@ -106,6 +106,41 @@ function trim(s: string | undefined | null, n: number): string | undefined {
   return typeof s === 'string' ? s.slice(0, n) : undefined;
 }
 
+/** Discord refuses the WHOLE activity when a text is under 2 characters
+ *  (a song called "7", an empty album) or the image is over 256: the card
+ *  then stayed on the previous song with nothing said. */
+const MIN_TEXT = 2;
+const MAX_IMAGE = 256;
+/** Braille blank: not whitespace, so Discord does not trim it away. */
+const PAD = '\u2800';
+
+function text(s: string | undefined | null, n: number): string {
+  const t = trim(s, n) ?? '';
+  const len = [...t].length;
+  return len >= MIN_TEXT ? t : t + PAD.repeat(MIN_TEXT - len);
+}
+
+function image(url: string | null | undefined): string | undefined {
+  return url && url.length <= MAX_IMAGE ? url : undefined;
+}
+
+/** The SET_ACTIVITY payload for a song playing at `positionSec`. */
+export function presenceActivity(track: Track, positionSec: number, durationSec: number, now = Date.now()): Record<string, unknown> {
+  const position = Number.isFinite(positionSec) ? Math.max(0, positionSec) : 0;
+  const duration = Number.isFinite(durationSec) ? Math.max(0, durationSec) : 0;
+  const start = now - Math.round(position * 1000);
+  return {
+    type: 2, // Listening: the type Discord draws a time bar for
+    details: text(track.title, 128),
+    state: track.artist ? text(`by ${track.artist}`, 128) : undefined,
+    timestamps: duration > 0 ? { start, end: start + Math.round(duration * 1000) } : { start },
+    assets: {
+      large_image: image(track.artworkUrl),
+      large_text: text(track.album || track.title, 128),
+    },
+  };
+}
+
 function ensureInit() {
   if (initialized || !APP_ID) return;
   initialized = true;
@@ -123,19 +158,7 @@ export function updateDiscordActivity(track: Track | null, isPlaying: boolean, p
     setActivity(null);
     return;
   }
-  const position = Number.isFinite(positionSec) ? Math.max(0, positionSec) : 0;
-  const duration = Number.isFinite(durationSec) ? Math.max(0, durationSec) : 0;
-  const start = Date.now() - Math.round(position * 1000);
-  setActivity({
-    type: 2, // Listening: the type Discord draws a time bar for
-    details: trim(track.title, 128),
-    state: track.artist ? trim(`by ${track.artist}`, 128) : undefined,
-    timestamps: duration > 0 ? { start, end: start + Math.round(duration * 1000) } : { start },
-    assets: {
-      large_image: track.artworkUrl ?? undefined,
-      large_text: trim(track.album ?? track.title, 128),
-    },
-  });
+  setActivity(presenceActivity(track, positionSec, durationSec));
 }
 
 export function clearDiscordActivity() {

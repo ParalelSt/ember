@@ -159,6 +159,27 @@ fn trim(s: &str, max: usize) -> String {
     s.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
 }
 
+/// Discord refuses the WHOLE activity when a text is under 2 characters (a
+/// song called "7", an empty album) or the image is over 256: the card then
+/// stayed on the previous song.
+const MIN_TEXT: usize = 2;
+const MAX_IMAGE: usize = 256;
+
+/// `trim`, padded to Discord's minimum with a braille blank (not whitespace,
+/// so Discord does not trim it away).
+fn text(s: &str, max: usize) -> String {
+    let mut t = trim(s, max);
+    for _ in t.chars().count()..MIN_TEXT {
+        t.push('\u{2800}');
+    }
+    t
+}
+
+/// The artwork URL when Discord takes it; none (no image) otherwise.
+fn image(url: Option<&str>) -> Option<&str> {
+    url.filter(|u| !u.is_empty() && u.chars().count() <= MAX_IMAGE)
+}
+
 /// What the webview asked `discord_update` for, and when.
 struct Update {
     title: Option<String>,
@@ -344,13 +365,13 @@ fn send<R: Runtime>(st: &mut DiscordState, app: &AppHandle<R>, app_id: &str, pre
         }
     }
 
-    let details = trim(&presence.title, 128);
+    let details = text(&presence.title, 128);
     let state_line = if presence.artist.is_empty() {
         String::new()
     } else {
-        trim(&format!("by {}", presence.artist), 128)
+        text(&format!("by {}", presence.artist), 128)
     };
-    let large_text = trim(presence.album.as_deref().unwrap_or(&presence.title), 128);
+    let large_text = text(presence.album.as_deref().filter(|a| !a.is_empty()).unwrap_or(&presence.title), 128);
 
     // Anchored to where the playhead is rather than to when the track was
     // first loaded: that is what makes a seek show up.
@@ -365,10 +386,8 @@ fn send<R: Runtime>(st: &mut DiscordState, app: &AppHandle<R>, app_id: &str, pre
         let Some(client) = st.client.as_mut() else { return };
 
         let mut assets = Assets::new().large_text(&large_text);
-        if let Some(url) = presence.artwork_url.as_deref() {
-            if !url.is_empty() {
-                assets = assets.large_image(url);
-            }
+        if let Some(url) = image(presence.artwork_url.as_deref()) {
+            assets = assets.large_image(url);
         }
         let mut activity = Activity::new()
             .activity_type(ActivityType::Listening)
@@ -413,6 +432,24 @@ mod tests {
             duration_sec,
             received_ms,
         }
+    }
+
+    #[test]
+    fn short_texts_are_padded_to_discords_minimum() {
+        assert_eq!(text("7", 128).chars().count(), 2);
+        assert!(text("7", 128).starts_with('7'));
+        assert_eq!(text("", 128).chars().count(), 2);
+        assert_eq!(text("🎵", 128).chars().count(), 2);
+        assert_eq!(text("Song", 128), "Song");
+    }
+
+    #[test]
+    fn an_image_over_discords_limit_is_dropped() {
+        let long = format!("https://lh3.googleusercontent.com/{}", "a".repeat(300));
+        assert_eq!(image(Some(&long)), None);
+        assert_eq!(image(Some("")), None);
+        assert_eq!(image(None), None);
+        assert_eq!(image(Some("https://i.ytimg.com/vi/x/hq.jpg")), Some("https://i.ytimg.com/vi/x/hq.jpg"));
     }
 
     fn secs(ms: u128) -> i64 {
