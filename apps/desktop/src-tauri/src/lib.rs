@@ -233,7 +233,7 @@ pub fn run() {
             gate::update_gate_events,
             external::open_external,
         ])
-        .build(tauri::generate_context!())
+        .build(app_context())
         .expect("error while running Ember desktop")
         .run(|app, event| {
             // Quitting before the page loaded is not a crash: the launch
@@ -490,8 +490,18 @@ const APP_LOG_SCRIPT: &str = r#"
 })();
 "#;
 
+/// The app's compiled-in config and assets. One place only: the macro
+/// embeds the Info.plist under a fixed symbol, so a second expansion (the
+/// version test's) would not link.
+fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
+    tauri::generate_context!()
+}
+
 #[cfg(test)]
 mod packaging_tests;
+
+#[cfg(test)]
+mod version_tests;
 
 #[cfg(test)]
 mod launch_order_tests {
