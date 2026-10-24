@@ -52,10 +52,10 @@ pub const RECOVERY_BUDGET: Duration = Duration::from_secs(8);
 pub const FAILED_LINGER: Duration = Duration::from_secs(2);
 /// The updater's own feed, once the person has seen the dialog. Its download
 /// gets no such clock from the plugin (see `download_unless_stalled`).
-const FEED_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const FEED_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long the download may bring nothing before the gate gives up on it.
 /// The server itself waits up to a minute for GitHub to start answering.
-const DOWNLOAD_STALL: Duration = Duration::from_secs(60);
+pub(crate) const DOWNLOAD_STALL: Duration = Duration::from_secs(60);
 /// Telemetry kept for the page to send, at most.
 const MAX_EVENTS: usize = 50;
 

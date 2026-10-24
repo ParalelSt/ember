@@ -115,7 +115,9 @@ pub(crate) fn pubkey(app: &AppHandle) -> Option<String> {
 /// already start a download.
 pub async fn check_on_startup(app: AppHandle, log_path: Option<PathBuf>) {
     let log = |level: &str, msg: &str| applog::write_line(log_path.as_ref(), level, msg);
-    let updater = match app.updater() {
+    // The gate's clocks (src/gate.rs): with none, a server that stopped
+    // answering held this task, and its buffer, for the rest of the session.
+    let updater = match app.updater_builder().timeout(crate::gate::FEED_TIMEOUT).build() {
         Ok(u) => u,
         Err(e) => {
             log("WARN", &format!("updater unavailable: {e}"));
@@ -152,7 +154,12 @@ pub async fn check_on_startup(app: AppHandle, log_path: Option<PathBuf>) {
     log("INFO", &format!("update available: {version}, downloading"));
     // No progress UI: this runs while the user is listening, and a desktop
     // shell update is a few MB.
-    let bytes = match update.download(|_chunk, _total| {}, || {}).await {
+    let fetching = &update;
+    let downloaded = crate::gate::download_unless_stalled(crate::gate::DOWNLOAD_STALL, |_chunk, _total| {}, |on_chunk| async move {
+        fetching.download(on_chunk, || {}).await.map_err(|e| e.to_string())
+    })
+    .await;
+    let bytes = match downloaded {
         Ok(b) => b,
         Err(e) => {
             log("WARN", &format!("update {version} failed to download: {e}"));
@@ -206,6 +213,18 @@ mod tests {
         let src = include_str!("update.rs");
         let body = &src[src.find("pub async fn check_on_startup").unwrap()..src.find("#[cfg(test)]").unwrap()];
         assert!(!body.contains(".install("), "check_on_startup must only download and stage");
+    }
+
+    /// The background check and download had no clock at all (the default
+    /// updater has no timeout, and the plugin puts none on a download): a
+    /// stalled one held its task and buffer for the rest of the session.
+    /// They now run on the gate's clocks.
+    #[test]
+    fn the_background_check_and_download_have_time_limits() {
+        let src = include_str!("update.rs");
+        let body = &src[src.find("pub async fn check_on_startup").unwrap()..src.find("#[cfg(test)]").unwrap()];
+        assert!(body.contains(".timeout(crate::gate::FEED_TIMEOUT)"), "the check needs a timeout");
+        assert!(body.contains("download_unless_stalled(crate::gate::DOWNLOAD_STALL"), "the download needs a stall guard");
     }
 
     #[test]
