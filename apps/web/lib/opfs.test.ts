@@ -3,9 +3,9 @@
  *  the body of a song download. Left unread, that response kept its
  *  connection to the server open after the download had already given up,
  *  one per song a full disk turned away. */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { asHandle, FakeDir } from '@/test-utils/fakeOpfs';
-import { writeStreamToOpfs } from './opfs';
+import { opfsWritable, writeStreamToOpfs } from './opfs';
 
 function source() {
   const cancel = vi.fn();
@@ -53,5 +53,34 @@ describe('writeStreamToOpfs', () => {
     const { stream, cancel } = source();
     await expect(writeStreamToOpfs(asHandle(dir), 'a.bin', stream, ac.signal)).rejects.toMatchObject({ name: 'AbortError' });
     expect(cancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('opfsWritable', () => {
+  const storage = Object.getOwnPropertyDescriptor(navigator, 'storage');
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (storage) Object.defineProperty(navigator, 'storage', storage);
+    else delete (navigator as { storage?: unknown }).storage;
+  });
+  const withStorage = () =>
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: { getDirectory: vi.fn() } });
+
+  it('is false on Safari before 26 (iPhone app on iOS 17 and 18): a directory, but no way to write a file', () => {
+    withStorage();
+    vi.stubGlobal('FileSystemFileHandle', class {});
+    expect(opfsWritable()).toBe(false);
+  });
+
+  it('is true where file handles can be written', () => {
+    withStorage();
+    vi.stubGlobal('FileSystemFileHandle', class { createWritable() {} });
+    expect(opfsWritable()).toBe(true);
+  });
+
+  it('is false with no storage API at all', () => {
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: undefined });
+    vi.stubGlobal('FileSystemFileHandle', class { createWritable() {} });
+    expect(opfsWritable()).toBe(false);
   });
 });

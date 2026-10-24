@@ -5,6 +5,7 @@ import {
   ensureDir,
   getOpfsRoot,
   listEntries,
+  opfsWritable,
   readBlob,
   readJson,
   writeStreamToOpfs,
@@ -75,7 +76,7 @@ function idFromFileName(name: string): string | null {
 }
 
 export function opfsSupported(): boolean {
-  return typeof navigator !== 'undefined' && typeof navigator.storage?.getDirectory === 'function';
+  return opfsWritable();
 }
 
 export function createOpfsAdapter(deps: OpfsAdapterDeps = {}): CacheAdapter {

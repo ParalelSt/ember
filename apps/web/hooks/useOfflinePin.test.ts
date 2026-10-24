@@ -1,7 +1,7 @@
 /** The Download button's message for a browser-storage download that skipped
  *  some tracks (bughunt P09): it says how many could not be saved instead of
  *  failing the whole playlist. */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { makeTrack } from '@/test-utils/fakeBackend';
 
@@ -24,6 +24,16 @@ const tracks = Array.from({ length: 40 }, (_, i) => makeTrack({ id: `youtube:t${
 beforeEach(() => {
   vi.clearAllMocks();
   Object.defineProperty(navigator, 'storage', { configurable: true, value: { getDirectory: vi.fn() } });
+  vi.stubGlobal('FileSystemFileHandle', class { createWritable() {} });
+});
+afterEach(() => vi.unstubAllGlobals());
+
+describe('useOfflinePin where the browser cannot save files', () => {
+  it('offers no Download button on Safari before 26 (iPhone), where every song would fail to save', () => {
+    vi.stubGlobal('FileSystemFileHandle', class {});
+    const { result } = renderHook(() => useOfflinePin({ kind: 'playlist', id: 'pl1' }, 'Mix', tracks));
+    expect(result.current).toBeNull();
+  });
 });
 
 describe('useOfflinePin (browser storage)', () => {

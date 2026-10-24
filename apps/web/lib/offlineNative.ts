@@ -1,6 +1,7 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
+import { opfsWritable } from '@/lib/opfs';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import type { Track } from '@/types/track';
 
@@ -89,12 +90,12 @@ export function useNativeOfflinePresent(): boolean {
 }
 
 /** Whether the offline-download UI should render at all: the native plugin
- *  (Android), or plain browser storage (OPFS) elsewhere: everywhere
- *  except a browser with no Storage API, so this changes nothing on the web. */
+ *  (Android), or plain browser storage (OPFS) where the page can write to it
+ *  (not Safari before 26, see opfsWritable). */
 export function useOfflineDownloadAllowed(): boolean {
   return useSyncExternalStore(
     noopSubscribe,
-    () => nativeOfflinePresent() || (typeof navigator !== 'undefined' && 'storage' in navigator),
+    () => nativeOfflinePresent() || opfsWritable(),
     serverSnapshot,
   );
 }
