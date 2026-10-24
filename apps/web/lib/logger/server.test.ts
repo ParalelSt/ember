@@ -133,6 +133,17 @@ describe('serverLogger.entriesSince (EMBER_LOG_DIR override)', () => {
     expect(out).toHaveLength(1);
   });
 
+  it('a day file that cannot be read is skipped, not the whole read', async () => {
+    const now = Date.now();
+    // Yesterday's "file" cannot be opened as one (here a directory; on a host
+    // a file the sweep removed between the check and the read).
+    fs.mkdirSync(path.join(logDir, fileFor(new Date(now - 24 * 60 * 60 * 1000))));
+    writeFile(fileFor(new Date()), [entry({ ts: now })]);
+    const out = await serverLogger.entriesSince(now - 2 * 24 * 60 * 60 * 1000);
+    expect(out).toHaveLength(1);
+    expect(out[0].ts).toBe(now);
+  });
+
   it('returns an empty array when the log dir has nothing in the window', async () => {
     const out = await serverLogger.entriesSince(Date.now());
     expect(out).toEqual([]);

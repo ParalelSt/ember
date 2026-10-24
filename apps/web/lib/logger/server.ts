@@ -221,24 +221,23 @@ async function readEntriesFromFiles(
   for (const f of files) {
     const file = path.join(dir, f);
     try {
-      await fs.access(file);
-    } catch {
-      // Missing file: fine, skip.
-      continue;
-    }
-    const lines = createInterface({ input: createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity });
-    for await (const line of lines) {
-      if (!line) continue;
-      let e: ServerLogEntry;
-      try {
-        e = JSON.parse(line) as ServerLogEntry;
-      } catch {
-        // Corrupt line: skip.
-        continue;
+      const lines = createInterface({ input: createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity });
+      for await (const line of lines) {
+        if (!line) continue;
+        let e: ServerLogEntry;
+        try {
+          e = JSON.parse(line) as ServerLogEntry;
+        } catch {
+          // Corrupt line: skip.
+          continue;
+        }
+        if (!e || typeof e !== 'object' || !keep(e)) continue;
+        out.push(e);
+        if (cap !== undefined && out.length >= cap * 2) out = newestFirst(out, cap);
       }
-      if (!e || typeof e !== 'object' || !keep(e)) continue;
-      out.push(e);
-      if (cap !== undefined && out.length >= cap * 2) out = newestFirst(out, cap);
+    } catch {
+      // Missing or unreadable file (the sweep may remove one between the
+      // listing and the read): skip it, never the whole read.
     }
   }
   return out;
