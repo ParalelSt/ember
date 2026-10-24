@@ -28,7 +28,7 @@ export default function AdminTracksPage() {
   const [searchInput, setSearchInput] = useState('');
   const [committedSearch, setCommittedSearch] = useState('');
 
-  const { data, isLoading, isFetching } = useQueryAdminTracks(page, committedSearch);
+  const { data, isLoading, isFetching, error } = useQueryAdminTracks(page, committedSearch);
   const deleteTrack = useExecuteDeleteAdminTrack();
   // The last page emptied (its last track deleted): step back to the new
   // last page, or the empty list hides the pager and there is no way back.
@@ -62,6 +62,7 @@ export default function AdminTracksPage() {
       </div>
 
       {isLoading && <EmptyState>Loading…</EmptyState>}
+      {error && <EmptyState>Couldn&apos;t load tracks: {(error as Error).message}</EmptyState>}
       {!isLoading && data && data.tracks.length === 0 && (
         <EmptyState>No tracks match.</EmptyState>
       )}

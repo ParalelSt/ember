@@ -25,11 +25,12 @@ const users: AdminUser[] = [
   { id: 'u1', email: 'robin@ember.test', name: 'Robin', avatarUrl: '/pb/api/files/users/u1/avatar.png', isAdmin: false, created: '2024-01-01' },
 ];
 
+const view = vi.hoisted(() => ({ error: null as Error | null }));
 const signOutEverywhere = vi.hoisted(() => vi.fn(async () => ({ ok: true, self: false })));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/hooks/useAdmin', () => ({
   useExecuteSignOutAdminUserEverywhere: () => ({ mutateAsync: signOutEverywhere }),
-  useQueryAdminUsers: () => ({ data: users, isLoading: false }),
+  useQueryAdminUsers: () => (view.error ? { data: undefined, isLoading: false, error: view.error } : { data: users, isLoading: false }),
   useExecuteUpdateAdminUser: () => ({ mutate: vi.fn() }),
   useExecuteDeleteAdminUser: () => ({ mutateAsync: vi.fn() }),
   useExecuteResetAdminUserPassword: () => ({ mutateAsync: vi.fn() }),
@@ -70,5 +71,19 @@ describe('AdminUsersPage Joined date', () => {
     render(<AdminUsersPage />);
     expect(screen.queryByText('Invalid Date')).toBeNull();
     expect(screen.getByText(want)).toBeInTheDocument();
+  });
+});
+
+describe('AdminUsersPage when the list fails to load', () => {
+  // It said "No users match." on a failed load, as if nobody had an account.
+  afterEach(() => {
+    view.error = null;
+  });
+
+  it('says so', () => {
+    view.error = new Error('PocketBase is down');
+    render(<AdminUsersPage />);
+    expect(screen.getByText(/Couldn.t load users: PocketBase is down/)).toBeTruthy();
+    expect(screen.queryByText('No users match.')).toBeNull();
   });
 });

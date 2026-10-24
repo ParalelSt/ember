@@ -17,7 +17,7 @@ import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function AdminInvitesPage() {
-  const { data: invites = [], isLoading } = useQueryAdminInvites();
+  const { data: invites = [], isLoading, error } = useQueryAdminInvites();
   const addInvite = useExecuteAddAdminInvite();
   const deleteInvite = useExecuteDeleteAdminInvite();
 
@@ -75,7 +75,8 @@ export default function AdminInvitesPage() {
       </form>
 
       {isLoading && <EmptyState>Loading…</EmptyState>}
-      {!isLoading && filtered.length === 0 && (
+      {error && <EmptyState>Couldn&apos;t load invites: {(error as Error).message}</EmptyState>}
+      {!isLoading && !error && filtered.length === 0 && (
         <EmptyState>
           {search ? 'No invites match.' : 'No invites yet, add one above.'}
         </EmptyState>

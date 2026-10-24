@@ -24,7 +24,7 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function AdminUsersPage() {
   const { user: actor, signOut } = useAuth();
-  const { data: users = [], isLoading } = useQueryAdminUsers();
+  const { data: users = [], isLoading, error } = useQueryAdminUsers();
   const updateUser = useExecuteUpdateAdminUser();
   const deleteUser = useExecuteDeleteAdminUser();
   const resetPassword = useExecuteResetAdminUserPassword();
@@ -56,7 +56,8 @@ export default function AdminUsersPage() {
       </div>
 
       {isLoading && <EmptyState>Loading…</EmptyState>}
-      {!isLoading && filtered.length === 0 && (
+      {error && <EmptyState>Couldn&apos;t load users: {(error as Error).message}</EmptyState>}
+      {!isLoading && !error && filtered.length === 0 && (
         <EmptyState>No users match.</EmptyState>
       )}
 

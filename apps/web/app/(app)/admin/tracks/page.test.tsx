@@ -26,10 +26,12 @@ const state = vi.hoisted(() => ({
   query: vi.fn(),
   /** Overrides the answer for a page (the default is one page of three). */
   pages: null as null | ((page: number) => Answer),
+  error: null as Error | null,
 }));
 vi.mock('@/hooks/useAdmin', () => ({
   useQueryAdminTracks: (page: number, q: string) => {
     state.query(page, q);
+    if (state.error) return { data: undefined, isLoading: false, isFetching: false, error: state.error };
     return {
       data: state.pages?.(page) ?? { tracks: [track(1), track(2), track(3)], page: 1, totalPages: 1, totalItems: 3 },
       isLoading: false,
@@ -45,6 +47,7 @@ const { default: AdminTracksPage } = await import('./page');
 beforeEach(() => {
   state.query.mockClear();
   state.pages = null;
+  state.error = null;
 });
 
 it('goes back a page when the last page empties (its last track deleted), instead of a dead end', () => {
@@ -57,4 +60,10 @@ it('goes back a page when the last page empties (its last track deleted), instea
   expect(state.query).toHaveBeenCalledWith(2, '');
   expect(state.query).toHaveBeenLastCalledWith(1, '');
   expect(screen.queryByText('No tracks match.')).toBeNull();
+});
+
+it('says so when a page fails to load, instead of a blank page', () => {
+  state.error = new Error('PocketBase is down');
+  render(<AdminTracksPage />);
+  expect(screen.getByText(/Couldn.t load tracks: PocketBase is down/)).toBeTruthy();
 });
