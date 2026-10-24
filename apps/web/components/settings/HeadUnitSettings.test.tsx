@@ -111,4 +111,22 @@ describe('HeadUnitSettings', () => {
     await waitFor(() => expect(startSwitch('on')).toBeEnabled());
     expect(screen.queryByRole('button', { name: /Car controls/ })).toBeNull();
   });
+
+  it('explains how to put Ember on a head unit, with this server\'s /apk address', () => {
+    androidWith();
+    render(<HeadUnitSettings />);
+    const help = screen.getByTestId('head-unit-help');
+    expect(help).toHaveTextContent('Use Ember on a car head unit');
+    expect(screen.getByTestId('head-unit-apk')).toHaveTextContent(`${window.location.origin}/apk`);
+    expect(help).toHaveTextContent(/USB stick/);
+    expect(help).toHaveTextContent(/hotspot/);
+    expect(help).toHaveTextContent(/SIM/);
+    expect(help).toHaveTextContent(/Open Ember when this device starts/);
+  });
+
+  it('the help is there in an Android app too old for the start setting', () => {
+    app('android', { info: vi.fn() });
+    render(<HeadUnitSettings />);
+    expect(screen.getByTestId('head-unit-help')).toBeInTheDocument();
+  });
 });

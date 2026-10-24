@@ -11,6 +11,43 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 export const BOOT_START_UPDATE_APP_TEXT = 'Opening Ember when this device starts needs a newer version of the Ember app.';
 
 const noSubscribe = () => () => {};
+/** This server's address as the app reaches it: where /apk lives. */
+const pageOrigin = () => window.location.origin;
+const noOrigin = () => '';
+
+/** "Use Ember on a car head unit": how to get the app onto one (the /apk
+ *  address, route app/api/android/latest-apk) and what it needs. */
+export function HeadUnitHelp({ origin }: { origin: string }) {
+  const apk = `${origin}/apk`;
+  return (
+    <div className="rounded-2xl bg-card p-block shadow-soft" data-testid="head-unit-help">
+      <div className="font-semibold">Use Ember on a car head unit</div>
+      <p className="mt-inset text-sm text-muted-foreground">
+        A head unit that runs Android apps can run Ember itself, so the music plays without your phone.
+      </p>
+      <ul className="mt-cluster flex list-disc flex-col gap-inset pl-block text-sm text-muted-foreground">
+        <li>
+          Get the app at <span className="font-mono text-foreground break-all" data-testid="head-unit-apk">{apk}</span>: open it in
+          the head unit&apos;s browser, or download it on a computer, copy the file to a USB stick and open it in the head
+          unit&apos;s file manager. Allow installing apps from that source when Android asks.
+        </li>
+        <li>
+          Ember needs internet in the car: share your phone&apos;s hotspot with the head unit, or use one with a SIM
+          card. Songs you have downloaded, and the ones Ember has cached, play without it.
+        </li>
+        <li>
+          Sign in with your email and password, or, when the head unit shows a sign-in code, scan or type it on your
+          phone in Settings &gt; Devices.
+        </li>
+        <li>
+          On the head unit, turn on &quot;Open Ember when this device starts&quot; below. If the head unit has its own
+          setting for apps to start with it (often called auto-start or start on boot), pick Ember there too: then the
+          app opens for sure, not only the music.
+        </li>
+      </ul>
+    </div>
+  );
+}
 
 /** Settings > Devices, in the Android app only: using Ember on a device that
  *  runs it by itself, like a car head unit. On a head unit (lib/headUnit),
@@ -24,6 +61,7 @@ export function HeadUnitSettings() {
   const [settings, setSettings] = useState<BootStartSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const headUnit = useIsHeadUnit();
+  const origin = useSyncExternalStore(noSubscribe, pageOrigin, noOrigin);
   const carControls = useSettingsStore((s) => s.headUnitControls);
   const setCarControls = useSettingsStore((s) => s.setHeadUnitControls);
 
@@ -57,6 +95,7 @@ export function HeadUnitSettings() {
   return (
     <section className="mt-section max-w-2xl flex flex-col gap-row" data-testid="head-unit-settings">
       <SectionHeader title="Car head unit" />
+      <HeadUnitHelp origin={origin} />
       {headUnit && (
         <SwitchRow
           name="Car controls"
