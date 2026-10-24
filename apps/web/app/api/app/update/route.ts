@@ -18,6 +18,9 @@ import { CHECK_AFTER_S, decideUpdate, isInstallKind, isPlatform, type AppUpdateA
  *  400 only for a malformed platform or version, 429 past the rate limit
  *  (the shells treat both as "no update"), never 5xx.
  *
+ *  Each platform is told about its own release (windows-v0.4.26, or a
+ *  legacy v0.4.25 tagged for every platform), see pickRelease.
+ *
  *  It has to answer within the gate's budget (1.5 s on desktop, 2 s on a
  *  phone), so it never waits on GitHub for long: the release comes from the
  *  shared cache, and a cold cache that takes longer than WAIT_MS answers
@@ -50,7 +53,7 @@ export const GET = withRequestLog('app/update', async (request: Request) => {
 
   let answer: AppUpdateAnswer;
   try {
-    const release = await latestReleaseWithin(WAIT_MS);
+    const release = await latestReleaseWithin(WAIT_MS, platform);
     const errors: string[] = [];
     answer = decideUpdate({
       release: release ?? null,

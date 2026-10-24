@@ -6,6 +6,7 @@ import {
   isPaused,
   minVersionFor,
   parseMarkers,
+  parseReleaseTag,
   plainNotes,
   platformOfTarget,
   type InstallKind,
@@ -109,6 +110,21 @@ describe('decideUpdate: who gets which update', () => {
   it('no release (GitHub down, no token) is "unavailable", not an error', () => {
     const a = decide('windows', 'nsis', '0.4.21', { release: null });
     expect(a).toMatchObject({ update: null, unavailable: true, latest: null });
+  });
+});
+
+describe('per-platform release tags', () => {
+  it('reads the version of a platform tag (windows-v0.4.23)', () => {
+    const r = { ...release('v0.4.23'), tag_name: 'windows-v0.4.23' };
+    const a = decideUpdate({ release: r, platform: 'windows', install: 'nsis', arch: 'x86_64', current: '0.4.22', env: {} });
+    expect(a.latest).toBe('0.4.23');
+    expect(a.update?.version).toBe('0.4.23');
+  });
+
+  it('parseReleaseTag knows the five platforms and the legacy bare tag', () => {
+    expect(parseReleaseTag('ios-v0.4.24')).toEqual({ platform: 'ios', version: '0.4.24' });
+    expect(parseReleaseTag('v0.4.25')).toEqual({ platform: null, version: '0.4.25' });
+    expect(parseReleaseTag('web-v0.7.31')).toBeNull();
   });
 });
 

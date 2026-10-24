@@ -1,5 +1,5 @@
 import 'server-only';
-import { latestRelease, type ReleaseAsset } from '@/lib/desktopUpdate';
+import { currentAsset, latestRelease, releaseVersion, type ReleaseAsset } from '@/lib/desktopUpdate';
 import { serverLogger } from '@/lib/logger/server';
 import { isNewer, parseVersion } from '@/lib/semver';
 
@@ -13,7 +13,8 @@ import { isNewer, parseVersion } from '@/lib/semver';
  *  signed with the key the installed app was signed with (UpdateRules.kt),
  *  and Android refuses a different key on its own as well. */
 
-/** The release asset the phone updates from: Ember-v0.4.19-android.apk. */
+/** The release asset the phone updates from: Ember-v0.4.19-android.apk
+ *  (the bare version, also on an android-v0.4.25 release). */
 export const ANDROID_APK_NAME = /^Ember-v?\d+\.\d+\.\d+-android\.apk$/;
 
 export function isAndroidApkName(name: string): boolean {
@@ -21,7 +22,8 @@ export function isAndroidApkName(name: string): boolean {
 }
 
 export interface AndroidUpdate {
-  /** "0.4.19": the release tag without its v, the APK's versionName. */
+  /** "0.4.19": the release tag's version (android-v0.4.19 or a legacy
+   *  v0.4.19), the APK's versionName. */
   version: string;
   /** Android's versionCode when the release says it; null otherwise. The
    *  phone reads the real one from the downloaded APK before installing. */
@@ -60,10 +62,10 @@ export function cleanVersion(v: string | null | undefined): string | null {
 /** The update for a phone on `currentVersion`, or null when there is nothing
  *  newer, no release, or no APK on the latest one (the route says 204). */
 export async function androidUpdateFor(currentVersion: string): Promise<AndroidUpdate | null> {
-  const release = await latestRelease();
+  const release = await latestRelease('android');
   if (!release) return null;
 
-  const version = release.tag_name.replace(/^v/, '');
+  const version = releaseVersion(release);
   if (!isNewer(version, currentVersion)) return null;
 
   const asset = (release.assets ?? []).find((a) => isAndroidApkName(a.name));
@@ -83,11 +85,9 @@ export async function androidUpdateFor(currentVersion: string): Promise<AndroidU
   };
 }
 
-/** The asset with this id when it is the latest published release's APK,
- *  else null: the APK proxy serves that one file and nothing else, so the
- *  host's token never fetches an arbitrary asset of the repo. */
+/** The asset with this id when it is the APK of Android's current release,
+ *  else null: the APK proxy serves that file and nothing else, so the host's
+ *  token never fetches an arbitrary asset of the repo. */
 export async function androidApkAsset(id: number): Promise<ReleaseAsset | null> {
-  const release = await latestRelease();
-  const asset = release?.assets?.find((a) => a.id === id);
-  return asset && isAndroidApkName(asset.name) ? asset : null;
+  return currentAsset(id, isAndroidApkName, ['android']);
 }

@@ -23,15 +23,17 @@ type Asset = { id: number; name: string; size: number };
 type Rel = { tag_name: string; draft: boolean; prerelease: boolean; body?: string; assets: Asset[] };
 
 function release(tag: string, body = `Ember ${tag}`): Rel {
+  // Asset names carry the bare version, also on a windows-v0.4.23 release.
+  const v = tag.replace(/^[a-z]+-/, '');
   const names = [
-    `Ember-${tag}-windows-x64-setup.exe`,
-    `Ember-${tag}-windows-x64-setup.exe.sig`,
-    `Ember-${tag}-macos-arm64.app.tar.gz`,
-    `Ember-${tag}-macos-arm64.app.tar.gz.sig`,
-    `Ember-${tag}-linux-x86_64.AppImage`,
-    `Ember-${tag}-linux-x86_64.AppImage.sig`,
-    `Ember-${tag}-linux-amd64.deb`,
-    `Ember-${tag}-android.apk`,
+    `Ember-${v}-windows-x64-setup.exe`,
+    `Ember-${v}-windows-x64-setup.exe.sig`,
+    `Ember-${v}-macos-arm64.app.tar.gz`,
+    `Ember-${v}-macos-arm64.app.tar.gz.sig`,
+    `Ember-${v}-linux-x86_64.AppImage`,
+    `Ember-${v}-linux-x86_64.AppImage.sig`,
+    `Ember-${v}-linux-amd64.deb`,
+    `Ember-${v}-android.apk`,
   ];
   return { tag_name: tag, draft: false, prerelease: false, body, assets: names.map((name, i) => ({ id: 500 + i, name, size: 1000 + i })) };
 }
@@ -161,6 +163,17 @@ describe('GET /api/app/update', () => {
     expect(res.status).toBe(429);
     expect(res.headers.get('retry-after')).toBeTruthy();
     expect((await get('?platform=windows&version=0.4.22', { 'x-forwarded-for': '203.0.113.10' })).status).toBe(200);
+  });
+
+  it('tells each platform about its own release, the legacy tag to the rest', async () => {
+    feed.releases = [release('android-v0.4.24'), release('windows-v0.4.23'), release('v0.4.22')];
+    const win = await (await get('?platform=windows&version=0.4.22&install=nsis')).json();
+    expect(win).toMatchObject({ latest: '0.4.23', update: { version: '0.4.23', action: 'install' } });
+    const android = await (await get('?platform=android&version=0.4.22&install=apk')).json();
+    expect(android).toMatchObject({ latest: '0.4.24', update: { version: '0.4.24' } });
+    const mac = await (await get('?platform=macos&version=0.4.22&install=app')).json();
+    expect(mac).toMatchObject({ latest: '0.4.22', update: null });
+    expect((await (await get('?platform=ios&version=0.4.22')).json()).latest).toBe('0.4.22');
   });
 
   it('logs one update.check line per check', async () => {

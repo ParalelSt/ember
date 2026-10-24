@@ -1,7 +1,16 @@
 import 'server-only';
 import { serverLogger } from '@/lib/logger/server';
 import { isNewer } from '@/lib/semver';
-import { installAssetPattern, isInstallKind, platformOfTarget } from '@/lib/updatePolicy';
+import {
+  installAssetPattern,
+  isInstallKind,
+  parseReleaseTag,
+  platformOfTarget,
+  RELEASE_PLATFORMS,
+  type Platform,
+} from '@/lib/updatePolicy';
+
+export { parseReleaseTag };
 
 /** Desktop auto-update feed, backed by the GitHub Release.
  *
@@ -51,9 +60,13 @@ export interface Release {
   assets?: ReleaseAsset[];
 }
 
-let cache: { at: number; release: Release | null } | null = null;
+/** Every platform's releases come from one list: each shell has its own
+ *  version and tag (windows-v0.4.26, android-v0.4.25, ...), and the shells
+ *  from before that read the bare v0.4.x tags. Cached as a whole, so one
+ *  GitHub request answers every platform. */
+let cache: { at: number; releases: Release[] | null } | null = null;
 /** The lookup under way, shared by every caller that needs it meanwhile. */
-let inflight: Promise<Release | null> | null = null;
+let inflight: Promise<Release[] | null> | null = null;
 
 /** How long a good answer may still be served while a fresh one is fetched
  *  (stale-while-revalidate): a fleet of shells launching at once, or a
@@ -73,16 +86,41 @@ function ghHeaders(): HeadersInit {
   };
 }
 
-async function fetchLatest(): Promise<Release | null> {
+/** The release a platform updates to: published (not a draft or a
+ *  pre-release), tagged for this platform or for everyone (a legacy bare
+ *  vX.Y.Z), and the highest version among those. On a tie the platform's own
+ *  tag wins. A platform never sees another platform's release. */
+export function pickRelease(releases: readonly Release[], platform: Platform): Release | null {
+  let best: { release: Release; version: string; own: boolean } | null = null;
+  for (const release of releases) {
+    if (release.draft || release.prerelease) continue;
+    const tag = parseReleaseTag(release.tag_name);
+    if (!tag || (tag.platform !== null && tag.platform !== platform)) continue;
+    const own = tag.platform !== null;
+    if (!best || isNewer(tag.version, best.version) || (!isNewer(best.version, tag.version) && own && !best.own)) {
+      best = { release, version: tag.version, own };
+    }
+  }
+  return best?.release ?? null;
+}
+
+/** The version a release tag stands for ("windows-v0.4.26" -> "0.4.26"). */
+export function releaseVersion(release: Pick<Release, 'tag_name'>): string {
+  return parseReleaseTag(release.tag_name)?.version ?? release.tag_name.replace(/^v/, '');
+}
+
+async function fetchReleases(): Promise<Release[] | null> {
   // A failure keeps the last good answer while it is fresh enough to serve
   // stale, so one bad minute at GitHub does not read as "no update".
-  const keepGood = (): Release | null => {
-    const good = cache?.release && Date.now() - cache.at < STALE_MS ? cache.release : null;
-    cache = good ? { at: cache!.at, release: good } : { at: Date.now(), release: null };
+  const keepGood = (): Release[] | null => {
+    const good = cache?.releases && Date.now() - cache.at < STALE_MS ? cache.releases : null;
+    cache = good ? { at: cache!.at, releases: good } : { at: Date.now(), releases: null };
     return good;
   };
   try {
-    const res = await fetch(`${API_BASE}/repos/${REPO}/releases?per_page=10`, {
+    // 30: five platforms releasing on their own push a platform's newest
+    // release further down the list than one shared release did.
+    const res = await fetch(`${API_BASE}/repos/${REPO}/releases?per_page=30`, {
       headers: ghHeaders(),
       cache: 'no-store',
       signal: AbortSignal.timeout(10_000),
@@ -91,60 +129,94 @@ async function fetchLatest(): Promise<Release | null> {
       serverLogger.error('update', `GitHub releases ${res.status}`, { repo: REPO });
       return keepGood();
     }
-    const all = (await res.json()) as Release[];
-    const release = all.find((r) => !r.draft && !r.prerelease) ?? null;
-    cache = { at: Date.now(), release };
-    return release;
+    const body: unknown = await res.json();
+    const releases = Array.isArray(body) ? (body as Release[]) : [];
+    cache = { at: Date.now(), releases };
+    return releases;
   } catch (e) {
     serverLogger.error('update', 'could not reach GitHub', undefined, e);
     return keepGood();
   }
 }
 
-function refresh(): Promise<Release | null> {
+function refresh(): Promise<Release[] | null> {
   if (inflight) return inflight;
-  const p: Promise<Release | null> = fetchLatest().finally(() => {
+  const p: Promise<Release[] | null> = fetchReleases().finally(() => {
     if (inflight === p) inflight = null;
   });
   inflight = p;
   return p;
 }
 
-/** Latest published (non-draft, non-prerelease) release. Shared with the
- *  Android app's feed (lib/androidUpdate.ts) and the launch gate's
- *  (app/api/app/update), so all of them read one cached copy. */
-export async function latestRelease(): Promise<Release | null> {
+/** The cached release list (stale-while-revalidate), null when unknown. */
+async function releaseList(): Promise<Release[] | null> {
   if (!TOKEN) return null;
   const age = cache ? Date.now() - cache.at : Infinity;
-  if (cache && age < CACHE_MS) return cache.release;
-  if (cache?.release && age < STALE_MS) {
+  if (cache && age < CACHE_MS) return cache.releases;
+  if (cache?.releases && age < STALE_MS) {
     void refresh();
-    return cache.release;
+    return cache.releases;
   }
   return refresh();
+}
+
+/** The release `platform` updates to (pickRelease). Shared with the Android
+ *  app's feed (lib/androidUpdate.ts) and the launch gate's
+ *  (app/api/app/update), so all of them read one cached copy. */
+export async function latestRelease(platform: Platform): Promise<Release | null> {
+  const releases = await releaseList();
+  return releases ? pickRelease(releases, platform) : null;
 }
 
 /** latestRelease(), but never waiting longer than `ms`: the launch gate has
  *  a budget of about a second and a half, so a cold cache answers
  *  `undefined` ("could not tell in time") while the lookup carries on and
  *  warms the cache for the next launch. */
-export async function latestReleaseWithin(ms: number): Promise<Release | null | undefined> {
+export async function latestReleaseWithin(ms: number, platform: Platform): Promise<Release | null | undefined> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<undefined>((resolve) => {
     timer = setTimeout(() => resolve(undefined), ms);
   });
   try {
-    return await Promise.race([latestRelease(), late]);
+    return await Promise.race([latestRelease(platform), late]);
   } finally {
     clearTimeout(timer);
   }
 }
 
 /** Fill the cache at server start, so the first launch after a restart is
- *  answered from memory. */
+ *  answered from memory. One request covers every platform. */
 export function warmReleaseCache(): void {
   if (!TOKEN) return;
-  void latestRelease().catch(() => {});
+  void releaseList().catch(() => {});
+}
+
+/** The current release of each of `platforms`, once each (a legacy
+ *  release can be current for several). The asset proxies serve files of
+ *  these and of nothing else. */
+export async function currentReleases(platforms: readonly Platform[] = RELEASE_PLATFORMS): Promise<Release[]> {
+  const releases = await releaseList();
+  if (!releases) return [];
+  const current = new Set<Release>();
+  for (const platform of platforms) {
+    const release = pickRelease(releases, platform);
+    if (release) current.add(release);
+  }
+  return [...current];
+}
+
+/** The asset with this id when it belongs to the current release of one of
+ *  `platforms` and `accept` says it is a file that proxy serves, else null. */
+export async function currentAsset(
+  id: number,
+  accept: (name: string) => boolean,
+  platforms: readonly Platform[],
+): Promise<ReleaseAsset | null> {
+  for (const release of await currentReleases(platforms)) {
+    const asset = release.assets?.find((a) => a.id === id);
+    if (asset) return accept(asset.name) ? asset : null;
+  }
+  return null;
 }
 
 /** Tests only. */
@@ -169,18 +241,18 @@ const UPDATER_ASSET_NAMES: RegExp[] = [
   /^latest\.json$/,
 ];
 
+const DESKTOP_PLATFORMS: readonly Platform[] = ['windows', 'macos', 'linux'];
+
 export function isUpdaterAssetName(name: string): boolean {
   return UPDATER_ASSET_NAMES.some((re) => re.test(name));
 }
 
-/** The asset with this id when it belongs to the latest published release
- *  AND is one the updater needs, else null. The asset proxy asks this first,
- *  so the host's token only ever fetches the current update's own files,
+/** The asset with this id when it belongs to a desktop platform's current
+ *  release AND is one the updater needs, else null. The asset proxy asks this first,
+ *  so the host's token only ever fetches the current updates' own files,
  *  never an arbitrary id from the repo (security audit 2026-09-25, M3). */
 export async function updaterAsset(id: number): Promise<ReleaseAsset | null> {
-  const release = await latestRelease();
-  const asset = release?.assets?.find((a) => a.id === id);
-  return asset && isUpdaterAssetName(asset.name) ? asset : null;
+  return currentAsset(id, isUpdaterAssetName, DESKTOP_PLATFORMS);
 }
 
 /** Which asset a given platform updates FROM. Note these are not the files a
@@ -204,10 +276,12 @@ export async function updateFor(
   origin: string,
   bundle: string | null = null,
 ): Promise<UpdateManifest | null> {
-  const release = await latestRelease();
+  const platform = platformOfTarget(target);
+  if (!platform) return null;
+  const release = await latestRelease(platform);
   if (!release) return null;
 
-  const version = release.tag_name.replace(/^v/, '');
+  const version = releaseVersion(release);
   if (!isNewer(version, currentVersion)) return null;
 
   const pattern = assetPattern(target, arch, bundle);
