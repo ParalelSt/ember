@@ -111,7 +111,8 @@ pub struct AudioEngine {
     current_url: Mutex<Option<String>>,
     /// The session cookie that URL was loaded with, for the same re-open.
     current_cookie: Mutex<Option<String>>,
-    /// The loaded track is decoded forward-only (a fragmented stream, see
+    /// The loaded track is decoded forward-only (a fragmented stream, or one
+    /// sent with no length, see
     /// `open_decoder`), so its demuxer cannot go back to an earlier packet.
     forward_only: AtomicBool,
     /// Whether the source behind the loaded sink has failed. Set by the
@@ -907,7 +908,10 @@ pub(crate) fn open_decoder<R: Read + Seek + Send + Sync + 'static>(
     let skippable = layout.trailing_mdat.zip(len);
     let reader = TailSkip::new(reader, skippable, head_len);
     let built = reader.build_done();
-    let out = build_decoder(reader, len).map(|d| (d, fragmented));
+    // Without a length the decoder is not seekable either (see
+    // `build_decoder`), so it cannot go back any more than a fragmented one.
+    let forward_only = len.is_none();
+    let out = build_decoder(reader, len).map(|d| (d, forward_only));
     built();
     out
 }
@@ -2724,6 +2728,26 @@ mod tests {
         std::fs::write(&garbage, [0u8; 4096]).expect("write");
         assert!(open_cached(&garbage).is_err());
         assert!(open_cached(&dir.0.join("missing.bin")).is_err());
+    }
+
+    /// A body sent with no Content-Length is decoded non-seekable, and a
+    /// non-seekable demuxer cannot go back: a backward seek done in place
+    /// failed the next packet with no read error, which the engine reported
+    /// as the end of the song, so the player skipped to the next one. It is
+    /// forward-only now, so `plan_seek` re-opens it at the target, and the
+    /// forward seek that re-open makes still lands.
+    #[test]
+    fn a_body_without_a_length_is_forward_only_and_still_seeks_forward() {
+        use rodio::Source;
+        let body = std::io::Cursor::new(include_bytes!("../test-fixtures/tone-faststart.m4a").to_vec());
+        let (mut decoder, forward_only) = open_decoder(body, None).expect("decodes");
+        assert!(forward_only, "a body with no length cannot seek back");
+        assert_eq!(
+            plan_seek(Some(Duration::from_secs(120)), forward_only, Duration::from_secs(60), 10.0),
+            SeekPlan::Reopen(Duration::from_secs(10))
+        );
+        decoder.try_seek(Duration::from_secs(30)).expect("a forward seek lands");
+        assert!(decoder.by_ref().take(48_000).count() > 0, "it plays on from there");
     }
 
     #[test]
