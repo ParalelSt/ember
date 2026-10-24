@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { rankRadioPool } from '@/lib/playback/radio';
 import { isUnavailable, nextPlayable } from '@/lib/playback/queueNav';
+import { isLiveTrack } from '@/lib/radio/station';
 import type { PlaybackContext, Track } from '@/types/track';
 
 /** Radio mode: at end of queue, fetch recommended (same-style) and extend.
@@ -45,6 +46,9 @@ export function useRadioExtend({
 
   useEffect(() => {
     if (!current?.sourceId) return;
+    // A list of live stations ends where it ends: song radio has nothing
+    // to recommend after a station.
+    if (isLiveTrack(current)) return;
     // Loop-all wraps the queue instead of extending it, so don't pull in radio.
     // Reactive (not getState): when the user turns loop OFF the effect must
     // re-run, otherwise a 1-track queue that skipped extension while looping

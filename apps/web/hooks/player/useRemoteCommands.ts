@@ -4,6 +4,8 @@ import { useEffect, type RefObject } from 'react';
 import type { AudioBackend } from '@/lib/playback/types';
 import { localArtFor } from '@/lib/offlineNative';
 import { useOfflineStore } from '@/stores/useOfflineStore';
+import { isLiveTrack } from '@/lib/radio/station';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import type { Track } from '@/types/track';
 
 /** OS / remote transport wiring: the lock screen, the notification, Bluetooth
@@ -51,7 +53,11 @@ export function useRemoteCommands({
       pause: () => b.pause(),
       next: () => nextRef.current(),
       prev: () => prevRef.current(),
-      seek: (sec) => b.seek(sec),
+      // A live station has nowhere to seek to (the lock screen's scrubber).
+      seek: (sec) => {
+        const st = usePlayerStore.getState();
+        if (!isLiveTrack(st.queue[st.index])) b.seek(sec);
+      },
     });
     // The three refs are stable ref objects: only a backend being built
     // (backendReady, then an engine swap) re-registers the commands.

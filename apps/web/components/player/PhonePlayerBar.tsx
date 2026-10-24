@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { NextIcon, PauseIcon, PlayIcon } from '@/components/icons';
 import { useTrackArtSrc } from '@/lib/offlineNative';
 import { cn } from '@/lib/utils';
+import { isLiveTrack } from '@/lib/radio/station';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import type { Track } from '@/types/track';
 
@@ -165,7 +166,8 @@ export function PhonePlayerBar({
           the next icon. The row keeps 16px on the right and next's 48px hit
           box puts its 24px glyph 12px inside that, so the icon (and the
           line) end 28px from the edge. */}
-      <PlayheadSeekBar duration={duration} onSeek={onSeek} className="pl-block pr-[28px] -mt-1" />
+      {/* A live station has no progress to show: no line. */}
+      <PlayheadSeekBar live={isLiveTrack(track)} duration={duration} onSeek={onSeek} className="pl-block pr-[28px] -mt-1" />
     </div>
   );
 }

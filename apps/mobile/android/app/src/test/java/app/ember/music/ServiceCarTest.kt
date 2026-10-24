@@ -387,7 +387,7 @@ class ServiceCarTest {
         assertEquals(MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM, root.params!!.extras.getInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE))
         val f = service.Callback().onGetChildren(session(), own, BrowseTree.ROOT, 1, 2, null)
         until { f.isDone }
-        assertEquals(listOf(BrowseTree.PLAYLISTS, BrowseTree.LIBRARY), f.get().value!!.map { it.mediaId })
+        assertEquals(listOf(BrowseTree.PLAYLISTS, BrowseTree.RADIO), f.get().value!!.map { it.mediaId })
     }
 
     @Test fun `a song the car was shown can be looked up by id`() {

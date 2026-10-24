@@ -107,6 +107,14 @@ describe('upsertCatalogTrack: what a member may not choose', () => {
     }
   });
 
+  it('refuses a live radio station with a 400: never a song in likes, history or a playlist', async () => {
+    const c = client(async () => ({ id: 'rec1' }));
+    createCatalogClient.mockResolvedValue(c.pb);
+    const station = { ...track, id: 'station:00000000-0000-4000-8000-000000000001', source: 'station' as const, sourceId: '00000000-0000-4000-8000-000000000001', streamUrl: '/api/radio/stream/00000000-0000-4000-8000-000000000001' };
+    await expect(upsertCatalogTrack(station)).rejects.toMatchObject({ status: 400 });
+    expect(c.create).not.toHaveBeenCalled();
+  });
+
   it('refuses an id that is no known source with a 400', async () => {
     const c = client(async () => ({ id: 'rec1' }));
     createCatalogClient.mockResolvedValue(c.pb);

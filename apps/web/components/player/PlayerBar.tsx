@@ -38,6 +38,7 @@ import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
 import { isTabsPathFor, tabsHref } from '@/lib/tabSources';
 import { leavePage, notePathname } from '@/lib/inAppHistory';
+import { isLiveTrack } from '@/lib/radio/station';
 
 export function PlayerBar() {
   const { current, isPlaying, duration, toggle, next, prev, seek, setVolume, retry } = usePlayer();
@@ -90,6 +91,9 @@ export function PlayerBar() {
   // a song is queued.
   if (!current) return null;
   const tabsOpen = isTabsPathFor(pathname, current.id);
+  // A live radio station: no length, and nothing a song has (likes,
+  // playlists, sharing, lyrics, guitar tabs).
+  const live = isLiveTrack(current);
 
   // Phones get their own bar: artwork, the scrolling song name, play and
   // next. Previous and the queue live on the full-screen view the bar opens.
@@ -196,7 +200,7 @@ export function PlayerBar() {
           <NowPlayingSummary track={current} size="sm" />
         )}
         <OfflineBadge />
-        {current && user && (
+        {current && user && !live && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
             <LikeButton liked={isLiked} onToggle={toggleLike} />
             <AddToPlaylistMenu track={current} triggerClassName="max-xl:hidden" />
@@ -217,6 +221,7 @@ export function PlayerBar() {
           left={loopButton}
         />
         <PlayheadSeekBar
+          live={live}
           duration={duration}
           onSeek={seek}
           labels="inline"
@@ -226,7 +231,7 @@ export function PlayerBar() {
 
       {/* Right column, Queue always visible; Volume desktop only. */}
       <div className="flex justify-end items-center gap-2">
-        <Button
+        {!live && <Button
           variant="ghost"
           size="icon"
           className={cn(
@@ -239,7 +244,7 @@ export function PlayerBar() {
           title="Lyrics"
         >
           <LyricsIcon className="h-4 w-4" />
-        </Button>
+        </Button>}
         {/* Guitar tabs: the tab page for the playing song, and a second
             click closes it again (Back to where the listener was, or home
             when they came in from outside Ember). Closing unmounts the
@@ -247,7 +252,7 @@ export function PlayerBar() {
             Phones reach it from the full-screen NowPlaying view. Hidden
             entirely when the Songsterr integration plugin is switched off
             in Settings. */}
-        {tabsEnabled && (
+        {tabsEnabled && !live && (
           <Button
             variant="ghost"
             size="icon"

@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { isLiveTrack } from '@/lib/radio/station';
 import type { Track } from '@/types/track';
 import { sessionExpired } from '@/lib/sessionExpired';
 
@@ -40,7 +41,8 @@ export function useQueryLyrics(track: Track | null, enabled: boolean) {
     // synced lyrics without having to hard-refresh first.
     queryKey: ['lyrics', 'v2', track?.id ?? null],
     queryFn: () => fetchLyrics(track!.title, track!.artist, track!.durationSec ?? 0),
-    enabled: enabled && !!track,
+    // A live radio station has no lyrics to look up.
+    enabled: enabled && !!track && !isLiveTrack(track),
     staleTime: 60 * 60 * 1000,
     retry: false,
   });

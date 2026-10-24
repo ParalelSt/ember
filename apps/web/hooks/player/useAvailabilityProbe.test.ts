@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useAvailabilityProbe } from './useAvailabilityProbe';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { makeTrack } from '@/test-utils/fakeBackend';
+import { stationTrack } from '@/lib/radio/station';
 
 const api = vi.hoisted(() => ({ getTrackAvailability: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api }));
@@ -36,6 +37,17 @@ beforeEach(() => {
 });
 
 describe('useAvailabilityProbe', () => {
+  it('never flags a live radio station: it would not load right now, and says so', () => {
+    const st = stationTrack({ id: '00000000-0000-4000-8000-000000000001', name: 'Live', favicon: null });
+    const { probe, next } = setup([st, live], 0);
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+    expect(stillPlayable).toHaveBeenCalledWith(st);
+    expect(api.getTrackAvailability).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().queue[0].unavailableAt).toBeFalsy();
+  });
+
   it('flags the current track and skips on when the server says it is gone', async () => {
     const { probe, next } = setup();
     probe();

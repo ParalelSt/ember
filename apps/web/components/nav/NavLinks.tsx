@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { HomeIcon, SearchIcon, LibraryIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
+import { HomeIcon, SearchIcon, LibraryIcon, RadioIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
 import { isNavActive, type NavIcon, type NavItem } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +18,7 @@ const ICONS: Record<NavIcon, typeof HomeIcon> = {
   home: HomeIcon,
   search: SearchIcon,
   library: LibraryIcon,
+  radio: RadioIcon,
   settings: SettingsIcon,
   admin: ShieldIcon,
 };

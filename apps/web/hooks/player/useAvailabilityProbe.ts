@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { isUnavailable } from '@/lib/playback/queueNav';
 import { serverUnreachable } from '@/lib/playback/serverReach';
+import { isLiveTrack } from '@/lib/radio/station';
 
 /** api errors carry the HTTP status of the answer; a network failure has none. */
 function hasHttpStatus(e: unknown): boolean {
@@ -74,6 +75,12 @@ export function useAvailabilityProbe(
     // Signed out (a shared /track page) the server won't answer: it just
     // would not load (bughunt V5).
     if (!signedIn) {
+      onStillPlayable?.(cur);
+      return;
+    }
+    // A live station is never flagged unavailable (the host keeps no record
+    // of one): it would not load right now, and the listener can retry.
+    if (isLiveTrack(cur)) {
       onStillPlayable?.(cur);
       return;
     }

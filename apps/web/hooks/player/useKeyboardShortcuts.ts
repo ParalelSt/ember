@@ -3,6 +3,7 @@
 import { useEffect, type RefObject } from 'react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { shortcutFor, type TypingTarget } from '@/lib/playback/shortcuts';
+import { isLiveTrack } from '@/lib/radio/station';
 import type { AudioBackend } from '@/lib/playback/types';
 
 /** Global keyboard shortcuts. The map itself is pure (lib/playback/shortcuts);
@@ -46,7 +47,8 @@ export function useKeyboardShortcuts({
         return;
       }
       if (action.type === 'seekBy') {
-        if (!b) return;
+        // A live station has nowhere to seek: the arrow keys scroll.
+        if (!b || isLiveTrack(st.queue[st.index])) return;
         e.preventDefault();
         b.seek(b.getCurrentTime() + action.sec);
         return;

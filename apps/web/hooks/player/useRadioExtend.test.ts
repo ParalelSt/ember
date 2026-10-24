@@ -4,6 +4,7 @@ import { usePlayerStore, type LoopMode } from '@/stores/usePlayerStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useRadioExtend } from './useRadioExtend';
 import { makeTrack } from '@/test-utils/fakeBackend';
+import { stationTrack } from '@/lib/radio/station';
 import { exclusionKeys } from '@/lib/trackIdentity';
 import type { PlaybackContext, Track } from '@/types/track';
 
@@ -81,6 +82,12 @@ describe('useRadioExtend', () => {
 
   it('does nothing away from the end of the queue', () => {
     setup({ queue: [seed, rec1], index: 0 });
+    expect(api.getRecommended).not.toHaveBeenCalled();
+  });
+
+  it('never extends a list of live radio stations', () => {
+    const st = stationTrack({ id: '00000000-0000-4000-8000-000000000001', name: 'Live', favicon: null });
+    setup({ current: st, queue: [st], index: 0, context: { type: 'stations', name: 'Nearby' } });
     expect(api.getRecommended).not.toHaveBeenCalled();
   });
 

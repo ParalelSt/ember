@@ -19,11 +19,12 @@ describe('isNavActive', () => {
 });
 
 describe('BASE_NAV', () => {
-  it('lists Home, Search, Library, Settings in order with their hrefs', () => {
+  it('lists Home, Search, Library, Radio, Settings in order with their hrefs', () => {
     expect(BASE_NAV.map((item) => [item.href, item.label])).toEqual([
       ['/', 'Home'],
       ['/search', 'Search'],
       ['/library', 'Library'],
+      ['/radio', 'Radio'],
       ['/settings', 'Settings'],
     ]);
   });

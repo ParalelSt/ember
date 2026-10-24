@@ -18,6 +18,7 @@ import { UnplayableMessage, useUnplayableMessage } from '@/components/player/Unp
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { EqualizerSheet } from '@/components/player/EqualizerSheet';
 import { PlayheadSeekBar } from '@/components/player/SeekBar';
+import { isLiveTrack } from '@/lib/radio/station';
 import { TransportControls } from '@/components/player/TransportControls';
 import { DevicesSheet, useDevicesEntry } from '@/components/player/DevicesButton';
 import { useBackDismiss } from '@/lib/useBackDismiss';
@@ -98,6 +99,9 @@ export function NowPlaying() {
   // lyrics card below reads; PlayerProvider prefetches it).
   const { data: lyricsData } = useQueryLyrics(current, open);
   const hasLyrics = !!lyricsData?.lyrics;
+  // A live radio station: no length, and nothing a song has (likes,
+  // playlists, lyrics, guitar tabs).
+  const live = isLiveTrack(current);
 
   const router = useRouter();
   // Leaving for another page (the tab page, the artist, the album). Closing
@@ -197,11 +201,11 @@ export function NowPlaying() {
   // The More sheet: one plain list of what has no button on the player. Like,
   // Lyrics and Devices stay on the player itself. Each row opens the sheet or
   // page it always did.
-  const canAdd = !!(current && user && !isUnavailable(current));
+  const canAdd = !!(current && user && !isUnavailable(current) && !live);
   const items: MoreItem[] = [];
   if (canAdd) items.push({ key: 'add', label: 'Add to playlist', Icon: ListPlusIcon, onSelect: () => setAddOpen(true) });
   if (current) items.push({ key: 'queue', label: 'Up next', Icon: QueueIcon, onSelect: () => setQueueOpen(true) });
-  if (current && tabsEnabled) items.push({ key: 'tabs', label: 'Guitar tabs', Icon: TabsIcon, onSelect: openTabs });
+  if (current && tabsEnabled && !live) items.push({ key: 'tabs', label: 'Guitar tabs', Icon: TabsIcon, onSelect: openTabs });
   if (eqAvailable) {
     items.push({ key: 'eq', label: 'Equalizer', detail: eqOn ? 'On' : 'Off', Icon: EqualizerIcon, lit: eqOn, onSelect: () => setEqOpen(true) });
   }
@@ -420,13 +424,13 @@ export function NowPlaying() {
               onArtistNavigate={() => setOpen(false)}
             />
           )}
-          {current && user && (
+          {current && user && !live && (
             <LikeButton size="md" liked={isLiked} onToggle={toggleLike} className="shrink-0" />
           )}
         </div>
 
         {/* Progress */}
-        <PlayheadSeekBar duration={duration} onSeek={seek} labels="below" className="mt-6" />
+        <PlayheadSeekBar live={live} duration={duration} onSeek={seek} labels="below" className="mt-6" />
 
         {/* Transport controls, prev/play/next centered; loop pinned right. */}
         <TransportControls
@@ -460,7 +464,7 @@ export function NowPlaying() {
                 {devices.on && <span className="max-w-32 truncate text-xs">{devices.on}</span>}
               </button>
             ) : <span />}
-            <Button
+            {!live && <Button
               variant="ghost"
               size="icon"
               onClick={() => setLyricsAsked((n) => n + 1)}
@@ -470,7 +474,7 @@ export function NowPlaying() {
               className="h-10 w-10 text-muted-foreground hover:text-foreground"
             >
               <LyricsIcon className="h-5 w-5" />
-            </Button>
+            </Button>}
           </div>
         )}
 

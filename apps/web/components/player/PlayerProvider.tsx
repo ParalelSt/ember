@@ -63,6 +63,7 @@ import { clearCastSignCache, resolveCastMedia } from '@/lib/cast/signer';
 import { _resetOutputs, initOutputs } from '@/lib/outputs/controller';
 import type { PlaybackContext, Track } from '@/types/track';
 import { musicLevel } from '@/lib/pranks/mix';
+import { isLiveTrack } from '@/lib/radio/station';
 import { PrankReceiver } from './PrankReceiver';
 import { UnplayableAnnouncer } from './UnplayableMessage';
 
@@ -442,6 +443,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // end at it is a finished song even when the catalog's length, which
         // wins in chooseDuration when the two are far apart, is longer. The
         // desktop decoder's length is only a guess, so it does not count.
+        // A live station has no end: one that ends is a stream that broke
+        // (the station went off air, the host's proxy lost it). The error
+        // path says so and offers a retry; moving on to the next station by
+        // itself would be a surprise.
+        if (cur && isLiveTrack(cur)) {
+          handleError();
+          return;
+        }
         const kind = backendKindRef.current;
         const engineDur = kind === 'web' || kind === 'capacitor' ? backendRef.current?.getDuration() ?? 0 : 0;
         const endedAtEngineEnd = Number.isFinite(engineDur) && engineDur > 0 && pos >= engineDur - ENDED_SLACK_SEC;
@@ -777,6 +786,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // click play a few times" bug. A silent re-load of the track that's already
     // loaded is never useful, so drop it.
     if (!autoplay && loadedTrackRef.current === track.id) return;
+    // A live station always starts at "now": a stored playhead (minutes
+    // into the last listen) means nothing in a stream with no length.
+    if (isLiveTrack(track)) positions.requestStartAt(0);
     // A cast device plays the TRACK: it signs its own link, since neither a
     // cached copy's blob: URL nor a cookie-bound stream reaches a TV.
     if (castingRef.current && isCastBackend(b)) {
@@ -827,6 +839,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const webCopy = downloads.webFiles[track.id] ?? null;
     if (webCopy && backendKindRef.current === 'tauri-native' && !navigator.onLine) {
       logger.breadcrumb('playback', 'offline: web audio for a downloaded copy', { trackId: track.id });
+      swapToWebAudio();
+      b = backendRef.current!;
+    }
+    // The desktop engine downloads what it plays to a file first, which a
+    // station never finishes (it would grow for as long as it plays), and it
+    // decodes fewer formats than a browser (AAC+ stations). Web audio plays
+    // stations instead; like a downloaded copy offline, the swap is for the
+    // rest of the session.
+    if (isLiveTrack(track) && backendKindRef.current === 'tauri-native') {
+      logger.breadcrumb('playback', 'live station: web audio', { trackId: track.id });
       swapToWebAudio();
       b = backendRef.current!;
     }
@@ -979,7 +1001,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       loadAndPlay(current, userInteracted.current);
     }
     // The native Android player records plays itself (car-initiated ones too).
-    if (current && userInteracted.current && user && backendKindRef.current !== 'android') recordPlay.mutate(current);
+    // A live station is not a song: never a play in history.
+    if (current && userInteracted.current && user && backendKindRef.current !== 'android' && !isLiveTrack(current)) recordPlay.mutate(current);
     if (!current) {
       setIsPlaying(false);
       setPosition(0);
@@ -1136,7 +1159,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // The song actually played before this one, when the history has it
     // (lib/playback/queueNav, "Play history"); else the song above.
     const back = previousFromHistory(st.queue, st.index, playedRef.current);
-    const move = prevIndex(navState(), b ? b.getCurrentTime() : 0, back?.index);
+    // A station has no start to go back to: Previous always means the
+    // station before it, however long this one has played.
+    const at = b && !isLiveTrack(st.queue[st.index]) ? b.getCurrentTime() : 0;
+    const move = prevIndex(navState(), at, back?.index);
     if (!move) return;
     if ('restart' in move) {
       b?.seek(0);
@@ -1305,6 +1331,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useRemoteCommands({ backendRef, backendReady, engine: initialKind, current, nextRef, prevRef });
 
   const seek = useCallback((sec: number) => {
+    // A live station has nowhere to seek to.
+    const st = usePlayerStore.getState();
+    if (isLiveTrack(st.queue[st.index])) return;
     backendRef.current?.seek(sec);
   }, []);
 
