@@ -516,6 +516,24 @@ check "SIGTERM stops it" stop_and_wait TERM
 check "service pid files removed on a clean stop" sh -c "[ ! -e '$ROOT_DIR/logs/next.pid' ] && [ ! -e '$ROOT_DIR/logs/pocketbase.pid' ]"
 check "nothing left running" wait_until 5 no_leftovers
 
+# ── 11. after a reboot, the old lock names this very pid ────────────────
+# Pids start over at boot, and a unit started in the same boot order can get
+# the pid the previous watchdog had. That pid is alive and is a
+# start-static.sh: this one. It is a leftover lock, not a second copy.
+echo "── a leftover lock naming the new watchdog's own pid"
+new_root
+mkdir -p "$ROOT_DIR/logs"
+: >"$POSTS"
+# exec keeps the pid, so the lock is written with the pid start-static.sh
+# then runs as.
+bash -c 'printf "pid=%s\nstarted=%s\n" "$$" "2026-01-03 04:05:06 UTC" >"$1/logs/ember.lock"; exec bash "$1/start-static.sh"' _ "$ROOT_DIR" >"$TMP/run.out" 2>&1 &
+WD=$!
+check "it starts instead of saying Ember is already running" wait_until 10 port_up "$HEALTHY_PORT"
+check "no 'already running' refusal" sh -c "! grep -q 'already running' '$TMP/run.out'"
+check "it reports the unclean shutdown of the previous run" wait_until 10 has_posts "2026-01-03 04:05:06 UTC" 1
+check "SIGTERM stops it" stop_and_wait TERM
+check "nothing left running" wait_until 5 no_leftovers
+
 echo
 echo "$((TOTAL - FAILED))/$TOTAL passed"
 [ "$FAILED" = 0 ]

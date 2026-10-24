@@ -557,7 +557,9 @@ kill_tree() {
 UNCLEAN_SINCE=""
 if [ -f "$LOCK_FILE" ]; then
   old_pid="$(sed -n 's/^pid=//p' "$LOCK_FILE" | head -1)"
-  if is_watchdog_pid "$old_pid"; then
+  # After a reboot the pid can be this very run's (pids start over at boot):
+  # that is the previous run's lock, not a second copy.
+  if [ "$old_pid" != "$$" ] && is_watchdog_pid "$old_pid"; then
     echo "✗ Ember is already running here (watchdog pid $old_pid)."
     echo "  Stop it first: Ctrl+C in its terminal, or: kill $old_pid"
     exit 1
