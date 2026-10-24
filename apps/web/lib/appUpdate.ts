@@ -182,7 +182,14 @@ export function updatePill(s: AppUpdateState): UpdatePill | null {
             dismissable: true,
           };
         default:
-          return { title: `Update${v} ready`, detail: 'Tap to install', action: 'install', dismissable: true };
+          // The app keeps the APK after a failed install and sets `error`:
+          // say so, or a second tap looks like the first one did nothing.
+          return {
+            title: `Update${v} ready`,
+            detail: s.error ? `${s.error.replace(/\.$/, '')}. Tap to try again` : 'Tap to install',
+            action: 'install',
+            dismissable: true,
+          };
       }
     default:
       return null;
