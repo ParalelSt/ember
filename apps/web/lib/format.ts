@@ -26,12 +26,15 @@ export function formatTotalDuration(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-/** Ported from the downloads settings page exactly. */
+/** Ported from the downloads settings page. A size moves up a unit once
+ *  it rounds to 1024 of the smaller one ("1.0 MB", not "1024 KB"). */
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  const kb = n / 1024;
+  if (Math.round(kb) < 1024) return `${kb.toFixed(0)} KB`;
+  const mb = kb / 1024;
+  if (Number(mb.toFixed(1)) < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
 }
 
 /** `'7 songs'`, `'1 track'`. Pass `plural` for an irregular plural; defaults

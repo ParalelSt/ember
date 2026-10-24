@@ -70,6 +70,12 @@ describe('formatBytes', () => {
     expect(formatBytes(1.5 * 1024 * 1024)).toBe('1.5 MB');
   });
 
+  it('a size that rounds up to the next unit says so, never "1024 KB"', () => {
+    expect(formatBytes(1024 * 1024 - 1)).toBe('1.0 MB');
+    expect(formatBytes(1024 * 1024 * 1024 - 1)).toBe('1.00 GB');
+    expect(formatBytes(1024 * 1024 - 600)).toBe('1023 KB');
+  });
+
   it('formats gigabytes with two decimals', () => {
     expect(formatBytes(2.25 * 1024 * 1024 * 1024)).toBe('2.25 GB');
   });
