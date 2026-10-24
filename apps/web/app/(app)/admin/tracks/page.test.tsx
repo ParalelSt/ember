@@ -1,12 +1,17 @@
 import type { PropsWithChildren } from 'react';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { AdminTrack } from '@/lib/api';
 
 // Render the base-ui Dialog as plain elements so this test is about the
 // page's own wiring.
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }: PropsWithChildren<{ open?: boolean }>) => (open ? <div>{children}</div> : null),
+  Dialog: ({ open, onOpenChange, children }: PropsWithChildren<{ open?: boolean; onOpenChange?: (o: boolean) => void }>) => (open ? (
+    <div>
+      {children}
+      <button type="button" onClick={() => onOpenChange?.(false)}>Close dialog</button>
+    </div>
+  ) : null),
   DialogContent: ({ children }: PropsWithChildren) => <div role="dialog">{children}</div>,
   DialogFooter: ({ children }: PropsWithChildren) => <div>{children}</div>,
   DialogHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
@@ -24,6 +29,7 @@ const track = (i: number, extra: Partial<AdminTrack> = {}): AdminTrack => ({
 type Answer = { tracks: AdminTrack[]; page: number; totalPages: number; totalItems: number };
 const state = vi.hoisted(() => ({
   query: vi.fn(),
+  update: vi.fn(async () => ({ ok: true })),
   /** Overrides the answer for a page (the default is one page of three). */
   pages: null as null | ((page: number) => Answer),
   error: null as Error | null,
@@ -38,7 +44,7 @@ vi.mock('@/hooks/useAdmin', () => ({
       isFetching: false,
     };
   },
-  useExecuteUpdateAdminTrack: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useExecuteUpdateAdminTrack: () => ({ mutateAsync: state.update, isPending: false }),
   useExecuteDeleteAdminTrack: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
@@ -46,6 +52,7 @@ const { default: AdminTracksPage } = await import('./page');
 
 beforeEach(() => {
   state.query.mockClear();
+  state.update.mockClear();
   state.pages = null;
   state.error = null;
 });
@@ -66,4 +73,19 @@ it('says so when a page fails to load, instead of a blank page', () => {
   state.error = new Error('PocketBase is down');
   render(<AdminTracksPage />);
   expect(screen.getByText(/Couldn.t load tracks: PocketBase is down/)).toBeTruthy();
+});
+
+// The dialog kept what was typed, so a closed-without-saving edit came back
+// and Save sent it.
+it('reopening Edit track after closing it without saving shows the track, not the abandoned edit', async () => {
+  render(<AdminTracksPage />);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+  fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Abandoned' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+  fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+  expect(screen.getByLabelText('Title')).toHaveValue('Song 1');
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  });
+  expect(state.update).not.toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ title: 'Abandoned' }) }));
 });

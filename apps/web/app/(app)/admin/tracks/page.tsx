@@ -108,32 +108,7 @@ export default function AdminTracksPage() {
 }
 
 function TrackRow({ track, onDelete }: { track: AdminTrack; onDelete: () => void }) {
-  const updateTrack = useExecuteUpdateAdminTrack();
   const [editOpen, setEditOpen] = useState(false);
-  const [title, setTitle] = useState(track.title);
-  const [artist, setArtist] = useState(track.artist);
-  const [album, setAlbum] = useState(track.album ?? '');
-  const [busy, setBusy] = useState(false);
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      await updateTrack.mutateAsync({
-        recordId: track.recordId,
-        patch: {
-          title: title !== track.title ? title : undefined,
-          artist: artist !== track.artist ? artist : undefined,
-          album: album !== (track.album ?? '') ? album : undefined,
-        },
-      });
-      toast.success('Track updated');
-      setEditOpen(false);
-    } catch (e) {
-      toast.error(`Couldn't save: ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <div className="grid grid-cols-[40px_minmax(0,2fr)_minmax(0,1.2fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md hover:bg-card transition-colors">
@@ -169,44 +144,84 @@ function TrackRow({ track, onDelete }: { track: AdminTrack; onDelete: () => void
           <DialogHeader>
             <DialogTitle>Edit track</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor={`t-title-${track.recordId}`}>Title</Label>
-              <Input id={`t-title-${track.recordId}`} value={title} onChange={(e) => setTitle(e.target.value)} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={`t-artist-${track.recordId}`}>Artist</Label>
-              <Input id={`t-artist-${track.recordId}`} value={artist} onChange={(e) => setArtist(e.target.value)} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={`t-album-${track.recordId}`}>Album</Label>
-              <Input id={`t-album-${track.recordId}`} value={album} onChange={(e) => setAlbum(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter className="flex justify-between items-center sm:justify-between mt-4">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => { setEditOpen(false); onDelete(); }}
-              className="text-destructive hover:text-destructive"
-            >
-              <TrashIcon className="h-4 w-4" />
-              Delete
-            </Button>
-            <Button
-              type="button"
-              onClick={save}
-              disabled={busy}
-              size="sm"
-              variant="ember"
-            >
-              {busy ? '…' : 'Save'}
-            </Button>
-          </DialogFooter>
+          {/* The fields live inside the dialog, so each opening starts from
+              the track, not from an edit that was closed without saving. */}
+          <TrackEditFields
+            track={track}
+            onDone={() => setEditOpen(false)}
+            onDelete={() => { setEditOpen(false); onDelete(); }}
+          />
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function TrackEditFields({ track, onDone, onDelete }: { track: AdminTrack; onDone: () => void; onDelete: () => void }) {
+  const updateTrack = useExecuteUpdateAdminTrack();
+  const [title, setTitle] = useState(track.title);
+  const [artist, setArtist] = useState(track.artist);
+  const [album, setAlbum] = useState(track.album ?? '');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await updateTrack.mutateAsync({
+        recordId: track.recordId,
+        patch: {
+          title: title !== track.title ? title : undefined,
+          artist: artist !== track.artist ? artist : undefined,
+          album: album !== (track.album ?? '') ? album : undefined,
+        },
+      });
+      toast.success('Track updated');
+      onDone();
+    } catch (e) {
+      toast.error(`Couldn't save: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="grid gap-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor={`t-title-${track.recordId}`}>Title</Label>
+          <Input id={`t-title-${track.recordId}`} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`t-artist-${track.recordId}`}>Artist</Label>
+          <Input id={`t-artist-${track.recordId}`} value={artist} onChange={(e) => setArtist(e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`t-album-${track.recordId}`}>Album</Label>
+          <Input id={`t-album-${track.recordId}`} value={album} onChange={(e) => setAlbum(e.target.value)} />
+        </div>
+      </div>
+      <DialogFooter className="flex justify-between items-center sm:justify-between mt-4">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onDelete}
+          className="text-destructive hover:text-destructive"
+        >
+          <TrashIcon className="h-4 w-4" />
+          Delete
+        </Button>
+        <Button
+          type="button"
+          onClick={save}
+          disabled={busy}
+          size="sm"
+          variant="ember"
+        >
+          {busy ? '…' : 'Save'}
+        </Button>
+      </DialogFooter>
+    </>
   );
 }
 
