@@ -86,15 +86,26 @@ function signInCatalog(): Promise<string> {
   return catalogSignIn;
 }
 
+const REFRESH_PATHS = ['/api/collections/_superusers/auth-refresh', '/api/admins/auth-refresh'];
+/** The refresh path this PocketBase answered on. Asking the other one first
+ *  every time cost a 404, which PocketBase logs as an error, on every check
+ *  (one per 5 s while a carlist is hosted). */
+let refreshPath: string | null = null;
+
 /** PocketBase's answer to "does this admin token still hold": the status of
  *  an auth refresh (v0.23+ path first, v0.22 on 404, as createAdminClient
- *  does). 0 when PocketBase could not be asked. */
+ *  does; the one that answered first from then on). 0 when PocketBase could
+ *  not be asked. */
 async function refreshStatus(token: string): Promise<number> {
-  for (const path of ['/api/collections/_superusers/auth-refresh', '/api/admins/auth-refresh']) {
+  const paths = refreshPath ? [refreshPath, ...REFRESH_PATHS.filter((p) => p !== refreshPath)] : REFRESH_PATHS;
+  for (const path of paths) {
     const res = await fetch(`${PB_URL}${path}`, { method: 'POST', headers: { Authorization: token } }).catch(() => null);
     if (!res) return 0;
     await res.body?.cancel().catch(() => {});
-    if (res.status !== 404) return res.status;
+    if (res.status !== 404) {
+      refreshPath = path;
+      return res.status;
+    }
   }
   return 404;
 }

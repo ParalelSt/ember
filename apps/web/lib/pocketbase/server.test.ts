@@ -18,6 +18,9 @@ interface FakePb {
   live: string;
   logins: number;
   refreshes: number;
+  /** Token checks sent to the v0.23 path, which a v0.22 server answers 404
+   *  (and logs as an error). */
+  newPathChecks: number;
   playlists: Record<string, unknown>[];
 }
 let pb: FakePb;
@@ -32,6 +35,7 @@ function fakeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
   const auth = new Headers(init?.headers).get('Authorization') ?? '';
   const admin = auth === pb.live;
   const path = url.pathname;
+  if (path === '/api/collections/_superusers/auth-refresh') pb.newPathChecks += 1;
   if (path === '/api/collections/_superusers/auth-with-password' || path === '/api/collections/_superusers/auth-refresh') {
     return Promise.resolve(json(404, { message: 'Missing collection context.' }));
   }
@@ -71,7 +75,7 @@ const later = () => vi.setSystemTime(Date.now() + 6_000);
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
-  pb = { live: '', logins: 0, refreshes: 0, playlists: [{ id: 'p1', name: 'Road trip' }] };
+  pb = { live: '', logins: 0, refreshes: 0, newPathChecks: 0, playlists: [{ id: 'p1', name: 'Road trip' }] };
   vi.stubGlobal('fetch', vi.fn(fakeFetch));
 });
 afterEach(() => {
@@ -125,6 +129,19 @@ describe('createCatalogClient', () => {
     await expect(client.collection('playlists').getOne('gone2')).rejects.toMatchObject({ status: 404 });
     expect(pb.logins).toBe(1);
     expect(pb.refreshes).toBe(1);
+  });
+
+  it('on PocketBase 0.22 the token check asks the path that answers, not the missing one, every time', async () => {
+    const { createCatalogClient } = await fresh();
+    const client = await createCatalogClient();
+    for (let i = 0; i < 4; i++) {
+      later();
+      await expect(client.collection('playlists').getOne(`gone${i}`)).rejects.toMatchObject({ status: 404 });
+    }
+    expect(pb.refreshes).toBe(4);
+    // Found once: each further check went straight to the v0.22 path, so
+    // PocketBase logged no 404 for it.
+    expect(pb.newPathChecks).toBe(1);
   });
 
   it('several requests finding the token dead at once sign in only once', async () => {
