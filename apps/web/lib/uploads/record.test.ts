@@ -48,10 +48,10 @@ describe('readUpload', () => {
     expect(pb.logins).toBeLessThanOrEqual(1);
   });
 
-  it('asks a fresh login before calling an upload missing', async () => {
+  it('a missing upload is not another sign-in (a dead login is the shared client\'s to replace)', async () => {
     await readUpload('up1');
     const before = pb.logins;
     expect(await readUpload('gone')).toBeNull();
-    expect(pb.logins).toBe(before + 1);
+    expect(pb.logins).toBe(before);
   });
 });

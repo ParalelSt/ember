@@ -66,21 +66,106 @@ export async function createAdminClient() {
 // Reused admin token for the hot catalog path (every like and play writes the
 // shared tracks row). createAdminClient signs in on each call, which is a
 // password check per play; this signs in once and reuses the token.
-let catalogToken: { token: string; expires: number } | null = null;
+let catalogToken: { token: string; expires: number; checkedAt: number } | null = null;
 const CATALOG_TOKEN_TTL_MS = 10 * 60_000;
+/** A token PocketBase just confirmed is not asked about again this soon. */
+const CATALOG_CHECK_EVERY_MS = 5_000;
+let catalogSignIn: Promise<string> | null = null;
+
+/** One sign-in for everyone who needs a new catalog token at the same time. */
+function signInCatalog(): Promise<string> {
+  catalogSignIn ??= createAdminClient()
+    .then((pb) => {
+      const now = Date.now();
+      catalogToken = { token: pb.authStore.token, expires: now + CATALOG_TOKEN_TTL_MS, checkedAt: now };
+      return pb.authStore.token;
+    })
+    .finally(() => {
+      catalogSignIn = null;
+    });
+  return catalogSignIn;
+}
+
+/** PocketBase's answer to "does this admin token still hold": the status of
+ *  an auth refresh (v0.23+ path first, v0.22 on 404, as createAdminClient
+ *  does). 0 when PocketBase could not be asked. */
+async function refreshStatus(token: string): Promise<number> {
+  for (const path of ['/api/collections/_superusers/auth-refresh', '/api/admins/auth-refresh']) {
+    const res = await fetch(`${PB_URL}${path}`, { method: 'POST', headers: { Authorization: token } }).catch(() => null);
+    if (!res) return 0;
+    await res.body?.cancel().catch(() => {});
+    if (res.status !== 404) return res.status;
+  }
+  return 404;
+}
+
+/** Whether `token` has stopped being an admin token. PocketBase does not
+ *  say so on its own: it reads a request with a dead token (after a
+ *  restore, or an admin password change, both give the superuser a new
+ *  token key) as a guest's, a 404 or an empty list. `refused` is a 401 or
+ *  403, which is always worth asking about. */
+async function catalogTokenDead(token: string, refused: boolean): Promise<boolean> {
+  const cached = catalogToken;
+  if (cached && cached.token !== token) return true; // replaced meanwhile
+  if (cached && !refused && Date.now() - cached.checkedAt < CATALOG_CHECK_EVERY_MS) return false;
+  const status = await refreshStatus(token);
+  if (status === 401 || status === 403) return true;
+  if (status === 200 && cached && catalogToken === cached) cached.checkedAt = Date.now();
+  return false;
+}
+
+/** The token to use instead of a dead one: a newer cached one if another
+ *  request already signed in again, else a new sign-in. */
+async function replacementToken(dead: string): Promise<string> {
+  const cached = catalogToken;
+  if (cached && cached.token !== dead && cached.expires > Date.now()) return cached.token;
+  if (cached?.token === dead) catalogToken = null;
+  return signInCatalog();
+}
+
+const looksEmpty = (answer: unknown) =>
+  !!answer && typeof answer === 'object' && Array.isArray((answer as { items?: unknown }).items) &&
+  (answer as { items: unknown[] }).items.length === 0;
+
+/** Every request of this client goes through here. An answer that could be
+ *  a dead token reading as a guest (401, 403, 404, an empty list) makes it
+ *  check the token; a dead one is replaced, once, and the request sent
+ *  again. Any other answer goes straight back: no extra request. */
+function guardCatalog(pb: PocketBase): PocketBase {
+  if (typeof pb.send !== 'function') return pb;
+  const send = pb.send.bind(pb);
+  pb.send = (async (path: string, options: Parameters<typeof send>[1]) => {
+    let answer: unknown;
+    let failure: unknown = null;
+    try {
+      answer = await send(path, options);
+    } catch (e) {
+      failure = e;
+    }
+    const status = failure ? (failure as { status?: number } | null)?.status : 200;
+    const refused = status === 401 || status === 403;
+    const suspicious = failure ? refused || status === 404 : looksEmpty(answer);
+    const token = pb.authStore.token;
+    if (suspicious && token && (await catalogTokenDead(token, refused))) {
+      pb.authStore.save(await replacementToken(token), null);
+      return send(path, options);
+    }
+    if (failure) throw failure;
+    return answer;
+  }) as typeof pb.send;
+  return pb;
+}
 
 /** Admin client for writes to the shared tracks catalog, and for the carlist
- *  routes (lib/sessions.ts sessionsClient, polled every 2 s). Pass fresh=true to
- *  drop the reused token (after a 401/403, e.g. the admin password changed).
- *  A new PocketBase instance per call, so concurrent requests never share an
- *  auth store or cancel each other's requests. */
+ *  routes (lib/sessions.ts sessionsClient, polled every 2 s). The reused
+ *  token heals itself when it dies (guardCatalog); fresh=true still drops it
+ *  outright. A new PocketBase instance per call, so concurrent requests
+ *  never share an auth store or cancel each other's requests. */
 export async function createCatalogClient(fresh = false): Promise<PocketBase> {
-  if (!fresh && catalogToken && catalogToken.expires > Date.now()) {
-    const pb = new PocketBase(PB_URL);
-    pb.authStore.save(catalogToken.token, null);
-    return pb;
-  }
-  const pb = await createAdminClient();
-  catalogToken = { token: pb.authStore.token, expires: Date.now() + CATALOG_TOKEN_TTL_MS };
-  return pb;
+  const cached = catalogToken;
+  const token =
+    !fresh && cached && cached.expires > Date.now() ? cached.token : await signInCatalog();
+  const pb = new PocketBase(PB_URL);
+  pb.authStore.save(token, null);
+  return guardCatalog(pb);
 }
