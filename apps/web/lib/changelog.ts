@@ -21,6 +21,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'safer-and-smoother',
+    version: '0.7.31',
+    date: '2026-10-24',
+    title: 'Safer and smoother',
+    summary: 'Your likes and playlists are better protected, and the app stays smooth while music plays.',
+    bullets: [
+      'Your likes, history and private playlists are better protected.',
+      'The nightly cleanup can no longer remove songs you just liked or added.',
+      'Losing the connection when Ember starts no longer signs you out.',
+      'On a shared device, the next person no longer opens onto your queue after you sign out.',
+      'Song lists stay smooth while music plays, and use less battery.',
+      'Android: a full phone or a refused download no longer crashes the app.',
+      'Desktop: a slow Discord or a stuck update no longer freezes the window. On Linux, sound goes back to your chosen output from the next song.',
+    ],
+  },
+  {
     id: 'dead-zones',
     version: '0.7.30',
     date: '2026-10-15',

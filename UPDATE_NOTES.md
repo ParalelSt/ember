@@ -1,3 +1,10 @@
+# 0.7.31: Safer and smoother (apps 0.4.25)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Restart PocketBase with it, so the new realtime guard and
+sign-up limit hooks load. The Android and desktop fixes need the new apps,
+0.4.25 (Android versionCode 30), which the `v0.4.25` tag builds.
+
 # 0.7.30: Keeps playing through dead zones (apps 0.4.24)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
