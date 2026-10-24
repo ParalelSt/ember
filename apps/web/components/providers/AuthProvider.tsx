@@ -55,6 +55,23 @@ const SIGNED_OUT_KEY = 'ember.signedOut';
 /** The saved queue and what was playing (ember.player.v1 in localStorage)
  *  are the account's: the next account on this device used to open onto
  *  them. Volume, loop and mute are the device's and stay. */
+/** Whose queue ember.player.v1 holds. A session can end without a sign-out
+ *  (it expired, or Sign out everywhere ran on another device): the next
+ *  account to sign in here must not open onto it. */
+const PLAYBACK_OWNER_KEY = 'ember.player.owner';
+
+function claimAccountPlayback(userId: string): void {
+  try {
+    const owner = localStorage.getItem(PLAYBACK_OWNER_KEY);
+    // No owner yet: a queue saved before this was kept is the first
+    // account's to sign in.
+    if (owner && owner !== userId) clearAccountPlayback();
+    if (owner !== userId) localStorage.setItem(PLAYBACK_OWNER_KEY, userId);
+  } catch {
+    // Storage refused (a private window): nothing was saved to carry over.
+  }
+}
+
 function clearAccountPlayback(): void {
   usePlayerStore.setState({
     queue: [],
@@ -141,6 +158,12 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
     return () => { unsub(); };
   }, [pb, initialUser]);
 
+  const userId = user?.id;
+
+  useEffect(() => {
+    if (userId) claimAccountPlayback(userId);
+  }, [userId]);
+
   // Pull the privacy switches once there's a session. Presence publishing
   // assumes "don't share" until this lands, so the cost of it being late is
   // silence, never an unwanted broadcast.
@@ -149,7 +172,6 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
   }, [user]);
 
   // What's new read state, per user. Until it lands nothing shows as New.
-  const userId = user?.id;
   useEffect(() => {
     if (userId) void useChangelogStore.getState().load();
     else useChangelogStore.setState({ seenVersion: null, hideNew: false, loaded: false });
