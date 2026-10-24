@@ -31,14 +31,21 @@ export const POST = withRequestLog('sessions/[id]/tracks', async (request: NextR
     // One add at a time per carlist: two at once would both read the same
     // queue and compute the same position.
     const plan = await withLock(`session-tracks:${session.id}`, async () => {
-      const rows = await pb.collection('session_tracks').getFullList({
-        filter: pb.filter('session = {:s}', { s: session.id }),
-        sort: 'position',
-        fields: 'id,position',
-      });
+      // Which song plays now, read once it is this add's turn: the host may
+      // have moved on while it waited, and a Play next placed after the old
+      // song lands before the playing one, which the host's player has
+      // already passed.
+      const [now, rows] = await Promise.all([
+        pb.collection('sessions').getOne(session.id, { fields: 'now_index' }),
+        pb.collection('session_tracks').getFullList({
+          filter: pb.filter('session = {:s}', { s: session.id }),
+          sort: 'position',
+          fields: 'id,position',
+        }),
+      ]);
       const plan = planInsert(
         rows.map((r) => Number(r.position) || 0),
-        Number(session.now_index ?? 0),
+        Number(now.now_index ?? 0),
         where,
       );
       // Make room first (from the end, so no two rows ever share a position

@@ -305,6 +305,25 @@ describe('adding: Play next or Add to end', () => {
     expect(positions.sort((x, y) => x - y)).toEqual([1, 2, 3, 4, 5]);
   });
 
+  it('play next waiting behind another add goes after the song playing when its turn comes', async () => {
+    // It read which song was playing before it waited. When the host moved
+    // on meanwhile, the song went in before the playing one, where the
+    // host's player had already passed it: it never played.
+    db.sessions[0].now_index = 0;
+    const { withLock } = await import('@/lib/keyedLock');
+    let release: () => void = () => {};
+    const held = withLock('session-tracks:s1', () => new Promise<void>((r) => (release = r)));
+    const POST = await addRoute();
+    const adding = POST(req({ track: newTrack, position: 'next' }), ctx);
+    await new Promise((r) => setTimeout(r, 0));
+    db.sessions[0].now_index = 1; // the host moved on to t2
+    release();
+    await held;
+    const res = await adding;
+    expect(await res.json()).toEqual({ ok: true, position: 'next', ahead: 0 });
+    expect(order()).toEqual(['t1@1', 't2@2', 't4@3', 't3@4']);
+  });
+
   it('a guest who joined can play next too (everyone is a DJ)', async () => {
     db.session_members.push({ id: 'm2', session: 's1', user: 'u2' });
     caller.id = 'u2';
