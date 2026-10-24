@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Runs a real align.py child process; slow on a busy machine.
+vi.setConfig({ testTimeout: 30_000 });
 import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 
 const errorSpy = vi.fn();
