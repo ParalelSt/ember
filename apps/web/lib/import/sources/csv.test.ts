@@ -102,6 +102,12 @@ describe('parseCsv, the other exporters', () => {
     expect(r.items.every((i) => i.likedAt === null)).toBe(true);
   });
 
+  it('reads hour-long clock lengths and the zero-padded h:mm:ss form', () => {
+    const r = parseCsv('Title,Artist,Length\nLong Mix,A,1:02:33\nPadded,B,00:03:45\n');
+    if (isParseError(r)) throw new Error(r.error);
+    expect(r.items.map((i) => i.durationMs)).toEqual([3_753_000, 225_000]);
+  });
+
   it('reads TuneMyMusic and drops the row with no song name', () => {
     const r = parse('tunemymusic.sample.csv');
     expect(r.items.map((i) => i.title)).toEqual(['Paper Lanterns', 'Nine Streets']);
