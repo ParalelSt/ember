@@ -187,6 +187,43 @@ describe('what a member may change', () => {
     expect(order(shared)).toEqual(['youtube:aaa', 'youtube:bbb', 'youtube:ccc']);
   });
 
+  it('two people moving songs at once both land, in one clean order', async () => {
+    // Each move reads the order and renumbers every row from what it read:
+    // two at once wrote over each other's numbers, leaving two songs on one
+    // place and an order neither of them made.
+    world.addMember(shared, outsider);
+    // Hold each read of the songs until the other one has read too (or a
+    // moment has passed), as two requests on the real server can.
+    const server = world.server();
+    let reads = 0;
+    let both: () => void = () => {};
+    const met = new Promise<void>((r) => (both = r));
+    serverOverride = {
+      ...server,
+      collection: (name: string) => {
+        const col = server.collection(name);
+        if (name !== 'playlist_tracks') return col;
+        return {
+          ...col,
+          getFullList: async (opts: Parameters<typeof col.getFullList>[0]) => {
+            const rows = await col.getFullList(opts);
+            if (++reads === 2) both();
+            await Promise.race([met, new Promise((r) => setTimeout(r, 30))]);
+            return rows;
+          },
+        };
+      },
+    };
+    const moves = await Promise.all([
+      call(moveRoute.POST, member, { id: shared }, { trackId: 'youtube:ccc', to: 0 }),
+      call(moveRoute.POST, outsider, { id: shared }, { trackId: 'youtube:aaa', to: 2 }),
+    ]);
+    expect(moves.map((r) => r.status)).toEqual([200, 200]);
+    // Either way round, the two moves make this order.
+    expect(order(shared)).toEqual(['youtube:ccc', 'youtube:bbb', 'youtube:aaa']);
+    expect(world.db.playlist_tracks.filter((x) => x.playlist === shared).map((x) => x.position).sort()).toEqual([1, 2, 3]);
+  });
+
   it('a move needs a song in the playlist and a place', async () => {
     expect((await call(moveRoute.POST, member, { id: shared }, { trackId: 'youtube:zzz', to: 0 })).status).toBe(404);
     expect((await call(moveRoute.POST, member, { id: shared }, { trackId: 'youtube:aaa' })).status).toBe(400);
