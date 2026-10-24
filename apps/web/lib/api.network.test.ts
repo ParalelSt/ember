@@ -56,7 +56,7 @@ describe('req(): an answer that is not from Ember', () => {
     const settled = expect(p).rejects.toThrow(NO_ANSWER_MESSAGE);
     await vi.advanceTimersByTimeAsync(1300);
     await settled;
-    const err = await p.catch((e: unknown) => e as { status?: number });
+    const err = (await p.then(() => null, (e: unknown) => e)) as { status?: number };
 
     expect(err.status).toBeUndefined();
     expect(connectionOk).not.toHaveBeenCalled();
