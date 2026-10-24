@@ -84,6 +84,11 @@ class LaunchGateWiringTest {
         assertTrue(gate.contains("""s.optBoolean("gatePending")"""))
     }
 
+    @Test fun `the gate leaves out a version the updater refused for good`() {
+        val gate = File("src/main/java/app/ember/music/LaunchGateActivity.kt").readText()
+        assertTrue(gate.contains("GateRules.refusedBefore(offer, AppUpdater.rejectedVersion())"))
+    }
+
     @Test fun `the install permission check still runs as an updater app`() {
         @Suppress("DEPRECATION")
         val asked = app.packageManager.getPackageInfo(app.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty().toSet()

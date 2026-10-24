@@ -75,6 +75,16 @@ class GateRulesTest {
         assertNull(plain.size)
     }
 
+    @Test fun `a version this phone refused for good is not offered at every launch`() {
+        // Signed with another key than the installed app: downloading it
+        // again only ends in "Couldn't update", every time the icon is tapped.
+        val o = Offer("0.4.25", false, null, 8_600_000)
+        assertTrue(GateRules.refusedBefore(o, "0.4.25"))
+        assertFalse(GateRules.refusedBefore(o, "0.4.24"))
+        assertFalse(GateRules.refusedBefore(o, null))
+        assertFalse(GateRules.refusedBefore(null, "0.4.25"))
+    }
+
     @Test fun `asks the shared endpoint as an android apk at launch`() {
         assertEquals("/api/app/update?platform=android&version=0.4.22&install=apk&launch=1", GateRules.checkPath("0.4.22"))
     }

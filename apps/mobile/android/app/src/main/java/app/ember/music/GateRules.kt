@@ -108,6 +108,14 @@ object GateRules {
         return Offer(version, u.optBoolean("mandatory", false), reason, size)
     }
 
+    /** The offer is a version the updater already refused for good on this
+     *  phone (UpdateRules.isPermanent: another signing key, another package,
+     *  not newer). Downloading it again cannot end differently, so the gate
+     *  opens the app; Settings' "Check for updates" still tries it and says
+     *  why. */
+    fun refusedBefore(offer: Offer?, rejectedVersion: String?): Boolean =
+        offer != null && rejectedVersion != null && offer.version == rejectedVersion
+
     fun checkPath(version: String?): String =
         "/api/app/update?platform=android&version=${version.orEmpty()}&install=apk&launch=1"
 

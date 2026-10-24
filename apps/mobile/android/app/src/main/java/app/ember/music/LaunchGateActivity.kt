@@ -139,7 +139,11 @@ class LaunchGateActivity : ComponentActivity() {
             if (!res.isSuccessful) null to "none"
             else {
                 val offer = GateRules.parseAnswer(runCatching { JSONObject(res.body?.string().orEmpty()) }.getOrNull(), current)
-                offer to (if (offer != null) "update" else "none")
+                when {
+                    offer == null -> null to "none"
+                    GateRules.refusedBefore(offer, AppUpdater.rejectedVersion()) -> null to "refused"
+                    else -> offer to "update"
+                }
             }
         }
     } catch (e: java.io.InterruptedIOException) {

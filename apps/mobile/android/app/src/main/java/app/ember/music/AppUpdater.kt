@@ -169,6 +169,9 @@ object AppUpdater {
     /** The version of the downloaded, verified APK that waits, if any. */
     fun readyVersion(): String? = ready?.takeIf { it.file.exists() }?.version
 
+    /** A version refused for good (UpdateRules.isPermanent), if any. */
+    fun rejectedVersion(): String? = prefs().getString(KEY_REJECTED, null)
+
     /** The launch gate's countdown ended, or the person pressed "Update
      *  now" (LaunchGateActivity): install the waiting APK now, as a tap on
      *  Install would. The person is looking at the gate and chose it, so the
