@@ -14,6 +14,7 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { parseThemeDoc, sameDoc } from '@/lib/theme/model';
 import { logger } from '@/lib/logger/client';
 import { flushNativeCookies } from '@/lib/nativeCookies';
+import { GATEWAY_STATUSES, NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
 /** Minimal user shape exposed to the app, matches the old Supabase one
  *  closely enough that consumers don't care which backend produced it. */
@@ -318,7 +319,18 @@ function mapRecord(
  *  per-field info lives in `.data.<field>.message`. */
 function extractPbError(e: unknown): string {
   if (!e || typeof e !== 'object') return 'Unexpected error';
-  const err = e as { message?: string; data?: Record<string, { message?: string }> };
+  const err = e as {
+    message?: string;
+    status?: unknown;
+    isAbort?: boolean;
+    response?: { message?: unknown };
+    data?: Record<string, { message?: string }>;
+  };
+  // No connection (status 0), or a gateway answering while the server
+  // restarts, with nothing from PocketBase itself: the SDK calls both
+  // "Something went wrong.", the email step says it plainly.
+  const noAnswer = err.status === 0 || (typeof err.status === 'number' && GATEWAY_STATUSES.includes(err.status));
+  if (noAnswer && !err.isAbort && !err.response?.message) return NO_ANSWER_MESSAGE;
   const fieldMsgs = Object.entries(err.data ?? {})
     .map(([field, info]) => info?.message ? `${field}: ${info.message}` : null)
     .filter(Boolean)

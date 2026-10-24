@@ -112,3 +112,50 @@ describe('AuthProvider sign-up', () => {
     expect(authWithPassword).not.toHaveBeenCalled();
   });
 });
+
+/** The password step goes through the PocketBase SDK, which words "no
+ *  connection" and "the Funnel's 502 while the server restarts" as
+ *  "Something went wrong.": the page showed that, where the email step
+ *  (and every api call) says Ember cannot be reached. */
+describe('AuthProvider sign-in when nothing answers', () => {
+  type SignIn = ReturnType<typeof useAuth>['signIn'];
+  function mountSignIn(): SignIn {
+    const got: { signIn: SignIn | null } = { signIn: null };
+    function Grab() {
+      got.signIn = useAuth().signIn;
+      return null;
+    }
+    render(<AuthProvider initialUser={null}><Grab /></AuthProvider>);
+    return (...args) => got.signIn!(...args);
+  }
+  const sdkError = (status: number, response: Record<string, unknown> = {}) =>
+    Object.assign(new Error((response.message as string) || 'Something went wrong.'), { status, response, data: response.data ?? {} });
+
+  it.each([
+    ['no connection', sdkError(0)],
+    ['a gateway answering for the server', sdkError(502)],
+  ])('%s says Ember cannot be reached', async (_label, err) => {
+    const { NO_ANSWER_MESSAGE } = await import('@/lib/connectionBlip');
+    const signIn = mountSignIn();
+    authWithPassword.mockRejectedValueOnce(err);
+    let result: Awaited<ReturnType<SignIn>> | null = null;
+    await act(async () => {
+      result = await signIn('a@b.test', 'longenough1');
+    });
+    expect(result!.error?.message).toBe(NO_ANSWER_MESSAGE);
+  });
+
+  it("keeps the server's own words: a wrong password, the sign-in limit", async () => {
+    const signIn = mountSignIn();
+    authWithPassword
+      .mockRejectedValueOnce(sdkError(400, { message: 'Failed to authenticate.' }))
+      .mockRejectedValueOnce(sdkError(429, { message: 'Too many attempts. Try again in about 15 min.' }));
+    const results: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        results.push((await signIn('a@b.test', 'longenough1')).error?.message ?? '');
+      });
+    }
+    expect(results).toEqual(['Failed to authenticate.', 'Too many attempts. Try again in about 15 min.']);
+  });
+});
