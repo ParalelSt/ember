@@ -28,7 +28,7 @@ export interface NamedSong {
 /** "June Harbor, Mira Vale & Coastline feat. Nora Quill" to its names. */
 export function artistParts(artist: string): string[] {
   return artist
-    .split(/\s*[,;& ]\s*|\s+(?:feat\.?|ft\.?|featuring|with|x)\s+/i)
+    .split(/\s*[,;&]\s*|\s+(?:feat\.?|ft\.?|featuring|with|x)\s+/i)
     .map((a) => a.trim())
     .filter(Boolean);
 }
