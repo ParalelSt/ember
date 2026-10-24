@@ -429,6 +429,24 @@ check "not in tmux" file_lacks "$FAKE_LOG" "tmux new"
 check "Ember serves the new version" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
 stop_ember
 
+# The unit failed for a reason of its own (its PATH names a node an nvm
+# upgrade removed, a wrong WorkingDirectory): starting it again fails again.
+# update.sh used to bring Ember up in tmux then; it must not leave the host
+# down. The unit is stopped, so its own retries do not fight the tmux copy.
+new_host
+PATH="$TMP/bin:$BASE_PATH"
+FAKE_UNIT_EXEC="false"
+touch "$FAKE_SYSTEMD_FAILED"
+run_update
+check "a failed unit that cannot start: update.sh finishes" update_returned 60
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "it tries systemd first" file_has "$FAKE_LOG" "systemctl --user start ember"
+check "then stops the unit" file_has "$FAKE_LOG" "systemctl --user stop ember"
+check "and starts Ember in tmux" file_has "$FAKE_LOG" "tmux new"
+check "Ember serves the new version" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
+stop_ember
+
 # ── 5. a failed update puts the previous version back (bughunt O1) ──────
 echo "── failed updates roll back"
 file_is() { [ "$(cat "$1" 2>/dev/null)" = "$2" ]; }

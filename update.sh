@@ -14,7 +14,8 @@
 # stop the moment the SSH window closes (bughunt O2). Without tmux installed
 # it stays in this window, as before, and says how to get tmux. On a host
 # where systemd runs Ember (deploy/ember.service is active, or failed: systemd gave up on it), it is restarted
-# through systemd instead, from anywhere (bughunt O6).
+# through systemd instead, from anywhere (bughunt O6); a failed unit that
+# still cannot start falls back to tmux.
 #
 # WHY THIS EXISTS, and not just `git pull && ./start-static.sh`:
 # start-static.sh deliberately SKIPS starting PocketBase when it's already
@@ -174,11 +175,16 @@ TMUX_SESSION="ember"
 SYSTEMD_UNIT="ember.service"
 # A unit systemd gave up on (failed) is still the one the host boots with:
 # it is started again through systemd (launch_ember clears the failed state
-# first), not in tmux beside it.
+# first), not in tmux beside it. If it fails for a reason of its own (its
+# PATH names a node an nvm upgrade removed), launch_ember falls back to tmux.
+UNIT_FAILED=0
 if [ "$HERE" != 1 ] && command -v systemctl >/dev/null 2>&1 \
-   && { systemctl --user is-active --quiet "$SYSTEMD_UNIT" 2>/dev/null \
-        || systemctl --user is-failed --quiet "$SYSTEMD_UNIT" 2>/dev/null; }; then
+   && systemctl --user is-active --quiet "$SYSTEMD_UNIT" 2>/dev/null; then
   RELAUNCH="systemd"
+elif [ "$HERE" != 1 ] && command -v systemctl >/dev/null 2>&1 \
+   && systemctl --user is-failed --quiet "$SYSTEMD_UNIT" 2>/dev/null; then
+  RELAUNCH="systemd"
+  UNIT_FAILED=1
 elif [ -n "${TMUX:-}" ] || [ -n "${STY:-}" ] || [ "$HERE" = 1 ]; then
   RELAUNCH="here"
 else
@@ -227,7 +233,8 @@ launch_ember() {
     # rollback) within the unit's interval would have it refused, with Ember
     # already stopped. This start is the owner's own, so clear the count.
     systemctl --user reset-failed "$SYSTEMD_UNIT" 2>/dev/null || true
-    systemctl --user start "$SYSTEMD_UNIT"
+    # A unit that had failed may well fail again: that is answered below.
+    systemctl --user start "$SYSTEMD_UNIT" || [ "$UNIT_FAILED" = 1 ]
     where="through systemd"
     look="systemctl --user status ember      (its output: journalctl --user -u ember -f)"
   else
@@ -259,6 +266,21 @@ launch_ember() {
     fi
     sleep 0.2
   done
+  if [ "$RELAUNCH" = systemd ] && [ "$UNIT_FAILED" = 1 ]; then
+    # The unit had failed before and still cannot start Ember: it is broken
+    # on its own. Ember comes up outside it, as before, and the unit is
+    # stopped so its retries do not fight that copy.
+    echo "⚠ systemd could not start Ember (see why: $look)."
+    echo "  Starting it outside systemd instead."
+    systemctl --user stop "$SYSTEMD_UNIT" 2>/dev/null || true
+    UNIT_FAILED=0
+    if [ -z "${TMUX:-}" ] && [ -z "${STY:-}" ] && command -v tmux >/dev/null 2>&1; then
+      RELAUNCH="tmux"
+    else
+      RELAUNCH="here"
+    fi
+    launch_ember
+  fi
   echo "✗ Ember did not start. See why: $look"
   exit 1
 }
