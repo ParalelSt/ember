@@ -2,27 +2,30 @@
 /** Make an Ember release from the branch you are on.
  *
  *    npm run release                  prepare, from .release-notes.md
- *    npm run release -- prepare notes.md [--shells | --no-shells]
+ *    npm run release -- prepare notes.md [--os=android,windows | --shells | --no-shells]
  *    npm run release -- preview       show what would go out
- *    npm run release -- push          push main (+ tag), asks first
+ *    npm run release -- push          push main (+ app tags), asks first
  *    npm run release -- push --confirmed   no question: only after the
  *                                          owner said yes to the preview
  *
- *  New shells (desktop, Android, iOS) are included by themselves when
- *  apps/desktop or apps/mobile changed since the last vX tag; --shells or
- *  --no-shells decides it by hand. Without a notes file, a draft is written
- *  to .release-notes.md (npm run notes-draft) to edit first.
+ *  Every app (android, ios, windows, macos, linux) has its own version and
+ *  its own tag (android-v0.4.26). An app is included by itself when its code
+ *  changed since its last tag (<os>-v*, or the last shared vX tag before
+ *  those existed); see detectOses for which change counts for which app.
+ *  --os=android,windows picks them by hand, --shells takes all five and
+ *  --no-shells none. Without a notes file, a draft is written to
+ *  .release-notes.md (npm run notes-draft) to edit first.
  *
- *  prepare: checks the branch is clean and contains origin/main, bumps every
- *  version, writes the What's new entry and UPDATE_NOTES.md from the notes
- *  file (format in releaseLib.mjs parseNotes), runs every test suite
- *  (scripts/release/check-all.sh) and commits "chore(release): ...".
- *  Nothing leaves the Mac.
+ *  prepare: checks the branch is clean and contains origin/main, bumps the
+ *  web version and each included app's, writes the What's new entry and
+ *  UPDATE_NOTES.md from the notes file (format in releaseLib.mjs
+ *  parseNotes), runs every test suite (scripts/release/check-all.sh) and
+ *  commits "chore(release): ...". Nothing leaves the Mac.
  *
  *  push: shows the commits, the What's new text and the host notes, and only
- *  after you type "push" pushes HEAD to main, plus the vX tag when the
- *  release has new shells (that tag makes GitHub build the apps). Then it
- *  can follow the build. */
+ *  after you type "push" pushes HEAD to main, plus one tag per app the
+ *  release commit bumped (each tag makes GitHub build that app). Then it can
+ *  follow the build. */
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -31,19 +34,25 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import {
   FILES,
+  OSES,
+  OS_FILE,
   bumpLock,
-  bumpShells,
+  bumpOs,
   bumpWebPackage,
   changelogIds,
   commitSubject,
+  detectOses,
   insertChangelog,
   insertUpdateNotes,
   nextPatch,
   notesProblems,
   parseNotes,
-  readShellVersion,
+  parseOsList,
+  readOsVersion,
   readVersionCode,
   readWebVersion,
+  releaseTags,
+  releaseWebVersion,
 } from './releaseLib.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -73,17 +82,27 @@ function preflight() {
   }
 }
 
-/** Did the desktop or phone apps change since the last app release? */
-function shellsChanged() {
-  const tag = (() => {
+/** The apps whose code changed since each one's own last release: its
+ *  <os>-v* tag, or the last shared vX tag from before those. */
+function changedOses() {
+  const lastTag = (pattern) => {
     try {
-      return git('describe', '--tags', '--abbrev=0', '--match', 'v*', 'origin/main');
+      return git('describe', '--tags', '--abbrev=0', '--match', pattern, 'origin/main');
     } catch {
       return null;
     }
-  })();
-  if (!tag) return true;
-  return git('diff', '--name-only', tag, 'HEAD', '--', 'apps/desktop', 'apps/mobile') !== '';
+  };
+  return OSES.filter((os) => {
+    const tag = lastTag(`${os}-v*`) ?? lastTag('v[0-9]*');
+    if (!tag) return true;
+    const changed = git('diff', '--name-only', tag, 'HEAD', '--', 'apps/desktop', 'apps/mobile').split('\n').filter(Boolean);
+    return detectOses(changed).includes(os);
+  });
+}
+
+/** Every app's version file, by FILES key. */
+function readOsFiles() {
+  return Object.fromEntries(OSES.map((os) => [OS_FILE[os], read(FILES[OS_FILE[os]])]));
 }
 
 function prepare(args) {
@@ -96,7 +115,14 @@ function prepare(args) {
     }
     notesPath = defaultNotes;
   }
-  const withShells = args.includes('--shells') || (!args.includes('--no-shells') && shellsChanged());
+  const osArg = args.find((a) => a.startsWith('--os='));
+  const oses = osArg
+    ? parseOsList(osArg.slice('--os='.length))
+    : args.includes('--shells')
+      ? OSES
+      : args.includes('--no-shells')
+        ? []
+        : changedOses();
   preflight();
 
   const notes = parseNotes(fs.readFileSync(path.resolve(process.cwd(), notesPath), 'utf8'));
@@ -108,24 +134,26 @@ function prepare(args) {
   write(FILES.lock, bumpLock(read(FILES.lock), web));
   write(FILES.changelog, insertChangelog(read(FILES.changelog), notes, web, today()));
 
-  let shells = null;
-  let versionCode = null;
-  if (withShells) {
-    shells = nextPatch(readShellVersion(read(FILES.tauri)));
-    versionCode = readVersionCode(read(FILES.gradle)) + 1;
-    const bumped = bumpShells(
-      { tauri: read(FILES.tauri), cargoToml: read(FILES.cargoToml), cargoLock: read(FILES.cargoLock), gradle: read(FILES.gradle), pbxproj: read(FILES.pbxproj) },
-      shells,
-      versionCode,
-    );
-    for (const [key, text] of Object.entries(bumped)) write(FILES[key], text);
+  const files = readOsFiles();
+  const released = [];
+  const unchanged = [];
+  for (const os of OSES) {
+    const current = readOsVersion(os, files);
+    if (!oses.includes(os)) {
+      unchanged.push({ os, version: current });
+      continue;
+    }
+    const version = nextPatch(current);
+    const versionCode = os === 'android' ? readVersionCode(files[OS_FILE.android]) + 1 : undefined;
+    for (const [key, text] of Object.entries(bumpOs(os, files, version, versionCode))) write(FILES[key], text);
+    released.push({ os, version, versionCode });
   }
-  write(FILES.updateNotes, insertUpdateNotes(read(FILES.updateNotes), { version: web, title: notes.title, shells, versionCode, host: notes.host }));
-  say(`Versions: web ${web}${shells ? `, shells ${shells} (Android versionCode ${versionCode})` : ''}`);
+  write(FILES.updateNotes, insertUpdateNotes(read(FILES.updateNotes), { version: web, title: notes.title, released, unchanged, host: notes.host }));
+  say(`Versions: web ${web}${released.map((a) => `, ${a.os} ${a.version}${a.versionCode ? ` (versionCode ${a.versionCode})` : ''}`).join('')}`);
 
   if (!args.includes('--skip-tests')) {
     say('Running every test suite (a few minutes)...');
-    const checks = spawnSync('bash', [path.join(ROOT, 'scripts/release/check-all.sh'), ...(withShells ? ['--shells'] : [])], {
+    const checks = spawnSync('bash', [path.join(ROOT, 'scripts/release/check-all.sh'), ...(released.length ? ['--shells'] : [])], {
       cwd: ROOT,
       stdio: 'inherit',
     });
@@ -135,19 +163,31 @@ function prepare(args) {
   }
 
   git('add', '-A', ...Object.values(FILES).filter((f) => fs.existsSync(path.join(ROOT, f))));
-  git('commit', '-q', '-m', commitSubject(web, shells, notes.title));
+  git('commit', '-q', '-m', commitSubject(web, released, notes.title));
   say(`\n✓ Committed ${git('log', '--oneline', '-1')}`);
   preview();
   if (notesPath === defaultNotes) fs.rmSync(defaultNotes);
   say('\nNothing is pushed yet. When it looks right: npm run release -- push');
 }
 
-/** What the release commit on HEAD carries. */
+/** What the release commit on HEAD carries: its web version and one tag per
+ *  app whose version it moves past origin/main's. */
 function releaseOnHead() {
   const subject = git('log', '-1', '--format=%s');
-  const m = /^chore\(release\): web (\S+?)(?: and shells (\S+?))?, /.exec(subject);
-  if (!m) fail(`HEAD is not a release commit (${subject}). Run prepare first.`);
-  return { subject, web: m[1], shells: m[2] ?? null };
+  const web = releaseWebVersion(subject);
+  if (!web) fail(`HEAD is not a release commit (${subject}). Run prepare first.`);
+  const filesAt = (rev) =>
+    Object.fromEntries(
+      OSES.map((os) => {
+        try {
+          const text = execFileSync('git', ['show', `${rev}:${FILES[OS_FILE[os]]}`], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+          return [OS_FILE[os], text];
+        } catch {
+          return [OS_FILE[os], null];
+        }
+      }),
+    );
+  return { subject, web, tags: releaseTags(filesAt('origin/main'), filesAt('HEAD')) };
 }
 
 function preview() {
@@ -161,7 +201,7 @@ function preview() {
   say(changelog.slice(start, changelog.indexOf('\n  },', start) + 5).split('\n').slice(1).join('\n'));
   say('\n──── UPDATE_NOTES.md (for the host) ────');
   say(git('show', 'HEAD:UPDATE_NOTES.md').split('\n# ')[0]);
-  if (rel.shells) say(`\nTag v${rel.shells} will be pushed too: GitHub then builds the desktop and Android apps.`);
+  if (rel.tags.length) say(`\nTags pushed too, each builds its app on GitHub: ${rel.tags.join(' ')}`);
 }
 
 async function push(confirmed) {
@@ -184,10 +224,14 @@ async function push(confirmed) {
   } catch {
     say('(tracker not updated)');
   }
-  if (rel.shells) {
-    git('tag', `v${rel.shells}`);
-    git('push', 'origin', `v${rel.shells}`);
-    say(`✓ tag v${rel.shells} pushed, the app builds are starting on GitHub`);
+  if (rel.tags.length) {
+    // One push per tag: GitHub starts no workflow at all for the tags of a
+    // push that carries more than three.
+    for (const tag of rel.tags) {
+      git('tag', tag);
+      git('push', 'origin', tag);
+    }
+    say(`✓ tags ${rel.tags.join(' ')} pushed, the app builds are starting on GitHub`);
     if (confirmed) say('Follow the app build with: gh run watch');
     else if (spawnSync('gh', ['--version'], { stdio: 'ignore' }).status === 0) {
       say('Following the build (Ctrl+C stops watching, not the build)...');
@@ -197,7 +241,7 @@ async function push(confirmed) {
       });
     }
   }
-  say(`\nDone: web ${rel.web}${rel.shells ? ` and apps ${rel.shells}` : ''}. The host updates with ./update.sh.`);
+  say(`\nDone: web ${rel.web}${rel.tags.length ? ` and ${rel.tags.join(', ')}` : ''}. The host updates with ./update.sh.`);
 }
 
 const [command, ...rest] = process.argv.slice(2);
@@ -208,7 +252,7 @@ else if (command === 'push') await push(rest.includes('--confirmed'));
 else {
   say('Usage:');
   say('  npm run release                    (uses .release-notes.md)');
-  say('  npm run release -- prepare <notes.md> [--shells | --no-shells] [--skip-tests]');
+  say('  npm run release -- prepare <notes.md> [--os=android,windows | --shells | --no-shells] [--skip-tests]');
   say('  npm run release -- preview');
   say('  npm run release -- push [--confirmed]');
   process.exit(1);

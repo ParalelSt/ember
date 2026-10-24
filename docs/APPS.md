@@ -9,11 +9,16 @@ the "Voice search" sections in `apps/desktop/README.md` and `apps/mobile/README.
 
 ## Get builds from CI (easiest)
 
-Before tagging, set `tauri.conf.json`, `Cargo.toml` and `build.gradle`
-(`versionName`, `versionCode + 1`) to the app version in
-`apps/web/package.json` (docs/changelog-system.md, section 5).
+Each app has its own version and tag (`npm run release` sets both, see
+docs/automation.md): Android in `build.gradle` (`versionName`, and
+`versionCode + 1`), iPhone in the Xcode project (`MARKETING_VERSION`),
+Windows, macOS and Linux in `apps/desktop/src-tauri/tauri.<os>.conf.json`.
 
-Push a tag like `v0.3.0` (or run the **native-build** workflow manually):
+Push a tag like `android-v0.4.25`, `windows-v0.4.25`, `macos-v0.4.25`,
+`linux-v0.4.25` or `ios-v0.4.25`, one push per tag (or run the
+**native-build** workflow manually). The build stops at once when the tag
+does not match that app's version file. An old-style `v0.4.25` still builds
+every app:
 - **Desktop**: .dmg (macOS), .msi/.exe (Windows), .AppImage/.deb (Linux),
   attached to the draft GitHub Release on tags, or as workflow artifacts.
 - **Android**: `ember-android-apk` workflow artifact (attach it to the release
@@ -352,12 +357,14 @@ confirm, declined, failed, installed, car), so they show on the admin's
 
 **For each release**
 
-- The tag is `vX.Y.Z` and equals `versionName` in `build.gradle`; the phone
-  compares by that name. **`versionCode` must go up**, or the phone refuses
+- The tag is `android-vX.Y.Z` and equals `versionName` in `build.gradle`
+  (the build checks); the phone compares by that name. **`versionCode` must go up**, or the phone refuses
   the APK as not newer. (The release notes may state `versionCode: N`; the
   feed passes it on, but nothing needs it.)
 - The release must be published (not draft or prerelease) and carry
-  `Ember-vX.Y.Z-android.apk` (the release job names it so).
+  `Ember-vX.Y.Z-android.apk` (the release job names it so). A desktop
+  release (`windows-v...`) is never offered to a phone, and the other way
+  round.
 - **Keep the release keystore.** Every APK must be signed with the same key
   (alias `ember`), or every installed phone refuses the update
   (`update.rejected SIGNATURE_MISMATCH` in the log) and people have to

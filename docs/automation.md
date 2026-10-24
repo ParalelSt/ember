@@ -24,11 +24,45 @@ One command each. Run them from any Ember folder. Don't remember the names?
    wording (one line each for `id`, `title`, `summary`, one `- ` line per
    bullet).
 2. `npm run release` bumps the versions, adds What's new and the host notes,
-   runs every test suite and commits. New phone and desktop apps are
-   included by themselves when their code changed. Nothing is sent anywhere.
+   runs every test suite and commits. Each app is included by itself when
+   its own code changed since its last release. Nothing is sent anywhere.
 3. `npm run release -- push` shows everything that goes out and pushes to
-   main only after you type `push`. App releases also get their tag, so
-   GitHub builds the apps, and you can watch it build.
+   main only after you type `push`. Each new app gets its own tag, so
+   GitHub builds that app, and you can watch it build.
+
+### App versions and tags
+
+Every app has its own version, so a fix for one does not make the others
+download an update:
+
+| App | Version lives in | Tag |
+|---|---|---|
+| Android | `apps/mobile/android/app/build.gradle` (`versionName`, `versionCode`) | `android-v0.4.25` |
+| iPhone | `apps/mobile/ios/App/App.xcodeproj/project.pbxproj` (`MARKETING_VERSION`) | `ios-v0.4.25` |
+| Windows | `apps/desktop/src-tauri/tauri.windows.conf.json` | `windows-v0.4.25` |
+| Mac | `apps/desktop/src-tauri/tauri.macos.conf.json` | `macos-v0.4.25` |
+| Linux | `apps/desktop/src-tauri/tauri.linux.conf.json` | `linux-v0.4.25` |
+
+- A change under `apps/mobile/android` releases Android, `apps/mobile/ios`
+  iPhone, the rest of `apps/mobile` both. A change under `apps/desktop`
+  releases all three desktop apps, unless every changed file is built by
+  one OS only (`speech/windows.rs`, `speech/macos.rs`, or that OS's
+  version file): then just that one.
+- "Changed" means since that app's last tag (`<app>-v*`, or the last old
+  `vX` tag before there were any).
+- `--os=android,windows` picks the apps by hand, `--shells` takes all five,
+  `--no-shells` none.
+- `versionCode` only goes up on an Android release.
+- Each tag is pushed on its own (GitHub starts nothing for a push of more
+  than three tags). The build checks that the tag matches the app's version
+  file and stops at once if not. Its GitHub release is called
+  "Ember Windows 0.4.25" and its files keep the usual names
+  (`Ember-v0.4.25-windows-x64-setup.exe`).
+- The server offers each app the newest release for it: its own tag, or an
+  old `v0.4.x` one (those were for every app). A Windows release is never
+  offered to a Mac or a phone.
+- The old `v0.4.x` tags still build every app, but the tools never make
+  them again.
 
 `npm run release -- preview` shows the release at any time.
 `npm run release:check` runs every test suite on its own (add `-- --shells`
