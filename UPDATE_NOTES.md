@@ -1,3 +1,12 @@
+# 0.7.32: Steadier everywhere (android, windows, macos, linux 0.4.26)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh as usual and restart PocketBase with it (new
+hooks: invite emails are stored lower-case, new rate limits). New apps:
+Android 0.4.26 (versionCode 31), Windows 0.4.26, macOS 0.4.26, Linux 0.4.26.
+Unchanged: iOS 0.4.24. Tags: `android-v0.4.26`, `windows-v0.4.26`,
+`macos-v0.4.26`, `linux-v0.4.26`.
+
 # 0.7.31: Add to queue, safer and smoother (android, windows, macos, linux 0.4.25)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
