@@ -1,4 +1,6 @@
 import type { ComponentProps } from 'react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { Sidebar } from './Sidebar';
@@ -40,5 +42,23 @@ describe('Sidebar', () => {
     const img = container.querySelector('img');
     expect(img).toHaveAttribute('src', '/pb/api/files/users/u1/avatar.png');
     expect(screen.getByText('Robin')).toBeInTheDocument();
+  });
+
+  // A car head unit is 480 to 600px tall: the sidebar scrolls as a whole
+  // there instead of cutting off the profile row, and the playlist list
+  // keeps a few rows instead of shrinking to nothing.
+  it('scrolls as a whole when the window is short, and keeps room for playlists', () => {
+    const { container } = render(<Sidebar />);
+    const aside = container.querySelector('aside')!;
+    expect(aside).toHaveClass('overflow-y-auto');
+    expect(aside).not.toHaveClass('overflow-hidden');
+    expect(container.querySelector('[data-slot="scroll-area"]')).toHaveClass('flex-1', 'min-h-32');
+  });
+
+  it('gives its links touch-sized hit boxes on a touch screen', () => {
+    const { container } = render(<Sidebar />);
+    expect(container.querySelector('aside')).toHaveClass('touch-hit');
+    const css = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8');
+    expect(css).toMatch(/@media \(pointer: coarse\) \{[^@]*\.touch-hit :is\(button, a\[href\]\)[^@]*inset: min\(0px, calc\(\(100% - 44px\) \/ 2\)\)/);
   });
 });

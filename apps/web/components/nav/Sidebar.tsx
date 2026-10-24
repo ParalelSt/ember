@@ -44,7 +44,11 @@ export function Sidebar() {
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
 
   return (
-    <aside className="hidden md:flex flex-col w-(--sidebar-w) shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border h-full overflow-hidden">
+    // Scrolls as a whole when the window is too short for it (a car head
+    // unit, 480 to 600px tall): the playlists keep a few rows and the
+    // profile row stays reachable instead of being cut off. `touch-hit`:
+    // 44px hit boxes on a touch screen (globals.css).
+    <aside className="touch-hit hidden md:flex flex-col w-(--sidebar-w) shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border h-full overflow-x-hidden overflow-y-auto">
       <Link
         href="/"
         className="flex items-center gap-2 px-4 pt-5 pb-4 hover:opacity-80 transition-opacity"
@@ -82,7 +86,7 @@ export function Sidebar() {
         )}
       </div>
 
-      <ScrollArea className="flex-1 mt-2">
+      <ScrollArea className="flex-1 min-h-32 mt-2">
         <div className="px-2 pb-3 flex flex-col gap-0.5" {...nav.holdProps}>
           <PlaylistNavList
             items={nav.items}

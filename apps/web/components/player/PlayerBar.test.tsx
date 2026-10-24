@@ -118,6 +118,12 @@ beforeEach(() => {
 const volumeSlider = () => screen.getAllByLabelText('progress').at(-1) as HTMLElement;
 
 describe('PlayerBar', () => {
+  // A car head unit's touch screen gets the desktop bar: its 32px buttons
+  // get 44px hit boxes there (globals.css, .touch-hit).
+  it('the desktop bar gives its controls touch-sized hit boxes', () => {
+    expect(desktopBar()).toHaveClass('touch-hit');
+  });
+
   it('renders exactly one bar, the one the window calls for', () => {
     desktop.value = false;
     const { unmount } = render(<PlayerBar />);

@@ -175,7 +175,7 @@ export function PlayerBar() {
   // the inset itself (a phone-sized window never reaches this branch, the
   // phone bar above leaves the inset to MobileNav instead).
   return (
-    <footer data-testid="player-bar" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom')}>
+    <footer data-testid="player-bar" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom touch-hit')}>
     {/* The title's column has a floor at every width (13.5rem, 16.5rem,
         20rem), so the song name always keeps at least ~75px, 120px and
         140px; from about 1600 wide the old 1fr / 2fr / 1fr split is back

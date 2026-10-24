@@ -272,10 +272,13 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
    landscape + short viewport = a phone on its side (tablets/desktops are
    taller than 500px even in landscape). A car screen is landscape and short
    too but is not a phone: the Android app marks its user agent and an early
-   head script adds `car` to <html>, which opts out. */
+   head script adds `car` to <html>, which opts out. So does
+   `landscape-screen` from the same script: a screen that is landscape at
+   rotation 0 (an aftermarket head unit running the app, whose 1280x720 or
+   1920x720 panel is often under 500 CSS px tall), never a turned phone. */
 .rotate-lock { display: none; }
 @media (orientation: landscape) and (max-height: 500px) {
-  html:not(.car) .rotate-lock {
+  html:not(.car):not(.landscape-screen) .rotate-lock {
     display: flex;
     position: fixed;
     inset: 0;
@@ -288,6 +291,23 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
     text-align: center;
     background: var(--background);
     color: var(--foreground);
+  }
+}
+
+/* Touch hit boxes for the desktop layout on a touch screen (a car head
+   unit, a tablet): the player bar's and the sidebar's controls are sized for
+   a mouse (32px buttons, 36px rows). Inside `.touch-hit`, each button and
+   link gets an invisible 44px hit box around it; nothing looks different.
+   Skipped for elements that already use ::after (Tailwind's after:) or are
+   positioned some other way. */
+@media (pointer: coarse) {
+  .touch-hit :is(button, a[href]):not([class*="after:"]):not(.absolute):not(.fixed):not(.sticky) {
+    position: relative;
+  }
+  .touch-hit :is(button, a[href]):not([class*="after:"])::after {
+    content: '';
+    position: absolute;
+    inset: min(0px, calc((100% - 44px) / 2));
   }
 }
 
