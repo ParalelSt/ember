@@ -822,6 +822,11 @@ fn a_song_the_webview_loads_is_the_boundary() {
     let load = &load[..load.find("\n}\n").or_else(|| load.find("\r\n}\r\n")).unwrap()];
     assert!(load.contains("song_boundary()"));
     assert_eq!(audio.matches("song_boundary()").count(), 1, "only audio_load marks a boundary");
+    // And only for a song that starts: the webview also loads the song it
+    // already has again at its playhead (tap to retry, back online), which
+    // is mid-song (see `starts_a_song`).
+    let gate = load.find("starts_a_song(").expect("the boundary waits for a real song start");
+    assert!(gate < load.find("song_boundary()").unwrap());
 }
 
 #[test]

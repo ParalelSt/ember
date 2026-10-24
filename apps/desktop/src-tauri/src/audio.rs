@@ -460,6 +460,20 @@ impl AudioEngine {
 /// A load as it was asked for: url, cookie, start, cache key.
 type Requested = (String, Option<String>, f64, Option<String>);
 
+/// Whether a load the webview asks for starts a song, rather than opening
+/// the one it already has again at its playhead (tap to retry, the reload
+/// once back online, an older engine's stall retry). Only a start may move
+/// the output (src/output.rs, `Cmd::SongBoundary`): a reload is mid-song.
+/// The same song is the same track id, or the same URL but for its query
+/// (the listener's retry marks the stream URL).
+pub(crate) fn starts_a_song(previous: Option<&Requested>, url: &str, cache_key: Option<&str>, start_at: f64) -> bool {
+    let Some((was_url, _, _, was_key)) = previous else { return true };
+    let path = |u: &str| u.split(['?', '#']).next().unwrap_or_default().to_string();
+    let same_key = matches!((was_key.as_deref(), cache_key), (Some(a), Some(b)) if a == b);
+    let same = same_key || path(was_url) == path(url);
+    !(same && start_at > 0.0)
+}
+
 // --- Event payloads ---------------------------------------------------------
 
 #[derive(Clone, Serialize)]
@@ -1609,9 +1623,13 @@ pub async fn audio_load<R: Runtime>(
     // A song the webview asks for gets its own native retry after a stall.
     engine.stall_retried.store(false, Ordering::SeqCst);
     // Between songs: where the output router may move back to the sound
-    // server (src/output.rs). Not the engine's own re-opens, which are mid-song.
-    if let Some(router) = engine.outputs() {
-        router.song_boundary();
+    // server (src/output.rs). Not the engine's own re-opens, and not the
+    // webview loading the same song again at its playhead: both are mid-song.
+    let previous = engine.requested.lock().ok().and_then(|r| r.clone());
+    if starts_a_song(previous.as_ref(), &url, cache_key.as_deref(), start_at) {
+        if let Some(router) = engine.outputs() {
+            router.song_boundary();
+        }
     }
     load_track(&app, engine.inner(), url, autoplay, start_at, cookie, cache_key).await
 }
@@ -2544,6 +2562,29 @@ mod tests {
     use super::*;
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
+
+    /// The output router moves back to the sound server only when a song
+    /// starts (src/output.rs). The webview also loads the song it already has
+    /// again at its playhead: tap to retry, the reload once back online, an
+    /// older engine's stall retry. That is mid-song, so it is not a start.
+    #[test]
+    fn only_a_new_song_or_one_from_its_start_is_a_song_start() {
+        let stream = |id: &str| format!("http://h/api/youtube/stream/{id}");
+        let was = |url: String, start: f64, key: Option<&str>| -> Requested { (url, None, start, key.map(str::to_string)) };
+        assert!(starts_a_song(None, &stream("a"), None, 42.0), "the first load");
+        let a = was(stream("a"), 0.0, None);
+        assert!(starts_a_song(Some(&a), &stream("b"), None, 0.0), "the next song");
+        assert!(starts_a_song(Some(&a), &stream("b"), None, 30.0), "the next song, where it was left");
+        assert!(starts_a_song(Some(&a), &stream("a"), None, 0.0), "the same song again from 0:00 (repeat one)");
+        assert!(!starts_a_song(Some(&a), &stream("a"), None, 95.0), "tap to retry at the playhead");
+        assert!(
+            !starts_a_song(Some(&a), &format!("{}?retry=1", stream("a")), None, 95.0),
+            "the listener's retry carries a marker on the same stream"
+        );
+        let cached = was("http://127.0.0.1:9/cache/a".into(), 0.0, Some("youtube:a"));
+        assert!(!starts_a_song(Some(&cached), &stream("a"), Some("youtube:a"), 95.0), "same track, now streamed");
+        assert!(starts_a_song(Some(&cached), &stream("b"), Some("youtube:b"), 95.0), "another track");
+    }
     use std::sync::mpsc;
 
     /// Serves one request and reports back which headers it saw.
