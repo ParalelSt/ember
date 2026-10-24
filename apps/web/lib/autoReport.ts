@@ -7,7 +7,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { readDesktopLog } from './desktopLog';
 import { scrubText } from './logger/sanitize';
-import { PERSIST_MS, networkFailure, whenConnectionBack } from './connectionBlip';
+import { GATEWAY_STATUSES, PERSIST_MS, networkFailure, whenConnectionBack } from './connectionBlip';
 
 /** Silent crash reports: when the client logger records an error-level
  *  entry, post the same body BugReportDialog would send (tagged
@@ -109,6 +109,11 @@ async function send(entry: LogEntry, retryWhenBack = false): Promise<void> {
         automatic: true,
       }),
     });
+    // The route answers JSON. Something answering in its place (a Wi-Fi
+    // sign-in page's 200, the Funnel's 502 while the server restarts) did
+    // not take the report: it waits for the server like a failed send.
+    const json = await res.json().then(() => true, () => false);
+    if (!json && (res.ok || GATEWAY_STATUSES.includes(res.status))) throw new Error('no answer from the server');
     reached = true;
     if (!res.ok) {
       logger.breadcrumb('autoReport', `automatic report failed: ${res.status}`);
