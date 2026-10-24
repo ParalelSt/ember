@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Artwork } from '@/components/primitives/Artwork';
 import { ProgressRing } from '@/components/primitives/ProgressRing';
 import { PeopleIcon } from '@/components/icons';
 import { PinIcon } from 'lucide-react';
@@ -19,7 +20,14 @@ export interface PlaylistNavListProps {
     sharedLabel?: string;
     /** Held at the top of the list; shows a small pin. */
     pinned?: boolean;
+    /** `covers` only: the playlist's cover, and how many songs it has
+     *  (left out until known). */
+    artworkUrl?: string | null;
+    songCount?: number;
   }[];
+  /** Each playlist with its cover and song count, in big rows (the head
+   *  unit's covers sidebar). */
+  covers?: boolean;
   /** Signed-out users see "Sign in to create" instead of an (always empty) list. */
   authed: boolean;
   /** Highlights the open playlist. */
@@ -55,6 +63,11 @@ export function ImportTail({ state }: { state: NavImportState }) {
   );
 }
 
+/** "1 song", "38 songs". */
+export function songCountText(n: number): string {
+  return n === 1 ? '1 song' : `${n} songs`;
+}
+
 /** Presentational only: no data fetching, no store reads. The "Playlists"
  *  link list under the collections nav in Sidebar and Drawer; each keeps
  *  its own wrapping element since the scroll container differs (ScrollArea
@@ -62,7 +75,7 @@ export function ImportTail({ state }: { state: NavImportState }) {
  *  on a phone) and never shrink, however many there are: the scroller
  *  around them scrolls instead. A playlist being imported shows its
  *  progress ring and count; one with songs left to check says how many. */
-export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen, onTogglePin }: PlaylistNavListProps) {
+export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen, onTogglePin, covers = false }: PlaylistNavListProps) {
   const hold = useHold((id) => onTogglePin?.(id));
   return (
     <>
@@ -85,13 +98,27 @@ export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen,
           title={p.sharedLabel ? `${p.name}, ${p.sharedLabel}` : undefined}
           {...(onTogglePin ? hold.props(p.id) : {})}
           className={cn(
-            'flex shrink-0 items-center gap-cluster min-h-11 md:min-h-9 px-3 rounded-md text-sm transition-colors select-none',
+            covers
+              ? 'flex shrink-0 items-center gap-row px-cluster py-inset rounded-md text-base transition-colors select-none'
+              : 'flex shrink-0 items-center gap-cluster min-h-11 md:min-h-9 px-3 rounded-md text-sm transition-colors select-none',
             activePath === p.href
               ? 'bg-sidebar-accent text-sidebar-accent-foreground'
               : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
           )}
         >
-          <span className="min-w-0 flex-1 truncate">{p.name}</span>
+          {covers ? (
+            <>
+              <Artwork src={p.artworkUrl} size="sm" fallback="gradient" className="shrink-0 rounded-md" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{p.name}</span>
+                {p.songCount !== undefined && (
+                  <span className="block truncate text-xs text-sidebar-foreground/55">{songCountText(p.songCount)}</span>
+                )}
+              </span>
+            </>
+          ) : (
+            <span className="min-w-0 flex-1 truncate">{p.name}</span>
+          )}
           {p.sharedLabel && !p.importState && (
             <PeopleIcon data-testid="nav-shared" aria-label={p.sharedLabel} className="size-3.5 shrink-0 text-sidebar-foreground/55" />
           )}

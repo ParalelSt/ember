@@ -21,7 +21,7 @@ import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
-import { useHeadUnitControls } from '@/hooks/useHeadUnit';
+import { useHeadUnitControls, useIsHeadUnit } from '@/hooks/useHeadUnit';
 import { useReleaseStaleHosting } from '@/hooks/useSession';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
@@ -38,6 +38,9 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   const isDesktop = useIsDesktop();
   // A car head unit with the car layout on (hooks/useHeadUnit): a rail of
   // big icons in place of the sidebar (the player bar has its own car bar).
+  // With it switched off, the sidebar's covers look: big rows, playlist
+  // covers. Phones and computers keep the sidebar as it is.
+  const headUnit = useIsHeadUnit();
   const carLayout = useHeadUnitControls();
   // A carlist this device hosted and nobody ended must not keep radio off.
   useReleaseStaleHosting();
@@ -69,7 +72,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
     // moves up"). svh is the stable small-viewport size, the shell never
     // moves; hiding the bar just shows a brief same-color strip below it.
     <div className="h-svh flex flex-col md:flex-row overflow-hidden">
-      {carLayout ? <CarRail onSearchClick={() => setSearchOpen(true)} /> : <Sidebar />}
+      {carLayout ? <CarRail onSearchClick={() => setSearchOpen(true)} /> : <Sidebar covers={headUnit} />}
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} />
       <div className="flex-1 min-h-0 flex flex-col min-w-0">
         <TopBar onMenu={() => setDrawerOpen(true)} menuDot={hasNew} />

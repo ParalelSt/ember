@@ -284,6 +284,9 @@ export const api = {
    *  app shows as "Already in <playlist>", never an automatic bug report. */
   addToPlaylist: (id: string, track: Track) =>
     req<{ ok: true }>(`/playlists/${encodeURIComponent(id)}/tracks`, { method: 'POST', body: { track }, expected: [409] }),
+  /** Songs per playlist (yours and shared ones), for the head unit's
+   *  covers sidebar. */
+  playlistSongCounts: () => req<{ counts: Record<string, number> }>('/playlists/counts'),
   /** The playlists (yours and the ones shared with you) that already have
    *  this song, for the Add to playlist menu's marks. */
   playlistsContaining: (trackId: string) =>

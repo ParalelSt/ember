@@ -7,7 +7,9 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 
 /* The shell's own pieces stand in as plain markers: this test is about
  * where the desktop top bar sits, not about what each piece draws. */
-vi.mock('@/components/nav/Sidebar', () => ({ Sidebar: () => <nav data-testid="sidebar" /> }));
+vi.mock('@/components/nav/Sidebar', () => ({
+  Sidebar: ({ covers }: { covers?: boolean }) => <nav data-testid="sidebar" data-covers={covers ? 'on' : 'off'} />,
+}));
 vi.mock('@/components/nav/CarRail', () => ({ CarRail: () => <nav data-testid="car-rail" /> }));
 // The head unit detection (lib/headUnit) answers what each test says.
 const headUnit = vi.hoisted(() => ({ value: false }));
@@ -175,10 +177,12 @@ describe('LyricsPanel beside the bar', () => {
 // (Settings > Devices, on by default), a rail of big icons stands in for the
 // sidebar; switched off, or on any other device, the sidebar is back.
 describe('app shell, car head unit', () => {
-  it('a phone, tablet or computer keeps the sidebar, whatever the switch says', () => {
+  it('a phone, tablet or computer keeps the sidebar as it is, whatever the switch says', () => {
     renderShell();
-    expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-covers', 'off');
     expect(screen.queryByTestId('car-rail')).toBeNull();
+    act(() => useSettingsStore.setState({ headUnitControls: false }));
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-covers', 'off');
   });
 
   it('a head unit with the car layout on gets the icon rail instead of the sidebar', () => {
@@ -188,11 +192,11 @@ describe('app shell, car head unit', () => {
     expect(screen.queryByTestId('sidebar')).toBeNull();
   });
 
-  it('a head unit with the car layout switched off gets the sidebar back', () => {
+  it('a head unit with the car layout switched off gets the sidebar back, in its covers look', () => {
     headUnit.value = true;
     useSettingsStore.setState({ headUnitControls: false });
     renderShell();
-    expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-covers', 'on');
     expect(screen.queryByTestId('car-rail')).toBeNull();
   });
 

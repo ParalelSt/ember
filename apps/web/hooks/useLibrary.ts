@@ -35,6 +35,8 @@ export const QK = {
   /** Which playlists have a song (the Add to playlist menu's marks). */
   containing: (trackId: string) => ['playlists-containing', trackId] as const,
   containingAll: ['playlists-containing'] as const,
+  /** Songs per playlist (the head unit's covers sidebar). */
+  playlistCounts: ['playlist-counts'] as const,
 };
 
 /** Every song members have uploaded to this server, a shared library, not
@@ -72,6 +74,19 @@ export function useQueryPlaylists() {
     queryKey: QK.playlists,
     queryFn: () => api.listPlaylists().then((r) => r.playlists),
     enabled: !!user,
+    refetchInterval: PLAYLISTS_POLL_MS,
+  });
+}
+
+/** How many songs each playlist holds, by id. Only the head unit's covers
+ *  sidebar shows it, so only it asks (`enabled`); refreshed with the
+ *  playlists' own poll. */
+export function useQueryPlaylistCounts(enabled: boolean) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: QK.playlistCounts,
+    queryFn: () => api.playlistSongCounts().then((r) => r.counts),
+    enabled: enabled && !!user,
     refetchInterval: PLAYLISTS_POLL_MS,
   });
 }

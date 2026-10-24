@@ -1,8 +1,8 @@
 import type { ComponentProps } from 'react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
 import { Sidebar } from './Sidebar';
 
 // next/link and next/navigation read the app router context, which no test
@@ -22,7 +22,18 @@ vi.mock('@/components/providers/AuthProvider', () => ({
     isAdmin: false,
   }),
 }));
-vi.mock('@/hooks/useLibrary', () => ({ useQueryPlaylists: () => ({ data: [] }) }));
+const lib = vi.hoisted(() => ({
+  playlists: [] as { id: string; name: string; artwork_url: string | null }[],
+  counts: undefined as Record<string, number> | undefined,
+  countsAsked: [] as boolean[],
+}));
+vi.mock('@/hooks/useLibrary', () => ({
+  useQueryPlaylists: () => ({ data: lib.playlists }),
+  useQueryPlaylistCounts: (enabled: boolean) => {
+    lib.countsAsked.push(enabled);
+    return { data: enabled ? lib.counts : undefined };
+  },
+}));
 vi.mock('@/hooks/useNavPlaylists', () => ({
   useNavPlaylists: (items: unknown[]) => ({ items, onOpen: vi.fn(), onTogglePin: vi.fn(), holdProps: {} }),
 }));
@@ -33,6 +44,12 @@ vi.mock('@/hooks/useCreatePlaylistFlow', () => ({
 vi.mock('@/stores/useUiStore', () => ({ useUiStore: () => vi.fn() }));
 vi.mock('@/components/track/menus/CreatePlaylistDialog', () => ({ CreatePlaylistDialog: () => null }));
 vi.mock('@/hooks/useImports', () => ({ useImportJobs: () => ({ data: [] }) }));
+
+beforeEach(() => {
+  lib.playlists = [];
+  lib.counts = undefined;
+  lib.countsAsked = [];
+});
 
 describe('Sidebar', () => {
   it('renders the signed-in profile row through the shared Avatar', () => {
@@ -60,5 +77,56 @@ describe('Sidebar', () => {
     expect(container.querySelector('aside')).toHaveClass('touch-hit');
     const css = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8');
     expect(css).toMatch(/@media \(pointer: coarse\) \{[^@]*\.touch-hit :is\(button, a\[href\]\)[^@]*inset: min\(0px, calc\(\(100% - 44px\) \/ 2\)\)/);
+  });
+});
+
+// The owner's pick for a car head unit with the car layout switched off
+// (carlayout2, "Covers"): the same links as big rows with icons, and each
+// playlist with its cover and song count. Only there: phones and computers
+// keep the sidebar as it was.
+describe('Sidebar, covers look', () => {
+  beforeEach(() => {
+    lib.playlists = [
+      { id: 'p1', name: 'Road trip', artwork_url: '/pb/api/files/playlists/p1/cover.jpg' },
+      { id: 'p2', name: 'Night drive', artwork_url: null },
+      { id: 'p3', name: 'Single', artwork_url: null },
+    ];
+    lib.counts = { p1: 38, p2: 24, p3: 1 };
+  });
+
+  it('shows each playlist with its cover and song count', () => {
+    render(<Sidebar covers />);
+    const rows = screen.getAllByTestId('playlist-nav-row');
+    expect(rows.map((r) => r.textContent)).toEqual(['Road trip38 songs', 'Night drive24 songs', 'Single1 song']);
+    expect(rows[0].querySelector('img')).toHaveAttribute('src', '/pb/api/files/playlists/p1/cover.jpg');
+    // No picture: the ember cover placeholder, in the same box.
+    expect(rows[1].querySelector('.cover-placeholder')).toHaveClass('size-art-sm');
+    expect(lib.countsAsked.every(Boolean)).toBe(true);
+  });
+
+  it('a playlist whose count has not come yet shows just its name', () => {
+    lib.counts = undefined;
+    render(<Sidebar covers />);
+    expect(screen.getAllByTestId('playlist-nav-row')[0].textContent).toBe('Road trip');
+  });
+
+  it('makes the links big rows with big icons, and the collections cover-sized tiles', () => {
+    render(<Sidebar covers />);
+    const home = within(screen.getByRole('navigation')).getByRole('link', { name: 'Home' });
+    expect(home).toHaveClass('min-h-12', 'text-base', 'font-semibold');
+    expect(home.querySelector('svg')).toHaveClass('size-6');
+    const liked = screen.getByRole('link', { name: 'Liked songs' });
+    expect(within(liked).getByText('Liked songs').previousElementSibling).toHaveClass('size-art-sm');
+  });
+
+  it('the normal sidebar stays as it was: text rows, no covers, no counts asked for', () => {
+    render(<Sidebar />);
+    const rows = screen.getAllByTestId('playlist-nav-row');
+    expect(rows.map((r) => r.textContent)).toEqual(['Road trip', 'Night drive', 'Single']);
+    expect(rows[0].querySelector('img')).toBeNull();
+    const home = within(screen.getByRole('navigation')).getByRole('link', { name: 'Home' });
+    expect(home).toHaveClass('text-sm');
+    expect(home).not.toHaveClass('min-h-12');
+    expect(lib.countsAsked.some(Boolean)).toBe(false);
   });
 });

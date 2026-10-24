@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useQueryPlaylists } from '@/hooks/useLibrary';
+import { useQueryPlaylistCounts, useQueryPlaylists } from '@/hooks/useLibrary';
 import { useCreatePlaylistFlow } from '@/hooks/useCreatePlaylistFlow';
 import { useImportJobs } from '@/hooks/useImports';
 import { LIKED_NAV_KEY, navImportStates } from '@/lib/import/nav';
@@ -23,11 +23,15 @@ import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
 import { hrefFor, sharedLabel, systemCollections } from '@/lib/collections';
 import { useUiStore } from '@/stores/useUiStore';
 
-export function Sidebar() {
+/** The desktop sidebar. `covers` (a car head unit with the car layout
+ *  switched off, owner's pick carlayout2): the same links as big rows with
+ *  icons, and each playlist with its cover and song count. */
+export function Sidebar({ covers = false }: { covers?: boolean }) {
   const pathname = usePathname();
   const { user, name: displayName, avatarUrl, isAdmin } = useAuth();
   const NAV = isAdmin ? [...BASE_NAV, ADMIN_NAV_ITEM] : BASE_NAV;
   const { data: playlists = [] } = useQueryPlaylists();
+  const { data: songCounts } = useQueryPlaylistCounts(covers);
   const { hasNew } = useChangelog();
   const { createOpen, setCreateOpen, handleCreate } = useCreatePlaylistFlow();
   const { data: importJobs = [] } = useImportJobs();
@@ -39,6 +43,7 @@ export function Sidebar() {
       href: hrefFor({ kind: 'playlist', id: p.id }),
       importState: importStates[p.id],
       sharedLabel: sharedLabel(p),
+      ...(covers ? { artworkUrl: p.artwork_url, songCount: songCounts?.[p.id] } : null),
     })),
   );
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
@@ -59,7 +64,7 @@ export function Sidebar() {
       </Link>
 
       <nav className="px-2 flex flex-col gap-1">
-        <NavLinks items={NAV} activePath={pathname} onSearchClick={() => setSearchOpen(true)} />
+        <NavLinks items={NAV} activePath={pathname} onSearchClick={() => setSearchOpen(true)} size={covers ? 'lg' : 'md'} />
         <WhatsNewLink showNew={hasNew} activePath={pathname} />
       </nav>
 
@@ -73,6 +78,7 @@ export function Sidebar() {
                 importState: ref.kind === LIKED_NAV_KEY ? importStates[LIKED_NAV_KEY] : undefined,
               }))}
             activePath={pathname}
+            size={covers ? 'lg' : 'md'}
           />
         </div>
       )}
@@ -94,6 +100,7 @@ export function Sidebar() {
             authed={!!user}
             onOpen={nav.onOpen}
             onTogglePin={nav.onTogglePin}
+            covers={covers}
           />
         </div>
       </ScrollArea>
