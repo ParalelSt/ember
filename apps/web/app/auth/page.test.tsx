@@ -171,4 +171,18 @@ describe('AuthPage email step when something else answers', () => {
     fireEvent.submit(screen.getByLabelText('Email').closest('form')!);
     expect(await screen.findByText(NO_ANSWER_MESSAGE)).toBeInTheDocument();
   });
+
+  it("no connection at all says so, not the browser's own 'Failed to fetch'", async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).includes('/api/auth/check-email')) throw new TypeError('Failed to fetch');
+      return new Response(JSON.stringify({ error: 'down' }), { status: 503 });
+    }));
+    nav.search = new URLSearchParams();
+    render(<AuthPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use password instead' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b.test' } });
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!);
+    expect(await screen.findByText(NO_ANSWER_MESSAGE)).toBeInTheDocument();
+    expect(screen.queryByText('Failed to fetch')).toBeNull();
+  });
 });

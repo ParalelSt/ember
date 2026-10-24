@@ -49,10 +49,14 @@ export default function AuthPage() {
     if (!cleaned) return;
     setBusy(true);
     try {
+      // No connection at all rejects with the browser's own words ("Failed
+      // to fetch", "Load failed"): the same sentence as no answer.
       const r = await fetch('/api/auth/check-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleaned }),
+      }).catch(() => {
+        throw new Error(NO_ANSWER_MESSAGE);
       });
       // Not JSON is not Ember answering (a Wi-Fi sign-in page, the Funnel's
       // 502 while it restarts): say so, not "Unexpected token '<'".
