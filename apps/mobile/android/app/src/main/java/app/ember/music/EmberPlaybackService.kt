@@ -231,7 +231,7 @@ class EmberPlaybackService : MediaLibraryService() {
     private val liked = LikedSongs()
     @Volatile private var likesLoading = false
     /** The last custom layout sent: only a change is sent again. */
-    private var lastButtons: Pair<Boolean?, Boolean>? = null
+    private var lastButtons: Triple<Boolean?, Boolean, Int>? = null
     /** Root tabs the car last asked for (EXTRAS_KEY_ROOT_CHILDREN_LIMIT). */
     @Volatile private var rootLimit = 0
     /** A headset's or a car's single play/pause button: 1, 2 or 3 presses. */
@@ -370,7 +370,7 @@ class EmberPlaybackService : MediaLibraryService() {
         startAutoCache(streams)
         startCasting(baseUrl)
         watchOutputs()
-        // Like and shuffle as buttons on the now-playing screen (car +
+        // Like, shuffle and repeat as buttons on the now-playing screen (car +
         // notification), each showing its state.
         player.addListener(buttonWatch)
         refreshButtons()
@@ -450,6 +450,7 @@ class EmberPlaybackService : MediaLibraryService() {
 
     /** Keeps the buttons' state with the player's (the phone's or the TV's). */
     private val buttonWatch = object : Player.Listener {
+        override fun onRepeatModeChanged(repeatMode: Int) = refreshButtons()
         override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = refreshButtons()
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = refreshButtons()
     }
@@ -459,10 +460,10 @@ class EmberPlaybackService : MediaLibraryService() {
         val p = active
         // A live station is not a song: no heart for it.
         val heart = p.currentMediaItem?.takeIf { !TrackItems.isLive(it) }?.let { liked.isLiked(it.mediaId) }
-        val state = heart to shuffle.on
+        val state = Triple(heart, shuffle.on, p.repeatMode)
         if (state == lastButtons) return
         lastButtons = state
-        session.setCustomLayout(ImmutableList.copyOf(CarButtons.layout(state.first, state.second)))
+        session.setCustomLayout(ImmutableList.copyOf(CarButtons.layout(state.first, state.second, state.third)))
     }
 
     /** The songs downloaded to the phone, by title, for the car's lists. */

@@ -5,6 +5,7 @@ import android.content.pm.PackageInfo
 import android.os.Bundle
 import android.os.Looper
 import android.os.Process
+import androidx.media3.common.Player
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaConstants
 import androidx.media3.session.MediaSession
@@ -155,7 +156,7 @@ class CarLayoutTest {
         assertEquals(list, BrowseTree.rootExtras().getInt(playable))
     }
 
-    // ── Like and Shuffle on the now-playing screen ──────────────────────
+    // ── Like, Shuffle and Repeat on the now-playing screen ──────────────
 
     private val car = MediaSession.ControllerInfo.createTestOnlyControllerInfo(
         "com.google.android.projection.gearhead", 0, 10_790, MediaSession.ControllerInfo.LEGACY_CONTROLLER_VERSION, 0, false, Bundle.EMPTY)
@@ -185,14 +186,14 @@ class CarLayoutTest {
         session().player.setMediaItems(listOf("a", "b").map { TrackItems.toMediaItem(JSONObject(t(it)), "http://127.0.0.1:9") }, 0, 0)
         idle()
         assertTrue(service.Callback().onConnect(session(), car).isAccepted)
-        until { names().size == 2 }
+        until { names().size == 3 }
     }
 
-    @Test fun `the player shows Like and Shuffle, each with its state, and no repeat`() {
+    @Test fun `the player shows Like, Shuffle and Repeat, each with its state`() {
         startWithCar()
-        assertEquals(listOf("Remove from Liked songs", "Shuffle off"), names())
-        assertEquals(listOf(CommandButton.ICON_HEART_FILLED, CommandButton.ICON_SHUFFLE_OFF), buttons().map { it.icon })
-        assertEquals(listOf(CarButtons.COMMAND_LIKE, EmberPlaybackService.COMMAND_SHUFFLE), buttons().map { it.sessionCommand!!.customAction })
+        assertEquals(listOf("Remove from Liked songs", "Shuffle off", "Repeat off"), names())
+        assertEquals(listOf(CommandButton.ICON_HEART_FILLED, CommandButton.ICON_SHUFFLE_OFF, CommandButton.ICON_REPEAT_OFF), buttons().map { it.icon })
+        assertEquals(listOf(CarButtons.COMMAND_LIKE, EmberPlaybackService.COMMAND_SHUFFLE, EmberPlaybackService.COMMAND_REPEAT), buttons().map { it.sessionCommand!!.customAction })
         // The next song is not liked: the heart follows the song.
         session().player.seekToNextMediaItem(); idle()
         assertEquals("Add to Liked songs", names()[0])
@@ -222,6 +223,20 @@ class CarLayoutTest {
         assertEquals("Add to Liked songs", names()[0])
         until { names()[0] == "Remove from Liked songs" }
         assertEquals("Remove from Liked songs", names()[0])
+    }
+
+    @Test fun `Repeat cycles off, all, one like the app's loop button, and its button follows`() {
+        startWithCar()
+        command(EmberPlaybackService.COMMAND_REPEAT); idle()
+        assertEquals(Player.REPEAT_MODE_ALL, session().player.repeatMode)
+        assertEquals("Repeat all", names()[2])
+        assertEquals(CommandButton.ICON_REPEAT_ALL, buttons()[2].icon)
+        command(EmberPlaybackService.COMMAND_REPEAT); idle()
+        assertEquals(Player.REPEAT_MODE_ONE, session().player.repeatMode)
+        assertEquals("Repeat one", names()[2])
+        command(EmberPlaybackService.COMMAND_REPEAT); idle()
+        assertEquals(Player.REPEAT_MODE_OFF, session().player.repeatMode)
+        assertEquals("Repeat off", names()[2])
     }
 
     @Test fun `Shuffle toggles and its button follows`() {
