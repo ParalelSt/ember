@@ -52,9 +52,6 @@ const AuthContext = createContext<AuthValue | null>(null);
  *  fires in every tab but the one that wrote). */
 const SIGNED_OUT_KEY = 'ember.signedOut';
 
-/** The saved queue and what was playing (ember.player.v1 in localStorage)
- *  are the account's: the next account on this device used to open onto
- *  them. Volume, loop and mute are the device's and stay. */
 /** Whose queue ember.player.v1 holds. A session can end without a sign-out
  *  (it expired, or Sign out everywhere ran on another device): the next
  *  account to sign in here must not open onto it. */
@@ -72,6 +69,9 @@ function claimAccountPlayback(userId: string): void {
   }
 }
 
+/** The saved queue and what was playing (ember.player.v1 in localStorage)
+ *  are the account's: the next account on this device used to open onto
+ *  them. Volume, loop and mute are the device's and stay. */
 function clearAccountPlayback(): void {
   usePlayerStore.setState({
     queue: [],
