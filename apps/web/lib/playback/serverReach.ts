@@ -12,9 +12,9 @@ import { GATEWAY_STATUSES, connectionOk, whenConnectionBack } from '@/lib/connec
  *  natively (ConnectionHealth.kt).
  *
  *  `serverUnreachable()` puts the player offline, and watches for the
- *  server: any answer to an api call (connectionBlip), or to a small request
- *  of its own every PROBE_MS, puts it back online, which the player handles
- *  as the connection returning. */
+ *  server: any answer to an api call (connectionBlip), or two in a row to a
+ *  small request of its own every PROBE_MS (not a sign-in page's), puts it
+ *  back online, which the player handles as the connection returning. */
 
 export const PROBE_MS = 10_000;
 /** A small static file on the Ember server, the native probe's too. */
@@ -34,7 +34,9 @@ async function answers(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE}${PROBE_PATH}`, { method: 'HEAD', cache: 'no-store', credentials: 'include', signal: ctl.signal });
     // A static file never gets these from Ember: a gateway answered for it.
-    return !GATEWAY_STATUSES.includes(res.status);
+    if (GATEWAY_STATUSES.includes(res.status)) return false;
+    // Nor a redirect to a page: a Wi-Fi sign-in page answering in its place.
+    return !res.redirected && !(res.headers.get('content-type') ?? '').includes('text/html');
   } catch {
     return false;
   } finally {
@@ -51,13 +53,21 @@ function back(): void {
   if (!store.online) store.setOnline(true);
 }
 
+/** Probe answers in a row so far. One is not enough: a link that lets a
+ *  single request through between failures flipped the player online, the
+ *  next song failed, and it went offline again. */
+let answersInARow = 0;
+const ANSWERS_TO_COME_BACK = 2;
+
 function lookLater(): void {
   timer = setTimeout(() => {
     timer = null;
     void answers().then((ok) => {
       if (!watching) return;
-      // Any answer is the connection back, for whatever else waits on it.
-      if (ok) connectionOk();
+      answersInARow = ok ? answersInARow + 1 : 0;
+      // Answers that hold are the connection back, for whatever else waits
+      // on it.
+      if (answersInARow >= ANSWERS_TO_COME_BACK) connectionOk();
       else lookLater();
     });
   }, PROBE_MS);
@@ -71,6 +81,7 @@ export function serverUnreachable(): void {
   if (store.online) store.setOnline(false);
   if (watching) return;
   watching = true;
+  answersInARow = 0;
   whenConnectionBack(back);
   lookLater();
 }
@@ -83,6 +94,7 @@ export function waitingForServer(): boolean {
 /** Tests only: module state. */
 export function resetServerReach(): void {
   watching = false;
+  answersInARow = 0;
   if (timer !== null) clearTimeout(timer);
   timer = null;
 }
