@@ -322,14 +322,22 @@ describe('the edit sheet', () => {
   });
 
   it('shows the cover, title, artist, album and that the file cannot change', async () => {
-    renderPage();
-    const sheet = await openEdit(1);
-    expect(within(sheet).getByRole('button', { name: /Upload cover/ })).toBeInTheDocument();
-    expect(within(sheet).getByRole('button', { name: 'Remove cover' })).toBeDisabled();
-    expect(within(sheet).getByLabelText('Title')).toHaveValue('Song 2');
-    expect(within(sheet).getByLabelText('Artist')).toHaveValue('Artist 2');
-    expect(within(sheet).getByLabelText('Album')).toHaveValue('Demos');
-    expect(sheet).toHaveTextContent('8.4 MB · added 12 Oct · the file itself cannot change');
+    // The fixtures were added on 12 Oct 2026: from 2027 on the date carries
+    // its year, so the clock is held in 2026.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-20T12:00:00Z'));
+    try {
+      renderPage();
+      const sheet = await openEdit(1);
+      expect(within(sheet).getByRole('button', { name: /Upload cover/ })).toBeInTheDocument();
+      expect(within(sheet).getByRole('button', { name: 'Remove cover' })).toBeDisabled();
+      expect(within(sheet).getByLabelText('Title')).toHaveValue('Song 2');
+      expect(within(sheet).getByLabelText('Artist')).toHaveValue('Artist 2');
+      expect(within(sheet).getByLabelText('Album')).toHaveValue('Demos');
+      expect(sheet).toHaveTextContent('8.4 MB · added 12 Oct · the file itself cannot change');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('Save sends only what changed, and closes', async () => {
