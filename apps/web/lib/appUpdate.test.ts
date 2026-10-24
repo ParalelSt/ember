@@ -68,6 +68,15 @@ describe('updatePill', () => {
     expect(pill.action).toBe('install');
   });
 
+  it('says the last install failed instead of only offering it again', () => {
+    const pill = updatePill(s({ status: 'ready', latest: '0.4.19', waiting: 'tap', error: "The update didn't install" }))!;
+    expect(pill.detail).toBe("The update didn't install. Tap to try again");
+    expect(pill.action).toBe('install');
+    expect(updateLine(s({ status: 'ready', latest: '0.4.19', waiting: 'tap', error: "The update didn't install" }))).toBe(
+      "Update 0.4.19 ready. The update didn't install. Tap to try again",
+    );
+  });
+
   it('says it installs when the music stops, and still allows a tap', () => {
     for (const waiting of ['playback', 'idle'] as const) {
       const pill = updatePill(s({ status: 'ready', waiting }))!;

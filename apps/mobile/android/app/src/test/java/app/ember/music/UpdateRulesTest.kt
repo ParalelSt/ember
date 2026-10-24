@@ -205,4 +205,18 @@ class UpdateRulesTest {
         val (_, ask) = UpdateRules.carNotice(true, silent = false)!!
         assertTrue(ask.contains("open Ember on your phone"))
     }
+
+    @Test fun `before Android 10 the updated app opens itself again, from 10 on Android forbids it`() {
+        assertTrue(UpdateRules.relaunchDirectly(23))
+        assertTrue(UpdateRules.relaunchDirectly(28))
+        assertFalse(UpdateRules.relaunchDirectly(29))
+        assertFalse(UpdateRules.relaunchDirectly(35))
+    }
+
+    @Test fun `notifications are asked for before an update only where Android needs the permission`() {
+        assertTrue(UpdateRules.askNotificationsFirst(sdk = 33, granted = false))
+        assertTrue(UpdateRules.askNotificationsFirst(sdk = 35, granted = false))
+        assertFalse(UpdateRules.askNotificationsFirst(sdk = 35, granted = true))
+        assertFalse(UpdateRules.askNotificationsFirst(sdk = 32, granted = false))
+    }
 }

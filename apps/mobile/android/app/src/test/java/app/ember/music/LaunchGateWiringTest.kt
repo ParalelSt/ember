@@ -77,6 +77,29 @@ class LaunchGateWiringTest {
         assertTrue(activity.contains("GateHistory.INSTANCE.mark(EmberActivity.this, GateRules.Stage.READY)"))
     }
 
+    @Test fun `the gate hears which updater states came before its install request`() {
+        val updater = File("src/main/java/app/ember/music/AppUpdater.kt").readText()
+        assertTrue(updater.contains("""if (gatePending) o.put("gatePending", true)"""))
+        val gate = File("src/main/java/app/ember/music/LaunchGateActivity.kt").readText()
+        assertTrue(gate.contains("""s.optBoolean("gatePending")"""))
+    }
+
+    @Test fun `the gate leaves out a version the updater refused for good`() {
+        val gate = File("src/main/java/app/ember/music/LaunchGateActivity.kt").readText()
+        assertTrue(gate.contains("GateRules.refusedBefore(offer, AppUpdater.rejectedVersion())"))
+    }
+
+    @Test fun `notifications are asked for right before an install the person waits on`() {
+        val gate = File("src/main/java/app/ember/music/LaunchGateActivity.kt").readText()
+        assertTrue(gate.contains("UpdateRules.askNotificationsFirst("))
+        val plugin = File("src/main/java/app/ember/music/EmberUpdatePlugin.kt").readText()
+        assertTrue(plugin.contains("UpdateRules.askNotificationsFirst("))
+        assertTrue(plugin.contains("requestPermissionForAlias(NOTIFICATIONS"))
+        // A tap on Install in the page waits for Ember to come back too.
+        val updater = File("src/main/java/app/ember/music/AppUpdater.kt").readText()
+        assertTrue(Regex("""fun installNow\(\) \{\s+GateHistory.installStarted\(app\)""").containsMatchIn(updater))
+    }
+
     @Test fun `the install permission check still runs as an updater app`() {
         @Suppress("DEPRECATION")
         val asked = app.packageManager.getPackageInfo(app.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty().toSet()

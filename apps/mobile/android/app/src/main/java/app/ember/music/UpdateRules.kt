@@ -226,6 +226,18 @@ object UpdateRules {
     fun meansPlaying(playWhenReady: Boolean, playbackState: Int): Boolean =
         playWhenReady && playbackState != 1 && playbackState != 4
 
+    /** Android never reopens an app that updated itself. Before Android 10
+     *  the new version may open its own window from MY_PACKAGE_REPLACED
+     *  (UpdatedReceiver); from 10 on Android blocks activity starts from the
+     *  background, so it can only post "Ember updated, tap to open". */
+    fun relaunchDirectly(sdk: Int): Boolean = sdk < 29
+
+    /** Whether to ask for POST_NOTIFICATIONS right before an install the
+     *  person waits on: from Android 13 that notice is the only way back into
+     *  Ember, and without the permission it is dropped silently. Android
+     *  itself stops showing the dialog once it has been refused twice. */
+    fun askNotificationsFirst(sdk: Int, granted: Boolean): Boolean = sdk >= 33 && !granted
+
     /** Whether a periodic or start-up check is due. */
     fun checkDue(now: Long, lastCheck: Long, minGapMs: Long): Boolean =
         lastCheck <= 0 || now < lastCheck || now - lastCheck >= minGapMs
