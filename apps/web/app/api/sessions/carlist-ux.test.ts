@@ -39,14 +39,12 @@ function reset() {
 }
 
 /** Very small filter matcher: `a = "x"` and `a = true` clauses joined by
- *  &&, plus the membership clause of the live lookup. */
+ *  &&, plus the roster clause of the live lookup. */
 function matches(row: Row, filter: string, name: string): boolean {
-  const live = filter.match(/\(host = "(\w+)" \|\| session_members_via_session\.user \?= "(\w+)"\)/);
-  if (live) {
-    const u = live[1];
-    const inIt = row.host === u || db.session_members.some((m) => m.session === row.id && m.user === u);
-    if (!inIt) return false;
-    filter = filter.replace(live[0], 'true');
+  const joined = filter.match(/session_members_via_session\.user \?= "(\w+)"/);
+  if (joined) {
+    if (!db.session_members.some((m) => m.session === row.id && m.user === joined[1])) return false;
+    filter = filter.replace(joined[0], 'true');
   }
   for (const clause of filter.split('&&').map((c) => c.trim())) {
     if (clause === 'true') continue;
@@ -103,8 +101,9 @@ function fakePb() {
         if (opts.sort === 'position') rows = [...rows].sort((a, b) => Number(a.position) - Number(b.position));
         return rows.map((r) => expandRow(r, opts.expand));
       },
-      getList: async (_page: number, perPage: number, opts: { filter?: string } = {}) => {
-        const rows = (db[name] ?? []).filter((r) => !opts.filter || matches(r, opts.filter, name));
+      getList: async (_page: number, perPage: number, opts: { filter?: string; sort?: string } = {}) => {
+        let rows = (db[name] ?? []).filter((r) => !opts.filter || matches(r, opts.filter, name));
+        if (opts.sort === '-updated') rows = [...rows].sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
         return { items: rows.slice(0, perPage).map((r) => ({ ...r })) };
       },
       create: async (data: Record<string, unknown>) => {
@@ -340,6 +339,16 @@ describe('the live carlist behind the Carlist button', () => {
     caller.id = 'u2';
     const GET = await handler(import('./route'), 'GET');
     expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's1', isHost: false });
+  });
+
+  it('a host who also joined a friend\'s carlist gets their own, even when the friend\'s moved on later', async () => {
+    db.sessions.push({ id: 's3', code: 'FRIEND', name: 'Friend', host: 'u3', active: true, now_index: 4, updated: '2026-10-02 10:30:00.000Z' });
+    db.session_members.push({ id: 'm3', session: 's3', user: 'u1' });
+    const GET = await handler(import('./route'), 'GET');
+    expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's1', isHost: true });
+    // Once theirs is over, the friend's is the live one.
+    db.sessions[0].active = false;
+    expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's3', isHost: false });
   });
 
   it('nobody else, and not an ended one', async () => {

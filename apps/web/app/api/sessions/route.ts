@@ -92,20 +92,23 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
 /** The live carlist the caller hosts or joined, for the Carlist button in
  *  Your library: {carlist: {id, code, name, isHost} | null}. One that has
  *  not moved on in LIVE_WINDOW_MS no longer counts (hosts often just close
- *  the app instead of ending it). */
+ *  the app instead of ending it). The one they host comes first: the host's
+ *  device lets go of hosting (useReleaseStaleHosting) when this answers
+ *  another carlist, so a host who had also joined a friend's carlist lost
+ *  the role whenever the friend's moved on more recently. */
 export const GET = withRequestLog('sessions', async () => {
   try {
     const { user } = await requireUser();
     const server = await sessionsClient();
     const since = new Date(Date.now() - LIVE_WINDOW_MS);
-    const list = await server.collection('sessions').getList(1, 1, {
-      filter: server.filter(
-        'active = true && updated >= {:since} && (host = {:u} || session_members_via_session.user ?= {:u})',
-        { since, u: user.id },
-      ),
-      sort: '-updated',
-    });
-    const row = list.items[0];
+    const latest = async (who: string) =>
+      (
+        await server.collection('sessions').getList(1, 1, {
+          filter: server.filter(`active = true && updated >= {:since} && ${who}`, { since, u: user.id }),
+          sort: '-updated',
+        })
+      ).items[0];
+    const row = (await latest('host = {:u}')) ?? (await latest('session_members_via_session.user ?= {:u}'));
     return Response.json({
       carlist: row
         ? { id: row.id, code: String(row.code), name: String(row.name), isHost: row.host === user.id }
