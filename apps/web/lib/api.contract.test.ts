@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { api, NO_ANSWER_MESSAGE } from './api';
+import { api } from './api';
+import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 import { logger } from '@/lib/logger/client';
 
 // What req() makes of the answers the routes give: which ones are a fault

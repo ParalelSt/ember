@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { api, NO_ANSWER_MESSAGE } from './api';
+import { api } from './api';
 import { logger } from '@/lib/logger/client';
-import { connectionOk } from '@/lib/connectionBlip';
+import { NO_ANSWER_MESSAGE, connectionOk } from '@/lib/connectionBlip';
 
 // Something answers, but not Ember: the Tailscale Funnel's 502 while Next
 // restarts, a Wi-Fi sign-in page answering 200 with its own HTML, a body

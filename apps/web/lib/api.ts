@@ -5,7 +5,7 @@ import type { CandidatePerson, CollabState, InvitePreview } from '@/lib/collab';
 import { logger } from '@/lib/logger/client';
 import { isPublicPage } from '@/lib/publicPaths';
 import { sessionExpired } from '@/lib/sessionExpired';
-import { GATEWAY_STATUSES, connectionOk } from '@/lib/connectionBlip';
+import { GATEWAY_STATUSES, NO_ANSWER_MESSAGE, connectionOk } from '@/lib/connectionBlip';
 import { clipSearchQuery } from '@/lib/searchLimits';
 import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
@@ -96,9 +96,6 @@ interface ReqOptions {
 export const NETWORK_RETRY_DELAYS_MS = [300, 1000];
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-/** What the error says when something answered in Ember's place (see req). */
-export const NO_ANSWER_MESSAGE = "Can't reach Ember right now. Check your connection.";
 
 /** A body that is not JSON (or never fully arrived). */
 const UNREADABLE = Symbol('unreadable');
