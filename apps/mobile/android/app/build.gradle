@@ -36,6 +36,9 @@ android {
     // Release signing (Part 6). Reads android/keystore.properties when present
     // (local keystore or CI-decoded secret); ABSENT → release falls back to the
     // debug key so anyone can still build. Keystore + properties are gitignored.
+    // Debug builds take the release key too when it is there: a debug-key
+    // app.ember.music (npm run apk, cap run, Android Studio's Run) on a phone
+    // refuses every release over it, and only an uninstall gets updates back.
     def keystoreProps = new Properties()
     def keystorePropsFile = rootProject.file('keystore.properties')
     if (keystorePropsFile.exists()) {
@@ -52,6 +55,9 @@ android {
         }
     }
     buildTypes {
+        debug {
+            if (keystorePropsFile.exists()) signingConfig signingConfigs.release
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

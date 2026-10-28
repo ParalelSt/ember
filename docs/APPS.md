@@ -374,6 +374,11 @@ confirm, declined, failed, installed, car), so they show on the admin's
   they are missing the build falls back to the debug key, and that APK can
   never update a release-signed install. Back the keystore up somewhere
   besides the Mac and GitHub.
+- **Debug builds are release-signed on the Mac.** With `keystore.properties`
+  present, `npm run apk`, `cap run android` and Android Studio's Run sign
+  with the release key as well, so a dev copy on a phone still takes the
+  next release. A phone that already has a debug-key copy must uninstall it
+  once and reinstall from `/apk`.
 
 ## Offline downloads (Android)
 
