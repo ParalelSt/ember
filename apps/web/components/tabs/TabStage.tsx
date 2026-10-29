@@ -1,7 +1,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { ChevronLeftIcon, GaugeIcon, PauseIcon, PlayIcon, RepeatIcon, SlidersIcon } from '@/components/icons';
+import { BackButton } from '@/components/ui/back-button';
+import { GaugeIcon, PauseIcon, PlayIcon, RepeatIcon, SlidersIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 /** The stage (the owner's pick for the tab page): the tab fills the screen,
@@ -35,14 +36,7 @@ export function StageHeader({ title, meta, metaTitle, dim, chip, actions, below,
       className={cn('transition-opacity duration-300', dim && 'opacity-40 hover:opacity-100 focus-within:opacity-100')}
     >
       <div className="flex min-w-0 items-center gap-cluster py-cluster">
-        <button
-          type="button"
-          aria-label="Back"
-          onClick={onBack}
-          className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <ChevronLeftIcon className="size-5" />
-        </button>
+        <BackButton onClick={onBack} />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold leading-tight" title={title}>
             {title}

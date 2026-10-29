@@ -35,8 +35,8 @@ export function canGoBackInApp(): boolean {
 }
 
 /** Close the page on screen: Back when the listener came from inside
- *  Ember, else home. */
-export function leavePage(router: { back(): void; push(href: string): void }): void {
+ *  Ember, else `fallbackHref` (home unless the page names a parent). */
+export function leavePage(router: { back(): void; push(href: string): void }, fallbackHref = '/'): void {
   if (canGoBackInApp()) router.back();
-  else router.push('/');
+  else router.push(fallbackHref);
 }

@@ -63,6 +63,8 @@ it.each(['profile', 'appearance', 'library', 'downloads', 'uploads', 'plugins', 
   expect(back).toHaveAttribute('href', '/settings');
   expect(back).toHaveAttribute('data-slot', 'back-button');
   expect(back.parentElement).toHaveClass('lg:hidden');
+  // From md up the top bar's back button (lib/nav backRouteFor) takes over.
+  expect(back).toHaveClass('md:hidden');
   expect(within(back.parentElement!).getByRole('heading')).toHaveTextContent(new RegExp(section, 'i'));
   expect(screen.getByLabelText('Existing content')).toHaveValue('preserved');
   expect(screen.getByRole('navigation')).toHaveClass('hidden', 'lg:block');

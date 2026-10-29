@@ -54,6 +54,9 @@ export interface SearchOverlayProps {
    *  search's by default. */
   placeholder?: string;
   label?: string;
+  /** The dropdown only: something left of the box, in the top bar (a sub
+   *  page's back button, components/nav/RouteBackButton). */
+  leading?: ReactNode;
 }
 
 /** Presentational: props in, callbacks out. No hooks/, stores/ or
@@ -80,6 +83,7 @@ export function SearchOverlay({
   resultsNode,
   placeholder = 'What do you want to listen to?',
   label = 'Search',
+  leading,
 }: SearchOverlayProps) {
   const showOffline = !isOnline;
   const showRateLimited = !showOffline && rateLimited;
@@ -222,7 +226,7 @@ export function SearchOverlay({
   );
 
   if (!isSheet) {
-    return <SearchDropdown open={open} onClose={onClose} field={field} body={body} />;
+    return <SearchDropdown open={open} onClose={onClose} field={field} body={body} leading={leading} />;
   }
 
   if (!open) return null;

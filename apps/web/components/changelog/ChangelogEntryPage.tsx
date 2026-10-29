@@ -3,6 +3,7 @@
 import { useEffect, useRef, type TouchEvent } from 'react';
 import Link from 'next/link';
 import { ArrowLeftIcon, ArrowRightIcon } from '@/components/icons';
+import { BackButton } from '@/components/ui/back-button';
 import { Eyebrow } from '@/components/page/Eyebrow';
 import type { ChangelogEntry } from '@/lib/changelog';
 import { SCOPE_LABEL } from '@/components/changelog/ChangelogPage';
@@ -80,16 +81,8 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props
     if (to) onGo?.(to.id);
   };
 
-  const back = (
-    <Link
-      href="/whats-new"
-      aria-label="Back to What's new"
-      data-testid="changelog-back"
-      className="inline-flex size-hit items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground md:size-8"
-    >
-      <ArrowLeftIcon className="h-5 w-5" />
-    </Link>
-  );
+  // Phones only: from md up the top bar has the same button (lib/nav).
+  const back = <BackButton href="/whats-new" label="Back to What's new" testId="changelog-back" className="md:hidden" />;
 
   if (!entry) {
     return (

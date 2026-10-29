@@ -101,6 +101,7 @@ describe('TrackShelf', () => {
       <TrackShelf title="Trending" tracks={makeTracks(9)} renderCard={renderCard} fullscreen />,
     );
     expect(screen.getAllByRole('listitem')).toHaveLength(9);
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('data-slot', 'back-button');
     expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/');
     expect(screen.getByRole('heading', { level: 1, name: 'Trending' })).toBeInTheDocument();
   });

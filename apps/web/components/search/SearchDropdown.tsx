@@ -51,6 +51,9 @@ export interface SearchDropdownProps {
   field: ReactNode;
   /** Recents + results. Scrolls inside the panel when there are many. */
   body: ReactNode;
+  /** Left of the box, outside the panel's anchor (a sub page's back
+   *  button). The box keeps its own width beside it. */
+  leading?: ReactNode;
 }
 
 /** The desktop shape of search: a real search box at the top of the content
@@ -74,7 +77,7 @@ export interface SearchDropdownProps {
  *  So: an ordinary block in the page with one absolutely positioned panel
  *  under it. No backdrop, no `aria-modal`, no focus trap, nothing else on
  *  screen covered, dimmed or pulled out of the accessibility tree. */
-export function SearchDropdown({ open, onClose, field, body }: SearchDropdownProps) {
+export function SearchDropdown({ open, onClose, field, body, leading }: SearchDropdownProps) {
   // Box AND panel: a press anywhere in here is a press inside.
   const anchorRef = useRef<HTMLDivElement>(null);
   // Where focus was when the panel opened, so Escape can hand it back.
@@ -153,13 +156,14 @@ export function SearchDropdown({ open, onClose, field, body }: SearchDropdownPro
   return (
     <div className="shrink-0 px-page-lg pt-page-lg">
       {/* Lines the box up with the page's own content column. */}
-      <div className="mx-auto max-w-(--content-max)">
+      <div className="mx-auto flex max-w-(--content-max) items-center gap-row">
+        {leading}
         <div
           ref={anchorRef}
           onKeyDown={onArrowKeys}
           role="search"
           aria-label="Search"
-          className="relative max-w-xl"
+          className="relative min-w-0 max-w-xl flex-1"
         >
           {field}
           {open && (

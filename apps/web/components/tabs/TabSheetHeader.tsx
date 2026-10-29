@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ChevronLeftIcon } from '@/components/icons';
+import { BackButton } from '@/components/ui/back-button';
 import { PageTitle } from '@/components/page/PageTitle';
 import { cn } from '@/lib/utils';
 
@@ -21,14 +21,7 @@ export function TabSheetHeader({ phone, title, meta, chip, actions, onBack }: Ta
   return (
     <div data-testid="tab-sheet-header">
       <div className="mb-block flex items-center justify-between gap-row">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-inset text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ChevronLeftIcon className="size-4" />
-          Back
-        </button>
+        {onBack ? <BackButton onClick={onBack} /> : <span />}
         {actions && <div className="flex items-center gap-inset">{actions}</div>}
       </div>
       <div className="text-eyebrow">Guitar tab</div>

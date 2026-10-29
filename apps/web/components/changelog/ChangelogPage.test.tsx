@@ -125,6 +125,13 @@ describe('ChangelogEntryPage', () => {
     expect(screen.getByRole('link', { name: "Back to What's new" })).toHaveAttribute('href', '/whats-new');
   });
 
+  it('the phone back is the shared round BackButton, handed to the top bar from md up', () => {
+    render(<ChangelogEntryPage entry={entries[1]} />);
+    const back = screen.getByTestId('changelog-back');
+    expect(back).toHaveAttribute('data-slot', 'back-button');
+    expect(back).toHaveClass('bg-secondary', 'rounded-full', 'md:hidden');
+  });
+
   it('desktop heading row has a bold back arrow, the version, date and scope, and no caret-left icon', () => {
     render(<ChangelogEntryPage entry={entries[1]} />);
     const row = screen.getByTestId('changelog-heading-row');

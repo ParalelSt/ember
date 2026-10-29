@@ -3,7 +3,7 @@
 import { useState, useEffect, useLayoutEffect, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronLeftIcon } from '@/components/icons';
+import { BackButton } from '@/components/ui/back-button';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { RowShelf } from '@/components/page/RowShelf';
@@ -88,13 +88,7 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
   if (fullscreen) {
     return (
       <section>
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
-        >
-          <ChevronLeftIcon className="size-4" />
-          Back
-        </Link>
+        <BackButton href="/" className="mb-4" />
         <PageTitle className="mb-6">{title}</PageTitle>
         <div ref={gridRef} className={`grid gap-4 ${gridCols}`} style={gridStyle} role="list">
           {all.map((t) => (

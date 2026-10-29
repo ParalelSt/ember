@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { TrackList } from '@/components/track/TrackList';
 import { TrackRow } from '@/components/track/TrackRow';
@@ -25,7 +25,7 @@ const NOOP = () => {};
  *  on a desktop window that is where its search box lives, in the page,
  *  above everything the page itself draws. It is also what decides which
  *  chrome the overlay wears, so SearchOverlay itself stays presentational. */
-export function SearchOverlayContainer() {
+export function SearchOverlayContainer({ leading }: { leading?: ReactNode } = {}) {
   const open = useUiStore((s) => s.searchOpen);
   const setOpen = useUiStore((s) => s.setSearchOpen);
   const close = useCallback(() => setOpen(false), [setOpen]);
@@ -171,6 +171,7 @@ export function SearchOverlayContainer() {
         resultsNode={null}
         placeholder={STATION_SEARCH}
         label={STATION_SEARCH}
+        leading={leading}
       />
     );
   }
@@ -193,6 +194,7 @@ export function SearchOverlayContainer() {
       hasResults={!!data?.length}
       recentsNode={recentsNode}
       resultsNode={resultsNode}
+      leading={leading}
     />
   );
 }

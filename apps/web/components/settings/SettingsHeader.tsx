@@ -14,7 +14,7 @@ export function SettingsHeader() {
   const section = sections.find(tab => path === tab.href || path.startsWith(`${tab.href}/`));
   return <>
     {!desktop && section && <div className="mb-block flex min-w-0 items-center gap-cluster lg:hidden">
-      <BackButton href="/settings" label="Back to Settings" />
+      <BackButton href="/settings" label="Back to Settings" className="md:hidden" />
       <h1 className="min-w-0 flex-1 truncate text-section-title">{section.label}</h1>
     </div>}
     <PageTitle className={section ? 'mb-stack hidden lg:block' : 'mb-stack'}>Settings</PageTitle>

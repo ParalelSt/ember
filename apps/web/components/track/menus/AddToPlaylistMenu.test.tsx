@@ -191,6 +191,8 @@ describe('AddToPlaylistMenu on a phone (popups1: a sheet from the bottom)', () =
     fireEvent.click(screen.getByTestId('sheet-add-to-playlist'));
     expect(screen.getByRole('button', { name: /New playlist/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Road trip/ })).toBeDisabled();
+    // The app's one back button (components/ui/back-button).
+    expect(screen.getByRole('button', { name: 'Back' })).toHaveAttribute('data-slot', 'back-button');
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByRole('button', { name: /Add to queue/ })).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('sheet-add-to-playlist'));

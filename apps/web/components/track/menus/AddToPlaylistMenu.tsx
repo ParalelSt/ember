@@ -12,8 +12,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
-import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, ListPlusIcon, MoreIcon, MusicIcon, PlusIcon, RefreshIcon } from '@/components/icons';
+import { CheckIcon, ChevronRightIcon, ListPlusIcon, MoreIcon, MusicIcon, PlusIcon, RefreshIcon } from '@/components/icons';
 import { ActionSheet, ActionSheetItem, type MenuAction } from '@/components/ui/action-sheet';
+import { BackButton } from '@/components/ui/back-button';
 import { Artwork } from '@/components/primitives/Artwork';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -151,14 +152,7 @@ export function AddToPlaylistMenu({
     const header = (
       <div className="flex min-w-0 items-center gap-row text-left">
         {shown === 'add' && firstView === 'main' && (
-          <button
-            type="button"
-            onClick={() => setView('main')}
-            aria-label="Back"
-            className="-ml-cluster inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-accent"
-          >
-            <ChevronLeftIcon className="h-5 w-5" />
-          </button>
+          <BackButton onClick={() => setView('main')} />
         )}
         {shown === 'add' ? (
           <div className="text-base font-semibold">Add to playlist</div>

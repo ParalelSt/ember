@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
 import { act, render, screen } from '@testing-library/react';
 import AppShellLayout from './layout';
 import { LyricsPanel } from '@/components/player/LyricsPanel';
@@ -16,7 +17,8 @@ const headUnit = vi.hoisted(() => ({ value: false }));
 vi.mock('@/lib/headUnit', () => ({ isHeadUnit: () => headUnit.value, subscribeHeadUnit: () => () => {} }));
 vi.mock('@/components/nav/TopBar', () => ({ TopBar: () => <header data-testid="phone-topbar" /> }));
 vi.mock('@/components/nav/MobileNav', () => ({ MobileNav: () => <nav data-testid="mobile-nav" /> }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
+const route = vi.hoisted(() => ({ pathname: '/' }));
+vi.mock('next/navigation', () => ({ usePathname: () => route.pathname, useRouter: () => ({ back: () => {}, push: () => {} }) }));
 vi.mock('@/components/nav/Drawer', () => ({ Drawer: () => null }));
 vi.mock('@/components/nav/BackToTop', () => ({ BackToTop: () => <button type="button">Back to top</button> }));
 vi.mock('@/components/player/PlayerBar', () => ({ PlayerBar: () => <footer data-testid="player-bar" /> }));
@@ -27,7 +29,12 @@ vi.mock('@/components/player/LyricsPanel', () => ({
   LyricsPanel: () => <aside data-testid="lyrics" />,
 }));
 vi.mock('@/components/search/SearchOverlayContainer', () => ({
-  SearchOverlayContainer: () => <div role="search" data-testid="search-box" />,
+  SearchOverlayContainer: ({ leading }: { leading?: ReactNode }) => (
+    <>
+      {leading}
+      <div role="search" data-testid="search-box" />
+    </>
+  ),
 }));
 const offline = vi.hoisted(() => ({ hydrateOfflineStore: vi.fn(async () => {}) }));
 vi.mock('@/lib/offline', () => offline);
@@ -45,6 +52,7 @@ vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 const BAR_H = 80;
 let heightSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
+  route.pathname = '/';
   desktop.value = true;
   headUnit.value = false;
   useSettingsStore.setState({ headUnitControls: true });
@@ -137,6 +145,40 @@ describe('app shell, phone', () => {
     expect(area.lastElementChild).toBe(search);
     expect(column.style.getPropertyValue('--ember-topbar-h')).toBe('0px');
     expect(screen.getByTestId('phone-topbar')).toBeInTheDocument();
+  });
+});
+
+describe('app shell, back button on sub pages', () => {
+  it('desktop: in the top bar left of the search box on a sub page, none on a tab', () => {
+    route.pathname = '/playlist/p1';
+    const { unmount } = renderShell();
+    const back = screen.getByRole('button', { name: 'Back' });
+    expect(screen.getByTestId('topbar-bar').contains(back)).toBe(true);
+    expect(back.nextElementSibling).toBe(screen.getByTestId('search-box'));
+    expect(screen.getAllByRole('button', { name: 'Back' })).toHaveLength(1);
+    unmount();
+    route.pathname = '/library';
+    renderShell();
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+  });
+
+  it('phone: top left of the page, before its header', () => {
+    desktop.value = false;
+    route.pathname = '/album/a1';
+    renderShell();
+    const back = screen.getByRole('button', { name: 'Back' });
+    expect(scroller().contains(back)).toBe(true);
+    expect(back.nextElementSibling).toBe(screen.getByRole('heading', { name: 'Home' }));
+  });
+
+  it('phone: none on a tab, and none where the page draws its own (a Settings section)', () => {
+    desktop.value = false;
+    const { unmount } = renderShell();
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    unmount();
+    route.pathname = '/settings/uploads';
+    renderShell();
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
   });
 });
 

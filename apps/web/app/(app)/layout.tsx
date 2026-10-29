@@ -9,6 +9,7 @@ import { Drawer } from '@/components/nav/Drawer';
 import { BackToTop } from '@/components/nav/BackToTop';
 import { ScrollToTopOnNavigate } from '@/components/nav/ScrollToTopOnNavigate';
 import { DesktopTopBar } from '@/components/nav/DesktopTopBar';
+import { RouteBackButton } from '@/components/nav/RouteBackButton';
 import { PlayerBar } from '@/components/player/PlayerBar';
 import { NowPlaying } from '@/components/player/NowPlaying';
 import { LYRICS_PANEL_W, LyricsPanel } from '@/components/player/LyricsPanel';
@@ -113,7 +114,9 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
               <ScrollToTopOnNavigate scrollRef={scrollerRef} />
               {isDesktop && (
                 <DesktopTopBar raised={searchOpen} onHeightChange={setBarH}>
-                  <SearchOverlayContainer />
+                  {/* A sub page's back button sits in the bar, left of
+                      the search box (lib/nav's backRouteFor). */}
+                  <SearchOverlayContainer leading={<RouteBackButton placement="topbar" />} />
                 </DesktopTopBar>
               )}
               {/* Fills what is left under the bar, so a short page does not
@@ -124,7 +127,12 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                       to the end nothing is left under Back to top. A page
                       that marks itself data-home-wide (the desktop Home)
                       uses the whole width instead of the content cap. */}
-                  <div className="mx-auto max-w-(--content-max) pb-section has-[[data-home-wide]]:max-w-none">{children}</div>
+                  <div className="mx-auto max-w-(--content-max) pb-section has-[[data-home-wide]]:max-w-none">
+                    {/* Phones have no top bar: the same back button opens
+                        the sub page, top left, above its header. */}
+                    {!isDesktop && <RouteBackButton placement="page" />}
+                    {children}
+                  </div>
                 </main>
                 <LyricsPanel />
               </div>

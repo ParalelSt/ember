@@ -43,4 +43,11 @@ describe('inAppHistory', () => {
     leavePage(router);
     expect(router.back).toHaveBeenCalledTimes(1);
   });
+
+  it('leavePage takes a fallback for a page opened from outside', () => {
+    const router = { back: vi.fn(), push: vi.fn() };
+    leavePage(router, '/library');
+    expect(router.push).toHaveBeenCalledWith('/library');
+    expect(router.back).not.toHaveBeenCalled();
+  });
 });
