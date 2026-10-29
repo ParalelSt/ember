@@ -30,7 +30,9 @@ export function fail(message) {
 }
 
 export function git(args, cwd = ROOT) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  // A big merge's diff runs to tens of MB; the 1MB default made the pre-push
+  // scan crash (ENOBUFS) instead of checking it.
+  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 512 * 1024 * 1024 }).trim();
 }
 export function tryGit(args, cwd = ROOT) {
   try {
