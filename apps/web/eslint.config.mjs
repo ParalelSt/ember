@@ -81,8 +81,6 @@ const eslintConfig = defineConfig([
     // CreatePlaylistDialog fetch and mutate playlists on their own, so the
     // whole folder needs hooks/react-query rather than taking data as props.
     files: [
-      // Samples the displayed artwork into a canvas; no application data or stores.
-      "components/page/CoverColorBand.tsx",
       "components/nav/Sidebar.tsx",
       "components/nav/Drawer.tsx",
       "components/track/TrackPageClient.tsx",

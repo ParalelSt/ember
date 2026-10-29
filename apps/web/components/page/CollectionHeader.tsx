@@ -1,7 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 import { CollectionCover, type CollectionCoverProps } from '@/components/primitives/CollectionCover';
 import { Eyebrow } from '@/components/page/Eyebrow';
-import { CoverColorBand } from './CoverColorBand';
 import { cn } from '@/lib/utils';
 
 export type CollectionHeaderVariant = 'collection' | 'album' | 'artist';
@@ -72,7 +71,6 @@ export function CollectionHeader({
 
   return (
     <div className={cn(HEADER_CLASSES.root, 'relative isolate')} data-testid="collection-header">
-      {variant === 'collection' && <CoverColorBand cover={cover} />}
       {onCoverClick ? (
         <button
           type="button"
