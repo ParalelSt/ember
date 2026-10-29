@@ -101,6 +101,7 @@ export function SearchOverlayContainer() {
             artworkSrc={trackActions.artworkSrcFor(t)}
             onPlay={() => trackActions.onPlay(t)}
             onToggle={trackActions.onToggle}
+            trailing={renderTrackMenu(t)}
             onRemove={() => removeRecentTrack.mutate(t.id)}
             removeLabel={`Remove "${t.title}" from recent searches`}
           />

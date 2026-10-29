@@ -35,7 +35,7 @@ vi.mock('@/hooks/useVoiceSearch', () => ({
 }));
 
 vi.mock('@/components/track/menus/TrackMenu', () => ({
-  renderTrackMenu: () => null,
+  renderTrackMenu: (t: Track) => <button type="button">{`More for ${t.title}`}</button>,
 }));
 
 const trackActions = vi.hoisted(() => ({
@@ -222,6 +222,13 @@ describe('SearchOverlayContainer', () => {
     expect(trackActions.onPlay).toHaveBeenCalledTimes(1);
     expect(trackActions.onPlay.mock.calls[0][0]).toMatchObject({ id: 'youtube:a1' });
     expect(trackActions.onToggle).not.toHaveBeenCalled();
+  });
+
+  it('gives every recents row the song menu, next to play and remove', () => {
+    recents.tracks = [makeTrack()];
+    renderOverlay();
+    expect(screen.getByRole('button', { name: 'More for Midnight Drive' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Play Midnight Drive' })).toBeInTheDocument();
   });
 
   it('pauses and resumes the recents row that is the current song', () => {

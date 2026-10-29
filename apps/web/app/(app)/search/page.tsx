@@ -46,6 +46,7 @@ export default function SearchPage() {
             artworkFallback={RECENTS_FALLBACK}
             artworkSrc={trackActions.artworkSrcFor(t)}
             onPlay={() => trackActions.onPlay(t)}
+            trailing={renderTrackMenu(t)}
             onRemove={() => removeRecentTrack.mutate(t.id)}
             removeLabel={`Remove "${t.title}" from recent searches`}
             trailingPlayControl
