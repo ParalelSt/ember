@@ -32,7 +32,8 @@ export interface SearchOverlayProps {
   q: string;
   onQChange: (value: string) => void;
   debouncedQ: string;
-  onMicClick: () => void;
+  /** Omit for a box with no voice search (the Radio page's station search). */
+  onMicClick?: () => void;
   micListening: boolean;
   isOnline: boolean;
   isFetching: boolean;
@@ -49,6 +50,10 @@ export interface SearchOverlayProps {
   recentsNode: ReactNode;
   /** The TrackList for the current results, built by the wrapper. */
   resultsNode: ReactNode;
+  /** What the box says while empty, and its accessible name; the song
+   *  search's by default. */
+  placeholder?: string;
+  label?: string;
 }
 
 /** Presentational: props in, callbacks out. No hooks/, stores/ or
@@ -73,6 +78,8 @@ export function SearchOverlay({
   hasResults,
   recentsNode,
   resultsNode,
+  placeholder = 'What do you want to listen to?',
+  label = 'Search',
 }: SearchOverlayProps) {
   const showOffline = !isOnline;
   const showRateLimited = !showOffline && rateLimited;
@@ -122,7 +129,7 @@ export function SearchOverlay({
         // wins over the press state; the ghost variant's hover/active
         // color change is still the press feedback, just no movement.
         'absolute top-1/2 -translate-y-1/2 active:!-translate-y-1/2 active:text-foreground h-9 w-9 rounded-full text-muted-foreground hover:text-foreground',
-        isSheet ? 'right-1' : 'right-10',
+        isSheet || !onMicClick ? 'right-1' : 'right-10',
       )}
     >
       <CloseIcon className="h-4 w-4" />
@@ -131,7 +138,7 @@ export function SearchOverlay({
   // Always visible on the desktop box: unsupported browsers get a pointer
   // to Chrome instead of a hidden button. On the phone sheet it shares the
   // one slot with the clear X, so it shows while the box is empty.
-  const showMic = !isSheet || !hasText;
+  const showMic = !!onMicClick && (!isSheet || !hasText);
 
   const field = (
     <div ref={fieldRef} className="relative shrink-0">
@@ -148,13 +155,13 @@ export function SearchOverlay({
           onQChange(e.target.value);
         }}
         onFocus={isSheet ? undefined : onOpen}
-        placeholder="What do you want to listen to?"
-        aria-label="Search"
+        placeholder={placeholder}
+        aria-label={label}
         className={cn(
           'pl-11 rounded-full bg-card border-0',
           // The sheet's box is the only thing on screen to type in: the
           // caret is focus enough, no ring (as in the picked design).
-          isSheet ? 'h-11 pr-11 text-base focus-visible:ring-0' : cn('h-12', hasText ? 'pr-20' : 'pr-12'),
+          isSheet ? 'h-11 pr-11 text-base focus-visible:ring-0' : cn('h-12', hasText && onMicClick ? 'pr-20' : 'pr-12'),
         )}
       />
       {clearButton}

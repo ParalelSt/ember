@@ -20,6 +20,7 @@ import {
   type RadioPlace,
 } from '@/hooks/useRadio';
 import type { RadioStation } from '@/lib/radio/station';
+import { useUiStore } from '@/stores/useUiStore';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -32,13 +33,19 @@ export default function RadioPage() {
   const [place, setPlace] = useState<RadioPlace | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [q, setQ] = useState('');
+  // One query, typed in the top bar's box on a desktop window and in the
+  // page's own box on a phone (which has no top search box).
+  const q = useUiStore((s) => s.radioQuery);
+  const setQ = useUiStore((s) => s.setRadioQuery);
   const [debouncedQ, setDebouncedQ] = useState('');
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [q]);
+
+  // Leaving the page leaves its search behind: coming back starts clean.
+  useEffect(() => () => setQ(''), [setQ]);
 
   // Already allowed: Nearby is really nearby from the start, no prompt.
   useEffect(() => {
@@ -80,7 +87,9 @@ export default function RadioPage() {
     <OnlineOnly>
       <div className="pt-block md:pt-0">
         <PageTitle className="mb-stack">Radio</PageTitle>
-        <div className="relative max-w-xl">
+        {/* Phones only: a desktop window searches stations from the top
+            bar (SearchOverlayContainer), which is not drawn below md. */}
+        <div className="relative max-w-xl md:hidden">
           <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             value={q}

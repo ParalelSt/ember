@@ -33,6 +33,11 @@ interface UiState {
    *  with no network: no route change, no chunk to wait for. */
   searchOpen: boolean;
   setSearchOpen: (open: boolean) => void;
+  /** The Radio page's station search. On a desktop window the top bar's box
+   *  types it (SearchOverlayContainer on /radio); on a phone, the page's
+   *  own. The page empties it when it is left. */
+  radioQuery: string;
+  setRadioQuery: (q: string) => void;
   /** Desktop-only: drives the inline LyricsPanel. Mobile uses the
    *  NowPlaying overlay's lyrics section instead. */
   lyricsOpen: boolean;
@@ -63,6 +68,8 @@ export const useUiStore = create<UiState>()(
       setBugReportOpen: (bugReportOpen) => set({ bugReportOpen }),
       searchOpen: false,
       setSearchOpen: (searchOpen) => set({ searchOpen }),
+      radioQuery: '',
+      setRadioQuery: (radioQuery) => set({ radioQuery }),
       lyricsOpen: false,
       setLyricsOpen: (lyricsOpen) => set({ lyricsOpen }),
       nowPlayingFocus: null,

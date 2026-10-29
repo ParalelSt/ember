@@ -15,6 +15,8 @@ import { useBackDismiss } from '@/lib/useBackDismiss';
 import { useUiStore } from '@/stores/useUiStore';
 
 const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
+const STATION_SEARCH = 'Search stations';
+const NOOP = () => {};
 
 /** The data-aware half of the search overlay: owns the open flag (shell
  *  state, not the URL: opening it is instant, even with no network) and
@@ -34,6 +36,12 @@ export function SearchOverlayContainer() {
   // identical box above it would be nonsense. The route stays for deep
   // links, for phones and for landing on it directly.
   const hidden = isDesktop && pathname === '/search';
+  // On /radio the same box searches stations (the owner's ask: one search
+  // box, not a second one under the page title). It types the Radio page's
+  // query and opens no song panel; leaving the page brings songs back.
+  const stations = isDesktop && pathname === '/radio';
+  const radioQuery = useUiStore((s) => s.radioQuery);
+  const setRadioQuery = useUiStore((s) => s.setRadioQuery);
 
   // "/" keeps its isTypingTarget guard (hooks/useSearchShortcut); what
   // changed is what it does. On a desktop window it opens the panel, which
@@ -63,6 +71,14 @@ export function SearchOverlayContainer() {
     close();
     document.querySelector<HTMLInputElement>('input[data-search-page-box]')?.focus();
   }, [hidden, open, close]);
+
+  // On /radio, "/" and the sidebar's Search link put the caret in the
+  // station box, with no song panel under it.
+  useEffect(() => {
+    if (!stations || !open) return;
+    close();
+    document.querySelector<HTMLInputElement>(`input[aria-label="${STATION_SEARCH}"]`)?.focus();
+  }, [stations, open, close]);
 
   const {
     q,
@@ -135,6 +151,29 @@ export function SearchOverlayContainer() {
   );
 
   if (hidden) return null;
+
+  if (stations) {
+    return (
+      <SearchOverlay
+        open={false}
+        onClose={close}
+        onOpen={NOOP}
+        variant="dropdown"
+        q={radioQuery}
+        onQChange={setRadioQuery}
+        debouncedQ=""
+        micListening={false}
+        isOnline={isOnline}
+        isFetching={false}
+        rateLimited={false}
+        hasResults={false}
+        recentsNode={null}
+        resultsNode={null}
+        placeholder={STATION_SEARCH}
+        label={STATION_SEARCH}
+      />
+    );
+  }
 
   return (
     <SearchOverlay

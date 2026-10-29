@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import RadioPage from './page';
 import { stationTrack, type RadioStation } from '@/lib/radio/station';
+import { useUiStore } from '@/stores/useUiStore';
 
 /** The Radio page: Croatia until the listener shares where they are (no
  *  prompt until they tap), their favourites, a search; a tap plays the
@@ -43,6 +44,7 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useUiStore.setState({ radioQuery: '' });
   permission = 'prompt';
   api.radioCountry.mockResolvedValue({ stations: HR });
   api.radioNearby.mockResolvedValue({ stations: NEAR });
@@ -114,5 +116,23 @@ describe('Radio page', () => {
     fireEvent.change(screen.getByLabelText('Search stations'), { target: { value: 'antena' } });
     expect(await screen.findByText('Antena Zagreb')).toBeTruthy();
     expect(api.radioSearch).toHaveBeenCalledWith('antena');
+  });
+
+  it('keeps its own search box for phones only: the desktop top bar types the same query', async () => {
+    renderPage();
+    expect(screen.getByLabelText('Search stations').parentElement).toHaveClass('md:hidden');
+    // What the top bar's box (SearchOverlayContainer on /radio) types.
+    useUiStore.getState().setRadioQuery('antena');
+    expect(await screen.findByText('Antena Zagreb')).toBeTruthy();
+    expect(api.radioSearch).toHaveBeenCalledWith('antena');
+    expect(screen.getByLabelText('Search stations')).toHaveValue('antena');
+  });
+
+  it('empties the station search when the page is left', () => {
+    const { unmount } = renderPage();
+    fireEvent.change(screen.getByLabelText('Search stations'), { target: { value: 'antena' } });
+    expect(useUiStore.getState().radioQuery).toBe('antena');
+    unmount();
+    expect(useUiStore.getState().radioQuery).toBe('');
   });
 });

@@ -487,6 +487,63 @@ describe('SearchOverlayContainer, desktop dropdown', () => {
 
 // The phone shape: a bounded, non-modal sheet with a back arrow left of the
 // box (closes) and an X inside it that only ever clears.
+describe('SearchOverlayContainer, on /radio', () => {
+  beforeEach(() => {
+    desktop.value = true;
+    pathname.value = '/radio';
+    useUiStore.setState({ searchOpen: false, radioQuery: '' });
+  });
+
+  it('turns the top box into the station search: its placeholder, no song panel, no mic', () => {
+    renderOverlay();
+    const stations = screen.getByPlaceholderText('Search stations');
+    expect(stations).toHaveAccessibleName('Search stations');
+    expect(screen.queryByPlaceholderText('What do you want to listen to?')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Search by voice' })).toBeNull();
+    fireEvent.focus(stations);
+    fireEvent.change(stations, { target: { value: 'antena' } });
+    expect(useUiStore.getState().radioQuery).toBe('antena');
+    expect(useUiStore.getState().searchOpen).toBe(false);
+    expect(panel()).toBeNull();
+    expect(api.search).not.toHaveBeenCalledWith('antena');
+  });
+
+  it('clears the station search on the X', () => {
+    useUiStore.setState({ radioQuery: 'antena' });
+    renderOverlay();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(useUiStore.getState().radioQuery).toBe('');
+  });
+
+  it('puts the caret in the station box on "/" or the sidebar Search, with no panel', () => {
+    renderOverlay();
+    act(() => useUiStore.getState().setSearchOpen(true));
+    expect(useUiStore.getState().searchOpen).toBe(false);
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('Search stations'));
+    expect(panel()).toBeNull();
+  });
+
+  it('is the song search again everywhere else', () => {
+    const { rerender } = renderOverlay();
+    pathname.value = '/';
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <SearchOverlayContainer />
+      </QueryClientProvider>,
+    );
+    expect(box()).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Search stations')).toBeNull();
+  });
+
+  it('leaves the phone sheet the song search, since phones keep the page\'s own box', () => {
+    desktop.value = false;
+    useUiStore.setState({ searchOpen: true });
+    renderOverlay();
+    expect(box()).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Search stations')).toBeNull();
+  });
+});
+
 describe('SearchOverlayContainer, phone sheet', () => {
   beforeEach(() => {
     desktop.value = false;
