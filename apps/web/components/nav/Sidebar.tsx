@@ -89,7 +89,7 @@ export function Sidebar({ covers = false }: { covers?: boolean }) {
         </div>
       )}
 
-      <div data-testid="playlists-header" className="mt-4 border-t border-sidebar-border pt-3.5 px-4 flex items-center justify-between">
+      <div data-testid="playlists-header" className="mt-block border-t border-sidebar-border pt-3.5 px-4 flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-widest text-sidebar-foreground/55">Playlists</span>
         {user && (
           <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setCreateOpen(true)} title="New playlist" aria-label="New playlist">
@@ -99,7 +99,7 @@ export function Sidebar({ covers = false }: { covers?: boolean }) {
       </div>
 
       <ScrollArea className="flex-1 min-h-32 mt-3.5">
-        <div className={cn('px-2 pb-3 flex flex-col', covers ? 'gap-0.5' : 'gap-1')} {...nav.holdProps}>
+        <div className={cn('px-2 pb-3 flex flex-col', covers ? 'gap-0.5' : 'gap-inset')} {...nav.holdProps}>
           <PlaylistNavList
             items={nav.items}
             activePath={pathname}

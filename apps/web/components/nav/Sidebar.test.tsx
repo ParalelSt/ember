@@ -144,10 +144,10 @@ it('passes cached collection songs and playlist metadata to the shared rows', ()
 it('spaces the Playlists header with a divider and airier rows (normal sidebar only)', () => {
   lib.playlists = [{ id: 'p1', name: 'Mix', track_count: 4, track_artworks: [] }];
   const { container, unmount } = render(<Sidebar />);
-  expect(screen.getByTestId('playlists-header')).toHaveClass('border-t', 'border-sidebar-border', 'mt-4', 'pt-3.5');
+  expect(screen.getByTestId('playlists-header')).toHaveClass('border-t', 'border-sidebar-border', 'mt-block', 'pt-3.5');
   const row = screen.getByTestId('playlist-nav-row');
   expect(row).toHaveClass('py-[7px]');
-  expect(row.parentElement).toHaveClass('gap-1');
+  expect(row.parentElement).toHaveClass('gap-inset');
   unmount();
   render(<Sidebar covers />);
   const crow = screen.getByTestId('playlist-nav-row');
