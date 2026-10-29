@@ -16,6 +16,7 @@ const headUnit = vi.hoisted(() => ({ value: false }));
 vi.mock('@/lib/headUnit', () => ({ isHeadUnit: () => headUnit.value, subscribeHeadUnit: () => () => {} }));
 vi.mock('@/components/nav/TopBar', () => ({ TopBar: () => <header data-testid="phone-topbar" /> }));
 vi.mock('@/components/nav/MobileNav', () => ({ MobileNav: () => <nav data-testid="mobile-nav" /> }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
 vi.mock('@/components/nav/Drawer', () => ({ Drawer: () => null }));
 vi.mock('@/components/nav/BackToTop', () => ({ BackToTop: () => <button type="button">Back to top</button> }));
 vi.mock('@/components/player/PlayerBar', () => ({ PlayerBar: () => <footer data-testid="player-bar" /> }));

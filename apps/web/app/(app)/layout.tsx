@@ -7,6 +7,7 @@ import { TopBar } from '@/components/nav/TopBar';
 import { MobileNav } from '@/components/nav/MobileNav';
 import { Drawer } from '@/components/nav/Drawer';
 import { BackToTop } from '@/components/nav/BackToTop';
+import { ScrollToTopOnNavigate } from '@/components/nav/ScrollToTopOnNavigate';
 import { DesktopTopBar } from '@/components/nav/DesktopTopBar';
 import { PlayerBar } from '@/components/player/PlayerBar';
 import { NowPlaying } from '@/components/player/NowPlaying';
@@ -109,6 +110,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                 <main> (grows tall, drives the scroll) and the LyricsPanel
                 (pulled up beside the bar, sticky at the top). */}
             <div ref={scrollerRef} data-app-scroller className="flex-1 min-h-0 overflow-y-auto">
+              <ScrollToTopOnNavigate scrollRef={scrollerRef} />
               {isDesktop && (
                 <DesktopTopBar raised={searchOpen} onHeightChange={setBarH}>
                   <SearchOverlayContainer />
