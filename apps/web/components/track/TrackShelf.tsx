@@ -88,7 +88,7 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
   if (fullscreen) {
     return (
       <section>
-        <BackButton href="/" className="mb-4" />
+        <BackButton href="/" className="mb-block" />
         <PageTitle className="mb-6">{title}</PageTitle>
         <div ref={gridRef} className={`grid gap-4 ${gridCols}`} style={gridStyle} role="list">
           {all.map((t) => (
