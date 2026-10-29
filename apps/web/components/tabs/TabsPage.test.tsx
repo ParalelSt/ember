@@ -59,6 +59,19 @@ vi.mock('@/lib/api', () => ({ api }));
 // @base-ui's Menu reaches the repo root's hoisted React through its own
 // require, so the menu is plain elements here: the trigger is a button,
 // items are buttons, always rendered.
+// The ⋯ menu: a dropdown on desktop, a sheet from the bottom on a phone
+// (its own media query, so the page's narrow layout is separate).
+const screenSize = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => screenSize.desktop }));
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ open, children }: { open: boolean; children?: ReactNode }) => (open ? <div>{children}</div> : null),
+  SheetContent: ({ children, 'data-testid': testId }: { children?: ReactNode; 'data-testid'?: string }) => (
+    <div role="dialog" data-testid={testId}>{children}</div>
+  ),
+  SheetHeader: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
+}));
+
 vi.mock('@/components/ui/dropdown-menu', () => {
   const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
   return {
@@ -148,6 +161,7 @@ beforeEach(() => {
   window.localStorage.clear();
   useSettingsStore.setState(initialSettings, true);
   phone = false;
+  screenSize.desktop = true;
   window.matchMedia = ((q: string) => ({
     matches: phone && q.includes('max-width'),
     media: q,
@@ -848,6 +862,65 @@ describe('TabsPage without tab generation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Choose a tab' }));
     expect(within(screen.getByTestId('tab-source-sheet')).queryByText(/Generat/i)).toBeNull();
     expect(within(screen.getByTestId('tab-source-sheet')).getByRole('button', { name: 'Add a file' })).toBeInTheDocument();
+  });
+});
+
+describe('TabsPage ⋯ menu on a phone', () => {
+  it('opens a sheet named after the song, with the same rows, groups and the delete in red', async () => {
+    screenSize.desktop = false;
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({ canDelete: true })] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    expect(screen.queryByRole('menuitem')).toBeNull();
+    expect(screen.queryByTestId('action-sheet')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tab options' }));
+    const sheet = screen.getByTestId('action-sheet');
+    expect(within(sheet).getByRole('heading')).toHaveTextContent('Copper Sky tab options');
+    expect(sheet).toHaveTextContent('Coastline');
+    await waitFor(() =>
+      expect(within(sheet).getAllByRole('button').map((b) => b.textContent)).toEqual([
+        'Add a Guitar Pro or MusicXML file',
+        'Search online again',
+        'Show the score too',
+        'Scroll sideways',
+        'Search Ultimate Guitar',
+        'Search Guitar Pro files',
+        'Open on Songsterr',
+        'Delete this tab',
+      ]),
+    );
+    expect(within(sheet).getAllByRole('separator')).toHaveLength(3);
+    expect(screen.getByTestId('tab-menu-delete')).toHaveClass('text-destructive');
+
+    // A row runs its action and closes the sheet.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Scroll sideways' }));
+    expect(screen.queryByTestId('action-sheet')).toBeNull();
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-scroll', 'horizontal');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tab options' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Search Ultimate Guitar' }));
+    expect(open.mock.lastCall?.[0]).toContain('ultimate-guitar.com');
+
+    // Delete still asks first.
+    fireEvent.click(screen.getByRole('button', { name: 'Tab options' }));
+    fireEvent.click(screen.getByTestId('tab-menu-delete'));
+    expect(confirm).toHaveBeenCalledWith('Delete this tab for everyone?');
+    expect(api.deleteTabFile).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  it('a busy search is a disabled row', async () => {
+    screenSize.desktop = false;
+    api.findTabsOnline.mockReturnValue(new Promise(() => {}));
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tabs-searching');
+    fireEvent.click(screen.getByRole('button', { name: 'Tab options' }));
+    await waitFor(() => expect(screen.getByTestId('tab-menu-search-again')).toBeDisabled());
+    expect(screen.getByTestId('tab-menu-search-again')).toHaveTextContent('Searching online…');
   });
 });
 

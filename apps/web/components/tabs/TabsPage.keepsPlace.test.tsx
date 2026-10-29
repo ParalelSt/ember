@@ -23,6 +23,8 @@ vi.mock('next/link', () => ({
     <a href={href} {...rest}>{children}</a>
   ),
 }));
+// The page's ⋯ menu is a dropdown on desktop (a sheet on a phone).
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 vi.mock('@/components/ui/dropdown-menu', () => {
   const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
   return {

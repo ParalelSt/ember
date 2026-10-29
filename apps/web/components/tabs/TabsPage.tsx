@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useDesktopPlugins } from '@/hooks/useDesktopPlugins';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ActionSheet, ActionSheetItem, ActionSheetSeparator } from '@/components/ui/action-sheet';
 import {
   ChevronDownIcon,
   MoreIcon,
@@ -39,6 +40,7 @@ import {
   ToolPopover,
 } from '@/components/tabs/PracticeTools';
 import { useCountIn } from '@/hooks/useCountIn';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   barPosition,
   countInFrom,
@@ -184,6 +186,7 @@ function DesktopTabsPage({ trackId }: { trackId: string }) {
 
 function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourcesState; onBack: () => void }) {
   const phone = usePhone();
+  const isDesktop = useIsDesktop();
   const { current, isPlaying, position, duration, seek, playTrack, toggle, rate, setRate, canSetRate } = usePlayer();
   // When the player reported `position`: the line runs on from then.
   const positionAt = usePlayerStore((s) => s.positionAt);
@@ -462,57 +465,40 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     };
   }, [openTool]);
 
+  // The ⋯ menu as data, in groups (TabOptionsMenu draws it).
+  const menuGroups: TabMenuEntry[][] = [
+    [
+      { key: 'add-file', label: 'Add a Guitar Pro or MusicXML file', onClick: addFile },
+      {
+        key: 'search-again',
+        label: sources.searchingOnline ? 'Searching online…' : 'Search online again',
+        disabled: sources.searchingOnline,
+        onClick: sources.searchOnlineAgain,
+      },
+      ...(tab?.kind === 'fetched'
+        ? [{ key: 'line-up', label: align.running ? 'Lining it up…' : 'Line it up again', disabled: align.running, onClick: align.lineUp }]
+        : []),
+    ],
+    tab
+      ? [
+          {
+            key: 'staff',
+            label: staff === 'tab' ? 'Show the score too' : 'Show the tab only',
+            onClick: () => setStaff(staff === 'tab' ? 'score-tab' : 'tab'),
+          },
+          {
+            key: 'scroll',
+            label: scroll === 'vertical' ? 'Scroll sideways' : 'Scroll down the page',
+            onClick: () => setScroll(scroll === 'vertical' ? 'horizontal' : 'vertical'),
+          },
+        ]
+      : [],
+    searchLinks.map((l) => ({ key: `link-${l.id}`, label: l.menuLabel, onClick: () => openLink(l.url) })),
+    tab?.canDelete ? [{ key: 'delete', label: 'Delete this tab', destructive: true, onClick: () => removeTab(tab.id) }] : [],
+  ];
+
   const actions = (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label="Tab options"
-        className="inline-flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-      >
-        <MoreIcon className="size-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className={MENU_CLASS}>
-        <MenuItem label="Add a Guitar Pro or MusicXML file" onClick={addFile} />
-        <MenuItem
-          label={sources.searchingOnline ? 'Searching online…' : 'Search online again'}
-          disabled={sources.searchingOnline}
-          onClick={sources.searchOnlineAgain}
-        />
-        {tab?.kind === 'fetched' && (
-          <MenuItem
-            label={align.running ? 'Lining it up…' : 'Line it up again'}
-            disabled={align.running}
-            onClick={align.lineUp}
-          />
-        )}
-        {tab && (
-          <>
-            <DropdownMenuSeparator />
-            <MenuItem
-              label={staff === 'tab' ? 'Show the score too' : 'Show the tab only'}
-              onClick={() => setStaff(staff === 'tab' ? 'score-tab' : 'tab')}
-            />
-            <MenuItem
-              label={scroll === 'vertical' ? 'Scroll sideways' : 'Scroll down the page'}
-              onClick={() => setScroll(scroll === 'vertical' ? 'horizontal' : 'vertical')}
-            />
-          </>
-        )}
-        <DropdownMenuSeparator />
-        {searchLinks.map((l) => (
-          <MenuItem key={l.id} label={l.menuLabel} onClick={() => openLink(l.url)} />
-        ))}
-        {tab?.canDelete && (
-          <>
-            <DropdownMenuSeparator />
-            <MenuItem
-              label="Delete this tab"
-              className="text-destructive"
-              onClick={() => removeTab(tab.id)}
-            />
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <TabOptionsMenu desktop={isDesktop} title={song.title} artist={song.artist} groups={menuGroups} />
   );
 
   // What you play and which version, under the title (pick 4): both open
@@ -874,6 +860,19 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
  *  viewport less a margin, whatever the trigger's width. */
 const MENU_CLASS = 'w-max min-w-56 max-w-[calc(100vw-2rem)]';
 
+/** The ⋯ button beside the tab's title. */
+const MENU_TRIGGER =
+  'inline-flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground';
+
+/** One row of the ⋯ menu, as data for the dropdown and the phone sheet. */
+interface TabMenuEntry {
+  key: string;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  destructive?: boolean;
+}
+
 /** The two buttons under the title: what you play, which version. */
 const PICK_BUTTON =
   'inline-flex min-w-0 max-w-full items-center gap-inset rounded-lg border border-border px-cluster py-inset text-xs transition-colors hover:bg-muted';
@@ -895,5 +894,88 @@ function MenuItem({
     <DropdownMenuItem title={label} disabled={disabled} onClick={onClick} className={cn('min-w-0', className)}>
       <span className="min-w-0 truncate">{label}</span>
     </DropdownMenuItem>
+  );
+}
+
+/** The tab's ⋯ menu: a dropdown on desktop, a sheet from the bottom on a
+ *  phone (popups1) with the song on top. Groups have a line between them;
+ *  an empty group is skipped (the first is never empty). */
+function TabOptionsMenu({
+  desktop,
+  title,
+  artist,
+  groups,
+}: {
+  desktop: boolean;
+  title: string;
+  artist: string;
+  groups: TabMenuEntry[][];
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  return desktop ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger aria-label="Tab options" className={MENU_TRIGGER}>
+        <MoreIcon className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className={MENU_CLASS}>
+        {groups.map((group, i) => group.length > 0 && (
+          <Fragment key={group[0].key}>
+            {i > 0 && <DropdownMenuSeparator />}
+            {group.map((e) => (
+              <MenuItem
+                key={e.key}
+                label={e.label}
+                disabled={e.disabled}
+                className={e.destructive ? 'text-destructive' : undefined}
+                onClick={e.onClick}
+              />
+            ))}
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : (
+    <>
+      <button
+        type="button"
+        aria-label="Tab options"
+        aria-haspopup="dialog"
+        className={MENU_TRIGGER}
+        onClick={() => setMenuOpen(true)}
+      >
+        <MoreIcon className="size-4" />
+      </button>
+      <ActionSheet
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        title={`${title} tab options`}
+        header={
+          <div className="min-w-0 text-left">
+            <div className="truncate text-base font-semibold">{title}</div>
+            {artist && <div className="truncate text-sm text-muted-foreground">{artist}</div>}
+          </div>
+        }
+      >
+        {groups.map((group, i) => group.length > 0 && (
+          <Fragment key={group[0].key}>
+            {i > 0 && <ActionSheetSeparator />}
+            {group.map((e) => (
+              <ActionSheetItem
+                key={e.key}
+                testId={`tab-menu-${e.key}`}
+                disabled={e.disabled}
+                tone={e.destructive ? 'destructive' : undefined}
+                onSelect={() => {
+                  setMenuOpen(false);
+                  e.onClick();
+                }}
+              >
+                {e.label}
+              </ActionSheetItem>
+            ))}
+          </Fragment>
+        ))}
+      </ActionSheet>
+    </>
   );
 }

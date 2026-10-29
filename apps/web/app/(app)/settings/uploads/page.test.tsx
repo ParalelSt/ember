@@ -21,6 +21,7 @@ vi.mock('@/components/ui/sheet', () => ({
   SheetContent: ({ children, side, 'data-testid': testId }: { children: ReactNode; side?: string; 'data-testid'?: string }) => (
     <div role="dialog" data-testid={testId} data-kind={`sheet-${side}`}>{children}</div>
   ),
+  SheetHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
   SheetTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }));
 vi.mock('@/components/ui/dropdown-menu', () => ({
@@ -91,6 +92,15 @@ afterEach(() => {
   resetSharedUploadQueue();
   vi.clearAllMocks();
 });
+
+/** Picks an item from a row's ... menu: the dropdown's item on a desktop,
+ *  or opens the phone's sheet and taps its row. */
+function choose(row: HTMLElement, name: RegExp) {
+  const item = within(row).queryByRole('menuitem', { name });
+  if (item) return fireEvent.click(item);
+  fireEvent.click(within(row).getByRole('button', { name: /^More options for / }));
+  fireEvent.click(within(screen.getByTestId('action-sheet')).getByRole('button', { name }));
+}
 
 describe('Settings > Uploads layout', () => {
   it('puts the header, then the Upload songs bar, then Your uploads', async () => {
@@ -238,12 +248,19 @@ describe('Your uploads rows', () => {
     expect(await screen.findByText(/Nothing uploaded yet/)).toBeInTheDocument();
   });
 
-  it('the ... menu has Edit details and Remove; Remove asks first, then deletes', async () => {
+  it('the ... menu on a phone is a sheet with the upload on top: Edit details and Remove; Remove asks first, then deletes', async () => {
     renderPage();
     const [first] = await screen.findAllByTestId('my-upload-row');
-    expect(within(first).getByRole('button', { name: 'More options for Song 1' })).toBeInTheDocument();
-    expect(within(first).getByRole('menuitem', { name: /Edit details/ })).toBeInTheDocument();
-    fireEvent.click(within(first).getByRole('menuitem', { name: /Remove/ }));
+    expect(within(first).queryByRole('menuitem')).toBeNull();
+    fireEvent.click(within(first).getByRole('button', { name: 'More options for Song 1' }));
+    const sheet = screen.getByTestId('action-sheet');
+    expect(sheet).toHaveAttribute('data-kind', 'sheet-bottom');
+    expect(sheet).toHaveTextContent('Song 1');
+    expect(sheet.querySelector('img')).toHaveAttribute('src', '/api/uploads/u1/art');
+    expect(within(sheet).getByRole('button', { name: /Edit details/ })).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: /Remove/ })).toHaveClass('text-destructive');
+    fireEvent.click(within(sheet).getByRole('button', { name: /Remove/ }));
+    expect(screen.queryByTestId('action-sheet')).toBeNull();
     const confirm = screen.getByRole('dialog');
     expect(confirm).toHaveTextContent('Remove "Song 1"?');
     expect(state.api.deleteUpload).not.toHaveBeenCalled();
@@ -252,17 +269,28 @@ describe('Your uploads rows', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(state.api.deleteUpload).not.toHaveBeenCalled();
 
-    fireEvent.click(within(first).getByRole('menuitem', { name: /Remove/ }));
+    choose(first, /Remove/);
     await act(async () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' })));
     expect(state.api.deleteUpload).toHaveBeenCalledWith('u1');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('the ... menu on a desktop is a dropdown with the same two items', async () => {
+    state.desktop = true;
+    renderPage();
+    const [first] = await screen.findAllByTestId('my-upload-row');
+    expect(within(first).getByRole('button', { name: 'More options for Song 1' })).toBeInTheDocument();
+    expect(within(first).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Edit details', 'Remove']);
+    expect(screen.queryByTestId('action-sheet')).toBeNull();
+    fireEvent.click(within(first).getByRole('menuitem', { name: /Remove/ }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Remove "Song 1"?');
   });
 });
 
 describe('the edit sheet', () => {
   const openEdit = async (index = 0) => {
     const rows = await screen.findAllByTestId('my-upload-row');
-    fireEvent.click(within(rows[index]).getByRole('menuitem', { name: /Edit details/ }));
+    choose(rows[index], /Edit details/);
     return screen.getByTestId('edit-upload');
   };
 

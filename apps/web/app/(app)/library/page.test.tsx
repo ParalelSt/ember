@@ -1,6 +1,6 @@
 import type { ComponentProps, PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { toSummary, type CollectionSummary } from '@/lib/collections';
 import { LIBRARY_IMPORT_HREF, LIBRARY_VIEW_KEY } from '@/lib/library';
 import { resetLibraryViewMemory } from '@/hooks/useLibraryView';
@@ -78,6 +78,15 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
     <div role="menuitem" onClick={onClick}>{children}</div>
   ),
 }));
+// The phone's + menu is a sheet from the bottom (popups1).
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ open, children }: PropsWithChildren<{ open: boolean }>) => (open ? <div>{children}</div> : null),
+  SheetContent: ({ children, 'data-testid': testId }: PropsWithChildren<{ 'data-testid'?: string }>) => (
+    <div data-testid={testId}>{children}</div>
+  ),
+  SheetHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  SheetTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
+}));
 // The desktop header's own buttons are covered by their tests; here they
 // only have to be there.
 vi.mock('@/components/session/CarlistButton', () => ({
@@ -86,6 +95,12 @@ vi.mock('@/components/session/CarlistButton', () => ({
 vi.mock('@/components/track/menus/UploadTrackDialog', () => ({ UploadTrackDialog: () => null }));
 
 const { default: LibraryPage } = await import('./page');
+
+/** Taps the phone Library's + and then a row of its sheet. */
+const fromPlus = (name: RegExp) => {
+  fireEvent.click(screen.getByRole('button', { name: 'Create or import' }));
+  fireEvent.click(within(screen.getByTestId('action-sheet')).getByRole('button', { name }));
+};
 
 const titles = () =>
   [...document.querySelectorAll('[data-library-item]')].map((el) => el.querySelector('.truncate')?.textContent);
@@ -152,11 +167,12 @@ describe('Library page, phone', () => {
 
   it('+ menu: New playlist opens the create dialog, Start a carlist the start dialog, Import the Transfer flow', () => {
     render(<LibraryPage />);
-    fireEvent.click(screen.getByRole('menuitem', { name: /New playlist/ }));
+    expect(screen.queryByRole('menuitem')).toBeNull();
+    fromPlus(/New playlist/);
     expect(screen.getByRole('dialog', { name: 'New playlist' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Start a carlist/ }));
+    fromPlus(/Start a carlist/);
     expect(screen.getByRole('dialog', { name: 'Start a carlist' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Import/ }));
+    fromPlus(/Import/);
     expect(state.push).toHaveBeenCalledWith(LIBRARY_IMPORT_HREF);
     expect(LIBRARY_IMPORT_HREF).toBe('/transfer?from=%2Flibrary');
   });
@@ -164,7 +180,7 @@ describe('Library page, phone', () => {
   it('with a carlist live, the carlist item opens it instead of the start dialog', () => {
     state.carlist = { id: 's9' };
     render(<LibraryPage />);
-    fireEvent.click(screen.getByRole('menuitem', { name: /Open your carlist/ }));
+    fromPlus(/Open your carlist/);
     expect(state.push).toHaveBeenCalledWith('/session/s9');
     expect(screen.queryByRole('dialog', { name: 'Start a carlist' })).toBeNull();
   });
