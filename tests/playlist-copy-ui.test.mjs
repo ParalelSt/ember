@@ -208,10 +208,25 @@ async function goto(page, url) {
 // otherwise be read as part of the playlist.
 const titles = (page) => page.getByTestId('track-row').getByTestId('track-row-title').allTextContents();
 
+const SORT_KEY = { Title: 'title', Artist: 'artist', 'Date added': 'added', Duration: 'duration' };
+
+/** The sort menu is a simple list: another key starts at its
+ *  natural direction and the key in use flips, so reaching "Title, Z to A"
+ *  can take two picks. */
 async function sortBy(page, label) {
-  await page.getByTestId('sort-button').click();
-  await page.getByTestId('sort-menu').getByRole('button', { name: label, exact: true }).click();
-  await page.waitForTimeout(150);
+  const key = SORT_KEY[label.split(', ')[0]];
+  for (let i = 0; i < 2; i++) {
+    if ((await page.getByTestId('sort-button').getAttribute('aria-label')) === `Sort: ${label}`) break;
+    await page.getByTestId('sort-button').click();
+    await page.getByTestId(`sort-${key}`).click();
+    await page.waitForTimeout(150);
+  }
+}
+
+/** Select mode's door: Copy songs to… in the playlist's ⋯ menu. */
+async function enterSelect(page) {
+  await page.getByTestId('more-menu').click();
+  await page.getByTestId('menu-copy-songs').click();
 }
 
 async function layout(page) {
@@ -283,7 +298,7 @@ async function run(width, height) {
     await sortBy(page, 'Date added, Oldest first');
 
     // Select one by one, Select all, Clear.
-    await page.getByTestId('select-toggle').click();
+    await enterSelect(page);
     check(`${size}: Select turns the play column into tick boxes`, (await page.getByRole('checkbox', { name: /^Select (?!all$)/ }).count()) === 6);
     await page.getByRole('checkbox', { name: 'Select Harbor Lights' }).click();
     await page.getByTestId('track-row').filter({ hasText: 'Northbound' }).click();
@@ -345,7 +360,7 @@ async function run(width, height) {
     await page.getByTestId('copy-done').click();
 
     // Copy into Liked songs: the warning, Cancel, then yes.
-    await page.getByTestId('select-toggle').click();
+    await enterSelect(page);
     await page.getByTestId('select-all').click();
     await page.getByTestId('copy-to').click();
     await page.locator('[data-testid="copy-destination"][data-destination="liked"]').click();
@@ -380,7 +395,7 @@ async function run(width, height) {
 
     // Gym's "Home" (Phillip Phillips) into Liked songs: a different song, liked too.
     await goto(page, `${APP_URL}/playlist/${gym}`);
-    await page.getByTestId('select-toggle').click();
+    await enterSelect(page);
     await page.getByTestId('track-row').filter({ hasText: 'Phillip Phillips' }).click();
     await page.getByTestId('copy-to').click();
     const likedNote2 = await page.locator('[data-testid="copy-destination"][data-destination="liked"] [data-testid="copy-destination-note"]').textContent();
@@ -393,7 +408,7 @@ async function run(width, height) {
     await page.getByTestId('copy-done').click();
 
     // A new playlist, named inline.
-    await page.getByTestId('select-toggle').click();
+    await enterSelect(page);
     await page.getByTestId('track-row').filter({ hasText: 'Gym Anthem' }).click();
     await page.getByTestId('track-row').filter({ hasText: 'Northbound' }).click();
     await page.getByTestId('copy-to').click();
@@ -414,7 +429,7 @@ async function run(width, height) {
     await goto(page, `${APP_URL}/library/liked`);
     const likedTitles = await titles(page);
     check(`${size}: Liked songs lists newest first`, likedTitles[0] === 'Home' && likedTitles.length === 7, likedTitles.join(' / '));
-    await page.getByTestId('select-toggle').click();
+    await enterSelect(page);
     await page.getByTestId('select-all').click();
     await page.getByTestId('copy-to').click();
     const likedDest = await page.getByTestId('copy-destination').evaluateAll((els) => els.map((e) => e.getAttribute('data-destination')));

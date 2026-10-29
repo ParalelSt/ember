@@ -5,8 +5,16 @@ import { CollectionPage, type CollectionPageProps, type CollectionSelectionHandl
 import { DEFAULT_PLAYLIST_SORT, sortCollection, type SortState } from '@/lib/playlistCopy';
 import type { Track } from '@/types/track';
 
-// base-ui's Popover can't render under vitest here (test-utils/popoverMock.tsx).
-vi.mock('@base-ui/react/popover', () => import('@/test-utils/popoverMock'));
+// The ⋯ menu and the sort menu: a dropdown on desktop, a sheet on a phone.
+vi.mock('@/components/ui/dropdown-menu', () => import('@/test-utils/dropdownMenuMock'));
+const screenSize = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => screenSize.desktop }));
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ open, children }: { open: boolean; children?: ReactNode }) => (open ? <div>{children}</div> : null),
+  SheetContent: ({ children }: { children?: ReactNode }) => <div role="dialog">{children}</div>,
+  SheetHeader: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
+}));
 
 // next/link reads the app router context, which no test renders (see
 // components/OnlineOnly.test.tsx).
@@ -170,17 +178,26 @@ function SelectablePage({ tracks, onCopyBar = () => null, over = {} }: {
 
 const titles = () => screen.getAllByTestId('track-row-title').map((el) => el.textContent);
 
+/** Select mode's door: Copy songs to… in the ⋯ menu. */
+function enterSelect() {
+  fireEvent.click(screen.getByTestId('more-menu'));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Copy songs to…' }));
+}
+
 describe('CollectionPage select mode and sort', () => {
   const list = [track('a', 'beta', 'Zed'), track('b', 'Alpha', 'Amy'), track('c', 'Gamma', 'Bo')];
 
-  it('Select in the action bar turns the play column into tick boxes', () => {
+  it('no Select button: Copy songs to… in the ⋯ menu turns the play column into tick boxes', () => {
     render(<SelectablePage tracks={list} />);
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+    expect(screen.queryByTestId('select-toggle')).toBeNull();
+    expect(within(screen.getByTestId('action-bar')).queryByRole('button', { name: /^Select/ })).toBeNull();
+    enterSelect();
     const toggle = within(screen.getByTestId('action-bar')).getByTestId('select-toggle');
-    expect(toggle).toHaveTextContent('Select');
-    fireEvent.click(toggle);
     expect(toggle).toHaveTextContent('Done');
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    // The ⋯ steps aside for the Done pill.
+    expect(screen.queryByTestId('more-menu')).toBeNull();
     const boxes = screen.getAllByRole('checkbox', { name: /^Select (beta|Alpha|Gamma)$/ });
     expect(boxes).toHaveLength(3);
     expect(boxes.every((b) => b.getAttribute('aria-checked') === 'false')).toBe(true);
@@ -190,7 +207,7 @@ describe('CollectionPage select mode and sort', () => {
 
   it('a tick box and a click on the row both toggle; the count and the bar follow', () => {
     render(<SelectablePage tracks={list} />);
-    fireEvent.click(screen.getByTestId('select-toggle'));
+    enterSelect();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Alpha' }));
     expect(screen.getByRole('checkbox', { name: 'Select Alpha' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByText('Gamma'));
@@ -203,7 +220,7 @@ describe('CollectionPage select mode and sort', () => {
 
   it('Select all picks every song, then clears them; Done leaves select mode', () => {
     render(<SelectablePage tracks={list} />);
-    fireEvent.click(screen.getByTestId('select-toggle'));
+    enterSelect();
     fireEvent.click(screen.getByTestId('select-all'));
     expect(screen.getByTestId('select-count')).toHaveTextContent('3 of 3');
     expect(screen.getByTestId('select-all')).toHaveTextContent('Clear all');
@@ -213,6 +230,8 @@ describe('CollectionPage select mode and sort', () => {
     fireEvent.click(screen.getByTestId('select-toggle'));
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
     expect(screen.queryByTestId('bar')).toBeNull();
+    expect(screen.queryByTestId('select-toggle')).toBeNull();
+    expect(screen.getByTestId('more-menu')).toBeInTheDocument();
   });
 
   it('outside select mode a single click still plays and the row menu is there', () => {
@@ -229,7 +248,7 @@ describe('CollectionPage select mode and sort', () => {
     fireEvent.click(screen.getAllByTestId('track-row')[0]);
     expect(onPlay).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'More beta' })).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('select-toggle'));
+    enterSelect();
     fireEvent.click(screen.getAllByTestId('track-row')[0]);
     expect(onPlay).toHaveBeenCalledTimes(1);
     // The menu gives way to the date added.
@@ -237,34 +256,100 @@ describe('CollectionPage select mode and sort', () => {
     expect(screen.getAllByTestId('track-row-added')[0]).toHaveTextContent('added beta');
   });
 
-  it('Sort works outside select mode: every key, both ways, and the selection survives it', () => {
+  it('Sort is a simple list: another key starts at its natural way, the one in use flips; the selection survives it', () => {
     render(<SelectablePage tracks={list} />);
     expect(titles()).toEqual(['beta', 'Alpha', 'Gamma']);
     const pick = (label: string) => {
       fireEvent.click(screen.getByTestId('sort-button'));
-      fireEvent.click(within(screen.getByTestId('sort-menu')).getByRole('button', { name: label }));
+      fireEvent.click(within(screen.getByTestId('sort-menu')).getByRole('menuitem', { name: new RegExp(`^${label}`) }));
     };
-    pick('Title, A to Z');
+    fireEvent.click(screen.getByTestId('sort-button'));
+    const items = within(screen.getByTestId('sort-menu')).getAllByRole('menuitem');
+    expect(items.map((i) => i.textContent)).toEqual(['Title', 'Artist', 'Date added, Oldest first', 'Duration']);
+    // The one in use: highlighted, with its arrow.
+    expect(screen.getByTestId('sort-added')).toHaveAttribute('data-active', 'true');
+    expect(screen.getByTestId('sort-added').querySelector('svg')).not.toBeNull();
+    expect(screen.getByTestId('sort-title')).not.toHaveAttribute('data-active');
+    fireEvent.click(screen.getByTestId('sort-button'));
+
+    pick('Title');
     expect(titles()).toEqual(['Alpha', 'beta', 'Gamma']);
     expect(screen.getByTestId('sort-button')).toHaveAccessibleName('Sort: Title, A to Z');
-    pick('Title, Z to A');
+    pick('Title');
     expect(titles()).toEqual(['Gamma', 'beta', 'Alpha']);
-    pick('Artist, A to Z');
+    expect(screen.getByTestId('sort-button')).toHaveAccessibleName('Sort: Title, Z to A');
+    pick('Artist');
     expect(titles()).toEqual(['Alpha', 'Gamma', 'beta']);
-    fireEvent.click(screen.getByTestId('select-toggle'));
+    enterSelect();
     fireEvent.click(screen.getByText('beta'));
-    pick('Artist, Z to A');
+    pick('Artist');
     expect(titles()).toEqual(['beta', 'Gamma', 'Alpha']);
     expect(screen.getByRole('checkbox', { name: 'Select beta' })).toHaveAttribute('aria-checked', 'true');
+    pick('Date added');
+    expect(screen.getByTestId('sort-button')).toHaveAccessibleName('Sort: Date added, Newest first');
   });
 
-  it('no Select and no Sort over an import list or an empty collection', () => {
+  it('on a phone the sort list is a sheet from the bottom', () => {
+    screenSize.desktop = false;
+    try {
+      render(<SelectablePage tracks={list} />);
+      fireEvent.click(screen.getByTestId('sort-button'));
+      const sheet = screen.getByTestId('sort-menu');
+      expect(within(sheet).getAllByRole('button').map((b) => b.textContent)).toEqual([
+        'Title',
+        'Artist',
+        'Date added, Oldest first',
+        'Duration',
+      ]);
+      fireEvent.click(screen.getByTestId('sort-duration'));
+      expect(screen.queryByTestId('sort-menu')).toBeNull();
+      expect(screen.getByTestId('sort-button')).toHaveAccessibleName('Sort: Duration, Shortest first');
+    } finally {
+      screenSize.desktop = true;
+    }
+  });
+
+  it('no "N songs" line under the action bar: Sort sits at its right end, after the ⋯', () => {
+    render(<SelectablePage tracks={list} over={{ actions: <a href="/transfer">Transfer</a> }} />);
+    expect(screen.queryByTestId('list-toolbar')).toBeNull();
+    expect(screen.queryByText('3 songs')).toBeNull();
+    const bar = screen.getByTestId('action-bar');
+    const sortButton = within(bar).getByTestId('sort-button');
+    expect(sortButton.parentElement).toHaveClass('ml-auto');
+    expect(bar.lastElementChild).toBe(sortButton.parentElement);
+    // Transfer, then the ⋯, then Sort.
+    const transfer = within(bar).getByRole('link', { name: 'Transfer' });
+    const more = within(bar).getByTestId('more-menu');
+    expect(follows(transfer, more)).toBe(true);
+    expect(follows(more, sortButton)).toBe(true);
+  });
+
+  it('no Copy songs and no Sort over an import list or an empty collection', () => {
     const { unmount } = render(<SelectablePage tracks={list} over={{ list: <div>import rows</div> }} />);
-    expect(screen.queryByTestId('select-toggle')).toBeNull();
+    expect(screen.queryByTestId('more-menu')).toBeNull();
+    expect(screen.queryByTestId('sort-button')).toBeNull();
     expect(screen.queryByTestId('list-toolbar')).toBeNull();
     unmount();
     render(<SelectablePage tracks={[]} />);
-    expect(screen.queryByTestId('select-toggle')).toBeNull();
+    expect(screen.queryByTestId('more-menu')).toBeNull();
+    expect(screen.queryByTestId('sort-button')).toBeNull();
+  });
+
+  it('the page\'s own rows follow Copy songs to… in the same ⋯ menu', () => {
+    const onRename = vi.fn();
+    render(
+      <SelectablePage
+        tracks={list}
+        over={{
+          moreActions: [{ key: 'rename', label: 'Rename', icon: () => null, onSelect: onRename }],
+          moreLabel: 'Playlist options',
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Playlist options' }));
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent?.trim())).toEqual(['Copy songs to…', 'Rename']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    expect(onRename).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -279,17 +364,19 @@ describe('CollectionPage Edit order', () => {
     ...over,
   });
 
-  it('an Edit order button in the list toolbar for someone who can edit', () => {
+  it('Edit order in the ⋯ menu for someone who can edit', () => {
     const r = reorder();
     render(<CollectionPage {...props({ tracks: list, reorder: r })} />);
-    const btn = within(screen.getByTestId('list-toolbar')).getByRole('button', { name: 'Edit order' });
-    fireEvent.click(btn);
+    expect(screen.queryByTestId('list-toolbar')).toBeNull();
+    fireEvent.click(screen.getByTestId('more-menu'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit order' }));
     expect(r.onStart).toHaveBeenCalled();
     expect(screen.queryByTestId('reorder-list')).toBeNull();
   });
 
   it('no Edit order without the prop (someone who cannot edit, or not a playlist)', () => {
     render(<CollectionPage {...props({ tracks: list })} />);
+    expect(screen.queryByTestId('more-menu')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit order' })).toBeNull();
   });
 
@@ -318,6 +405,7 @@ describe('CollectionPage Edit order', () => {
       selecting: true, enter: vi.fn(), exit: vi.fn(), isSelected: () => false, toggle: vi.fn(), toggleAll: vi.fn(), count: 0, total: 2, allState: false as const,
     };
     render(<CollectionPage {...props({ tracks: list, reorder: reorder(), selection })} />);
-    expect(screen.queryByRole('button', { name: 'Edit order' })).toBeNull();
+    expect(screen.queryByTestId('more-menu')).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Edit order' })).toBeNull();
   });
 });

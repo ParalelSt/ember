@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
 import { CollectionPage } from '@/components/library/CollectionPage';
-import { PlaylistMenu } from '@/components/library/PlaylistMenu';
+import { playlistMenuActions } from '@/components/library/PlaylistMenu';
 import { RenamePlaylistDialog } from '@/components/library/RenamePlaylistDialog';
 import { CollaborateSheet } from '@/components/library/CollaborateSheet';
 import { SharedByBadge } from '@/components/library/SharedByBadge';
@@ -327,16 +327,14 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
           />
         ) : undefined
       }
-      actions={
-        <PlaylistMenu
-          role={isOwner ? 'owner' : 'member'}
-          name={playlist?.name}
-          onCollaborate={() => setCollabOpen(true)}
-          onRename={() => setRenameOpen(true)}
-          onDelete={() => setConfirmDeleteOpen(true)}
-          onLeave={() => setConfirmLeaveOpen(true)}
-        />
-      }
+      moreActions={playlistMenuActions(isOwner ? 'owner' : 'member', {
+        onCollaborate: () => setCollabOpen(true),
+        onRename: () => setRenameOpen(true),
+        onDelete: () => setConfirmDeleteOpen(true),
+        onLeave: () => setConfirmLeaveOpen(true),
+      })}
+      moreLabel="Playlist options"
+      moreName={playlist.name}
       onRemoveTrack={(trackId) => {
         const track = tracks.find((t) => t.id === trackId);
         if (track) setPendingRemove(track);

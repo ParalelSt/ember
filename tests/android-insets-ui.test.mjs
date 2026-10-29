@@ -232,7 +232,8 @@ try {
   await page.waitForTimeout(300);
 
   // Select mode: the Copy to… bar.
-  await page.getByTestId('select-toggle').click();
+  await page.getByTestId('more-menu').click();
+  await page.getByTestId('menu-copy-songs').click();
   await page.getByTestId('track-row').filter({ hasText: 'Inset Song 2' }).first().click();
   await page.getByTestId('copy-bar').waitFor({ timeout: 5000 });
   await page.waitForTimeout(200);

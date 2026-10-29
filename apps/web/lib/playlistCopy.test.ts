@@ -6,6 +6,7 @@ import {
   alreadyCount,
   alreadyThere,
   isSortState,
+  nextSort,
   planCopy,
   resultLine,
   skipLine,
@@ -216,5 +217,21 @@ describe('sortTracks', () => {
     expect(isSortState({ key: 'plays', dir: 'asc' })).toBe(false);
     expect(isSortState({ key: 'title', dir: 'up' })).toBe(false);
     expect(isSortState(null)).toBe(false);
+  });
+});
+
+describe('nextSort (the simple sort list)', () => {
+  it('another key starts at its natural direction', () => {
+    const from = { key: 'title', dir: 'desc' } as const;
+    expect(nextSort(from, 'added')).toEqual({ key: 'added', dir: 'desc' });
+    expect(nextSort(from, 'duration')).toEqual({ key: 'duration', dir: 'asc' });
+    expect(nextSort(from, 'artist')).toEqual({ key: 'artist', dir: 'asc' });
+    expect(nextSort({ key: 'added', dir: 'asc' }, 'title')).toEqual({ key: 'title', dir: 'asc' });
+  });
+
+  it('the key in use flips', () => {
+    expect(nextSort({ key: 'added', dir: 'desc' }, 'added')).toEqual({ key: 'added', dir: 'asc' });
+    expect(nextSort({ key: 'added', dir: 'asc' }, 'added')).toEqual({ key: 'added', dir: 'desc' });
+    expect(nextSort({ key: 'title', dir: 'asc' }, 'title')).toEqual({ key: 'title', dir: 'desc' });
   });
 });

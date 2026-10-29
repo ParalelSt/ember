@@ -94,7 +94,7 @@ const eslintConfig = defineConfig([
     // The phone/desktop split menus (a bottom sheet on a phone, a dropdown
     // on desktop) read the window size through useIsDesktop. That is a media
     // query, not application data, so the props-only rule does not apply.
-    files: ["components/library/PlaylistMenu.tsx", "components/library/LibraryAddMenu.tsx"],
+    files: ["components/library/MoreMenu.tsx", "components/library/LibraryAddMenu.tsx", "components/track/SortMenu.tsx"],
     rules: {
       "no-restricted-imports": [
         "error",

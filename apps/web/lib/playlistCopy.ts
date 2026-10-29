@@ -20,12 +20,22 @@ export interface SortState {
   dir: SortDir;
 }
 
-export const SORT_KEYS: { key: SortKey; label: string; asc: string; desc: string }[] = [
-  { key: 'title', label: 'Title', asc: 'A to Z', desc: 'Z to A' },
-  { key: 'artist', label: 'Artist', asc: 'A to Z', desc: 'Z to A' },
-  { key: 'added', label: 'Date added', asc: 'Oldest first', desc: 'Newest first' },
-  { key: 'duration', label: 'Duration', asc: 'Shortest first', desc: 'Longest first' },
+/** `dir` is each key's natural first direction, what picking it from the
+ *  sort menu starts with: names A to Z, the newest add first, the shortest
+ *  song first. */
+export const SORT_KEYS: { key: SortKey; label: string; asc: string; desc: string; dir: SortDir }[] = [
+  { key: 'title', label: 'Title', asc: 'A to Z', desc: 'Z to A', dir: 'asc' },
+  { key: 'artist', label: 'Artist', asc: 'A to Z', desc: 'Z to A', dir: 'asc' },
+  { key: 'added', label: 'Date added', asc: 'Oldest first', desc: 'Newest first', dir: 'desc' },
+  { key: 'duration', label: 'Duration', asc: 'Shortest first', desc: 'Longest first', dir: 'asc' },
 ];
+
+/** The sort menu's one rule: the key in use again flips its direction,
+ *  any other key starts at its natural direction. */
+export function nextSort(current: SortState, key: SortKey): SortState {
+  if (current.key === key) return { key, dir: current.dir === 'asc' ? 'desc' : 'asc' };
+  return { key, dir: SORT_KEYS.find((k) => k.key === key)?.dir ?? 'asc' };
+}
 
 /** A playlist appends, so its own order is date added, oldest first. */
 export const DEFAULT_PLAYLIST_SORT: SortState = { key: 'added', dir: 'asc' };

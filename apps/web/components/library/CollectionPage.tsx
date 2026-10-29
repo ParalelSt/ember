@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { TrackList, type TrackActions } from '@/components/track/TrackList';
-import { CheckIcon, SelectIcon, ShuffleIcon, SortIcon } from '@/components/icons';
+import { CheckIcon, CopyIcon, ShuffleIcon, SortIcon } from '@/components/icons';
 import { ReorderList } from '@/components/track/ReorderList';
 import { Checkbox } from '@/components/primitives/Checkbox';
 import { SortMenu } from '@/components/track/SortMenu';
-import { formatCount } from '@/lib/format';
+import { MoreMenu } from '@/components/library/MoreMenu';
+import type { MenuAction } from '@/components/ui/action-sheet';
 import type { SortState } from '@/lib/playlistCopy';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
@@ -52,7 +53,15 @@ export interface CollectionPageProps {
   context: PlaybackContext;
   playback: CollectionPlaybackHandle;
   download: DownloadButtonProps | null;
+  /** Loose buttons after Play, Shuffle and Download (Transfer, Save as
+   *  playlist). */
   actions?: ReactNode;
+  /** The page's own rows in the ⋯ menu, after Copy songs to… and Edit
+   *  order (a playlist's Collaborate, Rename, Delete). */
+  moreActions?: MenuAction[];
+  /** The ⋯ button's accessible name, and the name atop its phone sheet. */
+  moreLabel?: string;
+  moreName?: string;
   onRemoveTrack?: (trackId: string) => void;
   /** Opens the page's find-replacement dialog for an unavailable track.
    *  Omitted where a replacement isn't actionable (Recently played). */
@@ -72,11 +81,13 @@ export interface CollectionPageProps {
   hideActions?: boolean;
   /** Number the rows 1, 2, 3 (a ranked list, like a chart). */
   showRank?: boolean;
-  /** The Sort button above the list. The page sorts `tracks` itself
-   *  (hooks/useCollectionSort) and hands the sorted list in. */
+  /** The Sort button, at the right end of the action bar. The page sorts
+   *  `tracks` itself (hooks/useCollectionSort) and hands the sorted list
+   *  in. */
   sort?: { value: SortState; onChange: (sort: SortState) => void };
-  /** Select mode (hooks/useTrackSelection): a Select button in the action
-   *  bar, Select all above the list, tick boxes in the play column. */
+  /** Select mode (hooks/useTrackSelection), entered from "Copy songs to…"
+   *  in the ⋯ menu: a Done pill in the action bar, Select all above the
+   *  list, tick boxes in the play column. */
   selection?: CollectionSelectionHandle;
   /** The bar that sticks to the bottom while selecting (Copy to…). */
   selectionBar?: ReactNode;
@@ -84,9 +95,9 @@ export interface CollectionPageProps {
   addedLabel?: (track: Track) => string | undefined;
   /** Who added each song, on a collaborative playlist. */
   addedBy?: (track: Track) => PlaylistPerson | null | undefined;
-  /** Edit order, for someone who can change the playlist: an "Edit order"
-   *  button in the list toolbar; while `editing`, `tracks` (the page's
-   *  draft order) show with arrows and drag handles, and Done saves. */
+  /** Edit order, for someone who can change the playlist: "Edit order" in
+   *  the ⋯ menu; while `editing`, `tracks` (the page's draft order) show
+   *  with arrows and drag handles, and Done above the list saves. */
   reorder?: {
     editing: boolean;
     tracks: Track[];
@@ -115,6 +126,9 @@ export function CollectionPage({
   playback,
   download,
   actions,
+  moreActions,
+  moreLabel,
+  moreName,
   onRemoveTrack,
   onReplaceTrack,
   trackActions,
@@ -140,7 +154,19 @@ export function CollectionPage({
   const canSelect = !!selection && !list && tracks.length > 0 && !editingOrder;
   const selecting = canSelect && selection.selecting;
   const canReorder = !!reorder && !list && tracks.length > 1 && !selecting;
-  const hasActions = !hideActions || !!download || !!actions || canSelect;
+  const showSort = !!sort && !list && tracks.length > 0 && !editingOrder;
+  // The ⋯ menu: the collection's own modes first, then the page's rows.
+  // It steps aside while selecting, for the Done pill.
+  const menu: MenuAction[] = selecting
+    ? []
+    : [
+        ...(canSelect ? [{ key: 'copy-songs', label: 'Copy songs to…', icon: CopyIcon, onSelect: selection.enter }] : []),
+        ...(canReorder && !editingOrder && reorder
+          ? [{ key: 'edit-order', label: 'Edit order', icon: SortIcon, onSelect: reorder.onStart }]
+          : []),
+        ...(moreActions ?? []),
+      ];
+  const hasActions = !hideActions || !!download || !!actions || menu.length > 0 || selecting || showSort;
   return (
     <div>
       <div className="flex flex-col gap-stack">
@@ -172,29 +198,32 @@ export function CollectionPage({
               </>
             )}
             {download && <DownloadButton {...download} />}
-            {canSelect && (
+            {actions}
+            {selecting && (
               <button
                 type="button"
                 data-testid="select-toggle"
-                aria-pressed={selecting}
-                onClick={selecting ? selection.exit : selection.enter}
-                className={cn(
-                  'inline-flex h-10 items-center gap-cluster rounded-full border px-block text-sm font-medium transition-colors',
-                  selecting ? 'border-foreground bg-foreground text-background' : 'border-border hover:bg-card',
-                )}
+                aria-pressed
+                onClick={selection.exit}
+                className="inline-flex h-10 items-center gap-cluster rounded-full border border-foreground bg-foreground px-block text-sm font-medium text-background transition-colors"
               >
-                <SelectIcon className="size-4" />
-                {selecting ? 'Done' : 'Select'}
+                <CheckIcon className="size-4" />
+                Done
               </button>
             )}
-            {actions}
+            <MoreMenu actions={menu} label={moreLabel} name={moreName} />
+            {showSort && (
+              <div className="ml-auto">
+                <SortMenu sort={sort.value} onChange={sort.onChange} />
+              </div>
+            )}
           </ActionBar>}
         {banner}
         {list ?? (tracks.length === 0 ? (
           <EmptyState>{emptyMessage}</EmptyState>
         ) : (
           <div className="flex flex-col gap-cluster">
-            {(sort || canSelect || canReorder || editingOrder) && (
+            {(selecting || editingOrder) && (
               <div
                 data-testid="list-toolbar"
                 className="flex min-h-12 items-center justify-between gap-row border-b border-border pb-cluster"
@@ -219,29 +248,23 @@ export function CollectionPage({
                       {selection.count} of {selection.total}
                     </span>
                   </div>
-                ) : editingOrder ? (
-                  <span className="truncate text-sm text-muted-foreground">Drag a song, or use the arrows</span>
                 ) : (
-                  <span className="text-sm text-muted-foreground">{formatCount(tracks.length, 'song')}</span>
+                  <>
+                    <span className="truncate text-sm text-muted-foreground">Drag a song, or use the arrows</span>
+                    {reorder && (
+                      <button
+                        type="button"
+                        data-testid="edit-order"
+                        disabled={reorder.saving}
+                        onClick={reorder.onDone}
+                        className="inline-flex h-8 shrink-0 items-center gap-inset rounded-full border border-ember bg-ember px-row text-sm font-medium text-ember-foreground transition-colors hover:bg-ember-soft disabled:opacity-50"
+                      >
+                        <CheckIcon className="size-4" />
+                        Done
+                      </button>
+                    )}
+                  </>
                 )}
-                <div className="flex shrink-0 items-center gap-cluster">
-                  {(canReorder || editingOrder) && reorder && (
-                    <button
-                      type="button"
-                      data-testid="edit-order"
-                      disabled={reorder.saving}
-                      onClick={editingOrder ? reorder.onDone : reorder.onStart}
-                      className={cn(
-                        'inline-flex h-8 items-center gap-inset rounded-full border px-row text-sm font-medium transition-colors disabled:opacity-50',
-                        editingOrder ? 'border-ember bg-ember text-ember-foreground hover:bg-ember-soft' : 'border-border hover:bg-card',
-                      )}
-                    >
-                      {editingOrder ? <CheckIcon className="size-4" /> : <SortIcon className="size-4" />}
-                      {editingOrder ? 'Done' : 'Edit order'}
-                    </button>
-                  )}
-                  {sort && !editingOrder && <SortMenu sort={sort.value} onChange={sort.onChange} />}
-                </div>
               </div>
             )}
             {editingOrder && reorder ? (
