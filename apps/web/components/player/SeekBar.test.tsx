@@ -126,12 +126,22 @@ describe('SeekBar', () => {
 });
 
 describe('PlayheadSeekBar for a live radio station', () => {
-  it('shows LIVE where the bar would be, with nothing to seek', async () => {
+  it('keeps the bar\'s room empty: no LIVE badge, no times, nothing to seek', async () => {
     const { PlayheadSeekBar } = await import('./SeekBar');
-    const onSeek = vi.fn();
-    const { container } = render(<PlayheadSeekBar live duration={0} onSeek={onSeek} labels="inline" />);
-    expect(screen.getByTestId('live-badge').textContent).toBe('Live');
+    const { container } = render(<PlayheadSeekBar live duration={0} onSeek={vi.fn()} labels="inline" className="w-full" />);
+    const room = screen.getByTestId('seek-live');
+    expect(room.textContent).toBe('');
+    expect(room).toHaveClass('h-7', 'w-full');
+    expect(room).toHaveAttribute('aria-hidden', 'true');
     expect(container.querySelector('input[type="range"]')).toBeNull();
+    expect(screen.queryByText(/live/i)).toBeNull();
+  });
+
+  it('keeps the full-screen player\'s bar and times as one empty space', async () => {
+    const { PlayheadSeekBar } = await import('./SeekBar');
+    render(<PlayheadSeekBar live duration={0} onSeek={vi.fn()} labels="below" />);
+    expect(screen.getByTestId('seek-live')).toHaveClass('h-12.5');
+    expect(screen.getByTestId('seek-live').textContent).toBe('');
   });
 
   it('leaves the phone bar\'s bare strip empty', async () => {
