@@ -77,3 +77,20 @@ export function stationTrack(s: { id: string; name: string; favicon: string | nu
     streamUrl: stationStreamPath(s.id),
   };
 }
+
+/** The song a station is playing, from its stream's ICY metadata
+ *  (lib/radio/nowPlaying): "Artist - Title" as most stations send it, the
+ *  whole line as the title when it has no artist part. */
+export interface StationSong {
+  title: string;
+  artist: string | null;
+}
+
+/** A station shown like a song (Discord's card): the song as the title and
+ *  artist, the station's name where the album goes, its logo as the cover.
+ *  The station as it is when no song is known, and any other track as it
+ *  is. */
+export function stationSongTrack<T extends Track | null>(track: T, song: StationSong | null): T {
+  if (!track || !song || !isLiveTrack(track)) return track;
+  return { ...track, title: song.title, artist: song.artist ?? track.title, album: track.title } as T;
+}

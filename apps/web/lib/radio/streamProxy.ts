@@ -65,6 +65,9 @@ export interface UpstreamOptions {
   /** Until the response's headers arrive. */
   timeoutMs?: number;
   maxRedirects?: number;
+  /** Asks the station to weave its song titles into the stream (ICY
+   *  metadata), for lib/radio/nowPlaying. Never for a stream a player gets. */
+  icyMetadata?: boolean;
   /** Tests only: which addresses may be connected to. */
   allowAddress?: (ip: string) => boolean;
 }
@@ -92,8 +95,8 @@ function guardedLookup(allow: (ip: string) => boolean): LookupFunction {
 /** GET a station stream: http or https, a public address only (every hop),
  *  no credentials in the address, at most `maxRedirects` redirects. Resolves
  *  once the final response's headers are in; the caller reads (and closes)
- *  the body. Sends no Icy-MetaData header, so the station sends plain audio
- *  with no song titles woven into it. */
+ *  the body. Sends no Icy-MetaData header unless `icyMetadata` is set, so
+ *  the station sends plain audio with no song titles woven into it. */
 export function openUpstream(rawUrl: string, opts: UpstreamOptions): Promise<Upstream> {
   const allow = opts.allowAddress ?? isPublicAddress;
   const maxRedirects = opts.maxRedirects ?? 3;
@@ -124,7 +127,7 @@ export function openUpstream(rawUrl: string, opts: UpstreamOptions): Promise<Ups
     const lib = url.protocol === 'https:' ? https : http;
     const req = lib.request(url, {
       method: 'GET',
-      headers: { 'User-Agent': opts.userAgent, Accept: '*/*' },
+      headers: { 'User-Agent': opts.userAgent, Accept: '*/*', ...(opts.icyMetadata ? { 'Icy-MetaData': '1' } : null) },
       lookup: guardedLookup(allow),
       // A fresh connection per stream: one that outlives its listener must
       // never serve the next station's request.

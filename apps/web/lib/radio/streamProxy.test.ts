@@ -74,6 +74,17 @@ describe('openUpstream', () => {
     expect(headers['icy-metadata']).toBeUndefined();
   });
 
+  it('asks for ICY metadata only when told to', async () => {
+    let headers: http.IncomingHttpHeaders = {};
+    const port = await serve((req, res) => {
+      headers = req.headers;
+      res.end('x');
+    });
+    const up = await openUpstream(`http://127.0.0.1:${port}/live`, { userAgent: 'x', allowAddress: () => true, icyMetadata: true });
+    up.close();
+    expect(headers['icy-metadata']).toBe('1');
+  });
+
   it('checks every redirect hop: a station that redirects into the private network is refused', async () => {
     const port = await serve((_q, res) => {
       res.writeHead(302, { Location: 'http://192.168.1.1/admin' });

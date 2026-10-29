@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { useStationSong } from '@/hooks/player/useStationSong';
 import { publishDiscordPresence } from '@/lib/discordPresence';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
+import { stationSongTrack } from '@/lib/radio/station';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 import type { Track } from '@/types/track';
 
@@ -40,9 +42,13 @@ interface Seen {
  *  while a change the provider loads from an effect, or one the native
  *  Android player reports, still carries the previous song's position (and
  *  length). Publishing it put the new song on the card at 2:45, and nothing
- *  corrected it, since the new song's first tick did not look like a seek. */
+ *  corrected it, since the new song's first tick did not look like a seek.
+ *
+ *  A live station is shown like a song once its stream names the one on
+ *  (useStationSong): the song and artist, the station's name where the album
+ *  goes. A new song on the same station is published as it is heard. */
 export function useDiscordPresence({
-  current,
+  current: track,
   isPlaying,
   position,
   duration,
@@ -52,6 +58,9 @@ export function useDiscordPresence({
   position: number;
   duration: number;
 }) {
+  const song = useStationSong(track, isPlaying);
+  // What the card shows: the track itself, or a station as its song.
+  const current = stationSongTrack(track, song);
   const seen = useRef<Seen>({ mounted: false, id: null, isPlaying: false, sec: 0, leftover: null });
 
   // duration is read from the closure but deliberately left out of the
@@ -119,4 +128,21 @@ export function useDiscordPresence({
     // publishes above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shareDiscord]);
+
+  // The station's song changed (or was first heard, or is no longer named):
+  // republish at the last playhead. A different station is published by the
+  // track change above, so only a change on the same one counts here.
+  const songKey = song ? `${song.artist ?? ''}\n${song.title}` : '';
+  const lastSong = useRef({ id: track?.id ?? null, key: songKey });
+  useEffect(() => {
+    const id = track?.id ?? null;
+    const before = lastSong.current;
+    lastSong.current = { id, key: songKey };
+    if (before.id !== id || before.key === songKey) return;
+    const s = seen.current;
+    if (!s.mounted || !isPlaying) return;
+    publishDiscordPresence(current, true, s.sec, duration);
+    // Only the song: the rest have their own publishes above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songKey, track?.id]);
 }

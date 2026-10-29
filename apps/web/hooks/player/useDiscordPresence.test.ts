@@ -2,9 +2,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useDiscordPresence } from './useDiscordPresence';
 import { makeTrack } from '@/test-utils/fakeBackend';
+import { stationTrack } from '@/lib/radio/station';
 
 const presence = vi.hoisted(() => ({ publishDiscordPresence: vi.fn() }));
 vi.mock('@/lib/discordPresence', () => presence);
+// The station's song, as the poll last heard it.
+const heard = vi.hoisted(() => ({ song: null as { artist: string | null; title: string } | null }));
+vi.mock('@/hooks/player/useStationSong', () => ({ useStationSong: () => heard.song }));
 
 const a = makeTrack();
 const b = makeTrack({ id: 'youtube:b2', sourceId: 'b2', title: 'Second Song' });
@@ -33,6 +37,7 @@ function setup(over: Partial<Props> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  heard.song = null;
 });
 
 describe('useDiscordPresence', () => {
@@ -208,3 +213,49 @@ describe('useDiscordPresence: skipping at 2:45', () => {
   });
 });
 
+
+describe('useDiscordPresence for a radio station', () => {
+  const station = stationTrack({ id: '00000000-0000-4000-8000-000000000001', name: 'Antena Zagreb', favicon: 'https://antena.example/logo.png', state: 'Grad Zagreb', country: 'Croatia' });
+  const other = stationTrack({ id: '00000000-0000-4000-8000-000000000002', name: 'Otvoreni', favicon: null });
+  const lastTrack = () => presence.publishDiscordPresence.mock.calls.at(-1)![0];
+
+  it('shows the station as before until a song is heard, then the song like a song', () => {
+    const { rerender } = setup({ current: station, duration: 0 });
+    expect(lastTrack()).toMatchObject({ title: 'Antena Zagreb', artist: 'Grad Zagreb, Croatia' });
+
+    heard.song = { artist: 'Severina', title: 'Italiana' };
+    rerender({ current: station, isPlaying: true, position: 1, duration: 0 });
+    expect(presence.publishDiscordPresence).toHaveBeenCalledTimes(2);
+    expect(lastTrack()).toMatchObject({ title: 'Italiana', artist: 'Severina', album: 'Antena Zagreb', artworkUrl: 'https://antena.example/logo.png' });
+    expect(presence.publishDiscordPresence.mock.calls.at(-1)!.slice(1)).toEqual([true, 1, 0]);
+  });
+
+  it('publishes the next song on the same station, and nothing when it is the same one again', () => {
+    heard.song = { artist: 'Severina', title: 'Italiana' };
+    const { rerender } = setup({ current: station, duration: 0 });
+    expect(lastTrack()).toMatchObject({ title: 'Italiana' });
+    rerender({ current: station, isPlaying: true, position: 1, duration: 0 });
+    expect(presence.publishDiscordPresence).toHaveBeenCalledTimes(1);
+
+    heard.song = { artist: 'Gibonni', title: 'Činim pravu stvar' };
+    rerender({ current: station, isPlaying: true, position: 2, duration: 0 });
+    expect(presence.publishDiscordPresence).toHaveBeenCalledTimes(2);
+    expect(lastTrack()).toMatchObject({ title: 'Činim pravu stvar', artist: 'Gibonni', album: 'Antena Zagreb' });
+  });
+
+  it('publishes a change of station once, from the track change', () => {
+    heard.song = { artist: 'Severina', title: 'Italiana' };
+    const { rerender } = setup({ current: station, duration: 0 });
+    heard.song = null;
+    rerender({ current: other, isPlaying: true, position: 0, duration: 0 });
+    expect(presence.publishDiscordPresence).toHaveBeenCalledTimes(2);
+    expect(lastTrack()).toMatchObject({ title: 'Otvoreni' });
+  });
+
+  it('does not publish a song heard while paused', () => {
+    const { rerender } = setup({ current: station, isPlaying: false, duration: 0 });
+    heard.song = { artist: 'Severina', title: 'Italiana' };
+    rerender({ current: station, isPlaying: false, position: 0, duration: 0 });
+    expect(presence.publishDiscordPresence).toHaveBeenCalledTimes(1);
+  });
+});
