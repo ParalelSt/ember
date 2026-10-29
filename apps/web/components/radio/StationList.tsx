@@ -31,12 +31,16 @@ export function StationList({ stations, name, favoriteIds, onToggleFavorite }: S
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   const tracks = useMemo(() => stations.map((s) => s.track), [stations]);
   return (
-    <div className="@container flex flex-col" data-testid="station-list">
+    // -mx-row with each row's px-row, as in TrackList: the leading play
+    // button keeps the row's inner padding while the logos and names stay
+    // on the page gutter.
+    <div className="@container -mx-row flex flex-col" data-testid="station-list">
       {stations.map((s, i) => {
         const favorite = favoriteIds.has(s.id);
         return (
           <TrackRow
             key={s.id}
+            className="px-row"
             track={s.track}
             index={i}
             showAlbum={false}
