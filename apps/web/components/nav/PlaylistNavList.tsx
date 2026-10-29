@@ -28,6 +28,8 @@ export interface PlaylistNavListProps {
   }[];
   /** Bigger rows with bigger covers (the head unit's covers sidebar). */
   covers?: boolean;
+  /** Desktop sidebar only: rows 2px taller (7px padding). */
+  roomy?: boolean;
   /** Signed-out users see "Sign in to create" instead of an (always empty) list. */
   authed: boolean;
   /** Highlights the open playlist. */
@@ -69,7 +71,7 @@ export function ImportTail({ state }: { state: NavImportState }) {
  *  vs a plain scrolling div). Rows have a cover and two lines at a fixed
  *  height (44px) and never shrink: the scroller around them scrolls instead. A playlist being imported shows its
  *  progress ring and count; one with songs left to check says how many. */
-export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen, onTogglePin, covers = false }: PlaylistNavListProps) {
+export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen, onTogglePin, covers = false, roomy = false }: PlaylistNavListProps) {
   const hold = useHold((id) => onTogglePin?.(id));
   return (
     <>
@@ -94,7 +96,8 @@ export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen,
           className={cn(
             covers
               ? 'flex shrink-0 items-center gap-row px-cluster py-inset rounded-md text-base transition-colors select-none'
-              : 'flex shrink-0 items-center gap-row min-h-11 px-cluster py-1.5 rounded-md text-sm transition-colors select-none',
+              : 'flex shrink-0 items-center gap-row min-h-11 px-cluster rounded-md text-sm transition-colors select-none',
+            !covers && (roomy ? 'py-[7px]' : 'py-1.5'),
             activePath === p.href
               ? 'bg-sidebar-accent text-sidebar-accent-foreground'
               : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',

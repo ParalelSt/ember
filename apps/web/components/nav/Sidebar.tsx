@@ -7,6 +7,7 @@ import { useCachedCollectionTracks, useQueryPlaylists } from '@/hooks/useLibrary
 import { useCreatePlaylistFlow } from '@/hooks/useCreatePlaylistFlow';
 import { useImportJobs } from '@/hooks/useImports';
 import { LIKED_NAV_KEY, navImportStates } from '@/lib/import/nav';
+import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
@@ -88,7 +89,7 @@ export function Sidebar({ covers = false }: { covers?: boolean }) {
         </div>
       )}
 
-      <div className="mt-6 px-4 flex items-center justify-between">
+      <div data-testid="playlists-header" className="mt-4 border-t border-sidebar-border pt-3.5 px-4 flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-widest text-sidebar-foreground/55">Playlists</span>
         {user && (
           <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setCreateOpen(true)} title="New playlist" aria-label="New playlist">
@@ -97,8 +98,8 @@ export function Sidebar({ covers = false }: { covers?: boolean }) {
         )}
       </div>
 
-      <ScrollArea className="flex-1 min-h-32 mt-2">
-        <div className="px-2 pb-3 flex flex-col gap-0.5" {...nav.holdProps}>
+      <ScrollArea className="flex-1 min-h-32 mt-3.5">
+        <div className={cn('px-2 pb-3 flex flex-col', covers ? 'gap-0.5' : 'gap-1')} {...nav.holdProps}>
           <PlaylistNavList
             items={nav.items}
             activePath={pathname}
@@ -106,6 +107,7 @@ export function Sidebar({ covers = false }: { covers?: boolean }) {
             onOpen={nav.onOpen}
             onTogglePin={nav.onTogglePin}
             covers={covers}
+            roomy={!covers}
           />
         </div>
       </ScrollArea>
