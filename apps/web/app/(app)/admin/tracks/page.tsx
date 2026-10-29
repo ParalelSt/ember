@@ -27,8 +27,13 @@ export default function AdminTracksPage() {
   const [searchInput, setSearchInput] = useState('');
   const [committedSearch, setCommittedSearch] = useState('');
 
-  const { data, isLoading, isFetching } = useQueryAdminTracks(page, committedSearch);
+  const { data, isLoading, isFetching, error } = useQueryAdminTracks(page, committedSearch);
   const deleteTrack = useExecuteDeleteAdminTrack();
+  // The last page emptied (its last track deleted): step back to the new
+  // last page, or the empty list hides the pager and there is no way back.
+  if (data && data.tracks.length === 0 && page > 1 && data.totalPages < page) {
+    setPage(Math.max(1, data.totalPages));
+  }
 
   const [pendingDelete, setPendingDelete] = useState<AdminTrack | null>(null);
 
@@ -60,6 +65,7 @@ export default function AdminTracksPage() {
           </div>
 
           {isLoading && <EmptyState>Loading…</EmptyState>}
+          {error && <EmptyState>Couldn&apos;t load tracks: {(error as Error).message}</EmptyState>}
           {!isLoading && data && data.tracks.length === 0 && (
             <EmptyState>No tracks match.</EmptyState>
           )}
@@ -104,6 +110,7 @@ export default function AdminTracksPage() {
             </p>
           )}
           {isLoading && <EmptyState>Loading…</EmptyState>}
+          {error && <EmptyState>Couldn&apos;t load tracks: {(error as Error).message}</EmptyState>}
           {!isLoading && data && data.tracks.length === 0 && <EmptyState>No tracks match.</EmptyState>}
           {data && data.tracks.length > 0 && (
             <>
@@ -139,7 +146,6 @@ export default function AdminTracksPage() {
 
 function TrackRow({ track, onDelete }: { track: AdminTrack; onDelete: () => void }) {
   const [editOpen, setEditOpen] = useState(false);
-  const { title, setTitle, artist, setArtist, album, setAlbum, busy, save } = useTrackEdit(track, () => setEditOpen(false));
 
   return (
     <div className="grid grid-cols-[40px_minmax(0,2fr)_minmax(0,1.2fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md hover:bg-card transition-colors">
@@ -175,44 +181,60 @@ function TrackRow({ track, onDelete }: { track: AdminTrack; onDelete: () => void
           <DialogHeader>
             <DialogTitle>Edit track</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor={`t-title-${track.recordId}`}>Title</Label>
-              <Input id={`t-title-${track.recordId}`} value={title} onChange={(e) => setTitle(e.target.value)} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={`t-artist-${track.recordId}`}>Artist</Label>
-              <Input id={`t-artist-${track.recordId}`} value={artist} onChange={(e) => setArtist(e.target.value)} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={`t-album-${track.recordId}`}>Album</Label>
-              <Input id={`t-album-${track.recordId}`} value={album} onChange={(e) => setAlbum(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter className="flex justify-between items-center sm:justify-between mt-4">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => { setEditOpen(false); onDelete(); }}
-              className="text-destructive hover:text-destructive"
-            >
-              <TrashIcon className="h-4 w-4" />
-              Delete
-            </Button>
-            <Button
-              type="button"
-              onClick={save}
-              disabled={busy}
-              size="sm"
-              variant="ember"
-            >
-              {busy ? '…' : 'Save'}
-            </Button>
-          </DialogFooter>
+          {/* The fields live inside the dialog, so each opening starts from
+              the track, not from an edit that was closed without saving. */}
+          <TrackEditFields
+            track={track}
+            onDone={() => setEditOpen(false)}
+            onDelete={() => { setEditOpen(false); onDelete(); }}
+          />
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function TrackEditFields({ track, onDone, onDelete }: { track: AdminTrack; onDone: () => void; onDelete: () => void }) {
+  const { title, setTitle, artist, setArtist, album, setAlbum, busy, save } = useTrackEdit(track, onDone);
+
+  return (
+    <>
+      <div className="grid gap-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor={`t-title-${track.recordId}`}>Title</Label>
+          <Input id={`t-title-${track.recordId}`} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`t-artist-${track.recordId}`}>Artist</Label>
+          <Input id={`t-artist-${track.recordId}`} value={artist} onChange={(e) => setArtist(e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`t-album-${track.recordId}`}>Album</Label>
+          <Input id={`t-album-${track.recordId}`} value={album} onChange={(e) => setAlbum(e.target.value)} />
+        </div>
+      </div>
+      <DialogFooter className="flex justify-between items-center sm:justify-between mt-4">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onDelete}
+          className="text-destructive hover:text-destructive"
+        >
+          <TrashIcon className="h-4 w-4" />
+          Delete
+        </Button>
+        <Button
+          type="button"
+          onClick={save}
+          disabled={busy}
+          size="sm"
+          variant="ember"
+        >
+          {busy ? '…' : 'Save'}
+        </Button>
+      </DialogFooter>
+    </>
   );
 }
 

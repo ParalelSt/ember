@@ -3,6 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { recentFailure } from '@/lib/sources/failureMemo';
+import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
 
 /** What this host remembers about a song that failed moments ago
  *  (lib/sources/failureMemo), for when the database has no word on it: a
@@ -38,7 +39,3 @@ export const GET = withRequestLog('tracks/[id]/availability', async (_req: NextR
     return fromError(e);
   }
 });
-
-function esc(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}

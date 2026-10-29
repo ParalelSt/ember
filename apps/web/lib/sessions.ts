@@ -5,6 +5,7 @@ import { ForbiddenError } from '@/lib/auth';
 import { createCatalogClient } from '@/lib/pocketbase/server';
 import { fileUrl } from '@/lib/pocketbase/fileUrl';
 import { publicName } from '@/lib/collab';
+import { isNotFound } from '@/lib/pocketbase/notFound';
 import type { PlaylistPerson } from '@/types/track';
 
 /** Unambiguous join-code alphabet (no 0/O/1/I). */
@@ -34,7 +35,10 @@ export async function loadSession(pb: PocketBase, id: string): Promise<RecordMod
   let row: RecordModel;
   try {
     row = await pb.collection('sessions').getOne(id, { expand: 'host' });
-  } catch {
+  } catch (err) {
+    // Only a missing row is "not found": the carlist page takes a 404 as the
+    // carlist being gone, so a PocketBase hiccup must stay a failure.
+    if (!isNotFound(err)) throw err;
     const e: StatusError = new Error('Session not found.');
     e.status = 404;
     throw e;
@@ -85,7 +89,8 @@ export async function assertMember(
     await pb
       .collection('session_members')
       .getFirstListItem(`session = "${session.id}" && user = "${userId}"`);
-  } catch {
+  } catch (e) {
+    if (!isNotFound(e)) throw e;
     throw new ForbiddenError('Join this session with its code first.');
   }
 }
@@ -111,6 +116,12 @@ export function carlistPerson(user: RecordModel | Record<string, unknown> | null
  *  session row's `updated`, so a long drive that keeps changing songs stays
  *  alive. */
 export const LIVE_WINDOW_MS = 12 * 60 * 60 * 1000;
+
+/** A hosted carlist that moved on (a song change, an add) within this long
+ *  is being played: the live lookup (GET /api/sessions) puts it before one
+ *  the host joined. Songs change every few minutes while it plays; one left
+ *  alone longer was most likely closed, not ended. */
+export const HOST_ACTIVE_MS = 30 * 60 * 1000;
 
 /** Milliseconds since a PocketBase timestamp ("2026-10-02 12:00:00.000Z"),
  *  null when it does not parse. */

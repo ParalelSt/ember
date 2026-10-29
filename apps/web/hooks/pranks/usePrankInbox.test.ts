@@ -301,4 +301,24 @@ describe('usePrankInbox (429 backoff)', () => {
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
     }
   });
+
+  // Coming back to the tab while a poll was still out started a second
+  // tick on the same fetch: both armed a timer, the first one's handle was
+  // lost, and it fired once more after the hook was gone.
+  it('a tab shown during a poll leaves one timer, and none after unmount', async () => {
+    const { deps } = fakeDeps();
+    let answer!: (rows: PrankRow[]) => void;
+    deps.fetchInbox.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    const { unmount } = renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: () => null, deps }));
+    await flush();
+    expect(deps.fetchInbox).toHaveBeenCalledTimes(1);
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await act(async () => { answer([]); });
+    await flush();
+    expect(vi.getTimerCount()).toBe(1);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => { await vi.advanceTimersByTimeAsync(POLL_PLAYING_MS * 3); });
+    expect(deps.fetchInbox).toHaveBeenCalledTimes(1);
+  });
 });

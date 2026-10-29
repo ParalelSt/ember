@@ -9,6 +9,7 @@ import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { getTrendingChart } from '@/lib/trending';
 import { listUnavailableIds } from '@/lib/trackAvailability';
+import { MAX_SEARCH_QUERY_LEN as MAX_QUERY_LEN } from '@/lib/searchLimits';
 
 /** Uploads for the signed-in caller. Uses the cookie-bound client, so
  *  PocketBase's own list rule decides visibility, a signed-out caller gets
@@ -45,6 +46,9 @@ export const GET = withRequestLog('search', async (request: NextRequest) => {
       } catch {
         return Response.json({ tracks: [] });
       }
+    }
+    if (q.length > MAX_QUERY_LEN) {
+      return Response.json({ error: `Search is limited to ${MAX_QUERY_LEN} characters` }, { status: 400 });
     }
     // Caps actual searches (typed or voice, voice just fills the box). Humans
     // never hit this thanks to the 250ms debounce + React Query cache.

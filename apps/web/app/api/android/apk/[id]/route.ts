@@ -4,14 +4,15 @@ import { limitCaller } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-/** Streams the latest release's Android APK from GitHub with the host's
+/** Streams the current Android release's APK from GitHub with the host's
  *  token attached, for the phone app's updater (AppUpdater.kt), the same way
  *  /api/desktop/asset/<id> serves the desktop updater.
  *
  *  Public (a signed-out phone must still update), so it serves exactly one
- *  file: the APK of the LATEST published release. Any other id is a 404
- *  before GitHub is asked. The phone checks the package name, versionCode
- *  and signing key before installing, so a swapped file is refused there. */
+ *  file: the APK of Android's CURRENT release (androidApkAsset). Any other
+ *  id is a 404 before GitHub is asked. The
+ *  phone checks the package name, versionCode and signing key before
+ *  installing, so a swapped file is refused there. */
 const MAX_ID = Number.MAX_SAFE_INTEGER;
 
 export const GET = withRequestLog('android/apk/[id]', async (request: Request, ctx: RouteContext<'/api/android/apk/[id]'>) => {

@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { rankRadioPool } from '@/lib/playback/radio';
 import { isUnavailable, nextPlayable } from '@/lib/playback/queueNav';
+import { isLiveTrack } from '@/lib/radio/station';
 import type { PlaybackContext, Track } from '@/types/track';
 
 /** Radio mode: at end of queue, fetch recommended (same-style) and extend.
@@ -45,6 +46,9 @@ export function useRadioExtend({
 
   useEffect(() => {
     if (!current?.sourceId) return;
+    // A list of live stations ends where it ends: song radio has nothing
+    // to recommend after a station.
+    if (isLiveTrack(current)) return;
     // Loop-all wraps the queue instead of extending it, so don't pull in radio.
     // Reactive (not getState): when the user turns loop OFF the effect must
     // re-run, otherwise a 1-track queue that skipped extension while looping
@@ -61,11 +65,12 @@ export function useRadioExtend({
     if (fetchingRadioFor.current === current.id) return;
     fetchingRadioFor.current = current.id;
     const currentId = current.id;
-    // Seeded by the last song that can play: a dead video makes a poor seed
-    // (YouTube Music may not know it any more).
-    let seedAt = index;
-    while (seedAt > 0 && isUnavailable(queue[seedAt])) seedAt--;
-    const seedTrack = queue[seedAt]?.sourceId ? queue[seedAt] : current;
+    // Seeded by the last YouTube song that can play: a dead video makes a
+    // poor seed (YouTube Music may not know it any more), and an upload's or
+    // Jamendo's id is none at all (the server answers it with today's chart).
+    // A queue with none goes by the last YouTube song played, like Home.
+    const isSeed = (t: Track | undefined) => !!t?.sourceId && t.source === 'youtube' && !isUnavailable(t);
+    const seedTrack = queue.slice(0, index + 1).reverse().find(isSeed) ?? history.find(isSeed) ?? current;
     const currentSourceId = seedTrack.sourceId;
     const activeContext = context;
     // Snapshot of the queue this fetch was requested for, so a response that

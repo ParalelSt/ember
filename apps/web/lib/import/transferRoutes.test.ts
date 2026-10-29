@@ -6,7 +6,6 @@ import {
   routesFor,
   serviceById,
   serviceOpen,
-  soleRoute,
   SPOTIFY_LINK_CAP,
   TRANSFER_SERVICES,
 } from './transferRoutes';
@@ -67,6 +66,13 @@ describe('the real limits, said where the path shows up', () => {
     expect(SPOTIFY_LINK_CAP).toContain('100');
   });
 
+  it('[autofix 2026-10-18] the Spotify export steps take the zip as emailed', () => {
+    const exportRoute = serviceById('spotify').routes.find((r) => r.id === 'spotify-export')!;
+    const steps = exportRoute.steps.join(' ');
+    expect(steps).toMatch(/No need to unzip/);
+    expect(steps).not.toMatch(/^Unzip|\. Unzip/);
+  });
+
   it('Apple Music is the privacy copy and nothing else', () => {
     const apple = serviceById('apple');
     expect(apple.routes).toHaveLength(1);
@@ -111,11 +117,5 @@ describe('what a destination leaves on offer', () => {
     const ytmusic = serviceById('ytmusic');
     expect(routesFor(ytmusic, 'liked').map((r) => r.kind)).toEqual(['google', 'link']);
     expect(routesFor(ytmusic, 'playlist').map((r) => r.kind)).toEqual(['link']);
-  });
-
-  it('one way left is no question: YouTube Music into a playlist, and Apple Music always', () => {
-    expect(soleRoute(serviceById('ytmusic'), 'playlist')?.kind).toBe('link');
-    expect(soleRoute(serviceById('ytmusic'), 'liked')).toBeNull();
-    expect(soleRoute(serviceById('apple'), 'liked')?.id).toBe('apple-export');
   });
 });

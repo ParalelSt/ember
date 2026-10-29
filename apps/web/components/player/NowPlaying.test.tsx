@@ -35,13 +35,14 @@ vi.mock('@/components/player/PlayerProvider', () => ({
   usePlayer: () => ({
     current: player.current,
     isPlaying: true,
-    position: 0,
     duration: 180,
     toggle: player.toggle,
     next: player.next,
     prev: player.prev,
     seek: () => {},
   }),
+  // The store's own playhead, read the way the real hook reads it.
+  usePlayerPosition: () => usePlayerStore((s) => s.position),
 }));
 const auth = vi.hoisted(() => ({ user: null as unknown }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: auth.user }) }));
@@ -106,12 +107,13 @@ vi.mock('@/components/ui/dropdown-menu', () => {
   };
 });
 const Stub = vi.hoisted(() => () => null);
-vi.mock('@/components/player/SeekBar', () => ({ SeekBar: Stub }));
+vi.mock('@/components/player/SeekBar', () => ({ SeekBar: Stub, PlayheadSeekBar: Stub }));
 // The lyrics card: here it only has to show whether its report form is open.
 vi.mock('@/components/player/LyricsBody', () => ({
   LyricsBody: ({ reportOpen }: { reportOpen?: boolean }) => (reportOpen ? <div data-testid="lyrics-report" /> : null),
 }));
-vi.mock('@/components/player/NowPlayingSummary', () => ({ NowPlayingSummary: Stub }));
+const summaryRendered = vi.hoisted(() => vi.fn(() => null));
+vi.mock('@/components/player/NowPlayingSummary', () => ({ NowPlayingSummary: summaryRendered }));
 
 const initialSettings = useSettingsStore.getState();
 const NO_OUTPUTS = { platform: null, devices: [], currentId: null, currentName: null, currentKind: null, systemPicker: null, castDevices: null };
@@ -232,6 +234,8 @@ describe('NowPlaying: the More sheet', () => {
     openMore();
     expect(within(sheet()).getByText('Copper Sky')).toBeInTheDocument();
     expect(within(sheet()).getByText('Coastline')).toBeInTheDocument();
+    // One of the player's own sheets: its keyboard shortcuts keep working.
+    expect(sheet()).toHaveAttribute('data-player-view');
     expect(rows()).toEqual(['add', 'queue', 'tabs', 'eq', 'share', 'artist', 'album', 'block', 'report']);
     expect(sheet().querySelectorAll('[role="group"]')).toHaveLength(0);
     expect(row('share')).toHaveTextContent('Copy link');
@@ -431,4 +435,15 @@ it.each(['narrow', 'native'])('hides guitar tabs on %s devices with the plugin e
   render(<NowPlaying />);
   openMore();
   expect(rows()).not.toContain('tabs');
+});
+
+describe('NowPlaying on playhead reports', () => {
+  it('re-renders only its seek bar, not the whole view (it stays mounted while closed too)', () => {
+    usePlayerStore.setState({ position: 0, duration: 180 });
+    render(<NowPlaying />);
+    const before = summaryRendered.mock.calls.length;
+    expect(before).toBeGreaterThan(0);
+    for (let s = 1; s <= 5; s += 0.25) act(() => usePlayerStore.getState().reportPosition(s));
+    expect(summaryRendered).toHaveBeenCalledTimes(before);
+  });
 });

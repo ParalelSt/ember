@@ -4,9 +4,6 @@ import {
   emptyStateFor,
   followTrackChange,
   isTabsPathFor,
-  orderSources,
-  pickTab,
-  pickerLabel,
   ratingLabel,
   sourceChipLabel,
   tabsHref,
@@ -48,19 +45,6 @@ describe('the source chain on the page', () => {
     const file = tab({ id: 'f' });
     expect(drawableTabs([oldGenerated(), file]).map((t) => t.id)).toEqual(['f']);
     expect(drawableTabs([oldGenerated()])).toEqual([]);
-    expect(pickTab(drawableTabs([oldGenerated(), file]), null)?.id).toBe('f');
-  });
-
-  it('a stale pick of a generated tab falls back to the first real tab', () => {
-    expect(pickTab(drawableTabs([oldGenerated(), tab({ id: 'f' })]), 'g')?.id).toBe('f');
-    expect(pickTab(drawableTabs([oldGenerated()]), 'g')).toBeNull();
-  });
-
-  it('the listener’s pick wins while it exists, else the first in the chain', () => {
-    const tabs = [tab({ id: 'f' }), tab({ id: 'p', kind: 'pasted' })];
-    expect(pickTab(tabs, 'p')?.id).toBe('p');
-    expect(pickTab(tabs, 'deleted')?.id).toBe('f');
-    expect(pickTab([], null)).toBeNull();
   });
 });
 
@@ -81,12 +65,6 @@ describe('the source chip', () => {
     expect(sourceChipLabel(tab({ kind: 'pasted', format: 'alphatex' }))).toBe('Text tab pasted by Mira, shared');
     expect(sourceChipLabel(tab({ kind: 'pasted', mine: true }))).toBe('Text tab pasted by you, shared');
   });
-
-  it('the picker says what each tab is, who added it and the instrument', () => {
-    expect(pickerLabel(tab({ instrument: 'Guitar' }))).toBe('Guitar Pro file, Mira, Guitar');
-    expect(pickerLabel(tab({ format: 'musicxml' }))).toBe('MusicXML file, Mira');
-    expect(pickerLabel(tab({ kind: 'pasted', instrument: 'Guitar' }))).toBe('Text tab, Mira, Guitar');
-  });
 });
 
 describe('pasted text tabs in the chain', () => {
@@ -94,7 +72,6 @@ describe('pasted text tabs in the chain', () => {
     const pasted = tab({ id: 'p', kind: 'pasted' });
     const file = tab({ id: 'f' });
     expect(drawableTabs([oldGenerated(), pasted, file]).map((t) => t.id)).toEqual(['f', 'p']);
-    expect(pickTab(drawableTabs([oldGenerated(), pasted]), null)?.id).toBe('p');
   });
 });
 
@@ -120,8 +97,6 @@ describe('tabs found online in the chain', () => {
     const pasted = tab({ id: 'p', kind: 'pasted' });
     const file = tab({ id: 'f' });
     expect(drawableTabs([oldGenerated(), ug(), pasted, file]).map((t) => t.id)).toEqual(['f', 'p', 'u']);
-    expect(pickTab(drawableTabs([oldGenerated(), ug()]), null)?.id).toBe('u');
-    expect(orderSources([oldGenerated(), ug(), file], [match]).map((x) => x.type)).toEqual(['file', 'fetched', 'songsterr']);
   });
 
   it('the chip names the site and says it is not lined up yet', () => {
@@ -129,10 +104,10 @@ describe('tabs found online in the chain', () => {
     expect(sourceChipLabel(ug({}, { version: 2, part: 'bass' }))).toBe('From Ultimate Guitar, ver 2, bass, not lined up yet');
   });
 
-  it('the picker gives site, type, version and rating', () => {
-    expect(pickerLabel(ug())).toBe('Ultimate Guitar, Text tab, ★ 4.7 (1,371 votes)');
-    expect(pickerLabel(ug({}, { part: 'bass', version: 3, votes: 1 }))).toBe('Ultimate Guitar, Bass tab, ver 3, ★ 4.7 (1 vote)');
-    expect(pickerLabel(ug({}, { rating: 0 }))).toBe('Ultimate Guitar, Text tab');
+  it('the rating reads stars and votes, or nothing without a rating', () => {
+    expect(ratingLabel(ug().source!)).toBe('★ 4.7 (1,371 votes)');
+    expect(ratingLabel(ug({}, { votes: 1 }).source!)).toBe('★ 4.7 (1 vote)');
+    expect(ratingLabel(ug({}, { rating: 0 }).source!)).toBe('');
     expect(ratingLabel(ug({}, { rating: null }).source!)).toBe('');
   });
 

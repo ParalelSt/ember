@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useAvailabilityProbe } from './useAvailabilityProbe';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { makeTrack } from '@/test-utils/fakeBackend';
+import { stationTrack } from '@/lib/radio/station';
 
 const api = vi.hoisted(() => ({ getTrackAvailability: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api }));
@@ -36,6 +37,17 @@ beforeEach(() => {
 });
 
 describe('useAvailabilityProbe', () => {
+  it('never flags a live radio station: it would not load right now, and says so', () => {
+    const st = stationTrack({ id: '00000000-0000-4000-8000-000000000001', name: 'Live', favicon: null });
+    const { probe, next } = setup([st, live], 0);
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+    expect(stillPlayable).toHaveBeenCalledWith(st);
+    expect(api.getTrackAvailability).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().queue[0].unavailableAt).toBeFalsy();
+  });
+
   it('flags the current track and skips on when the server says it is gone', async () => {
     const { probe, next } = setup();
     probe();
@@ -252,6 +264,31 @@ describe('useAvailabilityProbe: no answer from the server at all', () => {
     await waitFor(() => expect(stillPlayable).toHaveBeenCalledTimes(1));
     expect(onOffline).not.toHaveBeenCalled();
     expect(reach.serverUnreachable).not.toHaveBeenCalled();
+  });
+
+  // A server restart is not the device going offline: the Funnel's 502 is
+  // something answering, so the song stops with "tap to retry", as before,
+  // instead of skipping to a downloaded song.
+  it('a gateway answering for Ember (502, no JSON) is the song not loading, not offline', async () => {
+    api.getTrackAvailability.mockRejectedValue(Object.assign(new Error("Can't reach Ember right now."), { answered: 502 }));
+    const { probe, onOffline } = withHandler();
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+    await waitFor(() => expect(stillPlayable).toHaveBeenCalledTimes(1));
+    expect(onOffline).not.toHaveBeenCalled();
+    expect(reach.serverUnreachable).not.toHaveBeenCalled();
+  });
+
+  // A Wi-Fi sign-in page's 200 HTML means the internet is out of reach:
+  // offline, and the downloaded songs play.
+  it('a sign-in page answering 200 goes the offline way', async () => {
+    api.getTrackAvailability.mockRejectedValue(Object.assign(new Error("Can't reach Ember right now."), { answered: 200 }));
+    const { probe, onOffline } = withHandler();
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+    await waitFor(() => expect(onOffline).toHaveBeenCalledWith(dead));
+    expect(reach.serverUnreachable).toHaveBeenCalledTimes(1);
+    expect(stillPlayable).not.toHaveBeenCalled();
   });
 
   it('a song the listener already moved on from is left where it is', async () => {

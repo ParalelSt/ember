@@ -18,12 +18,14 @@ and quiet songs come up as far as their peaks allow.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from ffmpeg_path import ffmpeg_exe
@@ -39,6 +41,10 @@ MAX_GAIN_DB = 6.0
 PEAK_CEILING_DB = -1.0
 # ebur128 reports -70 LUFS for silence: nothing to normalize.
 SILENCE_LUFS = -70.0
+# How long ffmpeg may take over one song. The web server kills this process
+# after 120 s (lib/sources/youtube.ts); running out here first means ffmpeg is
+# stopped too, instead of decoding on alone after its parent is gone.
+MEASURE_TIMEOUT_S = 100
 
 CACHE_EXTS = ("m4a", "webm", "opus", "mp3", "mp4")
 SIDECAR_SUFFIX = ".loudness.json"
@@ -84,16 +90,21 @@ def compute_gain(lufs: float | None, peak: float | None) -> float:
     return round(gain, 2) + 0.0  # + 0.0: never -0.0
 
 
-def measure(path: Path, exe: str | None = None, timeout: float = 120) -> tuple[float, float]:
+def measure(path: Path, exe: str | None = None, timeout: float | None = None) -> tuple[float, float]:
     """Run ffmpeg's ebur128 over the whole file. Raises on failure."""
     exe = exe or ffmpeg_exe()
     if not exe:
         raise RuntimeError("ffmpeg is missing: run ./update.sh")
-    proc = subprocess.run(
-        [exe, "-hide_banner", "-nostats", "-i", str(path), "-vn", "-sn", "-dn",
-         "-af", "ebur128=peak=true:framelog=quiet", "-f", "null", "-"],
-        capture_output=True, text=True, timeout=timeout,
-    )
+    timeout = MEASURE_TIMEOUT_S if timeout is None else timeout
+    try:
+        proc = subprocess.run(
+            [exe, "-hide_banner", "-nostats", "-i", str(path), "-vn", "-sn", "-dn",
+             "-af", "ebur128=peak=true:framelog=quiet", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        # subprocess.run has killed ffmpeg by now.
+        raise RuntimeError(f"ffmpeg took longer than {timeout:g} s") from None
     if proc.returncode != 0:
         tail = (proc.stderr or "").strip().splitlines()[-1:] or ["no output"]
         raise RuntimeError(f"ffmpeg failed ({proc.returncode}): {tail[0][:200]}")
@@ -140,10 +151,18 @@ def analyze(video_id: str, base: Path | None = None) -> dict:
         "gainDb": compute_gain(lufs, peak),
         "targetLufs": TARGET_LUFS,
     }
-    # Write-then-rename so a reader never sees half a file.
-    tmp = side.with_name(side.name + ".tmp")
-    tmp.write_text(json.dumps(result))
-    os.replace(tmp, side)
+    # Write-then-rename so a reader never sees half a file. The temp name is
+    # this run's own: two runs measuring the same song at once (a download's
+    # and the player asking, from another route) shared one, and the second
+    # failed once the first had renamed it away.
+    fd, tmp = tempfile.mkstemp(dir=side.parent, prefix=f"{side.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(result))
+        os.replace(tmp, side)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp)
     return result
 
 

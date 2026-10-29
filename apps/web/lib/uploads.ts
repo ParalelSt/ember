@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import type PocketBase from 'pocketbase';
 import type { RecordModel } from 'pocketbase';
 import type { MyUpload, Track } from '@/types/track';
+import { escapeFilterValue as escape } from '@/lib/pocketbase/filterValue';
 
 /** Member-uploaded songs.
  *
@@ -133,11 +134,6 @@ export function mapMyUpload(row: RecordModel): MyUpload {
     sizeBytes: Number.isFinite(size) && size > 0 ? size : 0,
     created: String(row.created ?? ''),
   };
-}
-
-// PB filter strings interpolate raw, escape user-controlled text.
-function escape(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 /** Uploads matching a search query, newest first. Errors return [], a

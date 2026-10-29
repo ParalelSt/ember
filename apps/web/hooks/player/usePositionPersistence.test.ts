@@ -109,6 +109,21 @@ describe('usePositionPersistence: write moments', () => {
     expect(api().persistRef.current).toBeTypeOf('function');
   });
 
+  it('keeps persisting every five seconds after the engine is swapped (web-audio fallback, casting)', () => {
+    vi.useFakeTimers();
+    const { backend, backendRef } = setup();
+    // The engine the interval started with is gone (destroyed, or stopped
+    // while a cast engine plays): stopped for good.
+    backend!.paused = true;
+    const next = makeFakeBackend();
+    next.durationSec = 191;
+    next.paused = false;
+    next.currentTime = 42;
+    backendRef.current = next;
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(storedPosition()).toBe(42);
+  });
+
   it('does not persist on the interval while paused', () => {
     vi.useFakeTimers();
     const { backend } = setup();

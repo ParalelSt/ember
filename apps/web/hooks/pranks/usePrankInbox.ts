@@ -211,8 +211,13 @@ export function usePrankInbox({
     const every = isPlaying ? POLL_PLAYING_MS : POLL_IDLE_MS;
     const tick = async () => {
       clearTimeout(timer);
+      if (stopped) return;
       if (!live.current || waiting.current.size) await catchUp.current();
-      if (!stopped) timer = setTimeout(tick, Math.max(every, backoff.current.remaining()));
+      if (stopped) return;
+      // Another tick (the tab shown again) may have waited on the same
+      // fetch and armed its timer already: one timer, never two.
+      clearTimeout(timer);
+      timer = setTimeout(tick, Math.max(every, backoff.current.remaining()));
     };
     void tick();
     const onVisible = () => {

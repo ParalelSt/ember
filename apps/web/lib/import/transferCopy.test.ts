@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   KEPT_FIRST_MESSAGE,
+  LINK_RATE_LIMITED_MESSAGE,
   OVER_CAP_MESSAGE,
   plainTransferResult,
   RATE_LIMITED_MESSAGE,
   transferErrorMessage,
-  transferEstimate,
   transferMinutes,
   transferTimeLeft,
   UNKNOWN_MESSAGE,
@@ -27,6 +27,13 @@ describe('transferErrorMessage', () => {
     const e = Object.assign(new Error('Slow down, try again in about 900s.'), { status: 429 });
     expect(transferErrorMessage(e)).toBe(RATE_LIMITED_MESSAGE);
     expect(RATE_LIMITED_MESSAGE).toContain('five uploads');
+  });
+
+  it('a pasted link names the link limit, not the upload one', () => {
+    const e = Object.assign(new Error('Slow down, try again in about 300s.'), { status: 429 });
+    expect(transferErrorMessage(e, 'link')).toBe(LINK_RATE_LIMITED_MESSAGE);
+    expect(LINK_RATE_LIMITED_MESSAGE).toContain('ten minutes');
+    expect(LINK_RATE_LIMITED_MESSAGE).not.toContain('upload');
   });
 
   it('falls back to a sentence when all there is is a status', () => {
@@ -94,25 +101,17 @@ describe('plainTransferResult', () => {
   });
 });
 
-describe('transferEstimate', () => {
-  const STAY = 'You can leave this page; the transfer carries on and the Liked songs page shows how far it is.';
-
+describe('transferMinutes boundaries', () => {
   it('says under 5 minutes for a short list', () => {
-    expect(transferEstimate(1)).toBe(`Under 5 minutes. ${STAY}`);
-    expect(transferEstimate(40)).toBe(`Under 5 minutes. ${STAY}`);
-    expect(transferEstimate(239)).toBe(`Under 5 minutes. ${STAY}`);
+    expect(transferMinutes(1)).toBe('Under 5 minutes');
+    expect(transferMinutes(239)).toBe('Under 5 minutes');
   });
 
   it('is 5 minutes at exactly 240 songs (8 songs per 10 seconds) and rounds up in 5 minute steps', () => {
-    expect(transferEstimate(240)).toBe(`About 5 minutes. ${STAY}`);
-    expect(transferEstimate(241)).toBe(`About 10 minutes. ${STAY}`);
-    expect(transferEstimate(300)).toBe(`About 10 minutes. ${STAY}`);
-    expect(transferEstimate(5_000)).toBe(`About 105 minutes. ${STAY}`);
-    expect(transferEstimate(10_000)).toBe(`About 210 minutes. ${STAY}`);
-  });
-
-  it('says nothing for an empty list', () => {
-    expect(transferEstimate(0)).toBe('');
+    expect(transferMinutes(240)).toBe('About 5 minutes');
+    expect(transferMinutes(241)).toBe('About 10 minutes');
+    expect(transferMinutes(5_000)).toBe('About 105 minutes');
+    expect(transferMinutes(10_000)).toBe('About 210 minutes');
   });
 });
 

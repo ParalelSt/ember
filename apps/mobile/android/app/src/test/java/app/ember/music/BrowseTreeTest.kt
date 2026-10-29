@@ -18,12 +18,13 @@ class BrowseTreeTest {
         server.enqueue(MockResponse().setBody("""{"playlist":{"id":"p1","name":"Road"},"tracks":[{"id":"youtube:a","title":"A","artist":"X","streamUrl":"/api/youtube/stream/a"}]}"""))
         server.start()
         val tree = BrowseTree(ServerApi(server.url("/").toString().trimEnd('/')) { "pb_auth=x" })
-        val root = tree.children(BrowseTree.ROOT).map { it.mediaId }
-        assertEquals(listOf(BrowseTree.HOME, BrowseTree.LIKED, BrowseTree.PLAYLISTS, BrowseTree.LIBRARY), root)
+        // Android Auto shows up to four tabs: all four fit.
+        val root = tree.children(BrowseTree.ROOT, rootLimit = 4).map { it.mediaId }
+        assertEquals(listOf(BrowseTree.FOR_YOU, BrowseTree.LIBRARY, BrowseTree.RADIO, BrowseTree.RECENT), root)
         assertTrue(tree.children(BrowseTree.ROOT).all { it.mediaMetadata.isBrowsable == true })
-        val playlists = tree.children(BrowseTree.PLAYLISTS)
-        assertEquals("playlist:p1", playlists[0].mediaId)
-        assertTrue(playlists[0].mediaMetadata.isBrowsable == true)
+        val playlists = tree.children(BrowseTree.LIBRARY)
+        assertEquals("playlist:p1", playlists[1].mediaId)
+        assertTrue(playlists[1].mediaMetadata.isBrowsable == true)
         val tracks = tree.children("playlist:p1")
         assertEquals("playlist:p1|youtube:a", tracks[0].mediaId)
         assertTrue(tracks[0].mediaMetadata.isPlayable == true)

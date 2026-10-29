@@ -6,7 +6,12 @@ import type { AdminTrack } from '@/lib/api';
 // See users/page.test.tsx: render the base-ui Dialog and Sheet as plain
 // elements so this test is about the page's own wiring.
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }: PropsWithChildren<{ open?: boolean }>) => (open ? <div>{children}</div> : null),
+  Dialog: ({ open, onOpenChange, children }: PropsWithChildren<{ open?: boolean; onOpenChange?: (o: boolean) => void }>) => (open ? (
+    <div>
+      {children}
+      <button type="button" onClick={() => onOpenChange?.(false)}>Close dialog</button>
+    </div>
+  ) : null),
   DialogContent: ({ children }: PropsWithChildren) => <div role="dialog">{children}</div>,
   DialogFooter: ({ children }: PropsWithChildren) => <div>{children}</div>,
   DialogHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
@@ -28,18 +33,23 @@ const track = (i: number, extra: Partial<AdminTrack> = {}): AdminTrack => ({
   durationSec: 180, artworkUrl: `/art/${i}.jpg`, streamUrl: '', ...extra,
 });
 
+type Answer = { tracks: AdminTrack[]; page: number; totalPages: number; totalItems: number };
 const state = vi.hoisted(() => ({
   desktop: true,
   query: vi.fn(),
   update: vi.fn(async () => ({ ok: true })),
   remove: vi.fn(async () => ({ ok: true })),
+  /** Overrides the answer for a page (the default is one page of three). */
+  pages: null as null | ((page: number) => Answer),
+  error: null as Error | null,
 }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => state.desktop }));
 vi.mock('@/hooks/useAdmin', () => ({
   useQueryAdminTracks: (page: number, q: string) => {
     state.query(page, q);
+    if (state.error) return { data: undefined, isLoading: false, isFetching: false, error: state.error };
     return {
-      data: { tracks: [track(1), track(2, { missing: true }), track(3, { artworkUrl: null })], page: 1, totalPages: 1, totalItems: 3 },
+      data: state.pages?.(page) ?? { tracks: [track(1), track(2, { missing: true }), track(3, { artworkUrl: null })], page: 1, totalPages: 1, totalItems: 3 },
       isLoading: false,
       isFetching: false,
     };
@@ -55,6 +65,8 @@ beforeEach(() => {
   state.query.mockClear();
   state.update.mockClear();
   state.remove.mockClear();
+  state.pages = null;
+  state.error = null;
 });
 
 describe('AdminTracksPage on desktop', () => {
@@ -125,4 +137,37 @@ describe('AdminTracksPage on a phone', () => {
     });
     expect(state.remove).toHaveBeenCalledWith('r2');
   });
+});
+
+it('goes back a page when the last page empties (its last track deleted), instead of a dead end', () => {
+  // Page 2 held one track; it was deleted, so there is only one page now.
+  state.pages = (page) => page === 1
+    ? { tracks: [track(1)], page: 1, totalPages: 2, totalItems: 51 }
+    : { tracks: [], page, totalPages: 1, totalItems: 50 };
+  render(<AdminTracksPage />);
+  fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+  expect(state.query).toHaveBeenCalledWith(2, '');
+  expect(state.query).toHaveBeenLastCalledWith(1, '');
+  expect(screen.queryByText('No tracks match.')).toBeNull();
+});
+
+it('says so when a page fails to load, instead of a blank page', () => {
+  state.error = new Error('PocketBase is down');
+  render(<AdminTracksPage />);
+  expect(screen.getByText(/Couldn.t load tracks: PocketBase is down/)).toBeTruthy();
+});
+
+// The dialog kept what was typed, so a closed-without-saving edit came back
+// and Save sent it.
+it('reopening Edit track after closing it without saving shows the track, not the abandoned edit', async () => {
+  render(<AdminTracksPage />);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+  fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Abandoned' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+  fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+  expect(screen.getByLabelText('Title')).toHaveValue('Song 1');
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  });
+  expect(state.update).not.toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ title: 'Abandoned' }) }));
 });

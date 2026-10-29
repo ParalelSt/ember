@@ -11,7 +11,7 @@ import { CopySongsBar } from '@/components/track/menus/CopySongsBar';
 import { ReviewSheet } from '@/components/import/ReviewSheet';
 import { useImportActions, useLikedImportJob } from '@/hooks/useImports';
 import { useImportReview } from '@/hooks/useImportReview';
-import { itemForTrack } from '@/lib/import/rows';
+import { importItemFinder } from '@/lib/import/rows';
 import { useTrackActions } from '@/hooks/useTrackActions';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { contextFor, countLabel, iconFor, titleFor } from '@/lib/collections';
@@ -56,6 +56,7 @@ export default function LikedPage() {
   const { job, items } = useLikedImportJob();
   const importActions = useImportActions(job?.id, null);
   const review = useImportReview(items);
+  const itemFor = useMemo(() => importItemFinder(items), [items]);
   const qc = useQueryClient();
   const progressKey = job ? `${job.status}:${job.cursor}:${job.accepted}` : '';
   useEffect(() => {
@@ -85,7 +86,7 @@ export default function LikedPage() {
   // matched again from its row menu, the way an imported playlist's can.
   const trailing = showTransfer
     ? (t: Track) => {
-        const item = itemForTrack(items, t);
+        const item = itemFor(t);
         return <TrackMenu track={t} onRematch={item ? () => review.openRematch(item) : undefined} />;
       }
     : renderTrackMenu;

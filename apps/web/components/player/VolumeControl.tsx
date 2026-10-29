@@ -11,13 +11,18 @@ export interface VolumeControlProps {
   muted: boolean;
   /** Ceiling of the slider, also 0 to 1 (party mode lifts it to 1). */
   max?: number;
+  /** Every step of a drag (and a click or key press). */
   onChange: (volume: number) => void;
+  /** Where a drag (or a click or key press) ended. */
+  onCommit?: (volume: number) => void;
   onToggleMute: () => void;
   className?: string;
   /** Width of the slider box; the caller decides how much room the range
    *  deserves (party mode's longer range gets a longer track). */
   sliderClassName?: string;
 }
+
+const fraction = (v: number | readonly number[]) => (Array.isArray(v) ? (v[0] ?? 0) : (v as number)) / 100;
 
 /** The mute button plus the volume slider. Muting is a toggle rather than a
  *  drag to zero, so the previous level comes back on unmute. */
@@ -26,6 +31,7 @@ export function VolumeControl({
   muted,
   max = 1,
   onChange,
+  onCommit,
   onToggleMute,
   className,
   sliderClassName,
@@ -59,10 +65,8 @@ export function VolumeControl({
       >
         <Slider
           value={[volume * 100]}
-          onValueChange={(v) => {
-            const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
-            onChange(pct / 100);
-          }}
+          onValueChange={(v) => onChange(fraction(v))}
+          onValueCommitted={onCommit ? (v) => onCommit(fraction(v)) : undefined}
           max={max * 100}
           step={1}
           disabled={muted}

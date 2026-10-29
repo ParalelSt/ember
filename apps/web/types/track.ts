@@ -4,8 +4,10 @@
  */
 export interface Track {
   id: string;
-  /** `upload` = a song a member added from their own files (see lib/uploads). */
-  source: 'jamendo' | 'youtube' | 'upload';
+  /** `upload` = a song a member added from their own files (see lib/uploads).
+   *  `station` = a live internet radio station (lib/radio): no length, never
+   *  a song in history, likes or playlists. */
+  source: 'jamendo' | 'youtube' | 'upload' | 'station';
   sourceId: string;
   title: string;
   artist: string;
@@ -122,6 +124,9 @@ export type PlaybackContext =
   | { type: 'chart'; chartSlug: string; chartTitle: string }
   /** A personal genre mix (/mix/[key]). */
   | { type: 'mix'; mixKey: string; mixTitle: string }
+  /** A list of live radio stations (the Radio page): `name` is the list's,
+   *  "Nearby" or "Favourites". */
+  | { type: 'stations'; name: string }
   /** `exclude`: songs radio must not add after it (lib/trackIdentity keys),
    *  e.g. a recommendation played from under a playlist skips what the
    *  playlist already has. */

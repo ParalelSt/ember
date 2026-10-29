@@ -610,5 +610,17 @@
     "app": "BlockIcon",
     "name": "prohibit",
     "weight": "fill"
+  },
+  {
+    "lucide": "Radio",
+    "app": "RadioIcon",
+    "name": "radio",
+    "weight": "fill"
+  },
+  {
+    "lucide": "LocateFixed",
+    "app": "LocateIcon",
+    "name": "gps-fix",
+    "weight": "fill"
   }
 ]

@@ -86,6 +86,30 @@ check('a second options value is checked too',
   unsafeSubscription(`${topic({ filter: 'id != ""' })}&options=${encodeURIComponent(JSON.stringify({ query: { filter: 'uploader.name = "x"' } }))}`) !== '');
 check('unreadable options are refused', unsafeSubscription('tracks/*?options=%7Bnot-json') !== '');
 check('headers-only options are fine', unsafeSubscription(`tracks/*?options=${encodeURIComponent('{"headers":{"x":"y"}}')}`) === '');
+// PocketBase reads the options with Go's encoding/json, which matches the
+// `query` key in any letter case, and merges repeated keys.
+const rawTopic = (json) => `tracks/*?options=${encodeURIComponent(json)}`;
+for (const key of ['Query', 'QUERY', 'qUeRy']) {
+  check(`a join under "${key}" is refused`,
+    unsafeSubscription(rawTopic(JSON.stringify({ [key]: { filter: 'likes_via_track.user ?= "a"' } }))) !== '');
+}
+check('a join under a second, differently cased query key is refused',
+  unsafeSubscription(rawTopic('{"query":{"filter":"id != \\"\\""},"Query":{"filter":"uploader.name = \\"x\\""}}')) !== '');
+// Go's decoder merges a repeated `query` object into the first one, and a
+// later null or number for `filter` leaves the first string in place, while
+// JSON.parse keeps only the last copy: the copy checked was not the one run.
+check('a join followed by a second, empty "query" is refused',
+  unsafeSubscription(rawTopic('{"query":{"filter":"likes_via_track.user ?= \\"a\\""},"query":{}}')) !== '');
+check('a join followed by "filter": null is refused',
+  unsafeSubscription(rawTopic('{"query":{"filter":"likes_via_track.user ?= \\"a\\"","filter":null}}')) !== '');
+check('a join followed by a numeric "filter" is refused',
+  unsafeSubscription(rawTopic('{"query":{"filter":"uploader.name = \\"x\\"","filter":5}}')) !== '');
+check('a repeat spelled with an escape is refused too',
+  unsafeSubscription(rawTopic('{"query":{"filter":"uploader.name = \\"x\\""},"q\\u0075ery":{}}')) !== '');
+check('the same words inside a filter string are not a repeat',
+  unsafeSubscription(rawTopic(JSON.stringify({ query: { filter: 'title = "\\"query\\": \\"filter\\":"' } }))) === '');
+check('a plain filter under "Query" is still fine',
+  unsafeSubscription(rawTopic(JSON.stringify({ Query: { filter: 'target = "a"' } }))) === '');
 
 const failed = out.filter((c) => !c.pass);
 console.log(`\n${out.length - failed.length}/${out.length} passed`);

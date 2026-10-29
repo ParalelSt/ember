@@ -252,6 +252,29 @@ describe('maybeAutoReport [discord-2026-10-04 #6]: one report per connection bli
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  // Behind a sign-in page the report gets a 200 of the page's HTML; while
+  // the server restarts, the Funnel's 502. Neither is the server taking it.
+  it.each([
+    ['a Wi-Fi sign-in page', () => new Response('<!DOCTYPE html><p>Sign in</p>', { status: 200, headers: { 'content-type': 'text/html' } })],
+    ['a gateway', () => new Response(null, { status: 502 })],
+  ])('an outage report %s answered for also waits for the server', async (_name, answer) => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(answer())
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true, triage: null }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    for (let t = 0; t <= 40_000; t += 5_000) {
+      maybeAutoReport(netError('/listening'));
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    connectionOk();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    connectionOk();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('dedupes an identical automatic report within a session', async () => {
     const fetchMock = mockFetch();
     const entry = () => errorEntry({ category: 'api', message: 'GET /likes → 500', data: { status: 500 } });

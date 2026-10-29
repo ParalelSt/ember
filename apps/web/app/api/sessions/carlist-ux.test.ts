@@ -39,14 +39,12 @@ function reset() {
 }
 
 /** Very small filter matcher: `a = "x"` and `a = true` clauses joined by
- *  &&, plus the membership clause of the live lookup. */
+ *  &&, plus the roster clause of the live lookup. */
 function matches(row: Row, filter: string, name: string): boolean {
-  const live = filter.match(/\(host = "(\w+)" \|\| session_members_via_session\.user \?= "(\w+)"\)/);
-  if (live) {
-    const u = live[1];
-    const inIt = row.host === u || db.session_members.some((m) => m.session === row.id && m.user === u);
-    if (!inIt) return false;
-    filter = filter.replace(live[0], 'true');
+  const joined = filter.match(/session_members_via_session\.user \?= "(\w+)"/);
+  if (joined) {
+    if (!db.session_members.some((m) => m.session === row.id && m.user === joined[1])) return false;
+    filter = filter.replace(joined[0], 'true');
   }
   for (const clause of filter.split('&&').map((c) => c.trim())) {
     if (clause === 'true') continue;
@@ -103,8 +101,9 @@ function fakePb() {
         if (opts.sort === 'position') rows = [...rows].sort((a, b) => Number(a.position) - Number(b.position));
         return rows.map((r) => expandRow(r, opts.expand));
       },
-      getList: async (_page: number, perPage: number, opts: { filter?: string } = {}) => {
-        const rows = (db[name] ?? []).filter((r) => !opts.filter || matches(r, opts.filter, name));
+      getList: async (_page: number, perPage: number, opts: { filter?: string; sort?: string } = {}) => {
+        let rows = (db[name] ?? []).filter((r) => !opts.filter || matches(r, opts.filter, name));
+        if (opts.sort === '-updated') rows = [...rows].sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
         return { items: rows.slice(0, perPage).map((r) => ({ ...r })) };
       },
       create: async (data: Record<string, unknown>) => {
@@ -172,8 +171,9 @@ const order = () =>
     .sort((a, b) => Number(a.position) - Number(b.position))
     .map((r) => `${r.track}@${r.position}`);
 
-beforeEach(() => {
+beforeEach(async () => {
   reset();
+  (await import('@/lib/rateLimit'))._resetBuckets();
   caller.id = 'u1';
   // The fixtures' timestamps are "an hour or two ago" on this day.
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -281,6 +281,49 @@ describe('adding: Play next or Add to end', () => {
     expect(writes).toEqual([]);
   });
 
+  it('two adds at the same moment both land, each in its own place', async () => {
+    const POST = await addRoute();
+    const [a, b] = await Promise.all([
+      POST(req({ track: newTrack }), ctx),
+      POST(req({ track: { ...newTrack, id: 'youtube:aaaaaaaaaaa' } }), ctx),
+    ]);
+    expect([a.status, b.status]).toEqual([201, 201]);
+    const positions = db.session_tracks.map((r) => Number(r.position));
+    expect(new Set(positions).size).toBe(positions.length);
+    expect(order()).toEqual(['t1@1', 't2@2', 't3@3', 't4@4', 't1@5']);
+  });
+
+  it('two Play next at the same moment do not end up sharing a place', async () => {
+    db.sessions[0].now_index = 0;
+    const POST = await addRoute();
+    await Promise.all([
+      POST(req({ track: newTrack, position: 'next' }), ctx),
+      POST(req({ track: { ...newTrack, id: 'youtube:aaaaaaaaaaa' }, position: 'next' }), ctx),
+    ]);
+    const positions = db.session_tracks.map((r) => Number(r.position));
+    expect(new Set(positions).size).toBe(positions.length);
+    expect(positions.sort((x, y) => x - y)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('play next waiting behind another add goes after the song playing when its turn comes', async () => {
+    // It read which song was playing before it waited. When the host moved
+    // on meanwhile, the song went in before the playing one, where the
+    // host's player had already passed it: it never played.
+    db.sessions[0].now_index = 0;
+    const { withLock } = await import('@/lib/keyedLock');
+    let release: () => void = () => {};
+    const held = withLock('session-tracks:s1', () => new Promise<void>((r) => (release = r)));
+    const POST = await addRoute();
+    const adding = POST(req({ track: newTrack, position: 'next' }), ctx);
+    await new Promise((r) => setTimeout(r, 0));
+    db.sessions[0].now_index = 1; // the host moved on to t2
+    release();
+    await held;
+    const res = await adding;
+    expect(await res.json()).toEqual({ ok: true, position: 'next', ahead: 0 });
+    expect(order()).toEqual(['t1@1', 't2@2', 't4@3', 't3@4']);
+  });
+
   it('a guest who joined can play next too (everyone is a DJ)', async () => {
     db.session_members.push({ id: 'm2', session: 's1', user: 'u2' });
     caller.id = 'u2';
@@ -315,6 +358,30 @@ describe('the live carlist behind the Carlist button', () => {
     caller.id = 'u2';
     const GET = await handler(import('./route'), 'GET');
     expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's1', isHost: false });
+  });
+
+  it('a host who also joined a friend\'s carlist gets their own, even when the friend\'s moved on later', async () => {
+    // Theirs is playing: it moved on ten minutes ago.
+    db.sessions[0].updated = '2026-10-02 10:50:00.000Z';
+    db.sessions.push({ id: 's3', code: 'FRIEND', name: 'Friend', host: 'u3', active: true, now_index: 4, updated: '2026-10-02 10:55:00.000Z' });
+    db.session_members.push({ id: 'm3', session: 's3', user: 'u1' });
+    const GET = await handler(import('./route'), 'GET');
+    expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's1', isHost: true });
+    // Once theirs is over, the friend's is the live one.
+    db.sessions[0].active = false;
+    expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's3', isHost: false });
+  });
+
+  it('a hosted carlist left alone (the app just closed) does not hide one joined since', async () => {
+    // Theirs has not moved on for three hours; the friend's is playing.
+    db.sessions[0].updated = '2026-10-02 08:00:00.000Z';
+    db.sessions.push({ id: 's3', code: 'FRIEND', name: 'Friend', host: 'u3', active: true, now_index: 4, updated: '2026-10-02 10:55:00.000Z' });
+    db.session_members.push({ id: 'm3', session: 's3', user: 'u1' });
+    const GET = await handler(import('./route'), 'GET');
+    expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's3', isHost: false });
+    // With nothing joined, the idle one they host is still theirs.
+    db.session_members = db.session_members.filter((m) => m.id !== 'm3');
+    expect((await (await GET(req())).json()).carlist).toMatchObject({ id: 's1', isHost: true });
   });
 
   it('nobody else, and not an ended one', async () => {
@@ -384,5 +451,52 @@ describe('Skip from several phones', () => {
   it('an older app that sends no index still skips', async () => {
     expect((await skipAs('u2')).status).toBe(201);
     expect((await consume()).commands).toEqual([{ type: 'skip' }]);
+  });
+
+  it('one guest cannot pile up skips without limit while the host is away', async () => {
+    for (let i = 0; i < 30; i++) expect((await skipAs('u2')).status).toBe(201);
+    expect((await skipAs('u2')).status).toBe(429);
+    expect(db.session_commands).toHaveLength(30);
+    // Someone else still can.
+    expect((await skipAs('u3')).status).toBe(201);
+  });
+});
+
+describe('limits on starting carlists and adding songs', () => {
+  it('a guest adding 20 songs in a minute is never refused, but a flood is', async () => {
+    db.session_members.push({ id: 'm2', session: 's1', user: 'u2' });
+    caller.id = 'u2';
+    const POST = await addRoute();
+    for (let i = 0; i < 20; i++) expect((await POST(req({ track: newTrack }), ctx)).status).toBe(201);
+    let refused: Response | null = null;
+    for (let i = 0; i < 100 && !refused; i++) {
+      const res = await POST(req({ track: newTrack }), ctx);
+      if (res.status === 429) refused = res;
+    }
+    expect(refused?.headers.get('Retry-After')).toBeTruthy();
+    // Per person: the host still adds.
+    caller.id = 'u1';
+    expect((await POST(req({ track: newTrack }), ctx)).status).toBe(201);
+  });
+
+  it('starting carlists over and over is refused after a while', async () => {
+    const POST = await handler(import('./route'));
+    const statuses: number[] = [];
+    for (let i = 0; i < 40; i++) statuses.push((await POST(req({ name: `Trip ${i}` }))).status);
+    expect(statuses.slice(0, 5)).toEqual([201, 201, 201, 201, 201]);
+    expect(statuses).toContain(429);
+  });
+
+  it('a carlist name longer than the start dialog allows (120) is refused, not stored', async () => {
+    const POST = await handler(import('./route'));
+    const before = db.sessions.length;
+    expect((await POST(req({ name: 'x'.repeat(121) }))).status).toBe(400);
+    expect(db.sessions.length).toBe(before);
+    expect((await POST(req({ name: 'x'.repeat(120) }))).status).toBe(201);
+  });
+
+  it('saving the queue as a playlist keeps the playlist name cap (200)', async () => {
+    const POST = await handler(import('./[id]/save/route'));
+    expect((await POST(req({ name: 'x'.repeat(201) }), ctx)).status).toBe(400);
   });
 });

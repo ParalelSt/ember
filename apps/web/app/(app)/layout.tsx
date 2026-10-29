@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Sidebar } from '@/components/nav/Sidebar';
+import { CarRail } from '@/components/nav/CarRail';
 import { TopBar } from '@/components/nav/TopBar';
 import { MobileNav } from '@/components/nav/MobileNav';
 import { Drawer } from '@/components/nav/Drawer';
@@ -17,9 +18,11 @@ import { AppUpdatePill } from '@/components/update/AppUpdatePill';
 import { QrScanHost } from '@/components/auth/QrScanHost';
 import { ApproveSheetHost } from '@/components/auth/ApproveSheetHost';
 import { hydrateOfflineStore } from '@/lib/offline';
+import { logger } from '@/lib/logger/client';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useHeadUnitControls, useIsHeadUnit } from '@/hooks/useHeadUnit';
 import { useReleaseStaleHosting } from '@/hooks/useSession';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
@@ -34,6 +37,12 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   // Desktop: the search bar lives INSIDE the scroller (DesktopTopBar).
   // Phone: the search sheet stays outside it, as before.
   const isDesktop = useIsDesktop();
+  // A car head unit with the car layout on (hooks/useHeadUnit): a rail of
+  // big icons in place of the sidebar (the player bar has its own car bar).
+  // With it switched off, the sidebar's covers look: big rows, playlist
+  // covers. Phones and computers keep the sidebar as it is.
+  const headUnit = useIsHeadUnit();
+  const carLayout = useHeadUnitControls();
   // A carlist this device hosted and nobody ended must not keep radio off.
   useReleaseStaleHosting();
 
@@ -41,8 +50,12 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   // native EmberOffline plugin's pins/trackFiles; elsewhere it reads OPFS
   // (fills downloaded set + totalBytes, and posts every pinned track's
   // videoId to the SW so it knows which streams to serve from OPFS offline).
+  // It can fail (the app refusing status(), no OPFS in a private window):
+  // downloads then just show as none, so it is a warning, not a report.
   useEffect(() => {
-    void hydrateOfflineStore();
+    void hydrateOfflineStore().catch((e: unknown) =>
+      logger.warn('offline', 'hydrate failed', { message: e instanceof Error ? e.message : String(e) }),
+    );
   }, []);
 
   // LyricsPanel reads --ember-scroller-h to size itself to one viewport-of-
@@ -64,7 +77,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
     // moves up"). svh is the stable small-viewport size, the shell never
     // moves; hiding the bar just shows a brief same-color strip below it.
     <div className="h-svh flex flex-col md:flex-row overflow-hidden">
-      <Sidebar />
+      {carLayout ? <CarRail onSearchClick={() => setSearchOpen(true)} /> : <Sidebar covers={headUnit} />}
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} />
       <div className="flex-1 min-h-0 flex flex-col min-w-0">
         <div data-phone-search-area className="relative flex-1 min-h-0 flex flex-col">

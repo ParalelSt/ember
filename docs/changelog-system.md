@@ -75,7 +75,7 @@ Bump only when there is something to tell users. A merge with nothing user-visib
 2. Set the same version in `apps/web/package.json` (`npm version patch --no-git-tag-version` in `apps/web`).
 3. If the host must do anything, add the `UPDATE_NOTES.md` section as today, with the version in its heading: `# 0.3.1: crash logging ...`. No host action, no section.
 4. Commit `chore(release): 0.3.1`. `update.sh:211` already prints the SHA and subject after the pull; add the version from `apps/web/package.json` to that line.
-5. Shell release only when `apps/desktop` or `apps/mobile` changed: set `tauri.conf.json`, `Cargo.toml`, `build.gradle` (`versionName`, `versionCode + 1`) to the app version, tag `vX.Y.Z`, push the tag. `native-build.yml:27-30` builds and `:397` publishes the Release.
+5. Shell release only for the apps whose code changed: each app has its own version and tag (`android-vX.Y.Z`, `ios-v`, `windows-v`, `macos-v`, `linux-v`), set and pushed by `npm run release` (docs/automation.md, "App versions and tags"). The old shared `vX.Y.Z` tags are no longer made.
 
 A unit test (6) fails if step 1 and 2 disagree, so there is no silent drift.
 

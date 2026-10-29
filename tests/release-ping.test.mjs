@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  localParts, decide, buildMessage, extraNotes, run, msUntilEvening, MAX_WAIT_MS,
+  localParts, decide, buildMessage, extraNotes, run, msUntilEvening, MAX_WAIT_MS, appVersions, appsLabel,
 } from '../.github/scripts/release-ping.mjs';
 
 const U = '123456789';
@@ -93,7 +93,12 @@ function fakeEnv({ tag = null, head = 'h2' } = {}) {
     if (a[0] === 'diff') return state.diff ?? 'apps/web/a.ts';
     if (a[0] === 'show' && a[1].endsWith('package.json')) return JSON.stringify({ version: '0.7.20' });
     if (a[0] === 'show') return NOTES;
-    if (a[0] === 'tag' && a[1] === '--merged') return '';
+    if (a[0] === 'tag' && a[1] === '--merged') {
+      // git's own --list glob, so the pattern the script asks for matters.
+      const glob = a[a.indexOf('--list') + 1];
+      const re = new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+      return (state.tags ?? []).filter((t) => re.test(t)).join('\n');
+    }
     if (a[0] === 'tag' && a[1] === '-f') { state.tag = { commit: a[a.indexOf('-m') + 2], date: a[a.indexOf('-m') + 1] }; return ''; }
     if (a[0] === 'push') { state.pushed++; return ''; }
     throw new Error('unexpected git ' + j);
@@ -173,4 +178,52 @@ test('run: a change the host does not run (CI, docs) does not ping or move the t
   assert.equal(r.pinged, false);
   assert.equal(f.state.posts.length, 0);
   assert.equal(f.state.tag.commit, 'h1');
+});
+
+// The apps version came from v0.4.* tags only: at 0.5.0 the ping would have
+// kept naming the last 0.4 build, and the per-app tags (android-v0.4.25)
+// would not have counted at all.
+test('run: names the newest apps release tag, 0.5 and later included', async () => {
+  const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+  f.state.tags = ['v0.4.9', 'v0.4.24', 'v0.5.0', 'v0.5.1-rc1', 'v1', 'notified/main'];
+  const r = await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') });
+  assert.match(r.text, /\(apps 0\.5\.0\)/);
+});
+
+test('run: lists each app version once the apps are released on their own', async () => {
+  const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+  f.state.tags = ['v0.4.24', 'android-v0.4.25', 'windows-v0.4.25', 'macos-v0.4.25', 'linux-v0.4.25', 'notified/main'];
+  const r = await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') });
+  assert.match(r.text, /^<@123456789> New version available: web 0\.7\.20 \(apps: android 0\.4\.25, ios 0\.4\.24, windows 0\.4\.25, macos 0\.4\.25, linux 0\.4\.25\)/);
+});
+
+test('appVersions: own tag or old shared tag, newest wins, other tags ignored', () => {
+  assert.deepEqual(appVersions(['v0.4.24', 'ios-v0.4.30', 'windows-v0.4.20', 'web-v1.0.0', 'android-v0.4.26-rc1']), {
+    android: '0.4.24', ios: '0.4.30', windows: '0.4.24', macos: '0.4.24', linux: '0.4.24',
+  });
+  assert.deepEqual(appVersions([]), {});
+  assert.equal(appsLabel({}), null);
+  assert.equal(appsLabel(appVersions(['v0.4.25'])), 'apps 0.4.25');
+  assert.equal(appsLabel({ android: '0.4.25' }), 'apps: android 0.4.25');
+});
+
+// The host runs more than apps/web and player.py: the start and update
+// scripts, the other Python helpers and their requirements, the root
+// lockfile. A fix to one of those alone (a start-static.sh fix, say) never
+// pinged, so the host never heard to update for it.
+test('run: a change to what the host runs outside apps/web pings', async () => {
+  for (const p of ['start-static.sh', 'update.sh', 'align.py', 'loudness.py', 'ffmpeg_path.py', 'requirements.txt', 'package-lock.json', 'deploy/ember.service']) {
+    const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+    f.state.diff = p;
+    const r = await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') });
+    assert.equal(r.pinged, true, p);
+    assert.match(r.text, /Pull and run \.\/update\.sh/, p);
+  }
+});
+test('run: the apps, tests and docs alone still do not ping', async () => {
+  for (const p of ['apps/desktop/src-tauri/src/main.rs', 'apps/mobile/android/app/build.gradle', 'tests/watchdog.test.sh', 'docs/a.md', 'tests/test_align.py']) {
+    const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+    f.state.diff = p;
+    assert.equal((await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') })).pinged, false, p);
+  }
 });

@@ -90,6 +90,14 @@ describe('CreatePlaylistDialog tabs', () => {
     expect(screen.getByRole('button', { name: 'Create, import 42 songs' })).toBeEnabled();
   });
 
+  it('a one-song playlist offers to import 1 song, not "1 songs"', async () => {
+    api.importInspect.mockResolvedValue({ source: 'spotify', id: 'x', name: 'Single', coverUrl: null, items: items.slice(0, 1), truncated: false });
+    setup();
+    fireEvent.click(screen.getByRole('tab', { name: /Import a link/ }));
+    fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
+    expect(await screen.findByRole('button', { name: 'Create, import 1 song' })).toBeEnabled();
+  });
+
   it('a Spotify playlist cut at 100 says so', async () => {
     api.importInspect.mockResolvedValue({ source: 'spotify', id: 'x', name: 'Long', coverUrl: null, items, truncated: true });
     setup();
@@ -140,5 +148,32 @@ describe('CreatePlaylistDialog tabs', () => {
       );
     }
     expect(screen.getByRole('tab', { name: 'Start new' })).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+describe('CreatePlaylistDialog when creating fails', () => {
+  it('stays open with the typed name and the picked songs, and leaves no unhandled rejection', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const onCreate = vi.fn(async () => {
+        throw new Error('server down');
+      });
+      const p = setup({ onCreate });
+      fireEvent.change(screen.getByLabelText('Playlist name'), { target: { value: 'Road trip' } });
+      fireEvent.click(screen.getByRole('button', { name: 'pick song' }));
+      fireEvent.click(screen.getByRole('button', { name: /Create/ }));
+      await waitFor(() => expect(onCreate).toHaveBeenCalledWith('Road trip', [SONG]));
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(p.onOpenChange).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Playlist name')).toHaveValue('Road trip');
+      expect(screen.getByTestId('added-count')).toHaveTextContent('1 song added');
+      expect(screen.getByRole('button', { name: 'Create with 1 song' })).not.toBeDisabled();
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 });

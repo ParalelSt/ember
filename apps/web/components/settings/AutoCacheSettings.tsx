@@ -12,7 +12,7 @@ export const AUTO_CACHE_UNAVAILABLE_TEXT = 'Automatic caching is not available i
 export const AUTO_CACHE_UPDATE_APP_TEXT = 'Automatic caching needs a newer version of the Ember app. Update the app to turn it on.';
 
 /** One switch row, the same shape as the other settings switches. */
-function SwitchRow({
+export function SwitchRow({
   name,
   description,
   on,

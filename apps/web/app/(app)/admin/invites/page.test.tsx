@@ -24,10 +24,11 @@ const state = vi.hoisted(() => ({
   desktop: true,
   invites: [] as AdminInvite[],
   add: vi.fn(async () => ({ ok: true })),
+  error: null as Error | null,
 }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => state.desktop }));
 vi.mock('@/hooks/useAdmin', () => ({
-  useQueryAdminInvites: () => ({ data: state.invites, isLoading: false }),
+  useQueryAdminInvites: () => (state.error ? { data: undefined, isLoading: false, error: state.error } : { data: state.invites, isLoading: false }),
   useExecuteAddAdminInvite: () => ({ mutateAsync: state.add, isPending: false }),
   useExecuteDeleteAdminInvite: () => ({ mutateAsync: vi.fn() }),
 }));
@@ -38,6 +39,7 @@ beforeEach(() => {
   state.desktop = true;
   state.invites = [{ id: 'i1', email: 'sam@example.com', created: '2026-10-01' } as AdminInvite];
   state.add.mockClear();
+  state.error = null;
 });
 
 describe('AdminInvitesPage on desktop', () => {
@@ -128,4 +130,12 @@ it('desktop keeps the invite dialog open when adding fails', async () => {
   await act(async () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add invite' })));
   expect(screen.getByRole('dialog')).toBeInTheDocument();
   expect(screen.getByLabelText('Email')).toHaveValue('new@example.com');
+});
+
+// It said "No invites yet, add one" on a failed load.
+it('says so when the list fails to load, instead of an empty list', () => {
+  state.error = new Error('PocketBase is down');
+  render(<AdminInvitesPage />);
+  expect(screen.getByText(/Couldn.t load invites: PocketBase is down/)).toBeTruthy();
+  expect(screen.queryByText(/No invites yet/)).toBeNull();
 });

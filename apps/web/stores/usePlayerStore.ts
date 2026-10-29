@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { shuffle } from '@/lib/shuffle';
 import type { PlaybackContext, Track } from '@/types/track';
 
@@ -53,10 +53,17 @@ interface PlayerState {
   played: string[];
   setQueue: (queue: Track[]) => void;
   setIndex: (i: number) => void;
+  /** Write the playhead and save it (usePositionPersistence's moments). */
   setPosition: (p: number) => void;
+  /** The player's playhead report, several a second while audio plays: for
+   *  the views only, not saved (see `unsaved`). */
+  reportPosition: (p: number) => void;
   setDuration: (d: number) => void;
   setIsPlaying: (b: boolean) => void;
   setVolume: (v: number) => void;
+  /** A volume slider step mid-drag: heard and shown, not saved (see
+   *  `unsaved`); the drag's end saves it through setVolume. */
+  previewVolume: (v: number) => void;
   setContext: (c: PlaybackContext | null) => void;
   setLoopMode: (m: LoopMode) => void;
   toggleShuffle: () => void;
@@ -92,6 +99,33 @@ export function restoreOrder(original: Track[], queue: Track[], index: number): 
   return { queue: order.map((i) => queue[i]), index: at >= 0 ? at : index };
 }
 
+/** True during a write that is not saved: a playhead report (several a
+ *  second while audio plays) or a volume slider step. Saving them would
+ *  serialize the whole persisted slice, a queue of thousands of songs from
+ *  a big list, into localStorage at that pace; usePositionPersistence saves
+ *  the playhead itself, about once a second and on pause and leave, the
+ *  drag's end saves the volume, and any other save carries the latest. */
+let skipSave = false;
+
+function unsaved(write: () => void): void {
+  skipSave = true;
+  try {
+    write();
+  } finally {
+    skipSave = false;
+  }
+}
+
+/** localStorage, skipping the writes made through `unsaved`. */
+function playerStorage() {
+  const base = createJSONStorage(() => window.localStorage);
+  return base && { ...base, setItem: (...args: Parameters<typeof base.setItem>) => (skipSave ? undefined : base.setItem(...args)) };
+}
+
+const clampVolume = (volume: number) => Math.min(1, Math.max(0, volume));
+
+const stamp = () => (typeof performance === 'undefined' ? 0 : performance.now());
+
 /** Persisted slices: queue, index, position, volume, context. isPlaying +
  *  duration are derived from the audio element each session. */
 export const usePlayerStore = create<PlayerState>()(
@@ -116,10 +150,12 @@ export const usePlayerStore = create<PlayerState>()(
       played: [],
       setQueue: (queue) => set({ queue }),
       setIndex: (index) => set({ index }),
-      setPosition: (position) => set({ position, positionAt: typeof performance === 'undefined' ? 0 : performance.now() }),
+      setPosition: (position) => set({ position, positionAt: stamp() }),
+      reportPosition: (position) => unsaved(() => set({ position, positionAt: stamp() })),
       setDuration: (duration) => set({ duration }),
       setIsPlaying: (isPlaying) => set({ isPlaying }),
-      setVolume: (volume) => set({ volume: Math.min(1, Math.max(0, volume)) }),
+      setVolume: (volume) => set({ volume: clampVolume(volume) }),
+      previewVolume: (volume) => unsaved(() => set({ volume: clampVolume(volume) })),
       setContext: (context) => set({ context }),
       setLoopMode: (loopMode) => set({ loopMode }),
       /** Shuffle the upcoming tracks only, whatever is playing stays playing
@@ -151,6 +187,7 @@ export const usePlayerStore = create<PlayerState>()(
     }),
     {
       name: 'ember.player.v1',
+      storage: playerStorage(),
       partialize: (s) => ({
         queue: s.queue,
         index: s.index,

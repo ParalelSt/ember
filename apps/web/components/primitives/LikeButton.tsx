@@ -18,12 +18,15 @@ export interface LikeButtonProps {
   liked: boolean;
   onToggle: () => void;
   size?: LikeButtonSize;
+  /** What the heart does, for a screen reader, when it is not a like (a
+   *  favourite radio station). Its state is in aria-pressed. */
+  label?: string;
   className?: string;
 }
 
 /** Presentational only: the heart toggle. Which track counts as "liked"
  *  (the variant rule) stays with the caller. */
-export function LikeButton({ liked, onToggle, size = 'sm', className }: LikeButtonProps) {
+export function LikeButton({ liked, onToggle, size = 'sm', label, className }: LikeButtonProps) {
   return (
     <Button
       variant="ghost"
@@ -36,7 +39,7 @@ export function LikeButton({ liked, onToggle, size = 'sm', className }: LikeButt
       )}
       onClick={onToggle}
       aria-pressed={liked}
-      aria-label={liked ? 'Unlike' : 'Like'}
+      aria-label={label ?? (liked ? 'Unlike' : 'Like')}
     >
       <HeartIcon className={ICON[size]} />
     </Button>

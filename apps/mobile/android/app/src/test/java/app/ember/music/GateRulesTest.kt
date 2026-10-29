@@ -75,6 +75,16 @@ class GateRulesTest {
         assertNull(plain.size)
     }
 
+    @Test fun `a version this phone refused for good is not offered at every launch`() {
+        // Signed with another key than the installed app: downloading it
+        // again only ends in "Couldn't update", every time the icon is tapped.
+        val o = Offer("0.4.25", false, null, 8_600_000)
+        assertTrue(GateRules.refusedBefore(o, "0.4.25"))
+        assertFalse(GateRules.refusedBefore(o, "0.4.24"))
+        assertFalse(GateRules.refusedBefore(o, null))
+        assertFalse(GateRules.refusedBefore(null, "0.4.25"))
+    }
+
     @Test fun `asks the shared endpoint as an android apk at launch`() {
         assertEquals("/api/app/update?platform=android&version=0.4.22&install=apk&launch=1", GateRules.checkPath("0.4.22"))
     }
@@ -214,6 +224,25 @@ class GateRulesTest {
         assertEquals(Input.NeedsPermission, GateRules.fromUpdater(Phase.Installing, "ready", "permission", null))
         assertEquals(Input.InstallFailed, GateRules.fromUpdater(Phase.Installing, "ready", "tap", null))
         assertNull(GateRules.fromUpdater(Phase.Countdown(5, false), "ready", null, null))
+    }
+
+    @Test fun `back from the install setting, the updater's states from before the install are not a failure`() {
+        // The person allowed "Install unknown apps" and came back: onStart
+        // and refresh() each re-evaluated (still "ready, tap") just before
+        // the gate's install ran, and those states arrive after it.
+        val m = Machine(false, true)
+        m.handle(Input.Checked(Offer("0.4.25", false, null, null), ready = true))
+        m.handle(Input.UpdateNow)
+        m.handle(Input.NeedsPermission)
+        m.handle(Input.Resumed(false))
+        assertTrue(Effect.Install in m.handle(Input.Resumed(true)))
+        assertEquals(Phase.Installing, m.phase)
+        assertNull(GateRules.fromUpdater(m.phase, "ready", "tap", null, "0.4.25", "0.4.25", gatePending = true))
+        assertNull(GateRules.fromUpdater(m.phase, "ready", "permission", null, "0.4.25", "0.4.25", gatePending = true))
+        assertNull(GateRules.fromUpdater(m.phase, "installing", null, null, "0.4.25", "0.4.25", gatePending = false))
+        assertEquals(Phase.Installing, m.phase)
+        // Once the gate's install has been answered, "ready" again is a real failure.
+        assertEquals(Input.InstallFailed, GateRules.fromUpdater(m.phase, "ready", "tap", null, "0.4.25", "0.4.25", gatePending = false))
     }
 
     // ── Launch history ──────────────────────────────────────────────────
@@ -395,6 +424,21 @@ class GateRulesTest {
         val pc = GateRules.copy(p, true)!!
         assertEquals("Allow Ember to install updates", pc.title)
         assertEquals("Allow", pc.primary)
+    }
+
+    @Test fun `the installing line says how Ember comes back`() {
+        val m = Machine(false, true)
+        shown(m, ready = true)
+        m.handle(Input.UpdateNow)
+        assertEquals(GateRules.Comeback.REOPENS, GateRules.comeback(sdk = 28, notificationsOn = false))
+        assertEquals(GateRules.Comeback.NOTIFICATION, GateRules.comeback(sdk = 34, notificationsOn = true))
+        assertEquals(GateRules.Comeback.NONE, GateRules.comeback(sdk = 34, notificationsOn = false))
+        assertEquals("Ember closes for a moment and opens again.", GateRules.copy(m, true, GateRules.Comeback.REOPENS)!!.detail)
+        assertEquals("Ember closes for a moment. Tap the notification to open it again.", GateRules.copy(m, true, GateRules.Comeback.NOTIFICATION)!!.detail)
+        assertEquals("Ember closes for a moment. Open it again from your home screen.", GateRules.copy(m, true, GateRules.Comeback.NONE)!!.detail)
+        assertEquals("Android will ask you to confirm", GateRules.copy(m, false, GateRules.Comeback.NONE)!!.detail)
+        // Asked right before the install, with the reason in one line.
+        assertEquals("Allow notifications so Ember can tell you when it's back", GateRules.copy(m, true, askingNotifications = true)!!.detail)
     }
 
     @Test fun `no copy has an em dash`() {

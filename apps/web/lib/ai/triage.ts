@@ -2,6 +2,7 @@ import 'server-only';
 import { z } from 'zod';
 import type { LogEntry, ReportContext, ServerLogEntry } from '@/lib/logger/types';
 import { serverLogger } from '@/lib/logger/server';
+import { LOG_RETENTION_DAYS } from '@/lib/logger/retention';
 import { fingerprint } from '@/lib/reports/fingerprint';
 import { historyFor } from '@/lib/reports/history';
 import { dedupeEntries, formatTimeline, pickEntries, selectTimeline } from '@/lib/reports/timeline';
@@ -81,7 +82,7 @@ export interface TriageInput {
    *  tail is attached to the Discord message separately (see route.ts). */
   desktopLog?: string;
   /** Server entries from a wider window (route.ts fetches this once via
-   *  serverLogger.entriesSince, typically the last 7 days) used only to
+   *  serverLogger.entriesSince, as far back as logs are kept) used only to
    *  count how often each error fingerprint in this report has occurred
    *  before ("seen before"). Absent/empty degrades to "first time" for
    *  everything, never to a thrown error. */
@@ -142,15 +143,19 @@ function buildContextBlock(ctx: ReportContext | undefined): string {
   return `## State when reported\n${lines.join('\n') || '(no context)'}`;
 }
 
+/** "in the last 2 days": how far back "Seen before" can count, which is as
+ *  far as the server keeps its logs. */
+const HISTORY_SPAN = `in the last ${LOG_RETENTION_DAYS} days`;
+
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 /** One line per distinct server-error fingerprint in `entries` (this
  *  report's own server errors), reporting how often that same bug has shown
- *  up in `history` (route.ts passes the last 7 days via
- *  serverLogger.entriesSince): turns a bare error into "this has been
- *  happening all week" or "brand new". Shared by the Discord embed's "Seen
+ *  up in `history` (route.ts passes every kept day, LOG_RETENTION_DAYS, via
+ *  serverLogger.entriesSince): turns a bare error into "this keeps
+ *  happening" or "brand new". Shared by the Discord embed's "Seen
  *  before" field (route.ts) and the triage prompt below, so the model
  *  reasons over the same signal a human reading the report sees. */
 export function formatSeenBefore(entries: ServerLogEntry[], history: ServerLogEntry[]): string {
@@ -171,7 +176,7 @@ export function formatSeenBefore(entries: ServerLogEntry[], history: ServerLogEn
     .map(({ fp, label }) => {
       const h = counts.get(fp);
       if (!h || h.count <= 1 || h.firstSeen === null) return `${label}: first time`;
-      return `${label}: seen ${h.count} times this week, first ${formatDate(h.firstSeen)}`;
+      return `${label}: seen ${h.count} times ${HISTORY_SPAN}, first ${formatDate(h.firstSeen)}`;
     })
     .join('\n');
 }
@@ -267,8 +272,8 @@ position, online/offline, playback backend), a readable Timeline (an
 native-app events are tagged "native:<area>", and a server line sharing a
 request id with a client line is nested under it as "server: ..." so you can
 line up the two sides of one request), a "Seen before" line per distinct
-server error telling you how often that same error has occurred in the past
-week ("first time" for a brand-new one), and a desktop log tail on the Tauri
+server error telling you how often that same error has occurred ${HISTORY_SPAN}
+("first time" for a brand-new one), and a desktop log tail on the Tauri
 app. Work out what actually went wrong.
 
 Reply with ONLY a JSON object, no prose and no code fences:

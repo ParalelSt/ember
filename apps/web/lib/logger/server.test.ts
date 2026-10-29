@@ -81,6 +81,47 @@ describe('serverLogger.entriesSince (EMBER_LOG_DIR override)', () => {
     expect(out).toHaveLength(20_000);
   }, 15_000);
 
+  // A day with an error storm (PocketBase down for hours under polling
+  // clients) writes well over 125 000 lines. Spreading them into push() as
+  // arguments overflowed the stack, the catch answered [], and the digest
+  // called the worst day of the year a quiet one (bug reports and the Car
+  // page lost their server entries too).
+  it('reads a day file with hundreds of thousands of lines', async () => {
+    const now = Date.now();
+    const line = (ts: number) => `{"ts":${ts},"kind":"error","level":"error","category":"api","message":"boom","sessionId":"server","side":"server","reqId":"r"}`;
+    const lines: string[] = [];
+    for (let i = 0; i < 200_000; i++) lines.push(line(now - i));
+    fs.writeFileSync(path.join(logDir, fileFor(new Date())), `${lines.join('\n')}\n`, 'utf8');
+    const out = await serverLogger.entriesSince(now - 300_000);
+    expect(out).toHaveLength(20_000);
+    expect(out[0].ts).toBe(now);
+    expect(await serverLogger.recentSince(now - 10)).toHaveLength(10);
+  }, 30_000);
+
+  // The 20 000 cap used to come before the caller's own filter: a day with
+  // more than that many routine lines (a phone in Android Auto logs plays and
+  // focus changes all day) pushed every older error out, and the digest never
+  // saw the morning's problems.
+  it('filters before it caps, so wanted older entries are not cut off', async () => {
+    const now = Date.now();
+    const errors = Array.from({ length: 100 }, (_, i) => entry({ ts: now - 60_000 - i, level: 'error' }));
+    const routine = Array.from({ length: 30_000 }, (_, i) => entry({ ts: now - i, level: 'info', kind: 'breadcrumb' }));
+    writeFile(fileFor(new Date()), [...errors, ...routine]);
+    const out = await serverLogger.entriesSince(now - 3_600_000, (e) => e.level !== 'info');
+    expect(out).toHaveLength(100);
+    expect(out.every((e) => e.level === 'error')).toBe(true);
+    expect(out[0].ts).toBe(now - 60_000);
+  }, 30_000);
+
+  it('still caps a filtered read at the newest 20000', async () => {
+    const now = Date.now();
+    writeFile(fileFor(new Date()), Array.from({ length: 25_000 }, (_, i) => entry({ ts: now - i })));
+    const out = await serverLogger.entriesSince(now - 3_600_000, (e) => e.level === 'error');
+    expect(out).toHaveLength(20_000);
+    expect(out[0].ts).toBe(now);
+    expect(out[19_999].ts).toBe(now - 19_999);
+  }, 30_000);
+
   it('skips corrupt lines and missing files without throwing', async () => {
     const now = Date.now();
     fs.writeFileSync(
@@ -90,6 +131,17 @@ describe('serverLogger.entriesSince (EMBER_LOG_DIR override)', () => {
     );
     const out = await serverLogger.entriesSince(now - 1000);
     expect(out).toHaveLength(1);
+  });
+
+  it('a day file that cannot be read is skipped, not the whole read', async () => {
+    const now = Date.now();
+    // Yesterday's "file" cannot be opened as one (here a directory; on a host
+    // a file the sweep removed between the check and the read).
+    fs.mkdirSync(path.join(logDir, fileFor(new Date(now - 24 * 60 * 60 * 1000))));
+    writeFile(fileFor(new Date()), [entry({ ts: now })]);
+    const out = await serverLogger.entriesSince(now - 2 * 24 * 60 * 60 * 1000);
+    expect(out).toHaveLength(1);
+    expect(out[0].ts).toBe(now);
   });
 
   it('returns an empty array when the log dir has nothing in the window', async () => {
@@ -126,6 +178,28 @@ describe('boot sweep', () => {
 
     expect(fs.existsSync(path.join(logDir, oldFile))).toBe(false);
     expect(fs.existsSync(path.join(logDir, recentFile))).toBe(true);
+  });
+
+  it('keeps the file from two days ago while it still holds entries inside the two-day window', async () => {
+    // 06:00 UTC: the last 48 hours reach back to 06:00 two days ago, so that
+    // day's file still holds the start of the admin's 48-hour native log.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-23T06:00:00Z'));
+    try {
+      const inWindow = entry({ ts: Date.parse('2026-10-21T12:00:00Z') });
+      writeFile('errors-2026-10-21.jsonl', [inWindow]);
+      writeFile('errors-2026-10-20.jsonl', [entry({ ts: Date.parse('2026-10-20T12:00:00Z') })]);
+
+      const logger = await freshLogger();
+      const found = await logger.entriesSince(Date.now() - 48 * 60 * 60 * 1000);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(found).toEqual([inWindow]);
+      expect(fs.existsSync(path.join(logDir, 'errors-2026-10-21.jsonl'))).toBe(true);
+      expect(fs.existsSync(path.join(logDir, 'errors-2026-10-20.jsonl'))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('also sweeps stale digest-*.sent markers, not just error logs (T-fix4)', async () => {

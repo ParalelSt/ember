@@ -106,7 +106,8 @@ export const useOfflineStore = create<OfflineState>()(
             downloaded: s.downloaded.includes(playlistId)
               ? s.downloaded
               : [...s.downloaded, playlistId],
-            totalBytes: s.totalBytes + bytesAdded,
+            // An update replacing a bigger copy adds a negative amount.
+            totalBytes: Math.max(0, s.totalBytes + bytesAdded),
           };
         }),
 

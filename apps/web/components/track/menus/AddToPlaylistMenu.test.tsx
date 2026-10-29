@@ -21,7 +21,13 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
     </div>
   ),
 }));
-vi.mock('@/components/track/menus/CreatePlaylistDialog', () => ({ CreatePlaylistDialog: () => null }));
+const dialog = vi.hoisted(() => ({ onCreate: null as null | ((name: string, tracks: unknown[]) => Promise<unknown>) }));
+vi.mock('@/components/track/menus/CreatePlaylistDialog', () => ({
+  CreatePlaylistDialog: ({ onCreate }: { onCreate: (name: string, tracks: unknown[]) => Promise<unknown> }) => {
+    dialog.onCreate = onCreate;
+    return null;
+  },
+}));
 // Desktop by default; the phone tests flip it.
 const screenSize = vi.hoisted(() => ({ desktop: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => screenSize.desktop }));
@@ -36,6 +42,7 @@ const toast = vi.hoisted(() => ({ success: vi.fn(), message: vi.fn(), error: vi.
 vi.mock('sonner', () => ({ toast }));
 const lib = vi.hoisted(() => ({
   addMutateAsync: vi.fn(),
+  createMutateAsync: vi.fn(),
   containing: vi.fn((): { data?: string[] } => ({ data: [] })),
 }));
 vi.mock('@/hooks/useLibrary', () => ({
@@ -47,7 +54,7 @@ vi.mock('@/hooks/useLibrary', () => ({
   }),
   useQueryPlaylistsContaining: lib.containing,
   useExecuteAddToPlaylist: () => ({ mutateAsync: lib.addMutateAsync }),
-  useExecuteCreatePlaylist: () => ({ mutateAsync: vi.fn() }),
+  useExecuteCreatePlaylist: () => ({ mutateAsync: lib.createMutateAsync }),
 }));
 
 const { AddToPlaylistMenu } = await import('./AddToPlaylistMenu');
@@ -202,5 +209,26 @@ describe('AddToPlaylistMenu on a phone (popups1: a sheet from the bottom)', () =
   it('opened from outside (hidden trigger) it shows the list too', () => {
     render(<AddToPlaylistMenu track={track} open onOpenChange={() => {}} hiddenTrigger />);
     expect(screen.getByRole('button', { name: /Mine/ })).toBeInTheDocument();
+  });
+});
+
+describe('AddToPlaylistMenu New playlist', () => {
+  it('a song that fails to go into the new playlist does not say the playlist was not created', async () => {
+    lib.createMutateAsync.mockResolvedValue({ id: 'p9', name: 'Fresh' });
+    lib.addMutateAsync.mockRejectedValue(Object.assign(new Error('offline'), { status: 0 }));
+    render(<AddToPlaylistMenu track={track} />);
+    await dialog.onCreate!('Fresh', [track]);
+    expect(toast.error).toHaveBeenCalledWith('Created "Fresh", but 1 track couldn\'t be added. Please try adding it again.');
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringMatching(/Couldn't create/));
+  });
+});
+
+describe('AddToPlaylistMenu New playlist that could not be made', () => {
+  it('toasts and rejects, so the New playlist dialog stays open with what was typed', async () => {
+    lib.createMutateAsync.mockRejectedValue(new Error('server down'));
+    render(<AddToPlaylistMenu track={track} />);
+    await expect(dialog.onCreate!('Fresh', [track])).rejects.toThrow('server down');
+    expect(toast.error).toHaveBeenCalledWith("Couldn't create the playlist, please try again.");
+    expect(lib.addMutateAsync).not.toHaveBeenCalled();
   });
 });

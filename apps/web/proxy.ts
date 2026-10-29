@@ -31,6 +31,12 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
   // The launch gate of every native shell (app/api/app/update): asked
   // before anyone can sign in. Only this route under /api/app/.
   '/api/app/update'];
+// Exact paths, not prefixes. /api/version: which version this server runs,
+// for `npm run host-check`; the same number Settings shows. /apk (rewritten
+// to /api/android/latest-apk in next.config.ts): the newest Android APK, for
+// installing by hand on a device nobody is signed in on, like a car head
+// unit. Only the current release's APK, no user data.
+const PUBLIC_API_EXACT = new Set(['/api/version', '/apk', '/api/android/latest-apk']);
 
 /** An upload's audio or cover asked for with a signed cast link (`?st=`):
  *  a Chromecast has no session to send. Let through to the route, which
@@ -124,6 +130,34 @@ export function isPbAuthPath(path: string): boolean {
   return PB_AUTH_ROUTE.test(full.slice(3));
 }
 
+/** Sign-up: a users record create through /pb (the collection by name or by
+ *  PocketBase's own id). Not a sign-in, so it keeps a budget of its own:
+ *  isPbAuthPath leaves it out and a member's password typos never cost a
+ *  newcomer their Register. It still needs one: anyone could otherwise try
+ *  invited emails here without check-email's limit (bughunt X1), and with
+ *  no email verification a right guess claims the invite. */
+const PB_SIGNUP_ROUTE = /^\/api\/collections\/(users|_pb_users_auth_)\/records\/?$/;
+
+/** Per client IP. A real sign-up is one create, a few more with typos in
+ *  the password (PocketBase refuses a short one). */
+export const PB_SIGNUP_LIMIT: RateLimitConfig = { windowMs: 10 * 60_000, max: 8 };
+
+/** True for a /pb sign-up, however the path is spelled. */
+export function isPbSignUpPath(path: string): boolean {
+  const full = normalizePath(path);
+  if (full === null || !/^\/pb(\/|$)/.test(full)) return false;
+  return PB_SIGNUP_ROUTE.test(full.slice(3));
+}
+
+/** PocketBase's own error shape, so the sign-in form shows it as it shows
+ *  any other PocketBase error. */
+function tooManyAttempts(retryAfter: number): Response {
+  return Response.json(
+    { code: 429, message: `Too many attempts. Try again in about ${Math.ceil(retryAfter / 60)} min.`, data: {} },
+    { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+  );
+}
+
 /** QR sign-in approve links (/link/<token>, plan 1b). A signed-out phone
  *  must sign in first, but the token must not ride along in
  *  /auth?next=... where it would sit in the browser history: it waits in a
@@ -152,12 +186,11 @@ export default async function proxy(req: NextRequest) {
   // message as it shows any other PocketBase error.
   if (req.method === 'POST' && isPbAuthPath(req.nextUrl.pathname)) {
     const limit = checkRateLimit(`pb-auth:${clientIp(req)}`, PB_AUTH_LIMIT);
-    if (!limit.ok) {
-      return Response.json(
-        { code: 429, message: `Too many attempts. Try again in about ${Math.ceil(limit.retryAfter / 60)} min.`, data: {} },
-        { status: 429, headers: { 'Retry-After': String(limit.retryAfter) } },
-      );
-    }
+    if (!limit.ok) return tooManyAttempts(limit.retryAfter);
+  }
+  if (req.method === 'POST' && isPbSignUpPath(req.nextUrl.pathname)) {
+    const limit = checkRateLimit(`pb-signup:${clientIp(req)}`, PB_SIGNUP_LIMIT);
+    if (!limit.ok) return tooManyAttempts(limit.retryAfter);
   }
 
   // Per-request id, attached to outgoing responses + any server log lines.
@@ -230,7 +263,7 @@ export default async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   const isPublicPage = isPublicPath(path);
-  const isPublicApi = (path.startsWith('/api/') && PUBLIC_API_PREFIXES.some((p) => path.startsWith(p)))
+  const isPublicApi = PUBLIC_API_EXACT.has(path) || (path.startsWith('/api/') && PUBLIC_API_PREFIXES.some((p) => path.startsWith(p)))
     || isSignedMediaRequest(path, req.nextUrl.searchParams);
   // /pb/* is the same-origin proxy to PocketBase; it must stay open to anons
   // so the sign-in / sign-up endpoints work before there's a session.

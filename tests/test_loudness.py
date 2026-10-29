@@ -6,6 +6,7 @@ measurement of generated tones (Ember's own ffmpeg, no network).
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -100,6 +101,30 @@ class ComputeGainTest(unittest.TestCase):
         self.assertEqual(gains[len(gains) // 2], 0.0)
         self.assertGreater(sum(gains) / len(gains), -0.5)
         self.assertGreaterEqual(gains[0], -3.5)
+
+
+class MeasureTimeoutTest(unittest.TestCase):
+    """The web server kills `player.py loudness` after a fixed time. ffmpeg's
+    own limit must run out first, so this process stops ffmpeg itself instead
+    of being killed and leaving it decoding on its own."""
+
+    def node_timeout_s(self):
+        src = (ROOT / "apps/web/lib/sources/youtube.ts").read_text()
+        m = re.search(r"\['loudness', '--', videoId\],\s*([\d_]+)\)", src)
+        self.assertIsNotNone(m, "the loudness spawn in lib/sources/youtube.ts moved")
+        return int(m.group(1).replace("_", "")) / 1000
+
+    def test_ffmpeg_limit_runs_out_before_the_servers(self):
+        # Python and its imports take a few seconds to start on a small host.
+        self.assertLessEqual(loudness.MEASURE_TIMEOUT_S + 10, self.node_timeout_s())
+
+    def test_measure_uses_the_limit_and_reports_running_out_in_one_line(self):
+        err = subprocess.TimeoutExpired(["ffmpeg", "-i", "/srv/ember/my_music/x.m4a"], loudness.MEASURE_TIMEOUT_S)
+        with mock.patch.object(loudness.subprocess, "run", side_effect=err) as run:
+            with self.assertRaises(RuntimeError) as raised:
+                loudness.measure(Path("x.m4a"), exe="ffmpeg")
+        self.assertEqual(run.call_args.kwargs["timeout"], loudness.MEASURE_TIMEOUT_S)
+        self.assertNotIn("/srv/ember", str(raised.exception))
 
 
 class ParseTest(unittest.TestCase):
@@ -217,6 +242,45 @@ class AnalyzeTest(unittest.TestCase):
         self.assertEqual(out.returncode, 1)
         self.assertIn("ERROR: loudness:", out.stderr)
         self.assertEqual(out.stdout, "")
+
+
+class ConcurrentAnalyzeTest(unittest.TestCase):
+    """Two measurements of one song at once (the download's own one and the
+    player asking for its gain, from another route) both write the sidecar."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp(prefix="ember-loudness-race-"))
+        self.addCleanup(shutil.rmtree, self.dir, True)
+
+    def test_two_writers_of_one_sidecar_both_succeed(self):
+        vid = "racingtone0"
+        (self.dir / f"{vid}.m4a").write_text("AUDIO")
+        real_replace = os.replace
+        results = []
+
+        def replace(src, dst):
+            # The other run writes its own sidecar between this run writing
+            # its temp file and moving it into place.
+            replace_mock.side_effect = real_replace
+            results.append(loudness.analyze(vid, self.dir))
+            real_replace(src, dst)
+
+        with mock.patch.object(loudness, "measure", return_value=(-12.0, -6.0)), \
+                mock.patch.object(loudness.os, "replace", side_effect=replace) as replace_mock:
+            results.append(loudness.analyze(vid, self.dir))
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(json.loads((self.dir / f"{vid}.loudness.json").read_text()), results[1])
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), [f"{vid}.loudness.json", f"{vid}.m4a"])
+
+    def test_failed_write_leaves_no_temp_file(self):
+        vid = "fullofdisk0"
+        (self.dir / f"{vid}.m4a").write_text("AUDIO")
+        with mock.patch.object(loudness, "measure", return_value=(-12.0, -6.0)), \
+                mock.patch.object(loudness.os, "replace", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                loudness.analyze(vid, self.dir)
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), [f"{vid}.m4a"])
 
 
 class PlayerCommandTest(unittest.TestCase):

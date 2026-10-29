@@ -1,8 +1,9 @@
 import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import AdminUsersPage from './page';
 import type { AdminUser } from '@/lib/api';
+import { safariDate } from '@/test-utils/safariDate';
 
 // @base-ui's Dialog reaches the repo root's hoisted React through its own
 // node_modules copy (see app/(app)/dizajn/page.test.tsx); render plain
@@ -46,7 +47,7 @@ const users: AdminUser[] = [
   { id: 'admin1', email: 'admin@ember.test', name: '', avatarUrl: null, isAdmin: true, created: '2024-01-01' },
 ];
 
-const view = vi.hoisted(() => ({ desktop: true }));
+const view = vi.hoisted(() => ({ desktop: true, error: null as Error | null }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => view.desktop }));
 vi.mock('@/components/ui/sheet', () => ({
   Sheet: ({ open, children }: { open: boolean; children: ReactNode }) => (open ? <div>{children}</div> : null),
@@ -62,7 +63,7 @@ const deleteUser = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/hooks/useAdmin', () => ({
   useExecuteSignOutAdminUserEverywhere: () => ({ mutateAsync: signOutEverywhere }),
-  useQueryAdminUsers: () => ({ data: users, isLoading: false }),
+  useQueryAdminUsers: () => (view.error ? { data: undefined, isLoading: false, error: view.error } : { data: users, isLoading: false }),
   useExecuteUpdateAdminUser: () => ({ mutate: updateUser }),
   useExecuteDeleteAdminUser: () => ({ mutateAsync: deleteUser }),
   useExecuteResetAdminUserPassword: () => ({ mutateAsync: vi.fn() }),
@@ -239,5 +240,35 @@ describe('desktop user actions reuse phone handlers', () => {
     expect(deleteUser).not.toHaveBeenCalled();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Delete user' })));
     expect(deleteUser).toHaveBeenCalledWith('u1');
+  });
+});
+
+describe('AdminUsersPage Joined date', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    users[0].created = '2024-01-01';
+  });
+
+  it('reads the PocketBase format where new Date() cannot (older Safari)', () => {
+    users[0].created = '2026-10-23 12:00:00.000Z';
+    const want = new Date('2026-10-23T12:00:00.000Z').toLocaleDateString();
+    vi.stubGlobal('Date', safariDate());
+    render(<AdminUsersPage />);
+    expect(screen.queryByText('Invalid Date')).toBeNull();
+    expect(screen.getByText(want)).toBeInTheDocument();
+  });
+});
+
+describe('AdminUsersPage when the list fails to load', () => {
+  // It said "No users match." on a failed load, as if nobody had an account.
+  afterEach(() => {
+    view.error = null;
+  });
+
+  it('says so', () => {
+    view.error = new Error('PocketBase is down');
+    render(<AdminUsersPage />);
+    expect(screen.getByText(/Couldn.t load users: PocketBase is down/)).toBeTruthy();
+    expect(screen.queryByText('No users match.')).toBeNull();
   });
 });

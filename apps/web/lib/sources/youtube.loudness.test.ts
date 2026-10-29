@@ -127,6 +127,32 @@ describe('measureLoudness', () => {
   });
 });
 
+describe('measuring across route bundles', () => {
+  it('is one run per song and one at a time per process, even when each route bundles its own copy of this module', async () => {
+    // A production build bundles every route on its own (failureMemo): the
+    // download behind the stream route and the player asking the loudness
+    // route measured the same song twice at once, and two songs in
+    // parallel, although the lane promises one full decode at a time.
+    audio('bundleaaaa1');
+    audio('bundlebbbb1');
+    const a = measureLoudness('bundleaaaa1');
+    await flush();
+    vi.resetModules();
+    const other = await import('./youtube');
+    const again = other.measureLoudness('bundleaaaa1');
+    const b = other.measureLoudness('bundlebbbb1');
+    await flush();
+    expect(loudnessRuns().map((s) => s.args[2])).toEqual(['bundleaaaa1']);
+    finish('loudness', 'bundleaaaa1', { gainDb: -2 });
+    expect(await a).toBe(-2);
+    expect(await again).toBe(-2);
+    await flush();
+    expect(loudnessRuns().map((s) => s.args[2])).toEqual(['bundlebbbb1']);
+    finish('loudness', 'bundlebbbb1', { gainDb: 1 });
+    expect(await b).toBe(1);
+  });
+});
+
 describe('ensureDownloaded', () => {
   it('measures a fresh download in the background, after the file is served', async () => {
     const dl = ensureDownloaded('freshdl0001');

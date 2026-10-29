@@ -5,6 +5,8 @@ import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { notFound, playlistAccess } from '@/lib/playlistAccess';
+import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
+import { nullIfNotFound } from '@/lib/pocketbase/notFound';
 
 export const POST = withRequestLog('playlists/[id]/tracks/[trackId]/replace', async (
   request: NextRequest,
@@ -31,15 +33,12 @@ export const POST = withRequestLog('playlists/[id]/tracks/[trackId]/replace', as
 
     // Already in the playlist: keep that copy where it sits and drop the dead
     // row, so a replace never creates a duplicate.
-    let merged = false;
-    try {
-      await db
-        .collection('playlist_tracks')
-        .getFirstListItem(`playlist = "${id}" && track = "${newRecId}"`);
-      merged = true;
-    } catch {
-      /* absent: swap in place */
-    }
+    // Only a 404 means absent (swap in place); any other failure throws,
+    // rather than swapping in a duplicate.
+    const merged = !!(await db
+      .collection('playlist_tracks')
+      .getFirstListItem(`playlist = "${id}" && track = "${newRecId}"`)
+      .catch(nullIfNotFound));
     if (merged) await db.collection('playlist_tracks').delete(junction.id);
     else await db.collection('playlist_tracks').update(junction.id, { track: newRecId });
 
@@ -50,7 +49,3 @@ export const POST = withRequestLog('playlists/[id]/tracks/[trackId]/replace', as
     return fromError(e);
   }
 });
-
-function esc(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}

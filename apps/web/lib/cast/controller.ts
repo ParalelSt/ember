@@ -240,18 +240,28 @@ function watchAirplay(el: HTMLMediaElement): void {
   remote.addEventListener('connecting', onState);
   remote.addEventListener('disconnect', onState);
   let watchId: number | null = null;
+  // Cleaned up before Safari answered the watch: cancel it once it does, and
+  // the old element no longer speaks for the button meanwhile.
+  let stopped = false;
+  const cancel = (id: number) => void remote.cancelWatchAvailability(id).catch(() => {});
   remote
-    .watchAvailability((available) => set({ availability: available ? 'available' : 'none' }))
-    .then((id) => {
-      watchId = id;
+    .watchAvailability((available) => {
+      if (!stopped) set({ availability: available ? 'available' : 'none' });
     })
-    .catch(() => set({ availability: 'unknown' }));
+    .then((id) => {
+      if (stopped) cancel(id);
+      else watchId = id;
+    })
+    .catch(() => {
+      if (!stopped) set({ availability: 'unknown' });
+    });
   onState();
   airplayCleanup = () => {
+    stopped = true;
     remote.removeEventListener('connect', onState);
     remote.removeEventListener('connecting', onState);
     remote.removeEventListener('disconnect', onState);
-    if (watchId !== null) void remote.cancelWatchAvailability(watchId).catch(() => {});
+    if (watchId !== null) cancel(watchId);
   };
 }
 

@@ -36,8 +36,11 @@ export const GET = withRequestLog('uploads', async () => {
   try {
     await requireUser();
     const pb = await createAdminClient();
-    const rows = await pb.collection('uploads').getList(1, 200, { sort: '-created' });
-    return Response.json({ tracks: rows.items.map(mapUpload) });
+    // All of them, paged by the SDK: the library used to stop silently at
+    // the newest 200. Uploads are capped per person per hour, so the list
+    // stays small enough for one answer.
+    const rows = await pb.collection('uploads').getFullList({ sort: '-created' });
+    return Response.json({ tracks: rows.map(mapUpload) });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
@@ -121,7 +124,8 @@ export const POST = withRequestLog('uploads', async (request: NextRequest) => {
         .update(created.id, { artwork_ext: artExt })
         .catch((e) => {
           // The file is on disk but the record does not point at it. Harmless:
-          // the art route only serves what the record admits to.
+          // the art route only serves what the record admits to, and deleting
+          // the upload removes every cover format.
           serverLogger.error('api', 'upload artwork_ext update failed', { id: created.id }, e);
           return created;
         });

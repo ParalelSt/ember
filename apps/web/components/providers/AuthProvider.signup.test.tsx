@@ -1,0 +1,177 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, render } from '@testing-library/react';
+
+/** Register makes the account, then signs in with it: two calls. When the
+ *  first one got through and the second did not (a dropped connection, the
+ *  sign-in limit), the page stays on "Create your account", and pressing
+ *  Register again used to fail for good on "email: The email is invalid or
+ *  already in use.", the account the first press made. */
+
+const create = vi.fn();
+const authWithPassword = vi.fn();
+const authStore = {
+  token: '',
+  isValid: false,
+  record: null as Record<string, unknown> | null,
+  save: vi.fn(),
+  onChange: () => () => {},
+  clear: vi.fn(),
+};
+vi.mock('@/lib/pocketbase/client', () => ({
+  createClient: () => ({
+    authStore,
+    collection: () => ({ create, authWithPassword, authRefresh: vi.fn(async () => ({})) }),
+    files: { getURL: () => '' },
+  }),
+}));
+vi.mock('@/stores/usePrivacyStore', () => ({ usePrivacyStore: { getState: () => ({ load: vi.fn() }) } }));
+vi.mock('@/stores/useChangelogStore', () => ({ useChangelogStore: { getState: () => ({ load: vi.fn() }), setState: vi.fn() } }));
+vi.mock('@/stores/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ loadPlugins: vi.fn(), resetPluginSync: vi.fn() }) },
+}));
+vi.mock('@/stores/useThemeStore', () => ({
+  useThemeStore: { getState: () => ({ loadTheme: vi.fn(async () => {}), resetThemeSync: vi.fn() }) },
+  registerThemeCookieWriter: () => {},
+}));
+vi.mock('@/lib/logger/client', () => ({ logger: { error: vi.fn(), breadcrumb: vi.fn(), warn: vi.fn() } }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/auth' }));
+
+const { AuthProvider, useAuth } = await import('./AuthProvider');
+
+/** PocketBase 0.22's answer to a second account on the same email. */
+const emailTaken = Object.assign(new Error('Failed to create record.'), {
+  status: 400,
+  data: { email: { code: 'validation_invalid_email', message: 'The email is invalid or already in use.' } },
+});
+const dropped = Object.assign(new Error('Something went wrong.'), { status: 0, data: {} });
+const wrongPassword = Object.assign(new Error('Failed to authenticate.'), { status: 400, data: {} });
+
+type SignUp = ReturnType<typeof useAuth>['signUp'];
+
+function mount(): { signUp: SignUp } {
+  const got: { signUp: SignUp | null } = { signUp: null };
+  function Grab() {
+    got.signUp = useAuth().signUp;
+    return null;
+  }
+  render(<AuthProvider initialUser={null}><Grab /></AuthProvider>);
+  return { signUp: (...args) => got.signUp!(...args) };
+}
+
+beforeEach(() => {
+  create.mockReset();
+  authWithPassword.mockReset();
+});
+
+describe('AuthProvider sign-up', () => {
+  it('a second Register after the account was made but the sign-in was lost signs in', async () => {
+    const { signUp } = mount();
+    create.mockResolvedValueOnce({ id: 'u1' }).mockRejectedValueOnce(emailTaken);
+    authWithPassword.mockRejectedValueOnce(dropped).mockResolvedValueOnce({ token: 't', record: { id: 'u1' } });
+
+    let first: Awaited<ReturnType<SignUp>> | null = null;
+    await act(async () => {
+      first = await signUp('new@x.test', 'correct horse');
+    });
+    expect(first!.error).not.toBeNull();
+
+    let second: Awaited<ReturnType<SignUp>> | null = null;
+    await act(async () => {
+      second = await signUp('new@x.test', 'correct horse');
+    });
+    expect(second!.error).toBeNull();
+    expect(authWithPassword).toHaveBeenLastCalledWith('new@x.test', 'correct horse');
+  });
+
+  it('an email that is taken with another password still says why the account could not be made', async () => {
+    const { signUp } = mount();
+    create.mockRejectedValueOnce(emailTaken);
+    authWithPassword.mockRejectedValueOnce(wrongPassword);
+
+    let result: Awaited<ReturnType<SignUp>> | null = null;
+    await act(async () => {
+      result = await signUp('new@x.test', 'another one');
+    });
+    expect(result!.error?.message).toBe('email: The email is invalid or already in use.');
+  });
+
+  it('any other refusal (a short password) is not followed by a sign-in attempt', async () => {
+    const { signUp } = mount();
+    create.mockRejectedValueOnce(
+      Object.assign(new Error('Failed to create record.'), {
+        status: 400,
+        data: { password: { code: 'validation_length_out_of_range', message: 'The length must be between 8 and 72.' } },
+      }),
+    );
+
+    let result: Awaited<ReturnType<SignUp>> | null = null;
+    await act(async () => {
+      result = await signUp('new@x.test', 'short');
+    });
+    expect(result!.error?.message).toBe('password: The length must be between 8 and 72.');
+    expect(authWithPassword).not.toHaveBeenCalled();
+  });
+});
+
+/** The password step goes through the PocketBase SDK, which words "no
+ *  connection" and "the Funnel's 502 while the server restarts" as
+ *  "Something went wrong.": the page showed that, where the email step
+ *  (and every api call) says Ember cannot be reached. */
+describe('AuthProvider sign-in when nothing answers', () => {
+  type SignIn = ReturnType<typeof useAuth>['signIn'];
+  function mountSignIn(): SignIn {
+    const got: { signIn: SignIn | null } = { signIn: null };
+    function Grab() {
+      got.signIn = useAuth().signIn;
+      return null;
+    }
+    render(<AuthProvider initialUser={null}><Grab /></AuthProvider>);
+    return (...args) => got.signIn!(...args);
+  }
+  const sdkError = (status: number, response: Record<string, unknown> = {}) =>
+    Object.assign(new Error((response.message as string) || 'Something went wrong.'), { status, response, data: response.data ?? {} });
+
+  it.each([
+    ['no connection', sdkError(0)],
+    ['a gateway answering for the server', sdkError(502)],
+  ])('%s says Ember cannot be reached', async (_label, err) => {
+    const { NO_ANSWER_MESSAGE } = await import('@/lib/connectionBlip');
+    const signIn = mountSignIn();
+    authWithPassword.mockRejectedValueOnce(err);
+    let result: Awaited<ReturnType<SignIn>> | null = null;
+    await act(async () => {
+      result = await signIn('a@b.test', 'longenough1');
+    });
+    expect(result!.error?.message).toBe(NO_ANSWER_MESSAGE);
+  });
+
+  it("keeps the server's own words: a wrong password, the sign-in limit", async () => {
+    const signIn = mountSignIn();
+    authWithPassword
+      .mockRejectedValueOnce(sdkError(400, { message: 'Failed to authenticate.' }))
+      .mockRejectedValueOnce(sdkError(429, { message: 'Too many attempts. Try again in about 15 min.' }));
+    const results: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        results.push((await signIn('a@b.test', 'longenough1')).error?.message ?? '');
+      });
+    }
+    expect(results).toEqual(['Failed to authenticate.', 'Too many attempts. Try again in about 15 min.']);
+  });
+});
+
+/** Invites are stored lower-case (pb_hooks/ensure_invite_emails), and
+ *  PocketBase 0.22 compares the users createRule's email as written: an
+ *  address with a capital never met its invite. */
+describe('AuthProvider sends the email lower-cased', () => {
+  it('to sign-up and the sign-in after it, whoever calls them', async () => {
+    const { signUp } = mount();
+    create.mockResolvedValueOnce({ id: 'u1' });
+    authWithPassword.mockResolvedValue({ token: 't', record: { id: 'u1' } });
+    await act(async () => {
+      await signUp(' Ana@Example.COM ', 'correct horse');
+    });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ email: 'ana@example.com' }));
+    expect(authWithPassword).toHaveBeenLastCalledWith('ana@example.com', 'correct horse');
+  });
+});

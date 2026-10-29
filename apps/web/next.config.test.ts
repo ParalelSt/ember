@@ -59,3 +59,11 @@ describe('next.config redirects', () => {
     );
   });
 });
+
+// The short Android download address the head unit help text gives out.
+describe('next.config /apk rewrite', () => {
+  it('sends /apk to the newest-APK route', async () => {
+    const rewrites = await (nextConfig.rewrites as () => Promise<{ source: string; destination: string }[]>)();
+    expect(rewrites).toContainEqual({ source: '/apk', destination: '/api/android/latest-apk' });
+  });
+});

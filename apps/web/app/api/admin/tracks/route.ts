@@ -11,6 +11,7 @@ import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { fromError } from '@/lib/upsertTrack';
 import { missingUploadIds } from '@/lib/uploads/missing';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { escapeFilterValue as pbEscape } from '@/lib/pocketbase/filterValue';
 
 const PAGE_SIZE = 50;
 
@@ -60,7 +61,3 @@ export const GET = withRequestLog('admin/tracks', async (req: NextRequest) => {
     return fromError(e);
   }
 });
-
-function pbEscape(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}

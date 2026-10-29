@@ -33,12 +33,6 @@ export function transferMinutes(count: number, exact = false): string {
   return `About ${Math.ceil(minutes / 5) * 5} minutes`;
 }
 
-/** The same, as a sentence with what it means for the person. */
-export function transferEstimate(count: number): string {
-  if (count <= 0) return '';
-  return `${transferMinutes(count)}. You can leave this page; the transfer carries on and the Liked songs page shows how far it is.`;
-}
-
 /** What the progress chip says is left: "About 15 minutes left". */
 export function transferTimeLeft(remaining: number, exact = false): string {
   if (remaining <= 0) return 'Almost done';
@@ -50,6 +44,11 @@ export function transferTimeLeft(remaining: number, exact = false): string {
 export const RATE_LIMITED_MESSAGE =
   'That is five uploads in an hour, which is as many as Ember takes. Try the rest a little later.';
 
+/** Pasted links have their own limit: five looked up, and five started, in
+ *  ten minutes (POST /api/import/inspect and /api/import/jobs). */
+export const LINK_RATE_LIMITED_MESSAGE =
+  'That is five playlist links in ten minutes, which is as many as Ember reads. Try again in a few minutes.';
+
 /** When Ember has no idea what went wrong, it still says something a person
  *  can act on. */
 export const UNKNOWN_MESSAGE = 'Ember could not read that. Try the file again, or paste your songs instead.';
@@ -58,9 +57,9 @@ export const UNKNOWN_MESSAGE = 'Ember could not read that. Try the file again, o
  *  route makes (nothing to read, over 20 MB, over the cap, a zip, UTF-16,
  *  no songs in it) is already a sentence written for people, so it is shown
  *  as it is; the rate limit and anything unrecognised get one here. */
-export function transferErrorMessage(e: unknown): string {
+export function transferErrorMessage(e: unknown, from: 'upload' | 'link' = 'upload'): string {
   const err = e as { status?: number; message?: string } | undefined;
-  if (err?.status === 429) return RATE_LIMITED_MESSAGE;
+  if (err?.status === 429) return from === 'link' ? LINK_RATE_LIMITED_MESSAGE : RATE_LIMITED_MESSAGE;
   const message = typeof err?.message === 'string' ? err.message.trim() : '';
   return message && !message.startsWith('Request failed') ? message : UNKNOWN_MESSAGE;
 }

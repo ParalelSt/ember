@@ -64,6 +64,10 @@ export function PasswordResetDialog({
     try {
       await onSubmit(password);
       onOpenChange(false);
+    } catch {
+      // The caller said why; stay open to try again. Not rethrown: nothing
+      // catches the click / Enter handler's promise (an unhandled rejection
+      // is an automatic bug report).
     } finally {
       setBusy(false);
     }

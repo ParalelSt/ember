@@ -70,13 +70,42 @@ export function extraNotes(src, sinceVersion) {
   return out;
 }
 
-const NEEDS_UPDATE = /^(apps\/web\/|pocketbase\/|player\.py$|scripts\/)/;
+// What the host runs: the web app, PocketBase's hooks, the Python helpers at
+// the root and their requirements, the start/update scripts and the unit,
+// the root lockfile. Not the apps (CI builds those), tests or docs.
+const NEEDS_UPDATE = /^(apps\/web\/|pocketbase\/|scripts\/|deploy\/|[^/]+\.py$|requirements\.txt$|start-static\.sh$|update\.sh$|package(-lock)?\.json$)/;
 
-/** Build the Discord message text. */
+export const APPS = ['android', 'ios', 'windows', 'macos', 'linux'];
+
+/** Each app's newest version among release tags: its own <app>-vX.Y.Z, or
+ *  an old-style vX.Y.Z (those were every app's). Pre-release suffixes and
+ *  other tags are left out. */
+export function appVersions(tags) {
+  const out = {};
+  for (const t of tags) {
+    const m = /^(?:(android|ios|windows|macos|linux)-)?v(\d+\.\d+\.\d+)$/.exec(t);
+    if (!m) continue;
+    for (const app of m[1] ? [m[1]] : APPS) if (!out[app] || isNewer(m[2], out[app])) out[app] = m[2];
+  }
+  return out;
+}
+
+/** "apps 0.4.25" when every app is on it, else each app's own:
+ *  "apps: android 0.4.25, ios 0.4.24, ...". Null with no app tag at all. */
+export function appsLabel(versions) {
+  const known = APPS.filter((a) => versions?.[a]);
+  if (!known.length) return null;
+  const same = known.length === APPS.length && new Set(known.map((a) => versions[a])).size === 1;
+  return same ? `apps ${versions[known[0]]}` : `apps: ${known.map((a) => `${a} ${versions[a]}`).join(', ')}`;
+}
+
+/** Build the Discord message text. `appsVersions` ({ android: '0.4.25',
+ *  ... }) names each app's version; `appsVersion` is one for all. */
 export function buildMessage({
-  userId, webVersion, appsVersion, changedPaths = [], notesExtra = [],
+  userId, webVersion, appsVersion, appsVersions, changedPaths = [], notesExtra = [],
 }) {
-  const head = `<@${userId}> New version available: web ${webVersion}` + (appsVersion ? ` (apps ${appsVersion})` : '');
+  const apps = appsVersions ? appsLabel(appsVersions) : appsVersion ? `apps ${appsVersion}` : null;
+  const head = `<@${userId}> New version available: web ${webVersion}` + (apps ? ` (${apps})` : '');
   const lines = [head];
   if (changedPaths.some((p) => NEEDS_UPDATE.test(p))) lines.push('- Pull and run ./update.sh');
   for (const n of notesExtra.slice(0, 2)) lines.push(`- ${n.length > 200 ? n.slice(0, 197) + '...' : n}`);
@@ -147,13 +176,13 @@ export async function run(deps) {
   const sinceVersion = pkgVersion(base);
   const show = (rev, p) => tryGit('show', `${rev}:${p}`) || '';
 
-  const tagsAt = (rev) => (tryGit('tag', '--merged', rev, '--list', 'v0.4.*') || '').split('\n').filter(Boolean);
-  const bare = (t) => t.replace(/^v/, '');
-  const atHead = tagsAt(head).sort((a, b) => cmp(bare(a), bare(b)));
-  const appsVersion = atHead.length ? bare(atHead[atHead.length - 1]) : null;
+  // Every app's release tags (android-v0.4.25, ..., and the old shared
+  // v0.4.x ones), of any version: the names keep working at 0.5 and later.
+  const tagsAt = (rev) => (tryGit('tag', '--merged', rev, '--list', '*v*') || '').split('\n').filter(Boolean);
+  const appsVersions = appVersions(tagsAt(head));
 
   const text = buildMessage({
-    userId, webVersion, appsVersion, changedPaths: changed,
+    userId, webVersion, appsVersions, changedPaths: changed,
     notesExtra: extraNotes(show(head, 'UPDATE_NOTES.md'), sinceVersion),
   });
 

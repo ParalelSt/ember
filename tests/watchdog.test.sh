@@ -242,6 +242,36 @@ check "no crash post and no restart after update.sh's stop" [ "$(wc -l <"$POSTS"
 check "update.sh leaves no pid or lock behind" file_missing "$ROOT_DIR/logs/watchdog.pid"
 check "nothing restarted behind update.sh's back" no_leftovers
 
+# ── 3b. helpers a service started die with it ─────────────────────────
+# Next spawns Python helpers (downloads, align.py, ffmpeg). A stop sent to
+# Next alone left them running on, and so did Next crashing.
+echo "── a service's helpers stop with it"
+new_root
+HEALTHY_PORT="$(free_port)"
+PB_FAKE_PORT="$(free_port)"
+export PORT="$HEALTHY_PORT" POCKETBASE_PORT="$PB_FAKE_PORT"
+export WATCHDOG_CMD_PB="exec node '$TMP/healthy.mjs' $PB_FAKE_PORT"
+export WATCHDOG_CMD_NEXT="node '$TMP/stay.mjs' helper-on-stop & exec node '$TMP/healthy.mjs' $HEALTHY_PORT"
+start_watchdog
+check "the service and its helper are up" wait_until 10 port_up "$HEALTHY_PORT"
+helper_running() { pgrep -f "stay.mjs $1" >/dev/null 2>&1; }
+helper_gone() { ! helper_running "$1"; }
+check "the helper is running" wait_until 5 helper_running helper-on-stop
+check "SIGTERM stops the watchdog" stop_and_wait TERM
+check "the service's helper was stopped with it" wait_until 5 helper_gone helper-on-stop
+
+new_root
+HELPER_COUNT="$TMP/helper-crash.count"
+rm -f "$HELPER_COUNT"
+export WATCHDOG_CMD_NEXT="echo x >>'$HELPER_COUNT'; node '$TMP/stay.mjs' helper-on-crash & sleep 0.5; exit 1"
+export WATCHDOG_MAX_CRASHES=1 WATCHDOG_RETRY=600
+start_watchdog
+check "the crashing service started its helper" wait_until 10 file_has "$HELPER_COUNT" x
+check "a service that crashes does not leave its helper running" wait_until 5 helper_gone helper-on-crash
+stop_and_wait TERM
+export WATCHDOG_MAX_CRASHES=3
+unset WATCHDOG_RETRY
+
 # ── 4. watchdog killed outright: its loops must not keep restarting ──────
 echo "── SIGKILLed watchdog leaves no restart loop"
 new_root
@@ -484,6 +514,24 @@ check "no crash loop: no crash post" [ "$(posts_matching 'crashed')" = 0 ]
 check "the watchdog is still running" kill -0 "$WD"
 check "SIGTERM stops it" stop_and_wait TERM
 check "service pid files removed on a clean stop" sh -c "[ ! -e '$ROOT_DIR/logs/next.pid' ] && [ ! -e '$ROOT_DIR/logs/pocketbase.pid' ]"
+check "nothing left running" wait_until 5 no_leftovers
+
+# ── 11. after a reboot, the old lock names this very pid ────────────────
+# Pids start over at boot, and a unit started in the same boot order can get
+# the pid the previous watchdog had. That pid is alive and is a
+# start-static.sh: this one. It is a leftover lock, not a second copy.
+echo "── a leftover lock naming the new watchdog's own pid"
+new_root
+mkdir -p "$ROOT_DIR/logs"
+: >"$POSTS"
+# exec keeps the pid, so the lock is written with the pid start-static.sh
+# then runs as.
+bash -c 'printf "pid=%s\nstarted=%s\n" "$$" "2026-01-03 04:05:06 UTC" >"$1/logs/ember.lock"; exec bash "$1/start-static.sh"' _ "$ROOT_DIR" >"$TMP/run.out" 2>&1 &
+WD=$!
+check "it starts instead of saying Ember is already running" wait_until 10 port_up "$HEALTHY_PORT"
+check "no 'already running' refusal" sh -c "! grep -q 'already running' '$TMP/run.out'"
+check "it reports the unclean shutdown of the previous run" wait_until 10 has_posts "2026-01-03 04:05:06 UTC" 1
+check "SIGTERM stops it" stop_and_wait TERM
 check "nothing left running" wait_until 5 no_leftovers
 
 echo

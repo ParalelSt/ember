@@ -15,15 +15,20 @@ export interface ChangelogEntry {
   summary: string;
   /** Two or three short lines for the full page. */
   bullets: string[];
-  /** Omit for the web app (which every shell shows too). */
-  scope?: 'desktop' | 'android';
+  /** Omit for the web app (which every shell shows too). 'desktop' is all
+   *  three desktop apps; each app also has its own scope, since each has its
+   *  own version now. `version` stays the web version either way. */
+  scope?: ChangelogScope;
 }
+
+export const CHANGELOG_SCOPES = ['desktop', 'android', 'ios', 'windows', 'macos', 'linux'] as const;
+export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
     id: 'genre-mixes',
-    version: '0.7.31',
-    date: '2026-10-16',
+    version: '0.7.34',
+    date: '2026-10-29',
     title: 'Your mixes and charts by genre',
     summary: 'Home now has your own mixes, one per genre you play, and a chart for each genre.',
     bullets: [
@@ -31,6 +36,54 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Charts by genre: the top songs in Balkan, Pop, Hip Hop, Rock and more, updated daily, right after Popular now.',
       'Your top two mixes also sit in the grid at the top of Home, and the Mixes and Charts filters show just those.',
       'Like a mix or a chart today? Save it as a playlist of your own.',
+    ],
+  },
+  {
+    id: 'radio-and-car',
+    version: '0.7.33',
+    date: '2026-10-24',
+    title: 'Radio and the car',
+    summary: 'Live radio stations near you, and Ember on your car\'s screen.',
+    bullets: [
+      'Radio: listen to live stations near you, in the app and in the car. Tap the heart to keep your favourites on top.',
+      'Android Auto: For you, Library, Radio and Recent tabs, with Like, Shuffle and Repeat on the player.',
+      'Car screens: Ember can run on the car\'s own screen with big buttons, and you swipe the cover to skip.',
+    ],
+  },
+  {
+    id: 'steadier-everywhere',
+    version: '0.7.32',
+    date: '2026-10-24',
+    title: 'Steadier everywhere',
+    summary: 'A long list of fixes across the app, and phone updates that finish instead of failing.',
+    bullets: [
+      'Android: updating from inside the app no longer says "Couldn\'t update" after you allow installing, and Ember tells you when the new version is ready to open.',
+      'Bad Wi-Fi or a server restart no longer shows raw errors; Ember says it can\'t reach the server and keeps what you typed.',
+      'Carlists and shared playlists keep up when several people add, skip and reorder at once.',
+      'Copying a long list into a playlist works in one go, and a playlist that fails to save no longer leaves an empty copy behind.',
+      'Signing up or signing in on a shaky connection no longer gets stuck.',
+      'Dates show your own day, and big file sizes read right.',
+      'Desktop: an update that stalls gives up after a minute, and the window never waits on Discord.',
+      'Many smaller fixes in search, lyrics, tabs, uploads, themes and the admin pages.',
+    ],
+  },
+  {
+    id: 'add-to-queue',
+    version: '0.7.31',
+    date: '2026-10-24',
+    title: 'Add to queue, safer and smoother',
+    summary: 'Any song can go into your queue from its ... menu, your likes and playlists are better protected, and the app stays smooth while music plays.',
+    bullets: [
+      'Tap ... on a song and pick Add to queue. It plays right after the current song, and songs you add after it line up behind it. With nothing playing, it just plays the song.',
+      "Spotify's export .zip can be imported as it is, no need to unzip it.",
+      "The sidebar's playlists stay put while you click through them.",
+      'Your likes, history and private playlists are better protected.',
+      'The nightly cleanup can no longer remove songs you just liked or added.',
+      'Losing the connection when Ember starts no longer signs you out.',
+      'On a shared device, the next person no longer opens onto your queue after you sign out.',
+      'Song lists stay smooth while music plays, and use less battery.',
+      'Android: a full phone or a refused download no longer crashes the app.',
+      'Desktop: a slow Discord or a stuck update no longer freezes the window. On Linux, sound goes back to your chosen output from the next song.',
     ],
   },
   {

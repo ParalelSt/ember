@@ -4,6 +4,8 @@ import type { ClientResponseError, RecordModel } from 'pocketbase';
 import type { Track } from '@/types/track';
 import { serverLogger } from '@/lib/logger/server';
 import { createCatalogClient } from '@/lib/pocketbase/server';
+import { escapeFilterValue as escape } from '@/lib/pocketbase/filterValue';
+import { isNotFound } from '@/lib/pocketbase/notFound';
 
 /** Upserts a Track into the shared `tracks` collection by `external_id`.
  *  Returns the PocketBase record id so callers can use it in relations
@@ -126,20 +128,11 @@ function buildBackfillPatch(row: RecordModel, incoming: Track): Record<string, u
   return p;
 }
 
-function isNotFound(e: unknown): boolean {
-  return (e as ClientResponseError | undefined)?.status === 404;
-}
-
 function isUniqueConflict(e: unknown): boolean {
   // PocketBase returns 400 with a `data.external_id` validation error when the
   // unique index trips. Treat any 400 from this insert as conflict, we already
   // know the only constrained field is external_id.
   return (e as ClientResponseError | undefined)?.status === 400;
-}
-
-// PB filter strings interpolate raw, escape user-controlled text.
-function escape(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 export function jsonError(message: string, status = 500) {

@@ -12,6 +12,7 @@ import {
   useQueryAdminInvites,
 } from '@/hooks/useAdmin';
 import type { AdminInvite } from '@/lib/api';
+import { pbDateLabel } from '@/lib/pocketbase/dates';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { Label } from '@/components/ui/label';
@@ -21,7 +22,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export default function AdminInvitesPage() {
-  const { data: invites = [], isLoading } = useQueryAdminInvites();
+  const { data: invites = [], isLoading, error } = useQueryAdminInvites();
   const addInvite = useExecuteAddAdminInvite();
   const deleteInvite = useExecuteDeleteAdminInvite();
 
@@ -84,7 +85,8 @@ export default function AdminInvitesPage() {
       </form>}
 
       {isLoading && <EmptyState>Loading…</EmptyState>}
-      {!isLoading && filtered.length === 0 && (
+      {error && <EmptyState>Couldn&apos;t load invites: {(error as Error).message}</EmptyState>}
+      {!isLoading && !error && filtered.length === 0 && (
         <EmptyState>
           {search ? 'No invites match.' : `No invites yet, add one ${isDesktop ? 'above' : 'with the + button'}.`}
         </EmptyState>
@@ -100,7 +102,7 @@ export default function AdminInvitesPage() {
               <div className="truncate text-sm font-semibold">{inv.email}</div>
             </div>
             <div className="text-xs text-muted-foreground tabular-nums">
-              {new Date(inv.created).toLocaleDateString()}
+              {pbDateLabel(inv.created)}
             </div>
             <Button
               variant="ghost"

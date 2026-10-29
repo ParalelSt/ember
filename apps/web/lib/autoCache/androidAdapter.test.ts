@@ -107,6 +107,22 @@ describe('androidCacheAdapter', () => {
     a.dispose();
     expect(n.deps.unsubscribed).toHaveBeenCalled();
   });
+
+  it('disposed while still asking native for its totals, it never starts following native', async () => {
+    // The player going away (or React's dev double mount) disposes the
+    // adapter before ready() has its stats: the state listener it went on to
+    // add was never removed, and kept asking native for totals on every tick.
+    const n = fakeNative();
+    let answer: (s: { bytes: number; count: number; cap: number }) => void = () => {};
+    n.deps.stats.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    const a = createAndroidCacheAdapter(n.deps);
+    const ready = a.ready();
+    a.dispose();
+    answer({ bytes: 0, count: 0, cap: ANDROID_CACHE_CAP_BYTES });
+    await ready;
+    await flush();
+    expect(n.deps.subscribeState).not.toHaveBeenCalled();
+  });
 });
 
 describe('createCacheAdapter', () => {

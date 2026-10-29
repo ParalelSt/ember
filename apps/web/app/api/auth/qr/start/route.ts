@@ -54,6 +54,8 @@ export const POST = withRequestLog('auth/qr/start', async (req: NextRequest) => 
       code: created.code,
       approveUrl: `${publicOrigin(req)}/link/${approveToken}`,
       expiresAt: expires,
+      // The same deadline as a span, for a device whose clock is off.
+      expiresInMs: ttl,
       device,
     });
     res.headers.append('set-cookie', qrCookie(created.id, pollSecret, Math.ceil(ttl / 1000) + 20, isHttps(req)));

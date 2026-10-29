@@ -1,8 +1,10 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { isLiveTrack } from '@/lib/radio/station';
 import type { Track } from '@/types/track';
 import { sessionExpired } from '@/lib/sessionExpired';
+import { GATEWAY_STATUSES, NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
 export interface LyricsLine {
   /** Seconds from start of track. */
@@ -23,12 +25,17 @@ async function fetchLyrics(title: string, artist: string, durationSec: number): 
   // Lets the server pick the synced lyrics of this version, not a live cut.
   if (durationSec > 0) qs.set('durationSec', String(Math.round(durationSec)));
   const res = await fetch(`/api/lyrics?${qs.toString()}`, { credentials: 'include' });
+  // Not JSON is not Ember answering (a Wi-Fi sign-in page, the Funnel's
+  // 502 while it restarts): the sheet says so, not "Unexpected token '<'".
   if (!res.ok) {
     if (res.status === 401) sessionExpired();
-    const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-    throw new Error(err.error || `Request failed: ${res.status}`);
+    const err = (await res.json().catch(() => null)) as { error?: string } | null;
+    if (!err && GATEWAY_STATUSES.includes(res.status)) throw new Error(NO_ANSWER_MESSAGE);
+    throw new Error(err?.error || res.statusText || `Request failed: ${res.status}`);
   }
-  return res.json();
+  return res.json().catch(() => {
+    throw new Error(NO_ANSWER_MESSAGE);
+  });
 }
 
 /** Lazy lyrics fetch. Only fires when `enabled` flips true (e.g. when the
@@ -40,7 +47,8 @@ export function useQueryLyrics(track: Track | null, enabled: boolean) {
     // synced lyrics without having to hard-refresh first.
     queryKey: ['lyrics', 'v2', track?.id ?? null],
     queryFn: () => fetchLyrics(track!.title, track!.artist, track!.durationSec ?? 0),
-    enabled: enabled && !!track,
+    // A live radio station has no lyrics to look up.
+    enabled: enabled && !!track && !isLiveTrack(track),
     staleTime: 60 * 60 * 1000,
     retry: false,
   });

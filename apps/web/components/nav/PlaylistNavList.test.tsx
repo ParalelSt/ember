@@ -41,6 +41,13 @@ describe('PlaylistNavList import states', () => {
     expect(screen.queryByRole('progressbar')).toBeNull();
   });
 
+  it('one song to review is one song, in the tooltip too', () => {
+    render(
+      <PlaylistNavList authed items={[{ id: 'p1', name: 'Mix', href: '/playlist/p1', importState: { kind: 'review', count: 1 } }]} />,
+    );
+    expect(screen.getByTitle('1 song to review')).toHaveTextContent('1 to review');
+  });
+
   it('paused and failed read as such', () => {
     render(
       <PlaylistNavList

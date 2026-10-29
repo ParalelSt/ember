@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { Slider } from '@/components/ui/slider';
+import { usePlayerPosition } from '@/components/player/PlayerProvider';
+import { LiveBadge } from '@/components/player/LiveBadge';
 import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -27,7 +29,10 @@ export function SeekBar({ position, duration, onSeek, labels = 'none', className
   // Non-null only while a drag is in flight, so the slider snaps back to the
   // real playback position the moment the seek is handed over.
   const [scrubPct, setScrubPct] = useState<number | null>(null);
-  const playbackPct = duration ? (position / duration) * 100 : 0;
+  // Held to the bar: the catalog's length can be shorter than the file
+  // (lib/playback/chooseDuration), and the slider does not clamp an array
+  // value, so the thumb ran off the end.
+  const playbackPct = duration ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0;
   const displayPct = scrubPct ?? playbackPct;
   const displaySec = (displayPct / 100) * (duration || 0);
 
@@ -85,4 +90,25 @@ export function SeekBar({ position, duration, onSeek, labels = 'none', className
   }
 
   return <div className={className}>{slider}</div>;
+}
+
+/** SeekBar on the player's own playhead. It reads the position itself, so
+ *  the view that holds it (the player bars, the full-screen player, which
+ *  stays mounted while closed) does not re-render on every report. A live
+ *  station (`live`) has nothing to seek: the bar gives way to the LIVE
+ *  badge, or to nothing on the phone bar's bare strip. */
+export function PlayheadSeekBar({ live = false, ...props }: Omit<SeekBarProps, 'position'> & { live?: boolean }) {
+  if (live) {
+    if (!props.labels || props.labels === 'none') return null;
+    return (
+      <div data-testid="seek-live" className={cn('flex justify-center', props.className)}>
+        <LiveBadge />
+      </div>
+    );
+  }
+  return <PlayheadSeekBarInner {...props} />;
+}
+
+function PlayheadSeekBarInner(props: Omit<SeekBarProps, 'position'>) {
+  return <SeekBar position={usePlayerPosition()} {...props} />;
 }

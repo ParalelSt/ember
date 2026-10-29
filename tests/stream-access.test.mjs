@@ -54,8 +54,6 @@ for (const [name, query] of [['a play', ''], ['a prefetch', '?prefetch=1'], ['a 
   check(`A2 signed out, ${name} of a song not on disk is 401`, res.status === 401 && body?.cause === 'sign-in', `${res.status} ${JSON.stringify(body)}`);
   check(`A3 and yt-dlp never ran for it (${name})`, calls('download', id) === 0 && calls('info', id) === 0);
 }
-const dlAnon = await fetch(`${APP}/api/youtube/download/${vid('ad')}`, { method: 'POST' });
-check('A4 the download route is 401 signed out', dlAnon.status === 401, String(dlAnon.status));
 const forged = await stream(vid('af'), { cookie: 'pb_auth=%7B%22token%22%3A%22x.y.z%22%2C%22record%22%3A%7B%22id%22%3A%22abc%22%7D%7D' });
 check('A5 a made-up pb_auth cookie is signed out too', forged.status === 401, String(forged.status));
 
@@ -72,8 +70,6 @@ const tooLong = await stream(long, { cookie });
 const tooLongBody = await tooLong.json().catch(() => null);
 check('B3 a refused video (live, or over an opted-in cap) is 413', tooLong.status === 413 && tooLongBody?.cause === 'too-long', `${tooLong.status} ${JSON.stringify(tooLongBody)}`);
 check('B4 and is not streamed live instead', calls('info', long) === 0, `info calls ${calls('info', long)}`);
-const dlLong = await fetch(`${APP}/api/youtube/download/${long}`, { method: 'POST', headers: { cookie } });
-check('B5 the download route says 413 for it too', dlLong.status === 413, String(dlLong.status));
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);

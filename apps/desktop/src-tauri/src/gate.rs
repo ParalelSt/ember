@@ -50,8 +50,12 @@ pub const CHECK_BUDGET: Duration = Duration::from_millis(1500);
 pub const RECOVERY_BUDGET: Duration = Duration::from_secs(8);
 /// "Couldn't update" stays this long, then the app opens.
 pub const FAILED_LINGER: Duration = Duration::from_secs(2);
-/// The updater's own feed and download, once the person has seen the dialog.
-const FEED_TIMEOUT: Duration = Duration::from_secs(30);
+/// The updater's own feed, once the person has seen the dialog. Its download
+/// gets no such clock from the plugin (see `download_unless_stalled`).
+pub(crate) const FEED_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long the download may bring nothing before the gate gives up on it.
+/// The server itself waits up to a minute for GitHub to start answering.
+pub(crate) const DOWNLOAD_STALL: Duration = Duration::from_secs(60);
 /// Telemetry kept for the page to send, at most.
 const MAX_EVENTS: usize = 50;
 
@@ -317,6 +321,36 @@ pub async fn quick_check(url: &Url, current: &str, budget: Duration) -> (Option<
             Some(o) => (Some(o), CheckResult::Update),
             None => (None, CheckResult::None),
         },
+    }
+}
+
+/// Runs `download` (the updater's own, handed the chunk callback to report
+/// through) until it is done, or until nothing has arrived for `stall`.
+///
+/// The updater plugin puts no clock on its download, so a body that stopped
+/// arriving (a dropped link, a laptop that slept) was waited on forever: the
+/// dialog sat on "Downloading" with the bar frozen, and for a required update
+/// "Quit Ember" was the only way out. Now it fails, and the gate says
+/// "Couldn't update" and opens the app, as for any other failed download.
+pub(crate) async fn download_unless_stalled<'a, T, Fut>(
+    stall: Duration,
+    mut on_chunk: impl FnMut(usize, Option<u64>) + Send + 'a,
+    download: impl FnOnce(Box<dyn FnMut(usize, Option<u64>) + Send + 'a>) -> Fut,
+) -> Result<T, String>
+where
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    /// No limit on a download that keeps moving, however slowly.
+    const NO_LIMIT: Duration = Duration::from_secs(24 * 60 * 60);
+    let progress = Arc::new(crate::audio::DownloadProgress::started_now());
+    let seen = Arc::clone(&progress);
+    let fut = download(Box::new(move |chunk, total| {
+        seen.record(false);
+        on_chunk(chunk, total);
+    }));
+    match crate::audio::while_progressing(fut, &progress, stall, NO_LIMIT).await {
+        Ok(out) => out,
+        Err(_) => Err(format!("the update stopped arriving (nothing for {}s)", stall.as_secs())),
     }
 }
 
@@ -598,9 +632,15 @@ fn now_ms() -> u64 {
 
 const EVENTS_FILE: &str = "gate-events.json";
 
+/// The gate pushes from its own task while the page takes the batch on a
+/// command thread, and both are a read, a change and a write of the file:
+/// unserialized, an event pushed in between was lost.
+static EVENTS_LOCK: Mutex<()> = Mutex::new(());
+
 /// Telemetry for the page to send once it is signed in. Kept on disk, so a
 /// launch that ends in an install (the process goes away) still reports.
 pub fn push_event(dir: &Path, event: GateEvent) {
+    let _held = EVENTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut all = read_events(dir);
     all.push(event);
     let skip = all.len().saturating_sub(MAX_EVENTS);
@@ -619,6 +659,7 @@ fn read_events(dir: &Path) -> Vec<GateEvent> {
 
 /// Everything kept, and forget it.
 pub fn take_events(dir: &Path) -> Vec<GateEvent> {
+    let _held = EVENTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let all = read_events(dir);
     let _ = std::fs::remove_file(dir.join(EVENTS_FILE));
     all
@@ -893,20 +934,19 @@ pub async fn run(app: AppHandle, gate: Arc<Gate>, opts: GateRun) {
         let update = fetch_update(app, slot).await?;
         let mut done: u64 = 0;
         let mut shown: Option<u8> = None;
-        let bytes = update
-            .download(
-                |chunk, total| {
-                    done += chunk as u64;
-                    let pct = total.filter(|t| *t > 0).map(|t| ((done * 100) / t).min(100) as u8);
-                    if pct != shown {
-                        shown = pct;
-                        let _ = tx.send(Input::Progress(pct));
-                    }
-                },
-                || {},
-            )
-            .await
-            .map_err(|e| e.to_string())?;
+        let on_chunk = |chunk: usize, total: Option<u64>| {
+            done += chunk as u64;
+            let pct = total.filter(|t| *t > 0).map(|t| ((done * 100) / t).min(100) as u8);
+            if pct != shown {
+                shown = pct;
+                let _ = tx.send(Input::Progress(pct));
+            }
+        };
+        let fetching = &update;
+        let bytes = download_unless_stalled(DOWNLOAD_STALL, on_chunk, |on_chunk| async move {
+            fetching.download(on_chunk, || {}).await.map_err(|e| e.to_string())
+        })
+        .await?;
         let dir = dir.ok_or("no app data folder")?;
         crate::update::stage(dir, &update.version, &bytes).map_err(|e| e.to_string())
     }
@@ -1373,6 +1413,38 @@ mod tests {
         assert!(started.elapsed() < Duration::from_millis(1500), "{:?}", started.elapsed());
     }
 
+    /// A download that stopped arriving was waited on forever, the dialog
+    /// frozen on "Downloading". It now fails at the stall budget.
+    #[tokio::test]
+    async fn a_download_that_stops_arriving_fails_instead_of_waiting_forever() {
+        let started = Instant::now();
+        let out: Result<(), String> = download_unless_stalled(Duration::from_millis(300), |_, _| {}, |mut on_chunk| async move {
+            on_chunk(1024, Some(4096));
+            std::future::pending::<()>().await;
+            Ok(())
+        })
+        .await;
+        assert!(out.is_err(), "{out:?}");
+        assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
+    }
+
+    /// A slow download that keeps arriving is never cut off, and every chunk
+    /// still reaches the progress bar.
+    #[tokio::test]
+    async fn a_slow_download_that_keeps_arriving_is_waited_for() {
+        let mut seen = 0usize;
+        let out = download_unless_stalled(Duration::from_millis(300), |chunk, _| seen += chunk, |mut on_chunk| async move {
+            for _ in 0..10 {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                on_chunk(1, None);
+            }
+            Ok(42)
+        })
+        .await;
+        assert_eq!(out, Ok(42));
+        assert_eq!(seen, 10);
+    }
+
     #[tokio::test]
     async fn quick_check_treats_errors_and_429_as_no_update() {
         let url = serve_once("429 Too Many Requests", "{}", Duration::ZERO);
@@ -1495,6 +1567,47 @@ mod tests {
         assert_eq!(all.len(), MAX_EVENTS);
         assert_eq!(all.last().unwrap().ts, (MAX_EVENTS + 4) as u64);
         assert!(take_events(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The gate pushes from its own task while the page takes the batch on a
+    /// command thread: each is a read, a change and a write of one file, so an
+    /// event that landed in between was lost.
+    #[test]
+    fn events_pushed_while_the_page_takes_them_are_not_lost() {
+        let dir = scratch("events-race");
+        let done = Arc::new(AtomicBool::new(false));
+        let taker = {
+            let (dir, done) = (dir.clone(), done.clone());
+            std::thread::spawn(move || {
+                let mut got = Vec::new();
+                while !done.load(Ordering::SeqCst) {
+                    got.extend(take_events(&dir));
+                }
+                got
+            })
+        };
+        let pushers: Vec<_> = (0..4u64)
+            .map(|t| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    for i in 0..10u64 {
+                        push_event(&dir, GateEvent { ts: t * 100 + i, event: "update.gate.check".into(), data: json!({}) });
+                    }
+                })
+            })
+            .collect();
+        for p in pushers {
+            p.join().unwrap();
+        }
+        done.store(true, Ordering::SeqCst);
+        let mut got = taker.join().unwrap();
+        got.extend(take_events(&dir));
+        let mut ts: Vec<u64> = got.iter().map(|e| e.ts).collect();
+        ts.sort_unstable();
+        ts.dedup();
+        assert_eq!(ts.len(), 40, "every pushed event is taken exactly once");
+        assert_eq!(got.len(), 40, "and none twice");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

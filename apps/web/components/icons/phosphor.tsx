@@ -1347,3 +1347,29 @@ export function BlockIcon({ size = 24, width = size, height = size, strokeWidth:
     </svg>
   );
 }
+
+/** Phosphor radio, fill. */
+export function RadioIcon({ size = 24, width = size, height = size, strokeWidth: _strokeWidth,
+  absoluteStrokeWidth: _absoluteStrokeWidth, className, ...props }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={width} height={height}
+      viewBox="0 0 256 256" fill="currentColor" {...props}
+      className={['phosphor-radio', className].filter(Boolean).join(' ')}
+      aria-hidden={props['aria-label'] !== undefined ? undefined : (props['aria-hidden'] ?? true)}>
+      <path d="M216,64H86.51L194.3,31.67a8,8,0,0,0-4.6-15.33l-160,48h0A8,8,0,0,0,24,72V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V80A16,16,0,0,0,216,64ZM104,176H64a8,8,0,0,1,0-16h40a8,8,0,0,1,0,16Zm0-32H64a8,8,0,0,1,0-16h40a8,8,0,0,1,0,16Zm0-32H64a8,8,0,0,1,0-16h40a8,8,0,0,1,0,16Zm64,56a32,32,0,1,1,32-32A32,32,0,0,1,168,168Z"/>
+    </svg>
+  );
+}
+
+/** Phosphor gps-fix, fill. */
+export function LocateIcon({ size = 24, width = size, height = size, strokeWidth: _strokeWidth,
+  absoluteStrokeWidth: _absoluteStrokeWidth, className, ...props }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={width} height={height}
+      viewBox="0 0 256 256" fill="currentColor" {...props}
+      className={['phosphor-gps-fix', className].filter(Boolean).join(' ')}
+      aria-hidden={props['aria-label'] !== undefined ? undefined : (props['aria-hidden'] ?? true)}>
+      <path d="M240,120H215.63A88.13,88.13,0,0,0,136,40.37V16a8,8,0,0,0-16,0V40.37A88.13,88.13,0,0,0,40.37,120H16a8,8,0,0,0,0,16H40.37A88.13,88.13,0,0,0,120,215.63V240a8,8,0,0,0,16,0V215.63A88.13,88.13,0,0,0,215.63,136H240a8,8,0,0,0,0-16ZM128,200a72,72,0,1,1,72-72A72.08,72.08,0,0,1,128,200Zm40-72a40,40,0,1,1-40-40A40,40,0,0,1,168,128Z"/>
+    </svg>
+  );
+}

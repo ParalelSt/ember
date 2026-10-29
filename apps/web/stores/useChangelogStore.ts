@@ -22,6 +22,12 @@ interface ChangelogStoreState {
   setHideNew: (hide: boolean) => Promise<void>;
 }
 
+/** Each write's turn, per field: a reply (or a rollback) only lands while
+ *  no later write to that field has been made, so answers arriving out of
+ *  order never put back an older state. */
+let readTurn = 0;
+let hideTurn = 0;
+
 export const useChangelogStore = create<ChangelogStoreState>((set, get) => ({
   seenVersion: null,
   hideNew: false,
@@ -50,12 +56,13 @@ export const useChangelogStore = create<ChangelogStoreState>((set, get) => ({
 
   markAllRead: async () => {
     const { seenVersion: prev, readIds: prevIds } = get();
+    const turn = ++readTurn;
     set({ seenVersion: APP_VERSION, readIds: [] });
     try {
       const saved = await api.updateChangelog({ seenVersion: APP_VERSION, readIds: [] });
-      set({ seenVersion: saved.seenVersion || APP_VERSION, hideNew: saved.hideNew, readIds: saved.readIds ?? [] });
+      if (turn === readTurn) set({ seenVersion: saved.seenVersion || APP_VERSION, readIds: saved.readIds ?? [] });
     } catch {
-      set({ seenVersion: prev, readIds: prevIds });
+      if (turn === readTurn) set({ seenVersion: prev, readIds: prevIds });
     }
   },
 
@@ -67,23 +74,25 @@ export const useChangelogStore = create<ChangelogStoreState>((set, get) => ({
     const above = new Set(CHANGELOG.filter((e) => isNewer(e.version, seenVersion)).map((e) => e.id));
     if (!above.has(id)) return;
     const next = [...prev, id].filter((x) => above.has(x));
+    const turn = ++readTurn;
     set({ readIds: next });
     try {
       const saved = await api.updateChangelog({ readIds: next });
-      set({ readIds: saved.readIds ?? next });
+      if (turn === readTurn) set({ readIds: saved.readIds ?? next });
     } catch {
-      set({ readIds: prev });
+      if (turn === readTurn) set({ readIds: prev });
     }
   },
 
   setHideNew: async (hide) => {
     const prev = get().hideNew;
+    const turn = ++hideTurn;
     set({ hideNew: hide });
     try {
       const saved = await api.updateChangelog({ hideNew: hide });
-      set({ hideNew: saved.hideNew });
+      if (turn === hideTurn) set({ hideNew: saved.hideNew });
     } catch {
-      set({ hideNew: prev });
+      if (turn === hideTurn) set({ hideNew: prev });
     }
   },
 }));

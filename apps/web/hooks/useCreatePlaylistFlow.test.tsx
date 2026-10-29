@@ -17,6 +17,9 @@ vi.mock('@/lib/api', () => ({ api }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
 
+const logger = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn(), breadcrumb: vi.fn() }));
+vi.mock('@/lib/logger/client', () => ({ logger }));
+
 function makeTrack(id: string): Track {
   return {
     id,
@@ -78,16 +81,40 @@ describe('useCreatePlaylistFlow', () => {
     expect(onCreated.mock.invocationCallOrder[0]).toBeLessThan(router.push.mock.invocationCallOrder[0]);
   });
 
-  it('toasts an error and does not navigate or call onCreated when creation fails', async () => {
+  it('toasts an error, rejects (the dialog stays open with what was typed) and does not navigate or call onCreated when creation fails', async () => {
     api.createPlaylist.mockRejectedValue(new Error('network down'));
     const onCreated = vi.fn();
     const { result } = renderHook(() => useCreatePlaylistFlow(onCreated), { wrapper });
 
-    await act(async () => { await result.current.handleCreate('Road Trip', []); });
+    await act(async () => {
+      await expect(result.current.handleCreate('Road Trip', [])).rejects.toThrow('network down');
+    });
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't create playlist: network down"));
     expect(router.push).not.toHaveBeenCalled();
     expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it('a song that fails to go in does not say the playlist was not created', async () => {
+    api.addToPlaylist
+      .mockResolvedValueOnce({ ok: true })
+      .mockRejectedValueOnce(Object.assign(new Error('offline'), { status: 0 }))
+      .mockRejectedValueOnce(Object.assign(new Error('already in this playlist'), { status: 409 }));
+    const onCreated = vi.fn();
+    const { result } = renderHook(() => useCreatePlaylistFlow(onCreated), { wrapper });
+
+    await act(async () => { await result.current.handleCreate('Road Trip', [makeTrack('t1'), makeTrack('t2'), makeTrack('t3')]); });
+
+    // Every song was tried, the one that failed is named, and the playlist
+    // (which exists) is opened, so nobody makes it a second time.
+    expect(api.addToPlaylist).toHaveBeenCalledTimes(3);
+    expect(toast.error).toHaveBeenCalledWith('Created "Road Trip", but 1 track couldn\'t be added. Please try adding it again.');
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(onCreated).toHaveBeenCalledTimes(1);
+    expect(router.push).toHaveBeenCalledWith('/playlist/p1');
+    // The failure is in the log a bug report sends; the 409 is no failure.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith('library', expect.any(String), expect.objectContaining({ playlistId: 'p1', trackId: 't2', message: 'offline' }));
   });
 
   it('starts with the create dialog closed and exposes a setter', () => {

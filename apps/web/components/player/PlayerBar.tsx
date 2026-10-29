@@ -21,13 +21,15 @@ import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
 import { UnplayableMessage, useUnplayableMessage } from '@/components/player/UnplayableMessage';
 import { OfflineBadge } from '@/components/player/OfflineBadge';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
-import { SeekBar } from '@/components/player/SeekBar';
+import { PlayheadSeekBar } from '@/components/player/SeekBar';
+import { CarPlayerBar } from '@/components/player/CarPlayerBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { VolumeControl } from '@/components/player/VolumeControl';
 import { DevicesButton, DevicesSheet, useDevicesEntry } from '@/components/player/DevicesButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useHeadUnitControls } from '@/hooks/useHeadUnit';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -37,9 +39,13 @@ import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
 import { isTabsPathFor, tabsHref } from '@/lib/tabSources';
 import { leavePage, notePathname } from '@/lib/inAppHistory';
+import { isLiveTrack } from '@/lib/radio/station';
 
 export function PlayerBar() {
-  const { current, isPlaying, position, duration, volume, toggle, next, prev, seek, setVolume, retry } = usePlayer();
+  const { current, isPlaying, duration, toggle, next, prev, seek, setVolume, retry } = usePlayer();
+  const volume = usePlayerStore((s) => s.volume);
+  // A drag's steps are heard but not saved; its end is (stores/usePlayerStore).
+  const previewVolume = usePlayerStore((s) => s.previewVolume);
   const { user } = useAuth();
   // A real media query, not `md:` classes: the two bars share almost no
   // geometry, and rendering both with one hidden would put two transports,
@@ -66,6 +72,9 @@ export function PlayerBar() {
   const toggleMuted = usePlayerStore((s) => s.toggleMuted);
   // A song that could not play: said in the bar's title area, not a toast.
   const unplayable = useUnplayableMessage();
+  // A car head unit with the car layout on (owner's pick): its own bar,
+  // big previous, play and next, and a swipe on the cover to skip.
+  const carLayout = useHeadUnitControls();
 
   // Desktop only, the button is hidden on phones (md:inline-flex), where
   // lyrics live inside the full-screen NowPlaying view instead.
@@ -83,6 +92,9 @@ export function PlayerBar() {
   // a song is queued.
   if (!current) return null;
   const tabsOpen = isTabsPathFor(pathname, current.id);
+  // A live radio station: no length, and nothing a song has (likes,
+  // playlists, sharing, lyrics, guitar tabs).
+  const live = isLiveTrack(current);
 
   // Phones get their own bar: artwork, the scrolling song name, play and
   // next. Previous and the queue live on the full-screen view the bar opens.
@@ -92,7 +104,6 @@ export function PlayerBar() {
         <PhonePlayerBar
           track={current}
           playing={isPlaying}
-          position={position}
           duration={duration}
           onToggle={toggle}
           onSeek={seek}
@@ -103,6 +114,23 @@ export function PlayerBar() {
         />
         {/* The bar's message opens the queue straight from here, where the
             songs that could not play are listed with their reasons. */}
+        <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+      </footer>
+    );
+  }
+
+  if (carLayout) {
+    return (
+      <footer data-testid="player-bar" data-layout="car" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom touch-hit')}>
+        <CarPlayerBar
+          track={current}
+          playing={isPlaying}
+          onToggle={toggle}
+          onNext={next}
+          onPrev={prev}
+          onRetry={retry}
+          onOpenQueue={() => setQueueOpen(true)}
+        />
         <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
       </footer>
     );
@@ -175,7 +203,7 @@ export function PlayerBar() {
   // the inset itself (a phone-sized window never reaches this branch, the
   // phone bar above leaves the inset to MobileNav instead).
   return (
-    <footer data-testid="player-bar" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom')}>
+    <footer data-testid="player-bar" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom touch-hit')}>
     {/* The title's column has a floor at every width (13.5rem, 16.5rem,
         20rem), so the song name always keeps at least ~75px, 120px and
         140px; from about 1600 wide the old 1fr / 2fr / 1fr split is back
@@ -183,14 +211,14 @@ export function PlayerBar() {
     <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[minmax(13.5rem,1fr)_1fr_auto] lg:grid-cols-[minmax(16.5rem,1fr)_2fr_1fr] xl:grid-cols-[minmax(20rem,1fr)_2fr_1fr] gap-4 items-center">
       {/* Now playing. No tap-to-open here: this bar only renders on an md
           and wider window, and the phone bar owns that gesture. */}
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-3 min-w-0" data-testid="player-bar-now">
         {unplayable ? (
           <UnplayableMessage size="desktop" onRetry={retry} onOpenQueue={() => setQueueOpen(true)} />
         ) : (
           <NowPlayingSummary track={current} size="sm" />
         )}
         <OfflineBadge />
-        {current && user && (
+        {current && user && !live && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
             <LikeButton liked={isLiked} onToggle={toggleLike} />
             <AddToPlaylistMenu track={current} triggerClassName="max-xl:hidden" />
@@ -210,8 +238,8 @@ export function PlayerBar() {
           size="sm"
           left={loopButton}
         />
-        <SeekBar
-          position={position}
+        <PlayheadSeekBar
+          live={live}
           duration={duration}
           onSeek={seek}
           labels="inline"
@@ -221,7 +249,7 @@ export function PlayerBar() {
 
       {/* Right column, Queue always visible; Volume desktop only. */}
       <div className="flex justify-end items-center gap-2">
-        <Button
+        {!live && <Button
           variant="ghost"
           size="icon"
           className={cn(
@@ -234,14 +262,14 @@ export function PlayerBar() {
           title="Lyrics"
         >
           <LyricsIcon className="h-4 w-4" />
-        </Button>
+        </Button>}
         {/* Guitar tabs: the tab page for the playing song, and a second
             click closes it again (Back to where the listener was, or home
             when they came in from outside Ember). Closing unmounts the
             page, which stops everything it ran; the music plays on.
             Hidden on phones and when the Songsterr integration is switched off
             in Settings. */}
-        {tabsEnabled && (
+        {tabsEnabled && !live && (
           <Button
             variant="ghost"
             size="icon"
@@ -275,7 +303,8 @@ export function PlayerBar() {
           volume={volume}
           muted={muted}
           max={1}
-          onChange={setVolume}
+          onChange={previewVolume}
+          onCommit={setVolume}
           onToggleMute={toggleMuted}
           className="hidden md:flex"
           // Mute only below lg; a shorter slider below xl.

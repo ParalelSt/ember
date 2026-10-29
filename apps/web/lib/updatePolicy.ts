@@ -77,6 +77,20 @@ export function isInstallKind(v: unknown): v is InstallKind {
   return typeof v === 'string' && (INSTALLS as readonly string[]).includes(v);
 }
 
+/** The platforms that get their own release tags (<platform>-vX.Y.Z). */
+export const RELEASE_PLATFORMS = ['android', 'ios', 'windows', 'macos', 'linux'] as const;
+export type ReleasePlatform = (typeof RELEASE_PLATFORMS)[number];
+
+/** A release tag: "windows-v0.4.26" is Windows' own release, a bare
+ *  "v0.4.25" (every release before per-platform versions) is everyone's
+ *  (platform null). Anything else (a pre-release suffix, a stray tag) is
+ *  null, so it can never be picked as an update. */
+export function parseReleaseTag(tag: string): { platform: ReleasePlatform | null; version: string } | null {
+  const m = /^(?:(android|ios|windows|macos|linux)-)?v(\d{1,4}\.\d{1,4}\.\d{1,4})$/.exec(tag ?? '');
+  if (!m) return null;
+  return { platform: (m[1] as ReleasePlatform | undefined) ?? null, version: parseVersion(m[2]).join('.') };
+}
+
 /** The platform a Tauri updater target names ("darwin", "windows",
  *  "linux", with or without an arch suffix). */
 export function platformOfTarget(target: string): Platform | null {
@@ -217,7 +231,7 @@ export function decideUpdate(input: DecideInput): AppUpdateAnswer {
   if (isPaused(platform, env)) return { ...base, paused: true };
   if (!release) return { ...base, unavailable: true };
 
-  const latest = release.tag_name.replace(/^v/, '');
+  const latest = parseReleaseTag(release.tag_name)?.version ?? release.tag_name.replace(/^v/, '');
   const markers = parseMarkers(release.body);
   const minVersion = minVersionFor(platform, markers, latest, env, errors);
   const answer: AppUpdateAnswer = { ...base, latest, minVersion };

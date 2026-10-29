@@ -5,17 +5,20 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.session.MediaConstants
 import org.json.JSONObject
-import java.io.IOException
 
 /** What the car can browse. Android Auto renders its own UI from this tree;
  *  we only supply ids, titles, covers and playability. Lists are fetched on
  *  demand, each tab straight from the API the web app already uses.
  *
- *  Four tabs (Android Auto shows at most four): Home (recently played and a
- *  few playlists), Liked songs, Playlists, and Library (recently played,
- *  uploads, and the songs downloaded to the phone). A list longer than
- *  [PAGE_SIZE] comes in folders of that many ("Songs 1-100"), which the car
- *  pages through; a tap still plays on through the whole list.
+ *  Four tabs (the owner's pick, Android Auto's limit): For you (the mixes
+ *  Home shows: a mix from the song played last, and today's chart), Library
+ *  (Liked songs, the playlists, then uploads and the songs downloaded to the
+ *  phone), Radio (live stations: nearby, favourites, Croatia) and Recent
+ *  (recently played songs). Places to start from (the mixes, Library's
+ *  folders, Radio's folders and stations) show as a grid of covers, songs as
+ *  rows. A list longer than [PAGE_SIZE] comes in folders
+ *  of that many ("Songs 1-100"), which the car pages through; a tap still
+ *  plays on through the whole list.
  *
  *  Offline, the server's lists are replaced by what is on the phone, and a
  *  search looks through the downloads. */
@@ -33,9 +36,12 @@ class BrowseTree(
     /** Every liked song's id, whenever the Liked tab is fetched (the car's
      *  heart button shows it). */
     private val onLiked: (List<String>) -> Unit = {},
-    /** A line for the top of Home (title, subtitle), or null: an app update
+    /** A line for the top of Library (title, subtitle), or null: an app update
      *  waiting until the car is parked (UpdateRules.carNotice). */
     private val notice: () -> Pair<String, String>? = { null },
+    /** Where the phone is, already rounded (RadioPlaces), or null: Radio >
+     *  Nearby then lists the home country. */
+    private val location: () -> Pair<Double, Double>? = { null },
 ) {
     /** Every track the car has been shown, by id. A tap from a legacy browser
      *  (Android Auto, the car Media Center) hands back only the mediaId, so the
@@ -60,6 +66,19 @@ class BrowseTree(
 
     /** The list the tapped track came from, from that track onward; or just
      *  the track when it was not part of a list we showed. */
+    /** The queue a tap on [mediaId] plays and where in it to start: a song
+     *  plays on from itself (queueFor); a station plays in its whole list,
+     *  so the car's previous button reaches the station above it too. */
+    fun queueAt(mediaId: String): Pair<List<JSONObject>, Int> {
+        val (parent, id) = split(mediaId)
+        if (parent != null && parent in RADIO_LISTS) {
+            val list = synchronized(lists) { lists[parent] }.orEmpty()
+            val i = list.indexOfFirst { it.optString("id") == id }
+            if (i >= 0) return list to i
+        }
+        return queueFor(mediaId) to 0
+    }
+
     fun queueFor(mediaId: String): List<JSONObject> {
         val (parent, id) = split(mediaId)
         val list = parent?.let { synchronized(lists) { lists[it] } }.orEmpty()
@@ -70,24 +89,30 @@ class BrowseTree(
 
     companion object {
         const val ROOT = "root"
-        const val HOME = "home"
+        const val FOR_YOU = "for-you"
+        const val FOR_YOU_MIX = "for-you-mix"
+        const val FOR_YOU_CHART = "for-you-chart"
         const val LIKED = "liked"
-        const val PLAYLISTS = "playlists"
         const val LIBRARY = "library"
         const val RECENT = "recent"
         const val UPLOADS = "uploads"
         const val DOWNLOADS = "downloads"
-        const val HOME_RECENT = "home-recent"
         const val PLAYLIST_PREFIX = "playlist:"
         const val SEARCH_PREFIX = "search:"
+        const val RADIO = "radio"
+        const val RADIO_NEARBY = "radio-nearby"
+        const val RADIO_FAVORITES = "radio-favorites"
+        const val RADIO_COUNTRY = "radio-country"
+        private val RADIO_LISTS = setOf(RADIO_NEARBY, RADIO_FAVORITES, RADIO_COUNTRY)
         private const val SEP = '|'
         /** "liked~2": the third page of Liked songs. */
         private const val PAGE_SEP = '~'
         /** Songs per page folder. Android Auto shows a few hundred items at
          *  most, and a big list also has to cross to the car in one piece. */
         const val PAGE_SIZE = 100
-        const val HOME_RECENT_COUNT = 10
-        const val HOME_PLAYLIST_COUNT = 8
+
+        private const val GRID = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM
+        private const val LIST = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
 
         /** Media3's paging ([page], [pageSize]) over a list the tree built
          *  whole. A legacy browser asks for page 0 of Int.MAX_VALUE. */
@@ -100,11 +125,15 @@ class BrowseTree(
         }
 
         /** The root tabs a car that shows [limit] of them gets (0 or less:
-         *  no limit given). */
+         *  no limit given; Android Auto allows four, so all of them fit). */
         fun tabsFor(limit: Int): List<String> {
-            val all = listOf(HOME, LIKED, PLAYLISTS, LIBRARY)
-            return if (limit in 1 until all.size) all.take(limit) else all
+            val all = listOf(FOR_YOU, LIBRARY, RADIO, RECENT)
+            if (limit !in 1 until all.size) return all
+            return all.take(limit)
         }
+
+        /** A folder of songs: rows, and its page folders as rows too. */
+        fun songListStyle(): Bundle = styleExtras(browsable = LIST, playable = LIST)
 
         /** Extras that ask the car for list rows or a grid. */
         fun styleExtras(browsable: Int? = null, playable: Int? = null, group: String? = null): Bundle = Bundle().apply {
@@ -137,8 +166,8 @@ class BrowseTree(
     fun placeholder(text: String, subtitle: String? = null): MediaItem = MediaItem.Builder().setMediaId("msg:" + text.hashCode())
         .setMediaMetadata(MediaMetadata.Builder().setTitle(text).setSubtitle(subtitle).setIsBrowsable(false).setIsPlayable(false).build()).build()
 
-    /** Home with the notice, if there is one, on top. Never in the way of
-     *  the list: a notice that fails to build is left out. */
+    /** Library with the notice, if there is one, on top. Never in the way
+     *  of the list: a notice that fails to build is left out. */
     private fun withNotice(items: List<MediaItem>): List<MediaItem> {
         val (title, subtitle) = runCatching { notice() }.getOrNull() ?: return items
         return listOf(placeholder(title, subtitle)) + items
@@ -151,15 +180,21 @@ class BrowseTree(
         if (pageIndex != null) return pageOf(base, pageIndex)
         return when {
             parentId == ROOT -> tabsFor(rootLimit).map(::tab)
-            parentId == HOME -> withNotice(home())
-            parentId == LIBRARY -> listOf(
-                folder(RECENT, "Recently played"),
-                folder(UPLOADS, "Uploads"),
-                folder(DOWNLOADS, "On this phone"),
-            )
             parentId == DOWNLOADS -> downloadsList()
+            parentId == RADIO -> listOf(
+                stationFolder(RADIO_NEARBY, "Nearby"),
+                stationFolder(RADIO_FAVORITES, "Favourites"),
+                stationFolder(RADIO_COUNTRY, "Croatia"),
+            )
             !online() -> offline()
-            parentId == PLAYLISTS -> api.playlists().map(::playlistFolder)
+            parentId == FOR_YOU -> forYou()
+            parentId == FOR_YOU_MIX -> tracks(parentId, mixSeed()?.let { api.recommended(it.optString("sourceId")) } ?: api.trending())
+            parentId == FOR_YOU_CHART -> tracks(parentId, api.trending())
+            parentId == LIBRARY -> withNotice(library())
+            parentId == RADIO_NEARBY -> stations(parentId, location()?.let { (la, lo) -> api.radioNearby(la, lo) }
+                ?: api.radioCountry(RadioPlaces.HOME_COUNTRY), "No stations found nearby")
+            parentId == RADIO_FAVORITES -> stations(parentId, api.radioFavorites(), "No favourite stations yet. Add them on the Radio page in the app")
+            parentId == RADIO_COUNTRY -> stations(parentId, api.radioCountry(RadioPlaces.HOME_COUNTRY), "No stations found")
             parentId == LIKED -> api.likes().let { list ->
                 onLiked(list.map { it.optString("id") })
                 tracks(parentId, list)
@@ -171,12 +206,40 @@ class BrowseTree(
         }
     }
 
+    /** The tabs. Library and Radio hold places to start from, shown as a
+     *  grid of covers (Radio's stations too); Recent is songs, in rows. */
     private fun tab(id: String): MediaItem = when (id) {
-        HOME -> folder(HOME, "Home")
-        LIKED -> folder(LIKED, "Liked songs")
-        PLAYLISTS -> folder(PLAYLISTS, "Playlists", styleExtras(browsable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM))
-        else -> folder(LIBRARY, "Library")
+        FOR_YOU -> folder(FOR_YOU, "For you", styleExtras(browsable = GRID, playable = LIST))
+        LIBRARY -> folder(LIBRARY, "Library", styleExtras(browsable = GRID, playable = LIST))
+        RADIO -> folder(RADIO, "Radio", styleExtras(browsable = GRID, playable = GRID))
+        else -> folder(RECENT, "Recent", styleExtras(browsable = LIST, playable = LIST))
     }
+
+    /** The song the mix starts from: the one played last (Home's "Because
+     *  you played ..."), or null with no history (the mix is then the chart,
+     *  like Home's "Recommended for you" with no seed). */
+    private fun mixSeed(): JSONObject? = api.history().firstOrNull { it.optString("sourceId").isNotBlank() }
+
+    /** For you: Home's mixes as covers, each a folder of songs. */
+    private fun forYou(): List<MediaItem> {
+        val seed = mixSeed()
+        val mixArt = seed?.let { TrackItems.metadata(it, api.baseUrl, artAuthority).build().artworkUri }
+        return listOf(
+            folder(FOR_YOU_MIX, seed?.let { "Because you played \"${it.optString("title")}\"" } ?: "Recommended for you",
+                songListStyle(), artworkUri = mixArt, subtitle = "Mix"),
+            folder(FOR_YOU_CHART, "Trending right now", songListStyle(), subtitle = "Chart"),
+        )
+    }
+
+    /** Library: Liked songs and every playlist (covers in a grid), then the
+     *  uploads and the songs on this phone. */
+    private fun library(): List<MediaItem> =
+        listOf(folder(LIKED, "Liked songs", songListStyle())) +
+            api.playlists().map(::playlistFolder) +
+            listOf(folder(UPLOADS, "Uploads", songListStyle()), folder(DOWNLOADS, "On this phone", songListStyle()))
+
+    /** A Radio folder whose stations show as a grid of logos. */
+    private fun stationFolder(id: String, title: String): MediaItem = folder(id, title, styleExtras(playable = GRID))
 
     private fun playlistFolder(p: JSONObject): MediaItem {
         val art = p.optString("artwork_url").takeIf { !p.isNull("artwork_url") && it.isNotBlank() }
@@ -184,32 +247,7 @@ class BrowseTree(
             artAuthority?.let { ArtworkUris.contentUriFor(a, api.baseUrl, it) }
                 ?: android.net.Uri.parse(if (a.startsWith("/") && !a.startsWith("//")) api.baseUrl + a else a)
         }
-        return folder(PLAYLIST_PREFIX + p.getString("id"), p.optString("name", "Playlist"), artworkUri = uri)
-    }
-
-    /** Home: what was played lately, then a few playlists, each under its
-     *  own heading. A section that fails is left out; both failing is the
-     *  usual one-line message. Offline: the songs on the phone. */
-    private fun home(): List<MediaItem> {
-        if (!online()) return offline()
-        var failure: Throwable? = null
-        val recent = runCatching { distinct(api.history()).take(HOME_RECENT_COUNT) }.onFailure { failure = it }.getOrNull()
-        val playlists = runCatching { api.playlists().take(HOME_PLAYLIST_COUNT) }.onFailure { failure = it }.getOrNull()
-        if (recent == null && playlists == null) throw failure ?: IOException("home")
-        val out = ArrayList<MediaItem>()
-        recent?.let { list ->
-            out += tracks(HOME_RECENT, list, paged = false).map { withGroup(it, "Recently played") }
-        }
-        playlists?.let { list -> out += list.map { withGroup(playlistFolder(it), "Your playlists") } }
-        if (out.isEmpty()) out += placeholder("Play something on your phone to see it here")
-        return out
-    }
-
-    private fun withGroup(item: MediaItem, title: String): MediaItem {
-        val extras = Bundle(item.mediaMetadata.extras ?: Bundle.EMPTY).apply {
-            putString(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_GROUP_TITLE, title)
-        }
-        return item.buildUpon().setMediaMetadata(item.mediaMetadata.buildUpon().setExtras(extras).build()).build()
+        return folder(PLAYLIST_PREFIX + p.getString("id"), p.optString("name", "Playlist"), songListStyle(), artworkUri = uri)
     }
 
     /** A song listened to twice shows once, at its latest play. */
@@ -217,6 +255,10 @@ class BrowseTree(
         val seen = HashSet<String>()
         return list.filter { seen.add(it.optString("id")) }
     }
+
+    /** A station list, or the line that says it is empty. */
+    private fun stations(parentId: String, list: List<JSONObject>, empty: String): List<MediaItem> =
+        if (list.isEmpty()) listOf(placeholder(empty)) else tracks(parentId, list, paged = false)
 
     private fun downloadsList(): List<MediaItem> {
         val list = downloads()

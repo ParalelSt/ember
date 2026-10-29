@@ -1,8 +1,10 @@
 import 'server-only';
-import { promises as fs, appendFileSync, mkdirSync } from 'node:fs';
+import { promises as fs, appendFileSync, createReadStream, mkdirSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import path from 'node:path';
 import type { LogLevel, ServerLogEntry } from './types';
 import { requestContext, type ServerLogContext } from './context';
+import { LOG_RETENTION_DAYS } from './retention';
 
 export { outsideRequest, requestContext, type ServerLogContext } from './context';
 
@@ -18,7 +20,7 @@ export function logDir(): string {
     ? path.resolve(process.env.EMBER_LOG_DIR)
     : path.resolve(process.cwd(), '..', '..', 'logs');
 }
-const RETENTION_DAYS = 2;
+const RETENTION_DAYS = LOG_RETENTION_DAYS;
 
 // The UTC day key (YYYY-MM-DD) the sweep last ran for, so a long-lived
 // server process re-sweeps once a new day starts instead of only ever
@@ -55,7 +57,9 @@ async function runSweep(): Promise<void> {
         .filter((name) => /^(errors|digest)-\d{4}-\d{2}-\d{2}\.(jsonl|sent|failed)$/.test(name))
         .map(async (name) => {
           const dateMs = parseFileDate(name);
-          if (dateMs && dateMs < cutoffMs) {
+          // By the day's end, not its start: the file from two days ago
+          // still holds entries inside the window until that day is over.
+          if (dateMs && dateMs + 24 * 60 * 60 * 1000 <= cutoffMs) {
             await fs.unlink(path.join(dir, name)).catch(() => {});
           }
         }),
@@ -171,8 +175,7 @@ export const serverLogger = {
       const today = todayFile();
       const yesterday = todayFile(new Date(Date.now() - 24 * 60 * 60 * 1000));
       const files = [...new Set([yesterday, today])];
-      const entries = await readEntriesFromFiles(files);
-      return entries.filter((e) => e.ts > timestampMs);
+      return await readEntriesFromFiles(files, (e) => e.ts > timestampMs);
     } catch (e) {
       console.warn('[serverLogger] recentSince failed', e);
       return [];
@@ -182,22 +185,31 @@ export const serverLogger = {
   /** Generalised version of recentSince for longer windows (a digest can
    *  span days, not minutes): walks every calendar day's file from
    *  timestampMs's UTC day through today, rather than assuming "today and
-   *  yesterday" cover the window. Capped at 20000 entries, newest first, so
-   *  a huge window can't load an unbounded amount of JSONL into memory. */
-  async entriesSince(timestampMs: number): Promise<ServerLogEntry[]> {
+   *  yesterday" cover the window. `keep` is the caller's own filter, applied
+   *  while reading and BEFORE the cap: the newest ENTRIES_CAP of what the
+   *  caller wants, newest first, so routine lines cannot push the wanted
+   *  older ones out, and a huge window still cannot load an unbounded amount
+   *  of JSONL into memory. */
+  async entriesSince(timestampMs: number, keep?: (e: ServerLogEntry) => boolean): Promise<ServerLogEntry[]> {
     ensureDailySweep();
     try {
       const files = filesForWindow(timestampMs);
-      const entries = await readEntriesFromFiles(files);
-      const filtered = entries.filter((e) => e.ts > timestampMs);
-      filtered.sort((a, b) => b.ts - a.ts);
-      return filtered.slice(0, 20_000);
+      const wanted = (e: ServerLogEntry) => e.ts > timestampMs && (!keep || keep(e));
+      return newestFirst(await readEntriesFromFiles(files, wanted, ENTRIES_CAP), ENTRIES_CAP);
     } catch (e) {
       console.warn('[serverLogger] entriesSince failed', e);
       return [];
     }
   },
 };
+
+const ENTRIES_CAP = 20_000;
+
+function newestFirst(entries: ServerLogEntry[], cap: number): ServerLogEntry[] {
+  entries.sort((a, b) => b.ts - a.ts);
+  if (entries.length > cap) entries.length = cap;
+  return entries;
+}
 
 /** Every errors-YYYY-MM-DD.jsonl file name that could contain an entry
  *  timestamped after `sinceMs`, from that day (UTC) through today inclusive. */
@@ -219,24 +231,38 @@ function filesForWindow(sinceMs: number): string[] {
 }
 
 /** Reads and parses a set of log files, skipping missing files and corrupt
- *  lines the same way both recentSince and entriesSince always have. */
-async function readEntriesFromFiles(files: string[]): Promise<ServerLogEntry[]> {
+ *  lines the same way both recentSince and entriesSince always have. Read
+ *  line by line from a stream: an error storm's day file can be larger than
+ *  a string may be, and was then read as nothing. With `cap`, never more
+ *  than twice that many entries are held: the newest `cap` are kept each
+ *  time the pile reaches it. */
+async function readEntriesFromFiles(
+  files: string[],
+  keep: (e: ServerLogEntry) => boolean,
+  cap?: number,
+): Promise<ServerLogEntry[]> {
   const dir = logDir();
-  const lines: string[] = [];
+  let out: ServerLogEntry[] = [];
   for (const f of files) {
+    const file = path.join(dir, f);
     try {
-      const text = await fs.readFile(path.join(dir, f), 'utf8');
-      lines.push(...text.split('\n').filter(Boolean));
+      const lines = createInterface({ input: createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity });
+      for await (const line of lines) {
+        if (!line) continue;
+        let e: ServerLogEntry;
+        try {
+          e = JSON.parse(line) as ServerLogEntry;
+        } catch {
+          // Corrupt line: skip.
+          continue;
+        }
+        if (!e || typeof e !== 'object' || !keep(e)) continue;
+        out.push(e);
+        if (cap !== undefined && out.length >= cap * 2) out = newestFirst(out, cap);
+      }
     } catch {
-      // Missing file: fine, skip.
-    }
-  }
-  const out: ServerLogEntry[] = [];
-  for (const line of lines) {
-    try {
-      out.push(JSON.parse(line) as ServerLogEntry);
-    } catch {
-      // Corrupt line: skip.
+      // Missing or unreadable file (the sweep may remove one between the
+      // listing and the read): skip it, never the whole read.
     }
   }
   return out;

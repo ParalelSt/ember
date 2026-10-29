@@ -28,7 +28,7 @@ vi.mock('@/lib/ai/triage', async (importOriginal) => {
   return { ...actual, summarizeDigest: vi.fn(async () => null), isTriageConfigured: vi.fn(() => true) };
 });
 
-const { digestHour, markerExists, markerPath, runDigest, shouldRunNow } = await import('./digestJob');
+const { createDigestTick, digestHour, markerExists, markerPath, runDigest, shouldRunNow } = await import('./digestJob');
 const { serverLogger } = await import('@/lib/logger/server');
 const { isTriageConfigured, summarizeDigest } = await import('@/lib/ai/triage');
 
@@ -326,6 +326,58 @@ describe('runDigest', () => {
 
     await runDigest({ now, since: now - 3 * 60 * 60 * 1000 });
 
-    expect(serverLogger.entriesSince).toHaveBeenCalledWith(now - 3 * 60 * 60 * 1000);
+    expect(serverLogger.entriesSince).toHaveBeenCalledWith(now - 3 * 60 * 60 * 1000, expect.any(Function));
+  });
+
+  // The read is capped: info lines (which the digest never shows) are left
+  // out while reading, so a day of them cannot push the problems past it.
+  it('asks the log for problems only', async () => {
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([]);
+    await runDigest({ now: Date.now() });
+    const keep = vi.mocked(serverLogger.entriesSince).mock.calls[0][1]!;
+    expect(keep(entry({ level: 'info' }))).toBe(false);
+    expect(keep(entry({ level: 'warn' }))).toBe(true);
+    expect(keep(entry({ level: 'error' }))).toBe(true);
+  });
+});
+
+describe('createDigestTick', () => {
+  // The scheduler ticks every minute. A run still waiting on the model (up
+  // to 25 s) or on a slow Discord found no marker yet, so the next tick
+  // started a second run and the day's digest went out twice.
+  it('never starts a second run while one is still posting', async () => {
+    const at = new Date(2026, 8, 16, 9, 0);
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([entry({ ts: at.getTime() - 60_000 })]);
+    let answer!: (r: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { answer = resolve; }));
+    const tick = createDigestTick({ hour: 8, now: () => at });
+    try {
+      const first = tick();
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      await tick();
+      await tick();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      answer(new Response(null, { status: 204 }));
+      await first;
+      expect(await markerExists(at)).toBe(true);
+      await tick();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(markerPath(at), { force: true });
+    }
+  });
+
+  it('waits for the hour and keeps ticking after a run that throws', async () => {
+    const run = vi.fn(async () => { throw new Error('disk gone'); });
+    let at = new Date(2026, 8, 17, 7, 59);
+    const tick = createDigestTick({ hour: 8, now: () => at, run });
+    await tick();
+    expect(run).not.toHaveBeenCalled();
+    at = new Date(2026, 8, 17, 8, 0);
+    await tick();
+    await tick();
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run).toHaveBeenCalledWith({ now: at.getTime(), writeMarker: true });
   });
 });

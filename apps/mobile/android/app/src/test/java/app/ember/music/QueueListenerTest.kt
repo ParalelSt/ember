@@ -66,8 +66,12 @@ class QueueListenerTest {
         return item(id, server.url("/$id").toString())
     }
 
-    /** Lets the player's own thread work until [done], or [ms] pass. */
-    private fun runUntil(ms: Long = 3_000, done: () -> Boolean): Boolean {
+    /** Lets the player's own thread work until [done], or [ms] pass. The wait
+     *  returns the moment [done] holds, so a generous default costs nothing
+     *  when it passes; a tight one failed whole classes on a busy machine,
+     *  where the player's real thread (file retries, cold class loading)
+     *  needs far longer than it does alone. */
+    private fun runUntil(ms: Long = 15_000, done: () -> Boolean): Boolean {
         val end = System.currentTimeMillis() + ms
         while (System.currentTimeMillis() < end) {
             // The emulated clock only moves when told; the player's own

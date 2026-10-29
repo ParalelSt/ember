@@ -98,7 +98,13 @@ export function maxConcurrentDownloads(env: string | undefined = process.env.MAX
   return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 2;
 }
 
-export const downloadGate: DownloadGate = createDownloadGate(maxConcurrentDownloads());
+/** The one gate of this server PROCESS: the stream route and the tab
+ *  routes (lining a tab up downloads the song) each bundle their own copy of
+ *  this module, and a gate per copy let each run MAX_CONCURRENT_DOWNLOADS
+ *  (and a prefetch saw its copy idle while a tab route was downloading). */
+const GATE_KEY = Symbol.for('ember.downloadGate');
+export const downloadGate: DownloadGate = ((globalThis as Record<symbol, unknown>)[GATE_KEY] ??=
+  createDownloadGate(maxConcurrentDownloads())) as DownloadGate;
 
 /** A prefetch that would have had to start a cold download while the host
  *  was busy, or a listener's download that waited too long for a slot, gets

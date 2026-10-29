@@ -63,18 +63,8 @@ export async function registerNode() {
   // webhook falls back to the one baked into the app, so a default-on digest
   // would have every self-hosted copy posting into its owner's channel daily.
   if (process.env.DIGEST_ENABLED === '1') {
-    const { digestHour, markerExists, runDigest, shouldRunNow } = await import('@/lib/reports/digestJob');
-    const hour = digestHour();
-    const tick = async () => {
-      try {
-        const now = new Date();
-        if (!shouldRunNow(now, hour, await markerExists(now))) return;
-        await runDigest({ now: now.getTime(), writeMarker: true });
-      } catch (e) {
-        // Never let the digest take the server down.
-        console.warn('[digest] scheduled run failed', e);
-      }
-    };
+    const { createDigestTick, digestHour } = await import('@/lib/reports/digestJob');
+    const tick = createDigestTick({ hour: digestHour() });
     // Checked every minute rather than scheduled once: a host that was
     // asleep or restarting at DIGEST_HOUR still sends the day's digest when
     // it comes back, and the marker file keeps that to once a day.

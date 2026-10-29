@@ -103,5 +103,7 @@ export {
   CloudArrowDownIcon,
   ShieldWarningIcon,
   CameraIcon,
+  RadioIcon,
+  LocateIcon,
 } from './phosphor';
 export { FlameIcon } from './EmberLogo';

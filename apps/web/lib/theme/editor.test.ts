@@ -89,3 +89,13 @@ describe('uniqueName', () => {
     expect(second.endsWith(' 2')).toBe(true);
   });
 });
+
+describe('uniqueName with an emoji at the cut', () => {
+  it('never leaves half an emoji (a lone surrogate) in the name', () => {
+    const base = 'b'.repeat(39) + '🔥';
+    const first = uniqueName(base, []);
+    expect(first).toBe('b'.repeat(39));
+    const second = uniqueName(base, [first]);
+    expect(second).toBe('b'.repeat(38) + ' 2');
+  });
+});

@@ -7,6 +7,15 @@
  *  run lasting longer than PERSIST_MS counts as an outage worth reporting. */
 
 export const PERSIST_MS = 30_000;
+
+/** What a gateway in front of Ember answers when Ember itself does not (the
+ *  Tailscale Funnel while Next restarts): that is no answer from the server.
+ *  Ember's own routes answer these with a JSON body. */
+export const GATEWAY_STATUSES: readonly number[] = [502, 503, 504];
+
+/** What a call says when something answered in Ember's place (see req() in
+ *  api.ts). */
+export const NO_ANSWER_MESSAGE = "Can't reach Ember right now. Check your connection.";
 const RUN_GAP_MS = 30_000;
 
 let runStart: number | null = null;

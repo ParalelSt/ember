@@ -17,6 +17,7 @@ type Asset = { id: number; name: string; size: number; digest?: string };
 type Rel = { tag_name: string; draft: boolean; prerelease: boolean; body?: string; published_at?: string; assets: Asset[] };
 
 function release(tag: string, extra: Partial<Rel> = {}): Rel {
+  const v = tag.replace(/^[a-z]+-/, '');
   return {
     tag_name: tag,
     draft: false,
@@ -24,8 +25,8 @@ function release(tag: string, extra: Partial<Rel> = {}): Rel {
     published_at: '2026-10-01T10:00:00Z',
     body: `Ember ${tag}`,
     assets: [
-      { id: 701, name: `Ember-${tag}-android.apk`, size: 18_000_000, digest: `sha256:${DIGEST}` },
-      { id: 702, name: `Ember-${tag}-macos-arm64.dmg`, size: 1 },
+      { id: 701, name: `Ember-${v}-android.apk`, size: 18_000_000, digest: `sha256:${DIGEST}` },
+      { id: 702, name: `Ember-${v}-macos-arm64.dmg`, size: 1 },
     ],
     ...extra,
   };
@@ -95,6 +96,14 @@ describe('GET /api/android/update', () => {
     expect(body.version).toBe('0.4.19');
   });
 
+  it('takes the android-v release, and never a desktop-only one', async () => {
+    feed.releases = [release('windows-v0.4.30'), release('android-v0.4.20'), release('v0.4.19')];
+    const body = await (await get('?version=0.4.19')).json();
+    expect(body.version).toBe('0.4.20');
+    feed.releases = [release('windows-v0.4.30'), release('v0.4.19')];
+    expect((await get('?version=0.4.19')).status).toBe(204);
+  });
+
   it('answers 204 when the latest release has no apk', async () => {
     feed.releases = [release('v0.4.19', { assets: [{ id: 9, name: 'Ember-v0.4.19-macos-arm64.dmg', size: 1 }] })];
     expect((await get('?version=0.4.18')).status).toBe(204);
@@ -108,6 +117,13 @@ describe('GET /api/android/update', () => {
   it('reads a versionCode the release notes state', async () => {
     feed.releases = [release('v0.4.19', { body: 'Fixes.\n\nversionCode: 24' })];
     expect((await (await get('?version=0.4.18')).json()).versionCode).toBe(24);
+  });
+
+  it('shows the notes without the release markers', async () => {
+    feed.releases = [release('v0.4.19', { body: '## Fixes\n\nFaster start.\n\nmandatory: true\nminVersion: 0.4.10\nversionCode: 24' })];
+    const body = await (await get('?version=0.4.18')).json();
+    expect(body.versionCode).toBe(24);
+    expect(body.notes).toBe('Fixes\nFaster start.');
   });
 
   it('degrades every GitHub failure to 204', async () => {

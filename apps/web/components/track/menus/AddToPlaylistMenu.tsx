@@ -17,7 +17,7 @@ import { ActionSheet, ActionSheetItem, type MenuAction } from '@/components/ui/a
 import { Artwork } from '@/components/primitives/Artwork';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { formatCount } from '@/lib/format';
+import { addTracks, createdToast } from '@/hooks/useCreatePlaylistFlow';
 import {
   useExecuteAddToPlaylist,
   useExecuteCreatePlaylist,
@@ -112,15 +112,16 @@ export function AddToPlaylistMenu({
   // Dialog already has the current track pre-selected via initialTracks below,
   // so handleCreate just iterates over whatever the dialog returns.
   const handleCreate = async (name: string, tracks: Track[]) => {
+    let playlist;
     try {
-      const playlist = await createPlaylist.mutateAsync(name);
-      for (const t of tracks) {
-        await addToPlaylist.mutateAsync({ id: playlist.id, track: t });
-      }
-      toast.success(`Created "${playlist.name}" with ${formatCount(tracks.length, 'track')}`);
+      playlist = await createPlaylist.mutateAsync(name);
     } catch (e) {
       toast.error(`Couldn't create the playlist, please try again.`);
+      // The dialog stays open with what was typed (CreatePlaylistDialog).
+      throw e;
     }
+    // Made: a song that then fails must not read as "not created".
+    createdToast(playlist.name, tracks.length, await addTracks(playlist.id, tracks, (v) => addToPlaylist.mutateAsync(v)));
   };
 
   const createDialog = (

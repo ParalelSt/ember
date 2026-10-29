@@ -32,6 +32,15 @@ describe('already liked, by name', () => {
   it('splits artist lines the way sources write them', () => {
     expect(artistParts('June Harbor, Mira Vale & Coastline feat. Nora Quill')).toEqual(['June Harbor', 'Mira Vale', 'Coastline', 'Nora Quill']);
   });
+
+  it('a name written with a non-breaking space stays one name, so one of its words never counts as the artist', () => {
+    // Exports and web pages often carry U+00A0 inside a name. Split into
+    // words, "The\u00a0Hollies" made a key for "The", and any liked song of
+    // the same title by another "The ..." band read as already liked.
+    expect(artistParts('June\u00a0Harbor')).toEqual(['June\u00a0Harbor']);
+    const likes = likedIndex([{ title: 'Intro', artist: 'The\u00a0Lanterns' }]);
+    expect(isAlreadyLiked({ title: 'Intro', artist: 'The\u00a0Harbors' }, likes)).toBe(false);
+  });
 });
 
 describe('splitAlreadyLiked', () => {

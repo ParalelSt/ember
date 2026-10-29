@@ -25,7 +25,7 @@ function renderBar() {
   render(
     <>
       <UnplayableAnnouncer />
-      <PhonePlayerBar track={PLAYING} playing position={10} duration={200} {...h} />
+      <PhonePlayerBar track={PLAYING} playing duration={200} {...h} />
     </>,
   );
   return h;

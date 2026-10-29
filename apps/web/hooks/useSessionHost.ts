@@ -32,7 +32,7 @@ const COMMAND_POLL_MS = 2500;
 export function useSessionHost() {
   const { next, current } = usePlayer();
   const hostingId = useSessionStore((s) => s.hostingSessionId);
-  const { data } = useQuerySession(hostingId);
+  const { data, dataUpdatedAt } = useQuerySession(hostingId);
   // An answer for another carlist (cached while the flag changed) says
   // nothing about this one.
   const state = data && data.session.id === hostingId ? data : undefined;
@@ -73,6 +73,9 @@ export function useSessionHost() {
   useEffect(() => {
     if (!isActiveHost || !sessionId) return;
     const timer = setInterval(() => {
+      // Offline every try only fails, and each failure filled the log a bug
+      // report carries. The guests' commands wait on the server.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       api
         .consumeSessionCommands(sessionId)
         .then(({ commands }) => {
@@ -94,16 +97,30 @@ export function useSessionHost() {
   const serverNow = state?.session.nowIndex ?? 0;
   const playingRow =
     isActiveHost && state ? sessionIndexFor(state.queue.map((q) => q.track.id), current?.id, serverNow) : -1;
-  const lastPublished = useRef<number | null>(null);
+  // Sent whenever the server's row is not the one playing, except while that
+  // very row is already on its way. Per carlist: a send to ANOTHER carlist
+  // says nothing about this one (the host of a new one may well be on the
+  // same row number). Remembering every row as told, even one skipped
+  // because a stale poll agreed with it, left the server on a row the host
+  // had already left (forward and straight back inside one poll). Checked
+  // again on every poll answer: a send that failed (no signal in a tunnel)
+  // changes none of the rows, so it waited for the next song.
+  const lastPublished = useRef<{ sessionId: string; row: number; sending: boolean } | null>(null);
   useEffect(() => {
-    if (!isActiveHost || !sessionId || playingRow < 0) return;
-    if (playingRow === lastPublished.current) return;
-    lastPublished.current = playingRow;
-    if (playingRow === serverNow) return;
-    api.publishSessionNow(sessionId, playingRow).catch(() => {
-      lastPublished.current = null;
-    });
-  }, [isActiveHost, sessionId, playingRow, serverNow]);
+    if (!isActiveHost || !sessionId || playingRow < 0 || playingRow === serverNow) return;
+    const last = lastPublished.current;
+    if (last?.sessionId === sessionId && last.row === playingRow && last.sending) return;
+    const mine = { sessionId, row: playingRow, sending: true };
+    lastPublished.current = mine;
+    api.publishSessionNow(sessionId, playingRow).then(
+      () => {
+        mine.sending = false;
+      },
+      () => {
+        if (lastPublished.current === mine) lastPublished.current = null;
+      },
+    );
+  }, [isActiveHost, sessionId, playingRow, serverNow, dataUpdatedAt]);
 }
 
 /** Session page: a host looking at their own live carlist claims the host

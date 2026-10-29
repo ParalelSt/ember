@@ -329,6 +329,45 @@ class ServiceCarTest {
         assertTrue(shadowOf(service).isStoppedBySelf)
     }
 
+    // ── At the device's start (BootReceiver, "Open Ember when this device starts") ──
+
+    private fun bootResume(play: Boolean) = Intent(app, EmberPlaybackService::class.java)
+        .setAction(EmberPlaybackService.ACTION_BOOT_RESUME).putExtra(EmberPlaybackService.EXTRA_PLAY, play)
+
+    @Test fun `a boot start resumes the saved queue paused and keeps it loaded`() {
+        SavedQueue(savedFile).save(SavedQueue.Snapshot(listOf(track("a"), track("b")), 1, 0))
+        start(bootResume(play = false))
+        controller.startCommand(0, 1)
+        until { player().mediaItemCount > 0 }
+        assertEquals(listOf("a", "b"), ids())
+        assertEquals(1, player().currentMediaItemIndex)
+        assertFalse(player().playWhenReady)
+        // Android wants the foreground within seconds: the guard gives it a
+        // moment there, and the paused queue stays for the car's play button.
+        idle(EmberPlaybackService.MEDIA_BUTTON_GUARD_MS + 100)
+        assertTrue(shadowOf(service).isForegroundStopped)
+        assertFalse(shadowOf(service).isStoppedBySelf)
+    }
+
+    @Test fun `a boot start with keep playing plays the saved queue`() {
+        SavedQueue(savedFile).save(SavedQueue.Snapshot(listOf(track("a"), track("b")), 0, 0))
+        start(bootResume(play = true))
+        controller.startCommand(0, 1)
+        until { player().mediaItemCount > 0 }
+        assertEquals(listOf("a", "b"), ids())
+        assertTrue(player().playWhenReady)
+        idle(EmberPlaybackService.MEDIA_BUTTON_GUARD_MS + 100)
+        assertFalse(shadowOf(service).isStoppedBySelf)
+    }
+
+    @Test fun `a boot start with nothing to load lets go instead of being killed`() {
+        savedFile.writeText("{ broken")
+        start(bootResume(play = true))
+        controller.startCommand(0, 1)
+        idle(EmberPlaybackService.MEDIA_BUTTON_GUARD_MS + 100)
+        assertTrue(shadowOf(service).isStoppedBySelf)
+    }
+
     // ── Voice and browsing ──────────────────────────────────────────────
 
     @Test fun `play music on Ember with no words resumes the saved queue`() {
@@ -348,7 +387,7 @@ class ServiceCarTest {
         assertEquals(MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM, root.params!!.extras.getInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE))
         val f = service.Callback().onGetChildren(session(), own, BrowseTree.ROOT, 1, 2, null)
         until { f.isDone }
-        assertEquals(listOf(BrowseTree.PLAYLISTS, BrowseTree.LIBRARY), f.get().value!!.map { it.mediaId })
+        assertEquals(listOf(BrowseTree.RADIO, BrowseTree.RECENT), f.get().value!!.map { it.mediaId })
     }
 
     @Test fun `a song the car was shown can be looked up by id`() {

@@ -105,9 +105,13 @@ export interface TransferFlowProps {
 }
 
 /** An app path to go back to, or the Liked songs page. A full URL or a
- *  protocol-relative one is never followed. */
+ *  protocol-relative one is never followed, nor a path with a backslash,
+ *  tab or newline: browsers read '/\example.com' as '//example.com' (the
+ *  same rule as lib/safeNext.ts). */
 export function safeFrom(from: string | undefined | null): string {
-  return from && from.startsWith('/') && !from.startsWith('//') ? from : '/library/liked';
+  if (!from || !from.startsWith('/') || from.startsWith('//')) return '/library/liked';
+  if (/[\\\u0000-\u001f\u007f]/.test(from)) return '/library/liked';
+  return from;
 }
 
 /** Bring songs liked somewhere else into Ember, on one page. The first
@@ -252,7 +256,7 @@ export function TransferFlow({
     } catch (e) {
       // Server messages here are written for people (private, not found,
       // Spotify unreachable): show them as they are.
-      if (asked.current === token) setLookup({ step: 'error', message: transferErrorMessage(e) });
+      if (asked.current === token) setLookup({ step: 'error', message: transferErrorMessage(e, 'link') });
     }
   }, []);
 
@@ -468,7 +472,7 @@ export function TransferFlow({
         setLookup({ step: 'idle' });
         setSignIn({ step: 'failed', message: googleLikesErrorMessage(e) });
       } else {
-        setStartError(transferErrorMessage(e));
+        setStartError(transferErrorMessage(e, lookup.step === 'link' ? 'link' : 'upload'));
       }
     } finally {
       setStarting(false);
@@ -712,7 +716,7 @@ export function TransferFlow({
                       <input
                         ref={fileInput}
                         type="file"
-                        accept=".json,.csv,.tsv,.txt,application/json,text/csv,text/plain"
+                        accept=".zip,.json,.csv,.tsv,.txt,application/zip,application/json,text/csv,text/plain"
                         aria-label="Song list file"
                         className="hidden"
                         onChange={chooseFile}
@@ -724,7 +728,7 @@ export function TransferFlow({
                       >
                         <UploadIcon className="h-5 w-5 text-muted-foreground" />
                         <span className="text-sm">{file ? file.name : 'Choose a file'}</span>
-                        <span className="text-xs text-muted-foreground">YourLibrary.json, or a .csv</span>
+                        <span className="text-xs text-muted-foreground">The zip from Spotify, YourLibrary.json, or a .csv</span>
                       </button>
                     </div>
                   )}

@@ -31,6 +31,8 @@ export function contextTitle(context: PlaybackContext | null | undefined): Conte
       return { kicker: 'Playing from mix', name: context.mixTitle || null };
     case 'radio':
       return { kicker: 'Playing from', name: 'Radio' };
+    case 'stations':
+      return { kicker: 'Live radio', name: context.name || null };
     case 'search': {
       const q = context.query?.trim();
       return { kicker: 'Playing from search', name: q ? `"${q}"` : null };

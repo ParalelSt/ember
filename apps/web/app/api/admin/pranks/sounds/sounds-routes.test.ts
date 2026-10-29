@@ -7,6 +7,10 @@ import { NextRequest } from 'next/server';
 import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 import { pbDate } from '@/lib/pranks/limits';
 
+// Each upload runs ffmpeg to measure the sound; on a busy machine that alone
+// can take longer than vitest's default 5 s.
+vi.setConfig({ testTimeout: 30_000 });
+
 // The prank library (upload, list, rename, delete) and the media route that
 // serves it, against a fake admin client and a throwaway MUSIC_DIR.
 

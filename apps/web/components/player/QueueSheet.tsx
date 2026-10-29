@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { memo, useCallback, useLayoutEffect, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { TrackRow } from '@/components/track/TrackRow';
@@ -36,7 +36,10 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-export function QueueSheet({ open, onOpenChange }: Props) {
+/** Memoized: the player bar and the full-screen player that hold it
+ *  re-render on every playhead report, and an open queue can be thousands of
+ *  rows. Its own store reads (and NowProgress) still update it. */
+export const QueueSheet = memo(function QueueSheet({ open, onOpenChange }: Props) {
   const isDesktop = useIsDesktop();
   const queue = usePlayerStore((s) => s.queue);
   const index = usePlayerStore((s) => s.index);
@@ -114,8 +117,10 @@ export function QueueSheet({ open, onOpenChange }: Props) {
           reason lines. 90% of a phone, as in the owner's pick. */}
       {/* A phone gets a tall sheet up from the bottom with a grab handle,
           like its other popups (owner's popups1 pick); desktop keeps the
-          side panel. */}
+          side panel. The player's own sheet: its keyboard shortcuts keep
+          working here (hooks/player/useKeyboardShortcuts OPEN_MODAL). */}
       <SheetContent
+        data-player-view
         side={isDesktop ? 'right' : 'bottom'}
         className="data-[side=right]:w-96 max-w-[90vw] data-[side=bottom]:h-[92dvh] data-[side=bottom]:max-w-none data-[side=bottom]:rounded-t-2xl flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0"
       >
@@ -216,4 +221,4 @@ export function QueueSheet({ open, onOpenChange }: Props) {
       </SheetContent>
     </Sheet>
   );
-}
+});

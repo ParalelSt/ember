@@ -222,6 +222,33 @@ impl Drop for PulseStream {
 }
 
 impl SoundServer for PulseServer {
+    fn probe(&self) -> bool {
+        let spec = sample_spec(2, 48_000);
+        let attr = buffer_attr(2, 48_000);
+        let mut error: c_int = 0;
+        // SAFETY: as in `open`: valid C strings or NULL, live structs.
+        let conn = unsafe {
+            (self.lib.new)(
+                std::ptr::null(),
+                self.app_name.as_ptr(),
+                PA_STREAM_PLAYBACK,
+                std::ptr::null(),
+                self.stream_name.as_ptr(),
+                &spec,
+                std::ptr::null(),
+                &attr,
+                &mut error,
+            )
+        };
+        if conn.is_null() {
+            return false;
+        }
+        // SAFETY: just made, used by no one else, freed once. Nothing was
+        // written, so nothing sounds.
+        unsafe { (self.lib.free)(conn) };
+        true
+    }
+
     fn open(&self, tap: Tap, on_lost: OnLost) -> Result<Box<dyn Any>, (String, Tap, OnLost)> {
         let (channels, rate) = (tap.channels(), tap.sample_rate());
         let spec = sample_spec(channels, rate);

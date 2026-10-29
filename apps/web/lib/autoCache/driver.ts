@@ -1,5 +1,6 @@
 import type { PlaybackContext, Track } from '../../types/track';
 import type { CacheAdapter } from './adapter';
+import { isLiveTrack } from '../radio/station';
 import type { Conditions } from './conditions';
 import {
   POLICY,
@@ -116,7 +117,9 @@ export function createAutoCacheDriver(deps: DriverDeps): AutoCacheDriver {
     }
     const stats = adapter.stats();
     return {
-      queue: p.queue,
+      // A live station is never downloaded ahead: it has no end. Without an
+      // address the policy passes it over.
+      queue: p.queue.some(isLiveTrack) ? p.queue.map((t) => (isLiveTrack(t) ? { ...t, streamUrl: '' } : t)) : p.queue,
       index: p.index,
       loopMode: p.loopMode,
       context: p.context,

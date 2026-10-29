@@ -8,10 +8,19 @@ import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { isUnavailable } from '@/lib/playback/queueNav';
 import { serverUnreachable } from '@/lib/playback/serverReach';
+import { isLiveTrack } from '@/lib/radio/station';
+import { GATEWAY_STATUSES } from '@/lib/connectionBlip';
 
-/** api errors carry the HTTP status of the answer; a network failure has none. */
+/** api errors carry the HTTP status of the answer; a network failure has
+ *  none. A gateway answering for Ember (`answered`: the Funnel's 502 while
+ *  the server restarts) is an answer too, so a restart stops the song with
+ *  "tap to retry" instead of taking the offline way to a downloaded song.
+ *  A Wi-Fi sign-in page's 200 is not: the internet is out of reach, so that
+ *  one goes offline and plays what is on the device. */
 function hasHttpStatus(e: unknown): boolean {
-  return typeof e === 'object' && e !== null && typeof (e as { status?: unknown }).status === 'number';
+  if (typeof e !== 'object' || e === null) return false;
+  const { status, answered } = e as { status?: unknown; answered?: unknown };
+  return typeof status === 'number' || (typeof answered === 'number' && GATEWAY_STATUSES.includes(answered));
 }
 
 /** The engine failed on the current track for a reason other than "we
@@ -74,6 +83,12 @@ export function useAvailabilityProbe(
     // Signed out (a shared /track page) the server won't answer: it just
     // would not load (bughunt V5).
     if (!signedIn) {
+      onStillPlayable?.(cur);
+      return;
+    }
+    // A live station is never flagged unavailable (the host keeps no record
+    // of one): it would not load right now, and the listener can retry.
+    if (isLiveTrack(cur)) {
       onStillPlayable?.(cur);
       return;
     }

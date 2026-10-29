@@ -2,7 +2,7 @@
  *  Drawer. Icons are referenced by name, not by component, so this file
  *  stays free of React and Next like the rest of lib/ (a plain Node test
  *  can import it); NavLinks maps names to icon components. */
-export type NavIcon = 'home' | 'search' | 'library' | 'settings' | 'admin';
+export type NavIcon = 'home' | 'search' | 'library' | 'radio' | 'settings' | 'admin';
 
 export interface NavItem {
   href: string;
@@ -14,6 +14,7 @@ export const BASE_NAV: NavItem[] = [
   { href: '/', label: 'Home', icon: 'home' },
   { href: '/search', label: 'Search', icon: 'search' },
   { href: '/library', label: 'Library', icon: 'library' },
+  { href: '/radio', label: 'Radio', icon: 'radio' },
   { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
 

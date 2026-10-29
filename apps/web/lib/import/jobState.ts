@@ -104,16 +104,18 @@ export function playlistPosition(sourcePosition: number): number {
   return sourcePosition + 1;
 }
 
-/** The job's counts from its items: accepted and resolved both count as
- *  added. */
+/** The statuses the job's counts are made of (countsFrom). */
+export const COUNTED_STATUSES = ['accepted', 'resolved', 'review', 'missing'] as const satisfies readonly ItemStatus[];
+
+/** The job's counts from how many items have each status: accepted and
+ *  resolved both count as added. */
+export function countsFrom(n: Partial<Record<ItemStatus, number>>): { accepted: number; review: number; missing: number } {
+  return { accepted: (n.accepted ?? 0) + (n.resolved ?? 0), review: n.review ?? 0, missing: n.missing ?? 0 };
+}
+
+/** The job's counts from its items. */
 export function countItems(statuses: ItemStatus[]): { accepted: number; review: number; missing: number } {
-  let accepted = 0;
-  let review = 0;
-  let missing = 0;
-  for (const s of statuses) {
-    if (s === 'accepted' || s === 'resolved') accepted++;
-    else if (s === 'review') review++;
-    else if (s === 'missing') missing++;
-  }
-  return { accepted, review, missing };
+  const n: Partial<Record<ItemStatus, number>> = {};
+  for (const s of statuses) n[s] = (n[s] ?? 0) + 1;
+  return countsFrom(n);
 }

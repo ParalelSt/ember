@@ -10,6 +10,7 @@ import { PlayerProvider, usePlayer } from './PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { makeFakeBackend, makeTrack, type FakeBackend } from '@/test-utils/fakeBackend';
 import type { AudioBackendEvents, LoadOptions } from '@/lib/playback/types';
+import { addToQueue } from '@/lib/playback/addToQueue';
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
@@ -250,5 +251,31 @@ describe('the history the queue sheet shows', () => {
     act(() => controls!.playBack(5));
     expect(at()).toBe(2);
     expect(played()).toEqual([A.id]);
+  });
+});
+
+describe('another song of the same playlist after Add to queue', () => {
+  const playlist = { type: 'playlist', playlistId: 'p1', playlistName: 'Mine' } as const;
+
+  it('keeps the songs queued by hand next, and counts it as the same list', () => {
+    usePlayerStore.setState({ context: playlist });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    // "Add to queue" E while A plays: A, E, B, C, D.
+    act(() => usePlayerStore.setState(addToQueue(usePlayerStore.getState(), E)!));
+    act(() => controls!.playTrack(C, [A, B, C, D], playlist));
+    // Spotify's way: the queued song stays next, after the song tapped.
+    expect(ids()).toEqual([A.id, B.id, C.id, E.id, D.id]);
+    expect(at()).toBe(2);
+    expect(usePlayerStore.getState().baseCount).toBe(5);
+    // A jump within the list: Previous goes back to A.
+    expect(usePlayerStore.getState().played).toEqual([A.id]);
+  });
+
+  it('a different list still starts a fresh queue', () => {
+    usePlayerStore.setState({ context: playlist });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => usePlayerStore.setState(addToQueue(usePlayerStore.getState(), E)!));
+    act(() => controls!.playTrack(B, [C, A, D, B], { type: 'playlist', playlistId: 'p2', playlistName: 'Other' }));
+    expect(ids()).toEqual([C.id, A.id, D.id, B.id]);
   });
 });

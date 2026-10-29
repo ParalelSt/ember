@@ -90,8 +90,8 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         steps: [
           'In Spotify, go to Account, then Privacy settings.',
           'Choose "Download your data" and ask for it. Spotify emails you in a few days.',
-          'Unzip what arrives and find the file called YourLibrary.json.',
-          'Come back here and choose that file below.',
+          'Download the zip from the email. No need to unzip it.',
+          'Come back here and choose that zip below (or the YourLibrary.json inside it).',
         ],
         notes: [MATCHED_BY_NAME],
       },
@@ -227,11 +227,4 @@ export function serviceById(id: TransferServiceId): TransferService {
 export function routesFor(service: TransferService, destination: JobKind): TransferRoute[] {
   const offered = service.routes.filter((r) => !r.likedOnly || destination === 'liked');
   return destination === 'liked' ? offered : [...offered.filter((r) => r.playlistFirst), ...offered.filter((r) => !r.playlistFirst)];
-}
-
-/** The one a service falls to when there is nothing to ask: the first way
- *  in that is still on offer. */
-export function soleRoute(service: TransferService, destination: JobKind): TransferRoute | null {
-  const routes = routesFor(service, destination);
-  return routes.length === 1 ? routes[0] : null;
 }

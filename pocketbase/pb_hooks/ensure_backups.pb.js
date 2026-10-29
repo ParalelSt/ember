@@ -22,7 +22,7 @@
 // booting. See SETUP.md, "Backups".
 
 onAfterBootstrap((e) => {
-  const DEFAULT_CRON = "0 4 * * *"; // 04:00 every night, server time
+  const DEFAULT_CRON = "0 4 * * *"; // 04:00 every night, UTC (PocketBase runs its cron in UTC)
   const DEFAULT_KEEP = 7;
   const MARKER = "ember_backups_defaults";
 

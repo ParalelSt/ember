@@ -298,6 +298,20 @@ pub trait OutputBackend: Send + 'static {
     fn take_note(&self) -> Option<String> {
         None
     }
+
+    /// The device `open(None)` is meant to reach, when it can fall back to
+    /// another: on Linux the sound server (see `server`). `None` where the
+    /// system default is simply whatever the OS says.
+    fn default_id(&self) -> Option<String> {
+        None
+    }
+
+    /// Whether that device would open now, asked while the router plays on
+    /// a fallback (see `RouterConfig::server_retry`). Must not touch what is
+    /// playing.
+    fn default_ready(&self) -> bool {
+        false
+    }
 }
 
 /// The real machine. On Linux that is the sound server first, then ALSA
@@ -498,6 +512,10 @@ pub struct RouterConfig {
     pub poll: Option<Duration>,
     /// Whether a device missing from the list is gone (see `plan`).
     pub trust_absence: bool,
+    /// How often to check, while the system default could not be opened and
+    /// a fallback plays, whether it would open now (`None`: never). Found
+    /// back, it is moved to at the next song (`Cmd::SongBoundary`).
+    pub server_retry: Option<Duration>,
 }
 
 impl RouterConfig {
@@ -508,9 +526,13 @@ impl RouterConfig {
     /// the webview asking.
     pub fn for_this_os() -> Self {
         if cfg!(any(target_os = "macos", windows)) {
-            Self { poll: Some(Duration::from_secs(2)), trust_absence: true }
+            Self { poll: Some(Duration::from_secs(2)), trust_absence: true, server_retry: None }
         } else {
-            Self { poll: None, trust_absence: false }
+            // Without a poll, a launch while the sound server was not up yet
+            // (or a server restart) left ALSA playing for the whole session:
+            // the laptop speaker, while the desktop had chosen headphones.
+            // Asking the server is cheap, unlike listing ALSA devices.
+            Self { poll: None, trust_absence: false, server_retry: Some(Duration::from_secs(30)) }
         }
     }
 }
@@ -527,6 +549,12 @@ enum Cmd {
     Lost(u64),
     /// Look at the devices now. The reply, if any, is sent once done.
     Tick(Option<mpsc::Sender<()>>),
+    /// On a fallback: check whether the system default would open again
+    /// (see `RouterConfig::server_retry`). The reply, if any, once done.
+    Recheck(Option<mpsc::Sender<()>>),
+    /// A song is about to start: the moment to move back to the system
+    /// default, if a recheck found it back.
+    SongBoundary,
     Shutdown,
 }
 
@@ -610,11 +638,22 @@ impl OutputRouter {
         *slot = Some(logger);
     }
 
+    /// A new song is starting (see `Cmd::SongBoundary`). Never waits.
+    pub fn song_boundary(&self) {
+        let _ = self.tx.send(Cmd::SongBoundary);
+    }
+
     /// One poll, now, and returns once it is done: tests drive the router
     /// with this instead of waiting out the poll interval.
     #[cfg(test)]
     pub(crate) fn tick_now(&self) {
         let _ = self.ask(|reply| Cmd::Tick(Some(reply)));
+    }
+
+    /// One recheck of the system default, now (see `tick_now`).
+    #[cfg(test)]
+    pub(crate) fn recheck_now(&self) {
+        let _ = self.ask(|reply| Cmd::Recheck(Some(reply)));
     }
 }
 
@@ -652,6 +691,8 @@ pub fn start(backend: Box<dyn OutputBackend>, config: RouterConfig) -> Result<(M
                 shared: thread_shared,
                 config,
                 backoff: Backoff::default(),
+                on_fallback: false,
+                default_back: false,
             };
             let devices = router.backend.devices();
             if let Err(e) = router.open(None, &devices) {
@@ -715,18 +756,31 @@ struct Router {
     shared: Arc<Shared>,
     config: RouterConfig,
     backoff: Backoff,
+    /// The stream open is a fallback for a system default that would not
+    /// open (see `OutputBackend::default_id`).
+    on_fallback: bool,
+    /// A recheck found that default would open again.
+    default_back: bool,
 }
 
 impl Router {
     fn run(&mut self, rx: mpsc::Receiver<Cmd>) {
         let mut next_poll = self.config.poll.map(|p| Instant::now() + p);
+        let mut next_recheck = self.config.server_retry.map(|p| Instant::now() + p);
         loop {
-            let cmd = match next_poll {
+            let wake = [next_poll, next_recheck].into_iter().flatten().min();
+            let cmd = match wake {
                 Some(at) => match rx.recv_timeout(at.saturating_duration_since(Instant::now())) {
                     Ok(cmd) => cmd,
                     Err(mpsc::RecvTimeoutError::Timeout) => {
-                        next_poll = self.config.poll.map(|p| Instant::now() + p);
-                        Cmd::Tick(None)
+                        let now = Instant::now();
+                        if next_recheck.is_some_and(|t| now >= t) {
+                            next_recheck = self.config.server_retry.map(|p| now + p);
+                            Cmd::Recheck(None)
+                        } else {
+                            next_poll = self.config.poll.map(|p| now + p);
+                            Cmd::Tick(None)
+                        }
                     }
                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 },
@@ -762,8 +816,41 @@ impl Router {
                         let _ = reply.send(());
                     }
                 }
+                Cmd::Recheck(reply) => {
+                    self.recheck();
+                    if let Some(reply) = reply {
+                        let _ = reply.send(());
+                    }
+                }
+                Cmd::SongBoundary => self.at_song_boundary(),
                 Cmd::Shutdown => break,
             }
+        }
+    }
+
+    /// On a fallback, asks whether the system default would open now. Only
+    /// remembered: the move waits for the next song.
+    fn recheck(&mut self) {
+        if !self.on_fallback || self.default_back || !self.backend.default_ready() {
+            return;
+        }
+        self.default_back = true;
+        let default = self.backend.default_id().unwrap_or_default();
+        self.log("INFO", &format!("{default} is back: playing there from the next song"));
+    }
+
+    /// Between songs: back to the system default, if a recheck found it
+    /// back. Nothing is playing, so the move cannot cut into a song. A
+    /// recheck answered first, so a default that is still dead is not
+    /// reopened every song; a move that lands clears the backoff (`open`).
+    fn at_song_boundary(&mut self) {
+        if !(self.on_fallback && self.default_back) {
+            return;
+        }
+        self.default_back = false;
+        let devices = self.backend.devices();
+        if let Err(e) = self.open(None, &devices) {
+            self.log("WARN", &format!("could not go back to the system default: {e}"));
         }
     }
 
@@ -806,6 +893,8 @@ impl Router {
             self.log("WARN", &note);
         }
         let (opened, stream) = opened?;
+        self.on_fallback = target.is_none() && self.backend.default_id().is_some_and(|d| d != opened);
+        self.default_back = false;
         self.last_tap = id;
         self.active_tap.store(id, Ordering::SeqCst);
         drop(self.stream.replace(stream));

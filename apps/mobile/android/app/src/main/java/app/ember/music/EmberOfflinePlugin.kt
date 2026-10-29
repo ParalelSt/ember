@@ -136,7 +136,8 @@ class EmberOfflinePlugin : Plugin() {
         val id = call.getString("id") ?: return reject(call, "pin", "id required")
         val name = call.getString("name") ?: id
         val arr = call.getArray("tracks") ?: JSArray()
-        val tracks = (0 until arr.length()).map { arr.getJSONObject(it) }
+        val tracks = runCatching { (0 until arr.length()).map { arr.getJSONObject(it) } }
+            .getOrElse { return reject(call, "pin", "tracks must be songs") }
         // Pinning again undoes an earlier unpin/cancel: without this the id stays
         // in `cancelled` (only a running drain clears that set), and the service
         // would skip the pin forever. Same for `failed`, so a retry is possible.
@@ -144,7 +145,7 @@ class EmberOfflinePlugin : Plugin() {
         OfflineDownloadService.failed.remove(id)
         OfflineDownloadService.failedReason.remove(id)
         requestNotificationsIfNeeded()
-        store.upsertPin(id, name, tracks)
+        if (!saving(call, "pin") { store.upsertPin(id, name, tracks) }) return
         OfflineDownloadService.start(context)
         call.resolve(status())
     }
@@ -172,7 +173,7 @@ class EmberOfflinePlugin : Plugin() {
     @PluginMethod fun unpin(call: PluginCall) {
         val id = call.getString("id") ?: return reject(call, "unpin", "id required")
         OfflineDownloadService.cancelled.add(id)
-        store.removePin(id)
+        if (!saving(call, "unpin") { store.removePin(id) }) return
         OfflineDownloadService.failed.remove(id)
         OfflineDownloadService.failedReason.remove(id)
         call.resolve(status()); notifyListeners("offline", status())
@@ -181,15 +182,29 @@ class EmberOfflinePlugin : Plugin() {
     @PluginMethod fun cancel(call: PluginCall) {
         val id = call.getString("id") ?: return reject(call, "cancel", "id required")
         OfflineDownloadService.cancel(context, id)
-        store.removePin(id)
+        if (!saving(call, "cancel") { store.removePin(id) }) return
         call.resolve(status()); notifyListeners("offline", status())
     }
 
     @PluginMethod fun clearAll(call: PluginCall) {
         store.pins().forEach { OfflineDownloadService.cancelled.add(it.id) }
-        store.clearAll(); OfflineDownloadService.failed.clear(); OfflineDownloadService.failedReason.clear()
+        if (!saving(call, "clearAll") { store.clearAll() }) return
+        OfflineDownloadService.failed.clear(); OfflineDownloadService.failedReason.clear()
         call.resolve(status()); notifyListeners("offline", status())
     }
+
+    /** A change to the downloads index, rejected when it fails. OfflineStore
+     *  rethrows a failed save (a full disk) so the caller knows, and whatever
+     *  a plugin method throws Capacitor rethrows on its plugin thread: the
+     *  app went down, music and all. False when the call was rejected. */
+    private inline fun saving(call: PluginCall, method: String, change: () -> Unit): Boolean =
+        try {
+            change()
+            true
+        } catch (e: Exception) {
+            reject(call, method, e.message ?: e.javaClass.simpleName)
+            false
+        }
 
     /** Reject AND report. A rejected call reaches the WebView as a bare promise
      *  rejection that the caller usually swallows, so the reason would never

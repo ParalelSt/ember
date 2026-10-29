@@ -74,6 +74,88 @@ describe('useSessionHost (app shell, no session page open)', () => {
     expect(next).toHaveBeenCalled();
   });
 
+  it('does not ask for guest commands while the device is offline, and asks again once it is back', async () => {
+    api.getSession.mockResolvedValue(state());
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.getSession).toHaveBeenCalled());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    // Each try would only fail and fill the log the bug report carries.
+    expect(api.consumeSessionCommands).not.toHaveBeenCalled();
+    onLine.mockReturnValue(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(api.consumeSessionCommands).toHaveBeenCalled();
+    onLine.mockRestore();
+  });
+
+  it('publishes the playing row to a NEW carlist even when it is the same row number as the last one', async () => {
+    api.getSession.mockImplementation(async (id: string) => state({ id, nowIndex: 0 }));
+    usePlayerStore.setState({ queue: [a, b], index: 1 });
+    renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenCalledWith('s1', 1));
+    // That carlist ends; the host starts another one, still on song B.
+    act(() => useSessionStore.setState({ hostingSessionId: 's2' }));
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenCalledWith('s2', 1));
+  });
+
+  it('tells the server again when it ends up on a row the host has already left', async () => {
+    // Forward to B and straight back to A inside one poll: the poll still
+    // said A, so going back sent nothing, then the server took B. The row
+    // was remembered as told, and guests saw B (and Play next landed after
+    // it) for the rest of the song.
+    let serverNow = 0;
+    api.getSession.mockImplementation(async () => state({ nowIndex: serverNow }));
+    api.publishSessionNow.mockImplementation(async (_id: string, row: number) => {
+      serverNow = row;
+      return { ok: true };
+    });
+    usePlayerStore.setState({ queue: [a, b], index: 0 });
+    const { rerender } = renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.getSession).toHaveBeenCalled());
+
+    act(() => usePlayerStore.setState({ index: 1 }));
+    rerender();
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenLastCalledWith('s1', 1));
+    act(() => usePlayerStore.setState({ index: 0 }));
+    rerender();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500);
+    });
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenLastCalledWith('s1', 0));
+    expect(serverNow).toBe(0);
+  });
+
+  it('tells the server again once a send that failed (no signal) can get through', async () => {
+    // The song changed in a tunnel: the send failed, and nothing sent it
+    // again until the NEXT song, so guests saw the old song (and their Play
+    // next went in before the one playing, where it never played).
+    let serverNow = 0;
+    api.getSession.mockImplementation(async () => state({ nowIndex: serverNow }));
+    api.publishSessionNow.mockRejectedValueOnce(new Error('offline'));
+    api.publishSessionNow.mockImplementation(async (_id: string, row: number) => {
+      serverNow = row;
+      return { ok: true };
+    });
+    usePlayerStore.setState({ queue: [a, b], index: 0 });
+    const { rerender } = renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.getSession).toHaveBeenCalled());
+
+    act(() => usePlayerStore.setState({ index: 1 }));
+    rerender();
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenCalledTimes(1));
+    expect(serverNow).toBe(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4500);
+    });
+    await waitFor(() => expect(serverNow).toBe(1));
+  });
+
   it('does nothing while this device hosts nothing', async () => {
     useSessionStore.setState({ hostingSessionId: null });
     renderHook(() => useSessionHost(), { wrapper });

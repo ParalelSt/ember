@@ -99,7 +99,7 @@ function renderOverlay(withPlayer = false) {
       <button type="button" data-testid="elsewhere">Play</button>
       <SearchOverlayContainer />
       {withPlayer && (
-        <PhonePlayerBar track={makeTrack({ title: 'Currently playing' })} playing position={10} duration={191}
+        <PhonePlayerBar track={makeTrack({ title: 'Currently playing' })} playing duration={191}
           onToggle={playback.toggle} onNext={playback.next} onOpen={playback.open} onSeek={playback.seek} />
       )}
     </QueryClientProvider>,
@@ -459,6 +459,29 @@ describe('SearchOverlayContainer, desktop dropdown', () => {
 
     expect(screen.queryByPlaceholderText('What do you want to listen to?')).toBeNull();
     expect(panel()).toBeNull();
+  });
+
+  // "/" and the sidebar's Search did nothing there: they opened a panel
+  // that stands down on /search, and left the flag up behind it.
+  it('on /search, "/" and the sidebar Search put the caret in the page\'s own box', () => {
+    pathname.value = '/search';
+    useUiStore.setState({ searchOpen: false });
+    const page = document.createElement('input');
+    page.setAttribute('data-search-page-box', '');
+    document.body.appendChild(page);
+    try {
+      renderOverlay();
+      fireEvent.keyDown(window, { key: '/' });
+      expect(page).toHaveFocus();
+      expect(useUiStore.getState().searchOpen).toBe(false);
+
+      page.blur();
+      act(() => useUiStore.getState().setSearchOpen(true));
+      expect(page).toHaveFocus();
+      expect(useUiStore.getState().searchOpen).toBe(false);
+    } finally {
+      page.remove();
+    }
   });
 });
 

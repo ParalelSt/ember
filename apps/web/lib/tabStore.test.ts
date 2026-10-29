@@ -7,13 +7,12 @@ import {
   backfillTabRows,
   canDelete,
   canView,
-  deletePrivateTabs,
+  deleteMember,
   findTabs,
   hintsFor,
   isRetired,
   mapTab,
   matchesQuery,
-  orderSources,
   resetBackfill,
   songKeyOf,
   sortTabs,
@@ -105,23 +104,12 @@ describe('source priority', () => {
     expect(sorted.map((r) => r.id)).toEqual(['f-new', 'f-old']);
   });
 
-  it('orders the chain file > Songsterr link', () => {
-    const f = mapTab(row({ id: 'f', kind: 'file', file: 'a.gp5' }), ALICE);
-    const link = { id: 42, artist: 'A', title: 'B', hasChords: false, instruments: [], url: 'https://x' };
-    expect(orderSources([f], [link]).map((s) => s.type)).toEqual(['file', 'songsterr']);
-    expect(orderSources([], [link]).map((s) => s.type)).toEqual(['songsterr']);
-  });
-
-  it('a pasted text tab sits after files, before Songsterr', () => {
+  it('a pasted text tab sits after files', () => {
     const sorted = sortTabs([
       row({ id: 'p', kind: 'pasted', created: '2026-09-04' }),
       row({ id: 'f', kind: 'file', created: '2026-09-01' }),
     ]);
     expect(sorted.map((r) => r.id)).toEqual(['f', 'p']);
-    const p = mapTab(row({ id: 'p', kind: 'pasted', file: 'abc.alphatex', format: 'alphatex' }), ALICE);
-    const f = mapTab(row({ id: 'f', kind: 'file', file: 'a.gp5' }), ALICE);
-    const link = { id: 42, artist: 'A', title: 'B', hasChords: false, instruments: [], url: 'https://x' };
-    expect(orderSources([p, f], [link]).map((s) => s.type)).toEqual(['file', 'pasted', 'songsterr']);
   });
 
   it('a pasted row maps to kind pasted, loaded through the file download route', () => {
@@ -275,15 +263,44 @@ describe('Songsterr hints', () => {
 });
 
 describe('deleting a member (bughunt X10)', () => {
-  it('removes only their private tabs; shared ones and other people’s stay', async () => {
-    const { pb, rows } = fakePocketBase({
-      tabs: [
-        { id: 'mine-private', user: 'alice', shared: false, kind: 'file', file: 'a.gp5' },
-        { id: 'mine-shared', user: 'alice', shared: true, kind: 'file', file: 'b.gp5' },
-        { id: 'bobs-private', user: 'bob', shared: false, kind: 'file', file: 'c.gp5' },
-      ],
-    });
-    expect(await deletePrivateTabs(pb, 'alice')).toBe(1);
+  /** The fake with PocketBase's own behaviour on a member delete: their
+   *  tabs' optional user link is emptied. `fail` makes the delete refuse. */
+  const withMembers = (tabs: Record<string, unknown>[], fail = false) => {
+    const fake = fakePocketBase({ users: [{ id: 'alice' }, { id: 'bob' }], tabs });
+    const pb = {
+      ...fake.pb,
+      collection: (name: string) => {
+        const col = fake.pb.collection(name);
+        if (name !== 'users') return col;
+        return {
+          ...col,
+          delete: async (id: string) => {
+            if (fail) throw Object.assign(new Error('PocketBase is restarting'), { status: 0 });
+            await col.delete(id);
+            for (const t of fake.rows.get('tabs')!) if (t.user === id) t.user = '';
+            return true;
+          },
+        };
+      },
+    } as typeof fake.pb;
+    return { pb, rows: fake.rows };
+  };
+
+  it('removes the member and only their private tabs; shared ones and other people’s stay', async () => {
+    const { pb, rows } = withMembers([
+      { id: 'mine-private', user: 'alice', shared: false, kind: 'file', file: 'a.gp5' },
+      { id: 'mine-shared', user: 'alice', shared: true, kind: 'file', file: 'b.gp5' },
+      { id: 'bobs-private', user: 'bob', shared: false, kind: 'file', file: 'c.gp5' },
+    ]);
+    expect(await deleteMember(pb, 'alice')).toBe(1);
+    expect(rows.get('users')!.map((r) => r.id)).toEqual(['bob']);
     expect(rows.get('tabs')!.map((r) => r.id)).toEqual(['mine-shared', 'bobs-private']);
+  });
+
+  it('a delete that fails leaves the member their private tabs', async () => {
+    const { pb, rows } = withMembers([{ id: 'mine-private', user: 'alice', shared: false, kind: 'file', file: 'a.gp5' }], true);
+    await expect(deleteMember(pb, 'alice')).rejects.toThrow('restarting');
+    expect(rows.get('users')!.map((r) => r.id)).toEqual(['alice', 'bob']);
+    expect(rows.get('tabs')!.map((r) => r.id)).toEqual(['mine-private']);
   });
 });

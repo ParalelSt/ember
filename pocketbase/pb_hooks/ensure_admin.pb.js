@@ -37,7 +37,13 @@ onAfterBootstrap((e) => {
   if (existing) {
     if (existing.get("is_admin") !== true) {
       existing.set("is_admin", true);
-      dao.saveRecord(existing);
+      // A failed save must not stop PocketBase from booting: warn and carry
+      // on, the next boot tries again (bughunt X11).
+      try {
+        dao.saveRecord(existing);
+      } catch (err) {
+        console.warn("[ensure_admin] could not make " + email + " an admin again: " + err);
+      }
     }
     return;
   }

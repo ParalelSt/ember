@@ -189,3 +189,50 @@ describe('setPosition', () => {
     expect(persisted.state?.positionAt).toBeUndefined();
   });
 });
+
+describe('reportPosition', () => {
+  it('moves the playhead without saving the whole queue each time', () => {
+    // The player reports several times a second; every report used to
+    // serialize the persisted slice (a Liked queue of thousands of songs)
+    // into localStorage. usePositionPersistence saves it, through
+    // setPosition, about once a second and on pause and leave.
+    const queue = Array.from({ length: 2000 }, (_, i) => track(`t${i}`));
+    usePlayerStore.setState({ queue, index: 0 });
+    const write = vi.spyOn(localStorage, 'setItem');
+    const now = vi.spyOn(performance, 'now').mockReturnValue(500);
+    for (let s = 1; s <= 10; s += 0.25) usePlayerStore.getState().reportPosition(s);
+    expect(write).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().position).toBe(10);
+    expect(usePlayerStore.getState().positionAt).toBe(500);
+
+    usePlayerStore.getState().setPosition(10);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}').state.position).toBe(10);
+    write.mockRestore();
+    now.mockRestore();
+  });
+
+  it('leaves the next save with everything that changed meanwhile', () => {
+    usePlayerStore.getState().setPosition(3);
+    usePlayerStore.getState().reportPosition(7);
+    usePlayerStore.getState().setVolume(0.4);
+    const saved = JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}').state;
+    expect(saved).toMatchObject({ position: 7, volume: 0.4 });
+  });
+});
+
+describe('previewVolume', () => {
+  it('follows a slider drag without saving the whole queue at every step', () => {
+    usePlayerStore.setState({ queue: Array.from({ length: 2000 }, (_, i) => track(`t${i}`)), index: 0, volume: 0.25 });
+    const write = vi.spyOn(localStorage, 'setItem');
+    for (let v = 0.3; v <= 0.9; v += 0.05) usePlayerStore.getState().previewVolume(v);
+    usePlayerStore.getState().previewVolume(1.5);
+    expect(write).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().volume).toBe(1);
+    // The drag's end saves it.
+    usePlayerStore.getState().setVolume(0.9);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}').state.volume).toBe(0.9);
+    write.mockRestore();
+  });
+});

@@ -13,6 +13,8 @@ vi.mock('next/link', () => ({
 }));
 
 const state = vi.hoisted(() => ({
+  /** The seed Home asked recommendations for. */
+  seed: undefined as string | undefined,
   focus: null as string | null,
   desktop: false,
   history: [] as Track[],
@@ -43,7 +45,10 @@ vi.mock('@/hooks/useLibrary', () => ({
   useQueryHistory: () => ({ data: state.history }),
   useQueryLikes: () => ({ data: state.liked }),
   useQueryTrending: () => ({ data: state.trending, isLoading: state.trendingLoading }),
-  useQueryRecommended: () => ({ data: state.recommended, isLoading: false }),
+  useQueryRecommended: (seed: string | undefined) => {
+    state.seed = seed;
+    return { data: state.recommended, isLoading: false };
+  },
   useQueryCharts: () => ({ data: state.charts }),
   useQueryMixes: () => ({ data: state.mixes }),
 }));
@@ -101,6 +106,7 @@ const headings = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h
 beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(state, {
+    seed: undefined,
     focus: null,
     desktop: false,
     history: makeTracks('hist', 4),
@@ -666,5 +672,27 @@ describe('Your mixes on Home', () => {
     state.mixes = someMixes();
     render(<HomePage />);
     expect(screen.getByRole('region', { name: 'Your mixes' }).querySelector('[data-row-shelf="wide"]')).not.toBeNull();
+  });
+});
+
+describe('Because you played: the seed', () => {
+  const upload = (n: number): Track =>
+    ({ id: `upload:u${n}`, source: 'upload', sourceId: 'abcdefghijklmno', title: `My demo ${n}`, artist: 'Me' }) as Track;
+
+  // Only a YouTube video can seed radio: an upload's id made the server
+  // answer today's chart, shown as "Because you played <your upload>".
+  it('grows from the last YouTube song played, not an upload played after it', () => {
+    state.history = [upload(0), ...makeTracks('hist', 2)];
+    render(<HomePage />);
+    expect(state.seed).toBe('hist0');
+    expect(screen.getAllByText('Because you played "hist song 0"').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Because you played "My demo/)).toBeNull();
+  });
+
+  it('with only uploads played, asks for nothing and shows no Because you played', () => {
+    state.history = [upload(0), upload(1)];
+    render(<HomePage />);
+    expect(state.seed).toBeUndefined();
+    expect(screen.queryByText(/Because you played/)).toBeNull();
   });
 });

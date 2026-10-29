@@ -95,11 +95,6 @@ export function loadCastSdk(timeoutMs = 15_000): Promise<boolean> {
   return attempt;
 }
 
-/** Tests only. */
-export function _resetCastSdk(): void {
-  sdkLoad = null;
-}
-
 const IDLE_REASONS: Record<string, CastRemoteStatus['idleReason']> = {
   FINISHED: 'finished',
   ERROR: 'error',

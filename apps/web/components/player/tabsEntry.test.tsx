@@ -39,15 +39,14 @@ vi.mock('@/components/player/PlayerProvider', () => ({
   usePlayer: () => ({
     current: player.current,
     isPlaying: true,
-    position: 0,
     duration: 180,
-    volume: 1,
     toggle: player.toggle,
     next: player.next,
     prev: player.prev,
     seek: () => {},
     setVolume: () => {},
   }),
+  usePlayerPosition: () => 0,
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, toggle: () => {} }) }));
@@ -78,7 +77,7 @@ vi.mock('@/components/ui/dropdown-menu', () => {
 const Stub = vi.hoisted(() => () => null);
 vi.mock('@/components/player/QueueSheet', () => ({ QueueSheet: Stub }));
 vi.mock('@/components/player/EqualizerSheet', () => ({ EqualizerSheet: Stub }));
-vi.mock('@/components/player/SeekBar', () => ({ SeekBar: Stub }));
+vi.mock('@/components/player/SeekBar', () => ({ SeekBar: Stub, PlayheadSeekBar: Stub }));
 vi.mock('@/components/player/VolumeControl', () => ({ VolumeControl: Stub }));
 vi.mock('@/components/player/LyricsBody', () => ({ LyricsBody: Stub }));
 vi.mock('@/components/player/NowPlayingSummary', () => ({ NowPlayingSummary: Stub }));

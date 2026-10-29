@@ -145,6 +145,9 @@ export function TrackRow({
     <Artwork
       src={resolvedArtworkUrl}
       size="xs"
+      // A list can be thousands of rows (Liked, a long queue): covers off
+      // screen wait until they are scrolled near.
+      loading="lazy"
       className={cn(
         'rounded shrink-0 bg-art',
         !resolvedArtworkUrl && 'grid place-items-center text-foreground/20',

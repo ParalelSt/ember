@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
 
 export const DELETE = withRequestLog('likes/[trackId]', async (_req: NextRequest, ctx: RouteContext<'/api/likes/[trackId]'>) => {
   try {
@@ -26,7 +27,3 @@ export const DELETE = withRequestLog('likes/[trackId]', async (_req: NextRequest
     return fromError(e);
   }
 });
-
-function esc(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}

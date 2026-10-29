@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 import { findTabs, mapTab, songKeyOf } from '@/lib/tabStore';
-import { pickerLabel, sourceChipLabel } from '@/lib/tabSources';
+import { ratingLabel, sourceChipLabel } from '@/lib/tabSources';
 import { PoliteFetcher } from './polite';
 import { findOnline as findOnlineAll, MAX_TAB_PAGES, resetOnline } from './online';
 import { readJsStore } from './ug';
@@ -281,10 +281,10 @@ describe('fetched rows in the store', () => {
       votes: 512,
     });
     expect(sourceChipLabel(guitar)).toBe('From Ultimate Guitar, not lined up yet');
-    expect(pickerLabel(guitar)).toBe('Ultimate Guitar, Text tab, ★ 4.7 (512 votes)');
+    expect(ratingLabel(guitar.source!)).toBe('★ 4.7 (512 votes)');
     const bass = mapTab(rows.find((r) => r.source_id === '9100011')!, VIEWER);
     expect(sourceChipLabel(bass)).toBe('From Ultimate Guitar, bass, not lined up yet');
-    expect(pickerLabel(bass)).toBe('Ultimate Guitar, Bass tab, ★ 4.6 (140 votes)');
+    expect(ratingLabel(bass.source!)).toBe('★ 4.6 (140 votes)');
   });
 
   it('the files list (kind file) leaves fetched tabs out', async () => {

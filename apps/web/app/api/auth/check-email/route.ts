@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { limitCaller } from '@/lib/rateLimit';
+import { escapeFilterValue as escape } from '@/lib/pocketbase/filterValue';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -40,7 +41,3 @@ export const POST = withRequestLog('auth/check-email', async (req: NextRequest) 
     return fromError(e);
   }
 });
-
-function escape(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}

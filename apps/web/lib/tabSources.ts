@@ -63,35 +63,11 @@ export interface TabSummary {
   timing?: TabTiming | null;
 }
 
-export type TabSource =
-  | { type: 'file'; tab: TabSummary }
-  | { type: 'pasted'; tab: TabSummary }
-  | { type: 'fetched'; tab: TabSummary }
-  | { type: 'songsterr'; match: TabMatch };
-
-/** The source chain for a track, in the order the viewer tries them: a file
- *  someone added, then a pasted text tab, then a tab found online, then
- *  Songsterr's link-out. */
-export function orderSources(tabs: TabSummary[], matches: TabMatch[]): TabSource[] {
-  return [
-    ...tabs.filter((t) => t.kind === 'file').map((tab) => ({ type: 'file' as const, tab })),
-    ...tabs.filter((t) => t.kind === 'pasted').map((tab) => ({ type: 'pasted' as const, tab })),
-    ...tabs.filter((t) => t.kind === 'fetched').map((tab) => ({ type: 'fetched' as const, tab })),
-    ...matches.map((match) => ({ type: 'songsterr' as const, match })),
-  ];
-}
-
 /** Every tab the page can draw for a track: files, then pasted text tabs,
  *  then tabs found online. Anything else (a generated tab from an older
  *  server, still in a cached answer) is left out. */
 export function drawableTabs(tabs: TabSummary[]): TabSummary[] {
   return DRAWN_KINDS.flatMap((kind) => tabs.filter((t) => t.kind === kind));
-}
-
-/** The tab to show: the one the listener picked if it still exists, else
- *  the first in the chain. Null when there is nothing to draw. */
-export function pickTab(tabs: TabSummary[], chosenId: string | null): TabSummary | null {
-  return tabs.find((t) => t.id === chosenId) ?? tabs[0] ?? null;
 }
 
 function addedByLabel(tab: TabSummary): string {
@@ -130,30 +106,6 @@ export function sourceChipLabel(tab: TabSummary, instrument?: string): string {
   const scope = tab.shared ? 'shared' : 'private';
   if (tab.kind === 'pasted') return `Text tab pasted by ${addedByLabel(tab)}, ${scope}`;
   return `File added by ${addedByLabel(tab)}, ${scope}`;
-}
-
-/** One line per tab in the chip's picker: "Guitar Pro file, Aron, Guitar",
- *  "Text tab, Aron, Guitar", "Songsterr, Tab with rhythm, 3 instruments",
- *  "Ultimate Guitar, Text tab, ver 2, ★ 4.7 (1,371 votes)". */
-export function pickerLabel(tab: TabSummary): string {
-  const parts: string[] = [];
-  if (tab.kind === 'fetched' && tab.source?.site === 'songsterr') {
-    const n = tab.source.instruments?.length ?? 0;
-    parts.push(tab.source.siteLabel, 'Tab with rhythm');
-    if (n > 0) parts.push(`${n} instrument${n === 1 ? '' : 's'}`);
-  } else if (tab.kind === 'fetched' && tab.source) {
-    parts.push(tab.source.siteLabel, tab.source.part === 'bass' ? 'Bass tab' : 'Text tab');
-    if (tab.source.version > 1) parts.push(`ver ${tab.source.version}`);
-    const rating = ratingLabel(tab.source);
-    if (rating) parts.push(rating);
-  }
-  else {
-    const musicXml = tab.format === 'musicxml' || tab.format === 'mxl';
-    parts.push(tab.kind === 'pasted' ? 'Text tab' : musicXml ? 'MusicXML file' : 'Guitar Pro file');
-    parts.push(tab.mine ? 'you' : (tab.addedBy ?? 'someone'));
-    if (tab.instrument) parts.push(tab.instrument);
-  }
-  return parts.join(', ');
 }
 
 /** What the page shows when there is no tab to draw (the tab page's

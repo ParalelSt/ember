@@ -3,7 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 
 let fake: FakePb;
-vi.mock('@/lib/pocketbase/server', () => ({ createAdminClient: async () => fake.pb }));
+const logins = vi.hoisted(() => ({ count: 0 }));
+vi.mock('@/lib/pocketbase/server', () => ({
+  createAdminClient: async () => {
+    logins.count += 1;
+    return fake.pb;
+  },
+}));
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
 const {
@@ -49,5 +55,29 @@ describe('the unavailable flag in the tracks table', () => {
   it('an unknown reason reads as plain "unavailable"', async () => {
     fake = fakePocketBase({ tracks: [{ id: 'r1', external_id: 'youtube:gone0000001', unavailable_at: pbDate(Date.now()), unavailable_reason: 'weird' }] });
     expect(await freshUnavailableMark('youtube:gone0000001')).toMatchObject({ reason: 'unavailable' });
+  });
+});
+
+describe('the list behind the flags', () => {
+  it('is read once for requests that arrive together, not once each', async () => {
+    // Home asks charts, trending, recommended and mixes at once; each asks
+    // for the list, and with none cached each signed in as admin and read
+    // the whole list for itself.
+    fake = fakePocketBase({ tracks: [{ id: 'r1', external_id: 'youtube:gone0000001', unavailable_at: pbDate(Date.now()), unavailable_reason: 'removed' }] });
+    logins.count = 0;
+    const answers = await Promise.all([listUnavailableIds(), listUnavailableIds(), freshUnavailableMark('youtube:gone0000001'), listUnavailableIds()]);
+    expect(answers[0]).toEqual(new Set(['youtube:gone0000001']));
+    expect(answers[2]).toMatchObject({ reason: 'removed' });
+    expect(fake.calls.filter((c) => c.op === 'getFullList')).toHaveLength(1);
+    expect(logins.count).toBe(1);
+  });
+
+  it('a write made while the list is being read is not hidden by that read', async () => {
+    const now = Date.now();
+    fake = fakePocketBase({ tracks: [{ id: 'r1', external_id: 'youtube:gone0000001', unavailable_at: '', unavailable_reason: '' }] });
+    const reading = listUnavailableIds();
+    await markTrackUnavailable('youtube:gone0000001', 'removed');
+    await reading;
+    expect(await freshUnavailableMark('youtube:gone0000001', now + 1000)).toMatchObject({ reason: 'removed' });
   });
 });

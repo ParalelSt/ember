@@ -46,12 +46,16 @@ describe('serverReach', () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain(PROBE_PATH);
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'HEAD', cache: 'no-store' });
     expect(useAutoCacheStore.getState().online).toBe(false);
-    // Any answer counts, a 404 too.
+    // Any answer counts, a 404 too, once it holds for a second probe.
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
     await vi.advanceTimersByTimeAsync(PROBE_MS);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(useAutoCacheStore.getState().online).toBe(false);
+    await vi.advanceTimersByTimeAsync(PROBE_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(useAutoCacheStore.getState().online).toBe(true);
     await vi.advanceTimersByTimeAsync(10 * PROBE_MS);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('a second call while waiting starts no second watch', async () => {
@@ -67,5 +71,65 @@ describe('serverReach', () => {
     connectionOk();
     await vi.advanceTimersByTimeAsync(5 * PROBE_MS);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a probe that never answers is given up on, and the next one still goes', async () => {
+    // A dead pooled connection (a phone that changed networks) can leave a
+    // request waiting for minutes: the watch must not wait with it.
+    fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    })).mockResolvedValue(new Response(null, { status: 200 }));
+    serverUnreachable();
+    await vi.advanceTimersByTimeAsync(PROBE_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(3 * PROBE_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(useAutoCacheStore.getState().online).toBe(true);
+  });
+
+  it('a gateway answering for a server that is down is not the server back', async () => {
+    // The Tailscale Funnel answers 502 while Next restarts.
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 502 }))
+      .mockResolvedValueOnce(new Response(null, { status: 504 }))
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    serverUnreachable();
+    await vi.advanceTimersByTimeAsync(2 * PROBE_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(useAutoCacheStore.getState().online).toBe(false);
+    await vi.advanceTimersByTimeAsync(2 * PROBE_MS);
+    expect(useAutoCacheStore.getState().online).toBe(true);
+  });
+
+  it('a Wi-Fi sign-in page answering for the probe is not the server back, however often it answers', async () => {
+    // The page Ember asks for is an image; a captive portal answers every
+    // request with its own HTML (often after a redirect). Taken as the
+    // server, the player went online, the next song failed on the same page
+    // and it went offline again, every PROBE_MS.
+    fetchMock.mockImplementation(async () => {
+      const page = new Response('<html>Sign in to the Wi-Fi</html>', { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
+      Object.defineProperty(page, 'redirected', { value: true });
+      return page;
+    });
+    serverUnreachable();
+    await vi.advanceTimersByTimeAsync(6 * PROBE_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(useAutoCacheStore.getState().online).toBe(false);
+    expect(waitingForServer()).toBe(true);
+  });
+
+  it('one odd answer between failures does not flip the player online: it takes two in a row', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    serverUnreachable();
+    await vi.advanceTimersByTimeAsync(4 * PROBE_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(useAutoCacheStore.getState().online).toBe(false);
+    await vi.advanceTimersByTimeAsync(PROBE_MS);
+    expect(useAutoCacheStore.getState().online).toBe(true);
   });
 });

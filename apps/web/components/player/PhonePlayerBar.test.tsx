@@ -36,7 +36,7 @@ function setup() {
     onOpen: vi.fn(),
   };
   const view = render(
-    <PhonePlayerBar track={TRACK} playing position={92} duration={264} {...handlers} />,
+    <PhonePlayerBar track={TRACK} playing duration={264} {...handlers} />,
   );
   return { ...view, ...handlers };
 }
@@ -136,7 +136,7 @@ describe('PhonePlayerBar', () => {
 
   it('shows Play while paused', () => {
     render(
-      <PhonePlayerBar track={TRACK} playing={false} position={0} duration={264} onToggle={vi.fn()} onSeek={vi.fn()} onNext={vi.fn()} onOpen={vi.fn()} />,
+      <PhonePlayerBar track={TRACK} playing={false} duration={264} onToggle={vi.fn()} onSeek={vi.fn()} onNext={vi.fn()} onOpen={vi.fn()} />,
     );
     const play = screen.getByRole('button', { name: 'Play' });
     expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();

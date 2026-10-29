@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn() } }));
 
-const { default: proxy, isStaticAsset, isBlockedPbPath, isPbAuthPath, PB_AUTH_LIMIT } = await import('./proxy');
+const { default: proxy, isStaticAsset, isBlockedPbPath, isPbAuthPath, isPbSignUpPath, PB_AUTH_LIMIT, PB_SIGNUP_LIMIT } = await import('./proxy');
 const { _resetBuckets } = await import('./lib/rateLimitCore');
 
 /** A minimal stand-in for Next's NextURL: proxy() only reads pathname,
@@ -57,6 +57,21 @@ describe('proxy [bughunt W05]: unauthenticated /api/* gets 401 JSON, not a redir
       const res = await proxy(req(path));
       expect(res.status, path).toBe(200);
     }
+  });
+
+  it('leaves /api/version open for npm run host-check, and nothing next to it', async () => {
+    expect((await proxy(req('/api/version'))).status).toBe(200);
+    expect((await proxy(req('/api/versions-secret'))).status).toBe(401);
+  });
+
+  it('leaves the short /apk download address open with no session, and nothing next to it', async () => {
+    for (const path of ['/apk', '/api/android/latest-apk']) {
+      const res = await proxy(req(path));
+      expect(res.status, path).toBe(200);
+    }
+    expect((await proxy(req('/apkx'))).status).toBe(307);
+    expect((await proxy(req('/apk/other'))).status).toBe(307);
+    expect((await proxy(req('/api/android/latest-apk-secret'))).status).toBe(401);
   });
 
   it('keeps any other /api/android/ route behind sign-in', async () => {
@@ -287,6 +302,45 @@ describe('proxy [audit S4]: PocketBase sign-in and recovery are throttled per IP
     expect(isPbAuthPath('/pb/api/collections/users/auth-refresh')).toBe(false);
     expect(isPbAuthPath('/pb/api/collections/users/records')).toBe(false);
     expect(isPbAuthPath('/api/auth/check-email')).toBe(false);
+  });
+});
+
+// Sign-up is a users record create through /pb. It is not a sign-in (its
+// own budget, so a member's typos at the password never cost a newcomer
+// their Register), but it was not counted at all: anyone could try invited
+// emails there without check-email's limit (bughunt X1), and with no email
+// verification a right guess claims the invite.
+describe('proxy: sign-up through /pb is throttled per IP', () => {
+  afterEach(() => _resetBuckets());
+  const SIGN_UP = '/pb/api/collections/users/records';
+
+  it('lets a few attempts through, then answers 429 in PocketBase\'s error shape', async () => {
+    for (let i = 0; i < PB_SIGNUP_LIMIT.max; i++) {
+      expect((await proxy(req(SIGN_UP, { method: 'POST', ip: '203.0.113.20' }))).status).toBe(200);
+    }
+    const res = await proxy(req(SIGN_UP, { method: 'POST', ip: '203.0.113.20' }));
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(0);
+    const body = await res.json();
+    expect(body.code).toBe(429);
+    expect(body.message).toMatch(/Too many attempts/);
+  });
+
+  it('counts the users collection by id and odd spellings too', async () => {
+    const spellings = [SIGN_UP, '/pb/api/collections/_pb_users_auth_/records', '/PB//api/collections/USERS/records/', '/pb/api/collections/users/%72ecords'];
+    for (let i = 0; i < PB_SIGNUP_LIMIT.max; i++) {
+      await proxy(req(spellings[i % spellings.length], { method: 'POST', ip: '203.0.113.21' }));
+    }
+    for (const p of spellings) expect((await proxy(req(p, { method: 'POST', ip: '203.0.113.21' }))).status).toBe(429);
+  });
+
+  it('leaves reads, other collections and the sign-in budget alone', async () => {
+    for (let i = 0; i <= PB_SIGNUP_LIMIT.max; i++) await proxy(req(SIGN_UP, { method: 'POST', ip: '203.0.113.22' }));
+    expect((await proxy(req(SIGN_UP, { method: 'GET', ip: '203.0.113.22' }))).status).toBe(200);
+    expect((await proxy(req('/pb/api/collections/likes/records', { method: 'POST', ip: '203.0.113.22' }))).status).toBe(200);
+    expect((await proxy(req('/pb/api/collections/users/auth-with-password', { method: 'POST', ip: '203.0.113.22' }))).status).toBe(200);
+    expect(isPbSignUpPath('/pb/api/collections/users/records/abc123')).toBe(false);
+    expect(isPbSignUpPath('/api/collections/users/records')).toBe(false);
   });
 });
 

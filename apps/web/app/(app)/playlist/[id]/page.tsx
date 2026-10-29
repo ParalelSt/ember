@@ -29,7 +29,7 @@ import { SOURCE_NAME } from '@/components/import/parts';
 import { useImportActions, useImportJob } from '@/hooks/useImports';
 import { useImportReview } from '@/hooks/useImportReview';
 import { isActive } from '@/lib/import/jobState';
-import { importRows, itemForTrack } from '@/lib/import/rows';
+import { importItemFinder, importRows } from '@/lib/import/rows';
 import type { ImportItem } from '@/lib/import/types';
 import { useTrackActions } from '@/hooks/useTrackActions';
 import { isAlreadyInPlaylist } from '@/lib/playlistAdd';
@@ -60,6 +60,7 @@ import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
 const NO_TRACKS: CollectionTrack[] = [];
+const NO_ITEMS: ImportItem[] = [];
 const addedLabel = (t: Track) => formatAddedDate((t as CollectionTrack).addedAt);
 const addedBy = (t: Track) => (t as CollectionTrack).addedBy;
 
@@ -110,9 +111,10 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   // the job moves so rows land as they are matched.
   const importJob = useImportJob(data?.playlist.import_job);
   const job = importJob.data?.job ?? null;
-  const items = importJob.data?.items ?? [];
+  const items = importJob.data?.items ?? NO_ITEMS;
   const importActions = useImportActions(job?.id, id);
   const review = useImportReview(items);
+  const itemFor = useMemo(() => importItemFinder(items), [items]);
   const progressKey = job ? `${job.status}:${job.cursor}:${job.accepted}` : '';
   useEffect(() => {
     if (progressKey) void qc.invalidateQueries({ queryKey: QK.playlist(id) });
@@ -211,7 +213,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   };
 
   const trailing = (t: Track) => {
-    const item = job ? itemForTrack(items, t) : null;
+    const item = job ? itemFor(t) : null;
     return <TrackMenu track={t} onRematch={item ? () => review.openRematch(item) : undefined} />;
   };
 

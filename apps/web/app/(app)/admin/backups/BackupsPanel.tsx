@@ -11,6 +11,7 @@ import { useExecuteBackupNow, useQueryAdminBackups } from '@/hooks/useAdmin';
 import { apiUrl } from '@/lib/api';
 import { describeBackupSchedule } from '@/lib/backupSchedule';
 import { formatBytes } from '@/lib/format';
+import { pbDateLabel } from '@/lib/pocketbase/dates';
 import { FloatingActionButton } from '@/components/ui/floating-action-button';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 
@@ -99,7 +100,7 @@ export default function BackupsPanel() {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold">{b.name}</div>
                     <div className="text-xs text-muted-foreground tabular-nums">
-                      {new Date(b.modified).toLocaleString()} · {formatBytes(b.size)} · {b.auto ? 'automatic' : 'manual'}
+                      {pbDateLabel(b.modified, true)} · {formatBytes(b.size)} · {b.auto ? 'automatic' : 'manual'}
                     </div>
                   </div>
                   <a

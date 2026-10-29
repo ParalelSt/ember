@@ -10,6 +10,7 @@ import { EyeIcon, EyeOffIcon, FlameIcon } from '@/components/icons';
 import { safeNext } from '@/lib/safeNext';
 import { QrSignIn } from '@/components/auth/QrSignIn';
 import { isPhone } from '@/lib/isPhone';
+import { GATEWAY_STATUSES, NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
 // Whether this is a phone never changes while the page is open.
 const noSubscribe = () => () => {};
@@ -49,16 +50,21 @@ export default function AuthPage() {
     if (!cleaned) return;
     setBusy(true);
     try {
+      // No connection at all rejects with the browser's own words ("Failed
+      // to fetch", "Load failed"): the same sentence as no answer.
       const r = await fetch('/api/auth/check-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleaned }),
+      }).catch(() => {
+        throw new Error(NO_ANSWER_MESSAGE);
       });
-      if (!r.ok) {
-        const j = (await r.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? `Request failed: ${r.status}`);
-      }
-      const { status } = (await r.json()) as { status: 'new' | 'existing' | 'denied' };
+      // Not JSON is not Ember answering (a Wi-Fi sign-in page, the Funnel's
+      // 502 while it restarts): say so, not "Unexpected token '<'".
+      const j = (await r.json().catch(() => null)) as { error?: string } | null;
+      if (!j && (r.ok || GATEWAY_STATUSES.includes(r.status))) throw new Error(NO_ANSWER_MESSAGE);
+      if (!r.ok) throw new Error(j?.error ?? `Request failed: ${r.status}`);
+      const { status } = j as { status: 'new' | 'existing' | 'denied' };
       if (status === 'denied') {
         setErr("This email isn't on the invite list. Ask the project owner to add you.");
         return;
@@ -147,6 +153,7 @@ export default function AuthPage() {
                 <Input
                   id="email"
                   type="email"
+                  autoComplete="username"
                   required
                   autoFocus
                   value={email}
@@ -181,6 +188,7 @@ export default function AuthPage() {
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete={stage.mode === 'existing' ? 'current-password' : 'new-password'}
                     required
                     minLength={8}
                     autoFocus

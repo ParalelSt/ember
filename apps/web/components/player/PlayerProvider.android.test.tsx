@@ -27,6 +27,13 @@ vi.mock('@/lib/playback/androidBackend', () => ({
   },
 }));
 
+// Casting resolves each song to a signed link: never over the network here.
+vi.mock('@/lib/cast/signer', () => ({
+  resolveCastMedia: async (t: { id: string; title: string; artist: string }) => ({
+    url: `https://ember.example/s/${t.id}`, contentType: 'audio/mp4', title: t.title, artist: t.artist, album: null, artworkUrl: null,
+  }),
+  clearCastSignCache: () => {},
+}));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('@/hooks/useLibrary', () => ({
   useQueryHistory: () => ({ data: [] }),
@@ -120,6 +127,42 @@ describe('android: one setQueue per queue change', () => {
     expect(tracks[i]).toBe(B);
     expect(i).toBe(1);
     expect(play).toBe(true);
+  });
+
+  it('a tap on the second copy of a song in the queue sends native THAT entry, not the first copy', () => {
+    // The song added to the queue by hand is also further down the playlist.
+    usePlayerStore.setState({ queue: [A, B, C, B], index: 0, isPlaying: true });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    native.setQueue.mockClear();
+    act(() => { player!.playAt(3); });
+    expect(native.setQueue).toHaveBeenCalledTimes(1);
+    expect(native.setQueue.mock.calls[0][1]).toBe(3);
+    expect(usePlayerStore.getState().index).toBe(3);
+  });
+
+  it('a restored queue whose song is listed twice starts native at the saved entry, not its first copy', () => {
+    usePlayerStore.setState({ queue: [A, B, C, B], index: 3, isPlaying: false });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    expect(native.setQueue).toHaveBeenCalled();
+    expect(native.setQueue.mock.calls[0][1]).toBe(3);
+  });
+
+  it('casting ending hands native the entry it was on, not the first copy of that song', async () => {
+    const { castSessionStarted, castSessionEnded, _resetCastSession } = await import('@/lib/cast/session');
+    _resetCastSession();
+    usePlayerStore.setState({ queue: [A, B, C, B], index: 3, isPlaying: true });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    const remote = {
+      load: vi.fn(async () => {}), play: vi.fn(), pause: vi.fn(), seek: vi.fn(), stop: vi.fn(), setVolume: vi.fn(),
+      status: () => ({ state: 'idle' as const, time: 0, duration: 0, idleReason: null }),
+      subscribe: () => () => {},
+    };
+    act(() => { castSessionStarted(remote, 'TV'); });
+    native.setQueue.mockClear();
+    act(() => { castSessionEnded(); });
+    expect(native.setQueue).toHaveBeenCalledTimes(1);
+    expect(native.setQueue.mock.calls[0][1]).toBe(3);
+    _resetCastSession();
   });
 
   it('removing another song hands native the shorter queue once', () => {
@@ -323,5 +366,27 @@ describe('android: the queue sheet\'s played history', () => {
     act(() => { player!.playBack(1); });
     expect(native.back).not.toHaveBeenCalled();
     expect(usePlayerStore.getState().index).toBe(2);
+  });
+});
+
+describe('android: the last account\'s queue is dropped', () => {
+  it('sign-out, or another account signing in, stops native and hands it an empty queue', async () => {
+    const { accountPlaybackCleared } = await import('@/lib/playback/accountPlayback');
+    render(<PlayerProvider><div /></PlayerProvider>);
+    native.setQueue.mockClear();
+    vi.mocked(fake.stop).mockClear();
+    act(() => {
+      usePlayerStore.setState({ queue: [], index: -1, position: 0 });
+      accountPlaybackCleared();
+    });
+    expect(fake.stop).toHaveBeenCalled();
+    expect(native.setQueue).toHaveBeenCalledWith([], 0, false);
+  });
+
+  it('a cold start with nothing saved leaves native alone (it may be playing for the car)', () => {
+    usePlayerStore.setState({ queue: [], index: -1 });
+    native.setQueue.mockClear();
+    render(<PlayerProvider><div /></PlayerProvider>);
+    expect(native.setQueue).not.toHaveBeenCalledWith([], 0, false);
   });
 });

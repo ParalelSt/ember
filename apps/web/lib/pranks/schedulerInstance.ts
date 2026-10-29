@@ -1,6 +1,6 @@
 import 'server-only';
 import type PocketBase from 'pocketbase';
-import { createAdminClient } from '@/lib/pocketbase/server';
+import { createCatalogClient } from '@/lib/pocketbase/server';
 import { serverLogger } from '@/lib/logger/server';
 import { parsePbDate, pbDate } from './limits';
 import { prankMediaUrl } from './media';
@@ -98,8 +98,6 @@ export function pbTickStore(pb: PocketBase): TickStore {
 }
 
 const KEY = Symbol.for('ember.pranks.tick');
-/** The admin client is re-authenticated at most this often. */
-const CLIENT_TTL_MS = 30 * 60 * 1000;
 
 /** Starts the repeating-sound tick once per server: every 5 s, or
  *  PRANK_TICK_INTERVAL_MS (the browser test runs it every second). A tick
@@ -112,7 +110,6 @@ export function startPrankTick(): void {
   g[KEY] = true;
 
   const every = Number(process.env.PRANK_TICK_INTERVAL_MS) > 0 ? Number(process.env.PRANK_TICK_INTERVAL_MS) : 5_000;
-  let client: { pb: PocketBase; at: number } | null = null;
   let running = false;
   let failing = false;
 
@@ -121,17 +118,20 @@ export function startPrankTick(): void {
     running = true;
     try {
       const now = Date.now();
-      if (!client || now - client.at > CLIENT_TTL_MS) client = { pb: await createAdminClient(), at: now };
+      // The shared admin client, not one kept for 30 minutes: after a
+      // restore that gives the superuser a new token key, PocketBase reads
+      // the old token as a guest, and the tick saw no due repeats. The shared
+      // one checks such answers and signs in again (guardCatalog).
+      const pb = await createCatalogClient();
       // Every outcome is already a pranks row or a schedule change the admin
       // log shows; only failures go to the server log.
-      await runTick(now, pbTickStore(client.pb));
+      await runTick(now, pbTickStore(pb));
       failing = false;
     } catch (e) {
-      // A bad token or PocketBase restarting: start over with a fresh client.
-      // Warned once per failure streak, not every 5 s.
+      // PocketBase restarting, most likely. Warned once per failure streak,
+      // not every 5 s.
       if (!failing) serverLogger.warn('pranks', 'repeat tick failed', undefined, e);
       failing = true;
-      client = null;
     } finally {
       running = false;
     }

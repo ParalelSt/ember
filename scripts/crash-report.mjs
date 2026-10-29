@@ -33,8 +33,15 @@ const DESCRIPTION_MAX = 4000;
 
 // ── webhook resolution ────────────────────────────────────────────────────
 
-/** Minimal .env parser: KEY=value lines, quotes and CR stripped. Only used to
- *  pick out a webhook URL, so nothing is ever exported into process.env. */
+/** dotenv's own line rule, the one Next (@next/env) reads .env.local with:
+ *  an optional `export`, a quoted value kept whole, and a `#` after an
+ *  unquoted or quoted value starting a comment. */
+const ENV_LINE =
+  /^\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?$/gm;
+
+/** Minimal .env parser, read the way the web app reads the same file (a
+ *  hand parse kept `# comment` text in the webhook URL). Only used to pick
+ *  out a webhook URL, so nothing is ever exported into process.env. */
 export function readEnvFile(file) {
   const out = {};
   let text;
@@ -43,14 +50,12 @@ export function readEnvFile(file) {
   } catch {
     return out;
   }
-  for (const raw of text.split('\n')) {
-    const line = raw.replace(/\r$/, '').trim();
-    if (!line || line.startsWith('#')) continue;
-    const eq = line.indexOf('=');
-    if (eq < 1) continue;
-    const key = line.slice(0, eq).trim();
-    const value = line.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
-    out[key] = value;
+  for (const m of text.replace(/\r\n?/g, '\n').matchAll(ENV_LINE)) {
+    let value = (m[2] ?? '').trim();
+    const quote = value[0];
+    value = value.replace(/^(['"`])([\s\S]*)\1$/, '$2');
+    if (quote === '"') value = value.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
+    out[m[1]] = value;
   }
   return out;
 }
@@ -95,7 +100,29 @@ export function resolveWebhook({
 
 // Duplicated from scrubText in apps/web/lib/logger/sanitize.ts (this script
 // cannot import TypeScript). Keep the two lists in step when either changes.
+// First the Google credentials of a YouTube Music transfer, from
+// apps/web/lib/import/redact.ts (which scrubText runs first too).
+const GOOGLE_SESSION_COOKIE_RE =
+  /\b((?:__Secure-|__Host-)?[0-9]*P?(?:SAPISID|APISID|SIDTS|SIDCC|SSID|HSID|SID|LOGIN_INFO|VISITOR_INFO1_LIVE|YSC|PREF)\w*)=[^;,\s"'\\]+/g;
+const GOOGLE_PATTERNS = [
+  [/(["']?\b(?:set-)?cookie["']?\s*[:=]\s*["']?)[^\n\r"']*/gi, '$1[scrubbed]'],
+  [/(["']?authorization["']?\s*[:=]\s*["']?)[^\n\r"']*/gi, '$1[scrubbed]'],
+  [/(["']?x-goog-(?:authuser|visitor-id|pageid)["']?\s*[:=]\s*["']?)[^\n\r"']*/gi, '$1[scrubbed]'],
+  [GOOGLE_SESSION_COOKIE_RE, '$1=[scrubbed]'],
+  [/\bSAPISIDHASH\s+\S+/gi, 'SAPISIDHASH [scrubbed]'],
+  [/\bBearer\s+[A-Za-z0-9\-._~+/]{8,}=*/gi, 'Bearer [scrubbed]'],
+  [
+    /(["']?\b(?:access_token|refresh_token|id_token|device_code|client_secret|accessToken|refreshToken|idToken|deviceCode|clientSecret)["']?\s*[:=]\s*["']?)[^\s"'&,;}]*/g,
+    '$1[scrubbed]',
+  ],
+  [/([?&]token=)[^\s&"']*/gi, '$1[scrubbed]'],
+  [/\bya29\.[A-Za-z0-9\-_.]+/g, '[scrubbed]'],
+  [/(^|[^A-Za-z0-9:])1\/\/[A-Za-z0-9\-_]{8,}/g, '$1[scrubbed]'],
+  [/\bAH-1N[A-Za-z0-9\-_]{8,}/g, '[scrubbed]'],
+  [/\bGOCSPX-[A-Za-z0-9\-_]+/g, '[scrubbed]'],
+];
 const SCRUB_PATTERNS = [
+  ...GOOGLE_PATTERNS,
   [/\bbearer\s+[A-Za-z0-9\-_.]{8,}/gi, 'bearer [scrubbed]'],
   [/\b(cookie|set-cookie)\s*:\s*\S[^\n\r]*/gi, (_m, name) => `${name}: [scrubbed]`],
   [/\bpb_auth=[^;\s]+/gi, 'pb_auth=[scrubbed]'],

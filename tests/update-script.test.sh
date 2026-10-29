@@ -132,14 +132,22 @@ esac
 exit 0
 EOF
 # systemctl --user: is-active answers from a flag file; start runs the
-# unit's command the way systemd would (see unit_command), detached.
+# unit's command the way systemd would (see unit_command), detached. With
+# the limit flag set, start is refused the way StartLimitBurst refuses it
+# (manual starts count too) until reset-failed clears it.
 cat >"$TMP/bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
 echo "systemctl $*" >>"$FAKE_LOG"
 [ "$1" = --user ] && shift
 case "$1" in
   is-active) [ -f "$FAKE_SYSTEMD_ACTIVE" ]; exit ;;
+  is-failed) [ -f "$FAKE_SYSTEMD_FAILED" ]; exit ;;
+  reset-failed) rm -f "$FAKE_SYSTEMD_LIMITED" "$FAKE_SYSTEMD_FAILED"; exit 0 ;;
   start|restart)
+    if [ -f "$FAKE_SYSTEMD_LIMITED" ]; then
+      echo "Job for ember.service failed because start of the service was attempted too often." >&2
+      exit 1
+    fi
     cd "$FAKE_UNIT_DIR" || exit 1
     # shellcheck disable=SC2086,SC2016
     perl -e 'setpgrp(0, 0); exec { $ARGV[0] } @ARGV' -- $FAKE_UNIT_EXEC </dev/null >>"$FAKE_TMUX_OUT" 2>&1 &
@@ -161,7 +169,7 @@ export DISCORD_CRASH_WEBHOOK_URL="http://127.0.0.1:${SINK_PORT}/hook"
 unset DISCORD_BUG_REPORT_WEBHOOK_URL TMUX STY
 export WATCHDOG_BACKOFF="0 0 0" WATCHDOG_MAX_CRASHES=3 WATCHDOG_WINDOW=60 SKIP_YTDLP_UPGRADE=1
 export FAKE_LOG="$TMP/fake.log" FAKE_TMUX_SESSION="$TMP/tmux.session" FAKE_TMUX_OUT="$TMP/tmux.out"
-export FAKE_SYSTEMD_ACTIVE="$TMP/systemd.active"
+export FAKE_SYSTEMD_ACTIVE="$TMP/systemd.active" FAKE_SYSTEMD_LIMITED="$TMP/systemd.limited" FAKE_SYSTEMD_FAILED="$TMP/systemd.failed"
 BASE_PATH="$PATH"
 
 HOST="$TMP/host"
@@ -173,7 +181,7 @@ new_host() {
   pkill -f "$TMP/host" 2>/dev/null
   pkill -f "$TMP/serve.mjs" 2>/dev/null
   sleep 0.3
-  rm -rf "$HOST" "$ORIGIN" "$TMP/seed" "$FAKE_TMUX_SESSION" "$FAKE_SYSTEMD_ACTIVE" "$FAKE_LOG.building"
+  rm -rf "$HOST" "$ORIGIN" "$TMP/seed" "$FAKE_TMUX_SESSION" "$FAKE_SYSTEMD_ACTIVE" "$FAKE_SYSTEMD_LIMITED" "$FAKE_SYSTEMD_FAILED" "$FAKE_LOG.building"
   : >"$FAKE_LOG"; : >"$FAKE_TMUX_OUT"; : >"$POSTS"
   mkdir -p "$TMP/seed/scripts" "$TMP/seed/apps/web"
   cp "$REPO/start-static.sh" "$REPO/update.sh" "$TMP/seed/"
@@ -387,6 +395,56 @@ check "it restarts Ember through systemd" file_has "$FAKE_LOG" "systemctl --user
 check "not in tmux" file_lacks "$FAKE_LOG" "tmux new"
 check "Ember serves the new version" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
 check "it says how to check on it" file_has "$TMP/update.out" "systemctl --user status ember"
+stop_ember
+
+# Several updates (or an update and its rollback) inside StartLimitIntervalSec:
+# systemd counts every start, manual ones too, and refuses the sixth. The
+# update had already stopped Ember, so a refused start left the host down.
+new_host
+PATH="$TMP/bin-notmux:$BASE_PATH"
+FAKE_UNIT_EXEC="$(unit_command)"
+start_ember
+touch "$FAKE_SYSTEMD_ACTIVE" "$FAKE_SYSTEMD_LIMITED"
+run_update
+check "systemd's start limit reached: update.sh still finishes" update_returned 40
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "Ember is back up on the new version" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
+stop_ember
+
+# systemd gave up on the unit (failed: five failed starts, a crash it
+# would not restart): Ember is down, and update.sh used to start it in tmux,
+# outside the unit the host boots with. It goes back through systemd.
+new_host
+PATH="$TMP/bin:$BASE_PATH"
+FAKE_UNIT_EXEC="$(unit_command)"
+touch "$FAKE_SYSTEMD_FAILED"
+run_update
+check "a failed unit: update.sh finishes" update_returned 40
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "it clears the failed state" file_has "$FAKE_LOG" "systemctl --user reset-failed ember"
+check "it starts Ember through systemd" file_has "$FAKE_LOG" "systemctl --user start ember"
+check "not in tmux" file_lacks "$FAKE_LOG" "tmux new"
+check "Ember serves the new version" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
+stop_ember
+
+# The unit failed for a reason of its own (its PATH names a node an nvm
+# upgrade removed, a wrong WorkingDirectory): starting it again fails again.
+# update.sh used to bring Ember up in tmux then; it must not leave the host
+# down. The unit is stopped, so its own retries do not fight the tmux copy.
+new_host
+PATH="$TMP/bin:$BASE_PATH"
+FAKE_UNIT_EXEC="false"
+touch "$FAKE_SYSTEMD_FAILED"
+run_update
+check "a failed unit that cannot start: update.sh finishes" update_returned 60
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "it tries systemd first" file_has "$FAKE_LOG" "systemctl --user start ember"
+check "then stops the unit" file_has "$FAKE_LOG" "systemctl --user stop ember"
+check "and starts Ember in tmux" file_has "$FAKE_LOG" "tmux new"
+check "Ember serves the new version" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
 stop_ember
 
 # ── 5. a failed update puts the previous version back (bughunt O1) ──────

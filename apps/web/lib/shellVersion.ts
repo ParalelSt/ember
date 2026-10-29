@@ -2,7 +2,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { detectShell } from '@/lib/playback/detectShell';
 
 /** The version of the app shell around the page: the desktop app's (its
- *  tauri.conf.json, through Tauri's app API) or the phone app's (Android's
+ *  tauri.<os>.conf.json, through Tauri's app API) or the phone app's (Android's
  *  versionName, iOS's CFBundleShortVersionString, through the EmberApp
  *  plugin). The web build has its own stamp (NEXT_PUBLIC_APP_VERSION); this
  *  is the other half of "which version am I running", since the shells are

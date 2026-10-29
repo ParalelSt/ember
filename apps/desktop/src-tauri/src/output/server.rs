@@ -37,6 +37,9 @@ const ICON_NAME: &str = "ember-desktop";
 
 /// A connection to the desktop sound server.
 pub trait SoundServer: Send + 'static {
+    /// Whether the server would take a stream now. Opens nothing that plays.
+    fn probe(&self) -> bool;
+
     /// Starts a playback stream on the server's default output that plays
     /// `tap`, calling `on_lost` if the connection later dies. Dropping the
     /// handle ends the stream. On failure the tap and the callback come back,
@@ -115,6 +118,14 @@ impl OutputBackend for ServerFirst {
 
     fn take_note(&self) -> Option<String> {
         self.note.lock().unwrap_or_else(PoisonError::into_inner).take()
+    }
+
+    fn default_id(&self) -> Option<String> {
+        self.server.as_ref().map(|_| SERVER_ID.to_string())
+    }
+
+    fn default_ready(&self) -> bool {
+        self.server.as_ref().is_some_and(|s| s.probe())
     }
 }
 

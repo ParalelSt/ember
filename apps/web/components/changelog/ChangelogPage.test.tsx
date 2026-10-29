@@ -1,9 +1,9 @@
 import { useState, type ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { ChangelogPage } from './ChangelogPage';
+import { ChangelogPage, SCOPE_LABEL } from './ChangelogPage';
 import { ChangelogEntryPage } from './ChangelogEntryPage';
-import { computeNewIds, type ChangelogEntry } from '@/lib/changelog';
+import { CHANGELOG_SCOPES, computeNewIds, type ChangelogEntry } from '@/lib/changelog';
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: ComponentProps<'a'>) => (
@@ -56,6 +56,22 @@ describe('ChangelogPage', () => {
     render(<ChangelogPage entries={entries} newIds={new Set()} {...plain} />);
     expect(card('Second')).toHaveAttribute('href', '/whats-new/b');
     expect(card('First')).toHaveAttribute('href', '/whats-new/a');
+  });
+
+  it('names each app scope on its entry page, one per app now that each has its own version', () => {
+    const scoped: ChangelogEntry[] = [
+      { id: 'w', version: '0.7.32', date: '2026-10-25', title: 'Win', summary: 's', bullets: ['x'], scope: 'windows' },
+      { id: 'm', version: '0.7.32', date: '2026-10-25', title: 'Mac', summary: 's', bullets: ['x'], scope: 'macos' },
+      { id: 'l', version: '0.7.32', date: '2026-10-25', title: 'Lin', summary: 's', bullets: ['x'], scope: 'linux' },
+      { id: 'i', version: '0.7.32', date: '2026-10-25', title: 'Pho', summary: 's', bullets: ['x'], scope: 'ios' },
+    ];
+    const want = ['Windows app', 'Mac app', 'Linux app', 'iPhone app'];
+    scoped.forEach((entry, i) => {
+      const { unmount } = render(<ChangelogEntryPage entry={entry} />);
+      expect(screen.getByText(`2026-10-25 · ${want[i]}`)).toBeInTheDocument();
+      unmount();
+    });
+    for (const s of CHANGELOG_SCOPES) expect(SCOPE_LABEL[s], s).toBeTruthy();
   });
 
   it('tags exactly the entries in newIds, with a still pill', () => {

@@ -34,7 +34,8 @@ class OfflineDownloadService : Service() {
         val failedReason = java.util.Collections.synchronizedMap(HashMap<String, String>()) // pinId -> reason
         val cancelled = java.util.Collections.synchronizedSet(HashSet<String>())
         @Volatile var current: JSONObject? = null   // { id, done, total, title }
-        var listener: ((JSONObject?) -> Unit)? = null
+        /** Set by the plugin on the main thread, called from the download executor. */
+        @Volatile var listener: ((JSONObject?) -> Unit)? = null
 
         fun start(ctx: Context) { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, OfflineDownloadService::class.java)) }
         /** Starts the downloader when the index still has work: a drain cut
@@ -91,7 +92,25 @@ class OfflineDownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(1, notification("Preparing downloads…"))
+        // Android can refuse the foreground start (Android 12+ from the
+        // background, Android 15 once the dataSync quota is used up) by
+        // throwing ForegroundServiceStartNotAllowedException, an
+        // IllegalStateException (caught as that: the subclass is API 31+).
+        // Thrown here, on the main thread, it took the app down. Stop instead:
+        // the work stays pending in the index for the next start, and not
+        // sticky, so Android does not restart us into the same refusal.
+        try {
+            startForeground(1, notification("Preparing downloads…"))
+        } catch (e: IllegalStateException) {
+            NativeLog.error(
+                "service",
+                "download service could not start: " + (e.message ?: e.javaClass.simpleName),
+                JSONObject().put("type", e.javaClass.name),
+            )
+            listener?.invoke(null)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         NativeLog.info("service", "download service started", JSONObject().put("startId", startId))
         // Every start queues a drain; the single-thread executor serialises
         // them, and a drain that finds nothing pending exits immediately.

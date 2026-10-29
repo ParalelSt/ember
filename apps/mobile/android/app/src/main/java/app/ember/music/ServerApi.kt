@@ -118,6 +118,8 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
     fun history(): List<JSONObject> = tracks(getJson("/api/history"))
     fun uploads(): List<JSONObject> = tracks(getJson("/api/uploads"))
     fun search(q: String): List<JSONObject> = tracks(getJson("/api/search?q=" + java.net.URLEncoder.encode(q, "UTF-8")))
+    /** Today's chart (Home's "Trending right now"), in rank order. */
+    fun trending(): List<JSONObject> = tracks(getJson("/api/youtube/trending"))
     fun recommended(seedSourceId: String): List<JSONObject> =
         tracks(getJson("/api/youtube/recommended?seed=" + java.net.URLEncoder.encode(seedSourceId, "UTF-8")))
     /** The song's normalization gain in dB; null when not measured yet. */
@@ -128,6 +130,24 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
         return json.optDouble("gainDb").takeIf { !it.isNaN() }
     }
     fun recordPlay(track: JSONObject) = postJson("/api/history", JSONObject().put("track", track))
+
+    /** Live radio (the web app's lib/radio): each station's playable item,
+     *  the `track` the server builds for it (a stream through the host's
+     *  proxy, no length). */
+    private fun stations(json: JSONObject): List<JSONObject> {
+        val arr = json.optJSONArray("stations") ?: JSONArray()
+        return (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optJSONObject("track") }
+    }
+
+    /** Stations near a point, rounded to ~0.1 degree here already: the exact
+     *  place never leaves the phone. */
+    fun radioNearby(lat: Double, lng: Double): List<JSONObject> {
+        val (la, lo) = RadioPlaces.rounded(lat, lng)
+        return stations(getJson("/api/radio/nearby?lat=$la&lng=$lo"))
+    }
+    fun radioCountry(code: String): List<JSONObject> =
+        stations(getJson("/api/radio/country?code=" + java.net.URLEncoder.encode(code, "UTF-8")))
+    fun radioFavorites(): List<JSONObject> = stations(getJson("/api/radio/favorites"))
 
     /** The car's heart button: like (the whole track, the server files it in
      *  the catalog) and unlike (by the track's id). Both are idempotent on

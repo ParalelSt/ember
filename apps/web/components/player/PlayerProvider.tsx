@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -32,9 +33,11 @@ import {
   showUnplayable,
 } from '@/stores/useUnplayableStore';
 import { logger } from '@/lib/logger/client';
+import { onAccountPlaybackCleared } from '@/lib/playback/accountPlayback';
 import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
 import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, playedWalk, prevIndex, previousFromHistory, rememberPlayed, repeatsCurrent } from '@/lib/playback/queueNav';
+import type { QueuedTrack } from '@/lib/playback/addToQueue';
 import { useAvailabilityProbe } from '@/hooks/player/useAvailabilityProbe';
 import { useAutoCache } from '@/hooks/player/useAutoCache';
 import type { BackendKind } from '@/lib/autoCache/select';
@@ -63,15 +66,14 @@ import { clearCastSignCache, resolveCastMedia } from '@/lib/cast/signer';
 import { _resetOutputs, initOutputs } from '@/lib/outputs/controller';
 import type { PlaybackContext, Track } from '@/types/track';
 import { musicLevel } from '@/lib/pranks/mix';
+import { isLiveTrack } from '@/lib/radio/station';
 import { PrankReceiver } from './PrankReceiver';
 import { UnplayableAnnouncer } from './UnplayableMessage';
 
 interface PlayerControls {
   current: Track | null;
   isPlaying: boolean;
-  position: number;
   duration: number;
-  volume: number;
   queue: Track[];
   index: number;
   context: PlaybackContext | null;
@@ -334,7 +336,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           const playingId = st.queue[st.index]?.id;
           if (playingId) forgetCouldntPlay(playingId);
         }
-        setPosition(sec);
+        // For the views only: noteTime saves it, about once a second.
+        usePlayerStore.getState().reportPosition(sec);
         positions.noteTime(sec);
       },
       onDuration: (d) => {
@@ -443,6 +446,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // end at it is a finished song even when the catalog's length, which
         // wins in chooseDuration when the two are far apart, is longer. The
         // desktop decoder's length is only a guess, so it does not count.
+        // A live station has no end: one that ends is a stream that broke
+        // (the station went off air, the host's proxy lost it). The error
+        // path says so and offers a retry; moving on to the next station by
+        // itself would be a surprise.
+        if (cur && isLiveTrack(cur)) {
+          handleError();
+          return;
+        }
         const kind = backendKindRef.current;
         const engineDur = kind === 'web' || kind === 'capacitor' ? backendRef.current?.getDuration() ?? 0 : 0;
         const endedAtEngineEnd = Number.isFinite(engineDur) && engineDur > 0 && pos >= engineDur - ENDED_SLACK_SEC;
@@ -761,7 +772,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     track: Track | null,
     autoplay: boolean,
     next?: QueueOrigin & { list: Track[] },
-    opts?: { listenerRetry?: boolean },
+    opts?: { listenerRetry?: boolean; at?: number },
   ) => {
     let b = backendRef.current;
     if (!b) return;
@@ -778,6 +789,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // click play a few times" bug. A silent re-load of the track that's already
     // loaded is never useful, so drop it.
     if (!autoplay && loadedTrackRef.current === track.id) return;
+    // A live station always starts at "now": a stored playhead (minutes
+    // into the last listen) means nothing in a stream with no length.
+    if (isLiveTrack(track)) positions.requestStartAt(0);
     // A cast device plays the TRACK: it signs its own link, since neither a
     // cached copy's blob: URL nor a cookie-bound stream reaches a TV.
     if (castingRef.current && isCastBackend(b)) {
@@ -794,7 +808,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // The native player owns the queue: hand it the whole thing and the
       // index to start at. It diffs, so an unchanged queue never restarts.
       let queue = next?.list ?? usePlayerStore.getState().queue;
-      let idx = queue.findIndex((t) => t.id === track.id);
+      // The entry the caller moved to, when it says: a song listed twice (a
+      // copy added to the queue by hand) must not jump to its first copy.
+      const at = opts?.at;
+      let idx = at !== undefined && queue[at]?.id === track.id ? at : queue.findIndex((t) => t.id === track.id);
       if (idx < 0) { queue = [track]; idx = 0; }
       loadedTrackRef.current = track.id;
       // A song picked or moved to starts from the top: hand the stored
@@ -831,6 +848,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       swapToWebAudio();
       b = backendRef.current!;
     }
+    // The desktop engine downloads what it plays to a file first, which a
+    // station never finishes (it would grow for as long as it plays), and it
+    // decodes fewer formats than a browser (AAC+ stations). Web audio plays
+    // stations instead; like a downloaded copy offline, the swap is for the
+    // rest of the session.
+    if (isLiveTrack(track) && backendKindRef.current === 'tauri-native') {
+      logger.breadcrumb('playback', 'live station: web audio', { trackId: track.id });
+      swapToWebAudio();
+      b = backendRef.current!;
+    }
     const readsBlobs = backendKindRef.current === 'web' || backendKindRef.current === 'capacitor';
     // A downloaded copy plays even online: instant, and no data used.
     const local = localSrcFor(track, downloads.trackFiles) ?? (readsBlobs ? webCopy : null);
@@ -864,10 +891,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // across a track boundary (Firefox Android tears it down otherwise).
     // Local art (the same downloaded copy) wins over the remote artworkUrl.
     b.setMetadata(track, localArtFor(track, downloads.artFiles));
-  }, [positions, swapToWebAudio, pushVolume]);
+  }, [positions, swapToWebAudio, pushVolume, setDuration]);
 
-  loadAndPlayRef.current = loadAndPlay;
-  fallbackToWebAudioRef.current = fallbackToWebAudio;
+  // Latest callbacks for the backend's events (wired once). A layout effect,
+  // not a write during render: it still lands before any passive effect.
+  useLayoutEffect(() => {
+    loadAndPlayRef.current = loadAndPlay;
+    fallbackToWebAudioRef.current = fallbackToWebAudio;
+  });
 
   /** The level the music plays at, for an engine that just took over. */
   const applyVolume = useCallback((b: AudioBackend) => {
@@ -954,7 +985,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (track) {
       positions.requestStartAt(plan.startAt);
       loadedTrackRef.current = null;
-      loadAndPlay(track, plan.autoplay);
+      // The entry it was on: a song queued twice must not go back to its
+      // first copy (the Android player starts at the index it is handed).
+      loadAndPlay(track, plan.autoplay, undefined, { at: st.index });
     }
   }, [applyVolume, loadAndPlay, positions, setIsPlaying]);
 
@@ -964,6 +997,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!backendReady) return;
     return setCastSessionListener({ start: startCasting, end: stopCasting });
   }, [backendReady, startCasting, stopCasting]);
+
+  // The last account's queue was dropped (sign-out, another account signing
+  // in). The native Android player keeps a queue of its own: stop it and hand
+  // it an empty one, so the old songs neither play on (lock screen, car) nor
+  // count as the next account's plays. Not on a cold start with nothing
+  // saved: native may be playing for the car then. Registered at mount, before
+  // AuthProvider's own effects can say it.
+  useEffect(
+    () =>
+      onAccountPlaybackCleared(() => {
+        const b = backendRef.current;
+        if (backendKindRef.current !== 'android' || !b?.setQueue) return;
+        b.stop();
+        b.setQueue([], 0, false);
+        sentQueueRef.current = [];
+        loadedTrackRef.current = null;
+      }),
+    [],
+  );
 
   // Drives load+autoplay on track changes nobody loaded yet: cold-load
   // hydration of a persisted queue, and index changes that did not go through
@@ -977,10 +1029,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Loading it again aborted that load's play(): a pause/play flicker on
     // every change, and two loads (two error toasts) on desktop.
     if (!current || loadedTrackRef.current !== current.id) {
-      loadAndPlay(current, userInteracted.current);
+      // At the store's own entry: a restored queue that lists this song
+      // twice must not start the Android player on the first copy.
+      loadAndPlay(current, userInteracted.current, undefined, { at: usePlayerStore.getState().index });
     }
     // The native Android player records plays itself (car-initiated ones too).
-    if (current && userInteracted.current && user && backendKindRef.current !== 'android') recordPlay.mutate(current);
+    // A live station is not a song: never a play in history.
+    if (current && userInteracted.current && user && backendKindRef.current !== 'android' && !isLiveTrack(current)) recordPlay.mutate(current);
     if (!current) {
       setIsPlaying(false);
       setPosition(0);
@@ -1048,7 +1103,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         logger.breadcrumb('playback', 'offline: skipped uncached', { count: r.uncached.length });
       }
       remember(r.index);
-      loadAndPlay(st.queue[r.index], true);
+      loadAndPlay(st.queue[r.index], true, undefined, { at: r.index });
       setIndex(r.index);
       return;
     }
@@ -1059,7 +1114,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     remember(r.index);
-    loadAndPlay(st.queue[r.index], true);
+    loadAndPlay(st.queue[r.index], true, undefined, { at: r.index });
     setIndex(r.index);
   }, [announce, loadAndPlay, setIndex, setPlayed, stallOffline]);
 
@@ -1137,7 +1192,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // The song actually played before this one, when the history has it
     // (lib/playback/queueNav, "Play history"); else the song above.
     const back = previousFromHistory(st.queue, st.index, playedRef.current);
-    const move = prevIndex(navState(), b ? b.getCurrentTime() : 0, back?.index);
+    // A station has no start to go back to: Previous always means the
+    // station before it, however long this one has played.
+    const at = b && !isLiveTrack(st.queue[st.index]) ? b.getCurrentTime() : 0;
+    const move = prevIndex(navState(), at, back?.index);
     if (!move) return;
     if ('restart' in move) {
       b?.seek(0);
@@ -1306,6 +1364,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useRemoteCommands({ backendRef, backendReady, engine: initialKind, current, nextRef, prevRef });
 
   const seek = useCallback((sec: number) => {
+    // A live station has nowhere to seek to.
+    const st = usePlayerStore.getState();
+    if (isLiveTrack(st.queue[st.index])) return;
     backendRef.current?.seek(sec);
   }, []);
 
@@ -1349,23 +1410,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Synchronously start so the user-gesture token survives (React 19 effects
     // are async).
     const context: PlaybackContext = nextContext ?? { type: 'single' };
-    // Size of the curated list, before radio extends it.
-    const baseCount = queueList.length;
     // Play history (what Previous goes back to): a tap on another song of
     // the list already playing (the same songs in the same order at the top
-    // of the queue) is a jump within it, so the song being left is
-    // remembered. Any other list is a new queue, with a fresh history.
+    // of the queue, songs added with "Add to queue" aside) is a jump within
+    // it, so the song being left is remembered. Any other list is a new
+    // queue, with a fresh history.
     const before = usePlayerStore.getState();
-    const sameList = before.queue.length >= queueList.length
-      && queueList.every((t, k) => before.queue[k]?.id === t.id);
+    const isQueued = (t: Track) => !!(t as QueuedTrack).queued;
+    const listed = before.queue.filter((t) => !isQueued(t));
+    const sameList = listed.length >= queueList.length
+      && queueList.every((t, k) => listed[k]?.id === t.id);
     const leaving = before.queue[before.index];
     if (!sameList) setPlayed([]);
     else if (leaving && leaving.id !== track.id && !isUnavailable(leaving)) {
       setPlayed(rememberPlayed(playedRef.current, leaving.id));
     }
-    loadAndPlay(track, true, { list: queueList, context, baseCount });
+    // Within the same list, songs queued by hand and not played yet stay
+    // next, after the song tapped (Spotify's way).
+    const handQueued = sameList ? before.queue.filter((t, k) => k > before.index && isQueued(t)) : [];
+    const queue = handQueued.length ? [...queueList.slice(0, i + 1), ...handQueued, ...queueList.slice(i + 1)] : queueList;
+    // Size of the curated list, before radio extends it.
+    const baseCount = queue.length;
+    loadAndPlay(track, true, { list: queue, context, baseCount }, { at: i });
     usePlayerStore.setState({
-      queue: queueList,
+      queue,
       index: i,
       context,
       baseCount,
@@ -1457,11 +1525,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<PlayerControls>(
     () => ({
-      current, isPlaying, position, duration, volume, queue, index, context,
+      current, isPlaying, duration, queue, index, context,
       playTrack: userPlayTrack, playAt: userPlayAt, playBack: userPlayBack, toggle: userToggle, next: userNext, prev: userPrev,
       seek, setVolume, rate, setRate, canSetRate, retry,
     }),
-    [current, isPlaying, position, duration, volume, queue, index, context, userPlayTrack, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry],
+    [current, isPlaying, duration, queue, index, context, userPlayTrack, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry],
   );
 
   // Pranks (admin only, never announced) sit beside the tree rather than in
@@ -1481,4 +1549,12 @@ export function usePlayer() {
   const ctx = useContext(PlayerContext);
   if (!ctx) throw new Error('usePlayer must be used inside PlayerProvider');
   return ctx;
+}
+
+/** The playhead, for the views that show it. Not part of usePlayer: it is
+ *  reported several times a second while audio plays, and every usePlayer
+ *  reader (each track list page among them) re-rendered with it. The volume
+ *  is not either (a slider drag is as busy): read the store for it. */
+export function usePlayerPosition(): number {
+  return usePlayerStore((s) => s.position);
 }

@@ -210,5 +210,35 @@ class AlignCli(unittest.TestCase):
         self.assertEqual(r.stderr.strip(), "no such audio file: /nope.wav")
 
 
+class AlignDecodeTimeout(unittest.TestCase):
+    """ffmpeg decoding the recording has a limit of its own, well under the
+    web server's (lib/tabAlign.ts kills align.py after 5 minutes): a decode
+    that hangs is stopped here, with one clean error, instead of ffmpeg
+    running on alone after align.py is killed."""
+
+    def test_a_hung_decode_is_stopped_with_a_json_error_and_no_temp_file(self):
+        import contextlib
+        import io
+        from unittest import mock
+        seen = {}
+
+        def hang(cmd, **kw):
+            seen["wav"], seen["timeout"] = cmd[-1], kw.get("timeout")
+            raise subprocess.TimeoutExpired(cmd, kw.get("timeout") or 0)
+
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(align, "ffmpeg_exe", return_value="ffmpeg"), \
+                mock.patch.object(align.subprocess, "run", side_effect=hang), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as done:
+                align.load_audio("/srv/ember/my_music/song.m4a")
+        self.assertEqual(done.exception.code, 1)
+        self.assertEqual(seen["timeout"], align.DECODE_TIMEOUT_S)
+        self.assertLess(align.DECODE_TIMEOUT_S, 5 * 60)
+        self.assertEqual(json.loads(out.getvalue()), {"error": f"decoding the audio took longer than {align.DECODE_TIMEOUT_S} s"})
+        self.assertEqual(err.getvalue().strip(), f"decoding the audio took longer than {align.DECODE_TIMEOUT_S} s")
+        self.assertFalse(os.path.exists(os.path.dirname(seen["wav"])))
+
+
 if __name__ == "__main__":
     unittest.main()

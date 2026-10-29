@@ -1,20 +1,30 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { newSessionCode, addMember, sessionsClient, LIVE_WINDOW_MS } from '@/lib/sessions';
+import { newSessionCode, addMember, sessionsClient, HOST_ACTIVE_MS, LIVE_WINDOW_MS, msSince } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { playlistAccess, type PlaylistAccess } from '@/lib/playlistAccess';
+import { rateLimitResponse } from '@/lib/rateLimit';
+
+/** Per person. Starting one is a once-a-drive thing; this only stops a
+ *  loop from filling the sessions collection. */
+const CREATE_LIMIT = { windowMs: 60_000, max: 10 };
+/** The start dialog's own cap (components/session/SessionDialogs.tsx). */
+const MAX_CARLIST_NAME = 120;
 
 /** Start a carlist session. Optionally seeds the queue from one of the
  *  caller's playlists. Returns {session:{id, code, name}}. */
 export const POST = withRequestLog('sessions', async (request: NextRequest) => {
   try {
     const { pb, user } = await requireUser();
+    const limited = rateLimitResponse(`session-create:${user.id}`, CREATE_LIMIT);
+    if (limited) return limited;
     const server = await sessionsClient();
     const body = (await request.json().catch(() => null)) as
       | { name?: string; seedPlaylistId?: unknown }
       | null;
     const name = String(body?.name ?? '').trim() || 'Carlist';
+    if (name.length > MAX_CARLIST_NAME) return jsonError(`name must be at most ${MAX_CARLIST_NAME} characters`, 400);
 
     // The seed playlist is checked BEFORE anything is created: a refusal
     // after the session row existed left a "live" carlist behind (shown by
@@ -92,20 +102,35 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
 /** The live carlist the caller hosts or joined, for the Carlist button in
  *  Your library: {carlist: {id, code, name, isHost} | null}. One that has
  *  not moved on in LIVE_WINDOW_MS no longer counts (hosts often just close
- *  the app instead of ending it). */
+ *  the app instead of ending it). The one they host comes first while it is
+ *  being played (HOST_ACTIVE_MS): the host's device lets go of hosting
+ *  (useReleaseStaleHosting) when this answers another carlist, so a host who
+ *  had also joined a friend's carlist lost the role whenever the friend's
+ *  moved on more recently. */
 export const GET = withRequestLog('sessions', async () => {
   try {
     const { user } = await requireUser();
     const server = await sessionsClient();
     const since = new Date(Date.now() - LIVE_WINDOW_MS);
-    const list = await server.collection('sessions').getList(1, 1, {
-      filter: server.filter(
-        'active = true && updated >= {:since} && (host = {:u} || session_members_via_session.user ?= {:u})',
-        { since, u: user.id },
-      ),
-      sort: '-updated',
-    });
-    const row = list.items[0];
+    const latest = async (who: string) =>
+      (
+        await server.collection('sessions').getList(1, 1, {
+          filter: server.filter(`active = true && updated >= {:since} && ${who}`, { since, u: user.id }),
+          sort: '-updated',
+        })
+      ).items[0];
+    // Their own comes first only while it is being played; one left alone
+    // (the app just closed) must not hide a carlist joined since, nor keep
+    // this device hosting it: then the most recent of the two, as before.
+    const hosted = await latest('host = {:u}');
+    const idle = hosted ? msSince(hosted.updated) : null;
+    let row = hosted && (idle === null || idle <= HOST_ACTIVE_MS) ? hosted : undefined;
+    if (!row) {
+      const joined = await latest('session_members_via_session.user ?= {:u}');
+      row = [hosted, joined]
+        .filter((r) => r !== undefined)
+        .sort((a, b) => String(b.updated).localeCompare(String(a.updated)))[0];
+    }
     return Response.json({
       carlist: row
         ? { id: row.id, code: String(row.code), name: String(row.name), isHost: row.host === user.id }

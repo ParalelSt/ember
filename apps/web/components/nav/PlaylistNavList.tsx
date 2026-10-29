@@ -6,6 +6,7 @@ import { PeopleIcon } from '@/components/icons';
 import { PinIcon } from '@/components/icons';
 import { useHold } from '@/hooks/useHold';
 import { cn } from '@/lib/utils';
+import { formatCount } from '@/lib/format';
 import type { NavImportState } from '@/lib/import/nav';
 
 export type { NavImportState };
@@ -25,6 +26,8 @@ export interface PlaylistNavListProps {
     /** Held at the top of the list; shows a small pin. */
     pinned?: boolean;
   }[];
+  /** Bigger rows with bigger covers (the head unit's covers sidebar). */
+  covers?: boolean;
   /** Signed-out users see "Sign in to create" instead of an (always empty) list. */
   authed: boolean;
   /** Highlights the open playlist. */
@@ -53,7 +56,7 @@ export function ImportTail({ state }: { state: NavImportState }) {
     return <span className="shrink-0 text-[11px] text-sidebar-foreground/55">Import failed</span>;
   }
   return (
-    <span className="inline-flex shrink-0 items-center gap-inset text-[11px] text-ember" title={`${state.count} songs to review`}>
+    <span className="inline-flex shrink-0 items-center gap-inset text-[11px] text-ember" title={`${formatCount(state.count, 'song')} to review`}>
       <span className="size-1.5 rounded-full bg-ember" />
       {state.count} to review
     </span>
@@ -66,7 +69,7 @@ export function ImportTail({ state }: { state: NavImportState }) {
  *  vs a plain scrolling div). Rows have a cover and two lines at a fixed
  *  height (44px) and never shrink: the scroller around them scrolls instead. A playlist being imported shows its
  *  progress ring and count; one with songs left to check says how many. */
-export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen, onTogglePin }: PlaylistNavListProps) {
+export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen, onTogglePin, covers = false }: PlaylistNavListProps) {
   const hold = useHold((id) => onTogglePin?.(id));
   return (
     <>
@@ -89,7 +92,9 @@ export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen,
           title={p.sharedLabel ? `${p.name}, ${p.sharedLabel}` : undefined}
           {...(onTogglePin ? hold.props(p.id) : {})}
           className={cn(
-            'flex shrink-0 items-center gap-row min-h-11 px-cluster py-1.5 rounded-md text-sm transition-colors select-none',
+            covers
+              ? 'flex shrink-0 items-center gap-row px-cluster py-inset rounded-md text-base transition-colors select-none'
+              : 'flex shrink-0 items-center gap-row min-h-11 px-cluster py-1.5 rounded-md text-sm transition-colors select-none',
             activePath === p.href
               ? 'bg-sidebar-accent text-sidebar-accent-foreground'
               : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
@@ -98,10 +103,10 @@ export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen,
           <CollectionCover
             {...playlistCover(p.artworkUrl ?? null, p.trackArtworks)}
             icon={null}
-            className="size-8 shrink-0 rounded-[4px] shadow-none"
+            className={cn('shrink-0 rounded-[4px] shadow-none', covers ? 'size-art-sm' : 'size-8')}
           />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[14.5px] leading-4 text-sidebar-foreground">{p.name}</span>
+            <span className={cn('block truncate text-sidebar-foreground', covers ? 'text-base' : 'text-[14.5px] leading-4')}>{p.name}</span>
             <span className="block truncate text-xs leading-4 text-sidebar-foreground/55">
               Playlist{typeof p.trackCount === 'number' ? ` · ${countLabel(p.trackCount)}` : ''}
             </span>

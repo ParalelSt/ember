@@ -1,5 +1,5 @@
 import { autoFill } from '@/lib/theme/derive';
-import { THEME_NAME_MAX, type PresetId, type ThemeDoc, type ThemeInputKey, type ThemeInputs } from '@/lib/theme/model';
+import { clipName, THEME_NAME_MAX, type PresetId, type ThemeDoc, type ThemeInputKey, type ThemeInputs } from '@/lib/theme/model';
 import type { Oklch } from '@/lib/theme/oklch';
 import { PRESET_BY_ID } from '@/lib/theme/presets';
 import type { SavedTheme, SharedTheme, ThemesList } from '@/lib/theme/saved';
@@ -79,7 +79,7 @@ export function refill(inputs: ThemeInputs, pinned: ReadonlySet<MoreKey>): Theme
 /** `base`, or `base 2`, `base 3`... whichever is free, within 40 characters. */
 export function uniqueName(base: string, taken: readonly string[]): string {
   const names = new Set(taken.map((n) => n.toLowerCase()));
-  const fit = (s: string, suffix = '') => s.slice(0, THEME_NAME_MAX - suffix.length).trimEnd() + suffix;
+  const fit = (s: string, suffix = '') => clipName(s, THEME_NAME_MAX - suffix.length).trimEnd() + suffix;
   if (!names.has(fit(base).toLowerCase())) return fit(base);
   for (let i = 2; ; i++) {
     const name = fit(base, ` ${i}`);

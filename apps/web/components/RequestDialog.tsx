@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { logger } from '@/lib/logger/client';
+import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 import { AttachmentPicker } from '@/components/AttachmentPicker';
 import {
   ATTACHMENT_FIELD,
@@ -116,7 +117,10 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
         const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
         throw new Error(err.error || `Failed: ${res.status}`);
       }
-      const data = (await res.json().catch(() => ({}))) as { attachmentsDropped?: boolean };
+      // The route always answers JSON: anything else came from something in
+      // its place (a Wi-Fi sign-in page), and the request never arrived.
+      const data = (await res.json().catch(() => null)) as { attachmentsDropped?: boolean } | null;
+      if (!data) throw new Error(NO_ANSWER_MESSAGE);
       if (data.attachmentsDropped) toast.warning(ATTACHMENTS_DROPPED_TOAST);
       else toast.success('Thanks, request sent');
       reset();

@@ -4,6 +4,7 @@ import { usePlayerStore, type LoopMode } from '@/stores/usePlayerStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useRadioExtend } from './useRadioExtend';
 import { makeTrack } from '@/test-utils/fakeBackend';
+import { stationTrack } from '@/lib/radio/station';
 import { exclusionKeys } from '@/lib/trackIdentity';
 import type { PlaybackContext, Track } from '@/types/track';
 
@@ -24,6 +25,7 @@ interface Props {
   index: number;
   loopMode: LoopMode;
   context: PlaybackContext | null;
+  history?: Track[];
 }
 
 const base: Props = {
@@ -38,7 +40,7 @@ function setup(over: Partial<Props> = {}) {
   const initialProps = { ...base, ...over };
   usePlayerStore.setState({ queue: initialProps.queue, index: initialProps.index });
   return renderHook(
-    (p: Props) => useRadioExtend({ ...p, history: [], liked: [] }),
+    (p: Props) => useRadioExtend({ history: [], ...p, liked: [] }),
     { initialProps },
   );
 }
@@ -81,6 +83,12 @@ describe('useRadioExtend', () => {
 
   it('does nothing away from the end of the queue', () => {
     setup({ queue: [seed, rec1], index: 0 });
+    expect(api.getRecommended).not.toHaveBeenCalled();
+  });
+
+  it('never extends a list of live radio stations', () => {
+    const st = stationTrack({ id: '00000000-0000-4000-8000-000000000001', name: 'Live', favicon: null });
+    setup({ current: st, queue: [st], index: 0, context: { type: 'stations', name: 'Nearby' } });
     expect(api.getRecommended).not.toHaveBeenCalled();
   });
 
@@ -192,5 +200,23 @@ describe('useRadioExtend: songs found unavailable (the 2026-09-30 report)', () =
     expect(logger.breadcrumb).toHaveBeenCalledWith('radio', 'extend', {
       context: 'single', seed: 'seed', recs: 2, added: 1,
     });
+  });
+});
+
+describe('useRadioExtend: uploads and Jamendo songs are no seed', () => {
+  // The server only grows radio from a YouTube video; any other id gets
+  // today's chart instead.
+  const upload = makeTrack({ id: 'upload:u1', source: 'upload', sourceId: 'u1', title: 'My Upload' });
+  const jamendo = makeTrack({ id: 'jamendo:j1', source: 'jamendo', sourceId: '1234567', title: 'Free Song' });
+
+  it('seeds from the last YouTube song in the queue when an upload is playing', async () => {
+    setup({ current: upload, queue: [seed, upload], index: 1 });
+    await waitFor(() => expect(api.getRecommended).toHaveBeenCalledWith('seed'));
+  });
+
+  it('falls back to the last YouTube song played when the queue has none', async () => {
+    const played = makeTrack({ id: 'youtube:h1', sourceId: 'h1', title: 'Heard Before' });
+    setup({ current: jamendo, queue: [upload, jamendo], index: 1, history: [jamendo, played] });
+    await waitFor(() => expect(api.getRecommended).toHaveBeenCalledWith('h1'));
   });
 });

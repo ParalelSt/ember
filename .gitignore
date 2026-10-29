@@ -86,6 +86,8 @@ Thumbs.db
 coverage/
 .nyc_output/
 cookies.txt
+# player.py's per-run copies of YTDLP_COOKIE_FILE, beside that file.
+.ember-cookies/
 
 # Local roadmap / status notes, not committed
 ROADMAP.md
@@ -132,3 +134,6 @@ tests/phone-bar-sizes-ui.test.mjs
 # update.sh sets the old node_modules and build aside here until the new
 # ones work (bughunt O1); never commit or stash them.
 *.update-prev
+.release-logs/
+.release-notes.md
+.shots/

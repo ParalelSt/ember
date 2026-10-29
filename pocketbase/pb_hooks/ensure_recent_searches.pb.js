@@ -53,6 +53,12 @@ onAfterBootstrap((e) => {
       { name: "played_at", type: "date", required: true, options: {} },
     ],
   });
-  dao.saveCollection(collection);
-  console.log("[ensure_recent_searches] created recent_searches");
+  // A failed first-time create must not stop PocketBase from booting: warn
+  // and carry on (bughunt X11); the next boot tries again.
+  try {
+    dao.saveCollection(collection);
+    console.log("[ensure_recent_searches] created recent_searches");
+  } catch (err) {
+    console.warn("[ensure_recent_searches] could not create recent_searches: " + err);
+  }
 });

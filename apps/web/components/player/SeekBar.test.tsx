@@ -50,6 +50,14 @@ describe('SeekBar', () => {
     expect(screen.getByText('2:00')).toBeInTheDocument();
   });
 
+  it('a song running past its listed length keeps the thumb and the time at the end', () => {
+    // The catalog's length wins when the engine's disagrees by a lot
+    // (lib/playback/chooseDuration), so the playhead can pass it.
+    render(<SeekBar position={216} duration={180} onSeek={vi.fn()} labels="inline" />);
+    expect(slider().getAttribute('aria-valuetext')).toBe('3:00 of 3:00');
+    expect(screen.queryByText('3:36')).toBeNull();
+  });
+
   it('follows the drag without seeking, then seeks once on release', () => {
     const onSeek = vi.fn();
     render(<SeekBar position={30} duration={120} onSeek={onSeek} labels="inline" />);
@@ -114,5 +122,21 @@ describe('SeekBar', () => {
     render(<SeekBar position={30} duration={120} onSeek={vi.fn()} labels="inline" />);
     fireEvent.change(slider(), { target: { value: '75' } });
     expect(slider()).toHaveAttribute('aria-valuetext', '1:30 of 2:00');
+  });
+});
+
+describe('PlayheadSeekBar for a live radio station', () => {
+  it('shows LIVE where the bar would be, with nothing to seek', async () => {
+    const { PlayheadSeekBar } = await import('./SeekBar');
+    const onSeek = vi.fn();
+    const { container } = render(<PlayheadSeekBar live duration={0} onSeek={onSeek} labels="inline" />);
+    expect(screen.getByTestId('live-badge').textContent).toBe('Live');
+    expect(container.querySelector('input[type="range"]')).toBeNull();
+  });
+
+  it('leaves the phone bar\'s bare strip empty', async () => {
+    const { PlayheadSeekBar } = await import('./SeekBar');
+    const { container } = render(<PlayheadSeekBar live duration={0} onSeek={vi.fn()} />);
+    expect(container.innerHTML).toBe('');
   });
 });

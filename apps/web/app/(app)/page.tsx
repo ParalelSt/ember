@@ -123,7 +123,9 @@ export default function HomePage() {
   const genreCharts = charts?.genres ?? [];
   const { data: mixesData } = useQueryMixes();
   const mixes = (mixesData?.mixes ?? []).filter((m) => m.count > 0);
-  const seedTrack = history[0];
+  // Radio grows from a YouTube video: an upload's (or Jamendo's) id is no
+  // seed, and the server answers it with today's chart instead.
+  const seedTrack = history.find((t) => t.source === 'youtube');
   const { data: recommended = [], isLoading: recommendedLoading } = useQueryRecommended(seedTrack?.sourceId);
 
   const { system, playlists } = useCollections();

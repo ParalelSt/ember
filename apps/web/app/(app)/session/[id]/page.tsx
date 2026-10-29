@@ -57,7 +57,9 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
   const handleSkip = () => {
     skip.mutate(data.session.nowIndex, {
-      onSuccess: () => toast.message('Skip sent'),
+      // `stale`: the song changed before the skip arrived, so the server
+      // skipped nothing (it would have skipped the next one too).
+      onSuccess: (r) => toast.message(r?.stale ? 'The song already changed, so nothing was skipped' : 'Skip sent'),
       onError: () => toast.error("Couldn't skip. Please try again."),
     });
   };

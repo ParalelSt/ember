@@ -203,6 +203,7 @@ export function ReviewSheet({
       <SheetPrimitive.Portal>
         <SheetPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/20 transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0" />
         <SheetPrimitive.Popup
+          data-slot="sheet-content"
           data-testid="review-sheet"
           aria-label={title}
           className={cn(

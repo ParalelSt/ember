@@ -3,7 +3,6 @@ import type { TabSummary } from '@/lib/tabSources';
 import {
   BEST_BADGE,
   chooseTab,
-  groupRows,
   MIN_SCORE_GAP,
   PICK_BADGE,
   rankTabs,
@@ -240,17 +239,6 @@ describe('the Source sheet’s rows', () => {
       ['f', true],
       ['s', true],
       ['p', true],
-    ]);
-  });
-
-  it('groups the rows in the order they are listed in', () => {
-    const groups = groupRows(sheetRows([ug('u'), tab({ id: 'f' }), songsterr('s'), pasted('p')]));
-    expect(groups.map((g) => [g.group, g.rows.map((r) => r.id)])).toEqual([
-      // The pasted tab joins the server group the file opened, not a
-      // second one further down.
-      ['server', ['f', 'p']],
-      ['songsterr', ['s']],
-      ['ug', ['u']],
     ]);
   });
 });

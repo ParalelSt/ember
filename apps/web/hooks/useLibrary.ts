@@ -1,6 +1,7 @@
 'use client';
 
 import { skipToken, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -41,6 +42,8 @@ export const QK = {
   /** Which playlists have a song (the Add to playlist menu's marks). */
   containing: (trackId: string) => ['playlists-containing', trackId] as const,
   containingAll: ['playlists-containing'] as const,
+  /** Songs per playlist (the head unit's covers sidebar). */
+  playlistCounts: ['playlist-counts'] as const,
 };
 
 /** Observe collection data already loaded by pages or player actions. The nav
@@ -94,6 +97,19 @@ export function useQueryPlaylists() {
     queryKey: QK.playlists,
     queryFn: () => api.listPlaylists().then((r) => r.playlists),
     enabled: !!user,
+    refetchInterval: PLAYLISTS_POLL_MS,
+  });
+}
+
+/** How many songs each playlist holds, by id. Only the head unit's covers
+ *  sidebar shows it, so only it asks (`enabled`); refreshed with the
+ *  playlists' own poll. */
+export function useQueryPlaylistCounts(enabled: boolean) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: QK.playlistCounts,
+    queryFn: () => api.playlistSongCounts().then((r) => r.counts),
+    enabled: enabled && !!user,
     refetchInterval: PLAYLISTS_POLL_MS,
   });
 }
@@ -308,8 +324,11 @@ export function useExecuteToggleLike() {
       qc.setQueryData(QK.likes, next);
       return { prev };
     },
-    onError: (_e, _vars, ctx) => {
+    onError: (_e, { wasLiked }, ctx) => {
       if (ctx?.prev) qc.setQueryData(QK.likes, ctx.prev);
+      // The heart goes back: said, or a like lost to a dropped connection
+      // went unnoticed.
+      toast.error(wasLiked ? "Couldn't remove that like" : "Couldn't like that song");
     },
     onSettled: () => {
       // Another toggle still on its way: the server's list does not have it
@@ -337,7 +356,8 @@ function syncLikedPin(qc: QueryClient) {
   // Compare against the playable set: pinList drops unavailable tracks,
   // so the raw likes would never match once one liked song is dead.
   if (sameTrackIds(pin.trackIds, playableFor(likes).map((t) => t.id))) return;
-  void pinLiked(likes);
+  // A refusal waits for the next like, which tries the sync again.
+  void pinLiked(likes).catch(() => {});
 }
 
 export function useExecuteRecordPlay() {
@@ -364,7 +384,8 @@ export function useExecuteRecordPlay() {
       if (!pin) return;
       const history = qc.getQueryData<Track[]>(QK.history) ?? [];
       if (sameTrackIds(pin.trackIds, playableFor(history).map((t) => t.id))) return;
-      void pinList(RECENT_PIN, 'Recently played', history);
+      // A refusal waits for the next play, which tries the sync again.
+      void pinList(RECENT_PIN, 'Recently played', history).catch(() => {});
     },
   });
 }
@@ -399,6 +420,8 @@ export function useExecuteAddToPlaylist() {
     mutationFn: ({ id, track }: { id: string; track: Track }) => api.addToPlaylist(id, track),
     onSuccess: (_d, { id, track }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      // The list's song counts and cover mosaics.
+      qc.invalidateQueries({ queryKey: QK.playlists });
       logger.breadcrumb('library', 'playlist.add', { playlistId: id, trackId: track.id });
     },
     // Added, or found already there (409): either way the menu's marks
@@ -458,6 +481,7 @@ export function useExecuteRemoveFromPlaylist() {
     onSettled: (_d, _e, { id, trackId }) => {
       editEnded(id);
       qc.invalidateQueries({ queryKey: QK.containing(trackId) });
+      qc.invalidateQueries({ queryKey: QK.playlists });
     },
   });
 }
@@ -469,6 +493,7 @@ export function useExecuteReplaceInPlaylist() {
       api.replaceInPlaylist(id, trackId, track),
     onSuccess: (_d, { id, trackId, track }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      qc.invalidateQueries({ queryKey: QK.playlists });
       qc.invalidateQueries({ queryKey: QK.containingAll });
       logger.breadcrumb('library', 'playlist.replace', { playlistId: id, from: trackId, to: track.id });
     },
@@ -520,6 +545,8 @@ export function useExecuteReorderPlaylist() {
     },
     onSettled: (_d, _e, { id }) => {
       editEnded(id);
+      // The first songs' covers (the list's mosaics) may have moved.
+      void qc.invalidateQueries({ queryKey: QK.playlists });
       return qc.invalidateQueries({ queryKey: QK.playlist(id) });
     },
   });

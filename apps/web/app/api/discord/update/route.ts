@@ -25,7 +25,15 @@ function isPresenceOwner(user: { email: string; isAdmin: boolean }): boolean {
  *  the client because this route drives the host's visible presence, a stale
  *  or replayed client call shouldn't be able to broadcast for someone who
  *  turned it off. A caller without a verified session changes nothing. */
+/** Updates in the order they came in: each waits on PocketBase before it
+ *  touches the card, so a song change answered after the pause that followed
+ *  it put "playing" back over the pause. Only the owner's calls that reach
+ *  the card count, so a member's call in between holds nothing back. */
+let arrived = 0;
+let applied = 0;
+
 export const POST = withRequestLog('discord/update', async (request: NextRequest) => {
+  const turn = ++arrived;
   const body = (await request.json().catch(() => null)) as
     | { track?: Track | null; isPlaying?: boolean; positionSec?: number; durationSec?: number }
     | null;
@@ -54,6 +62,8 @@ export const POST = withRequestLog('discord/update', async (request: NextRequest
     // PB unreachable: fall through as "don't broadcast".
   }
 
+  if (turn < applied) return Response.json({ ok: true, shared: mayShare, owner: true });
+  applied = turn;
   if (mayShare && body?.track && body.isPlaying) {
     updateDiscordActivity(body.track, true, Number(body.positionSec) || 0, Number(body.durationSec) || 0);
   } else clearDiscordActivity();

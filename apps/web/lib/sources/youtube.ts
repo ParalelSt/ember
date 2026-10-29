@@ -156,12 +156,16 @@ function envCap(name: string, fallback: number): number {
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
-const LANES: Record<PythonLane, Semaphore> = {
+/** One set of lanes per server PROCESS, like inFlight below: every route
+ *  that runs Python bundles its own copy of this module, and with the lanes
+ *  on the module each copy ran its own PYTHON_MAX_CONCURRENCY processes. */
+const LANES_KEY = Symbol.for('ember.pythonLanes');
+const LANES = ((globalThis as Record<symbol, unknown>)[LANES_KEY] ??= {
   // Search, stream lookups, album/artist/track pages, lyrics, trending.
   interactive: createSemaphore(envCap('PYTHON_MAX_CONCURRENCY', 4), { queueTimeoutMs: 15_000, maxQueue: 64 }),
   // Import batches (match, classify, playlist reads): they retry on a 503.
   bulk: createSemaphore(envCap('PYTHON_MAX_BULK', 2), { queueTimeoutMs: 120_000, maxQueue: 64 }),
-};
+} satisfies Record<PythonLane, Semaphore>) as Record<PythonLane, Semaphore>;
 
 /** How long a listener's cold download may wait for a gate slot, and how
  *  many may wait at once, before it fails with a 503 (the stream route then
@@ -224,10 +228,22 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
       stderr += text;
       process.stderr.write(text);
     });
-    child.on('error', (e) => { clearTimeout(timer); reject_(e as PythonError); });
+    // The helper could not be started at all (the venv's python missing).
+    // Node then also fires `close`, which must not log and reject again, and
+    // its own message names the server's python path, not for the browser.
+    let failedToStart = false;
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      if (timedOut || failedToStart) return;
+      failedToStart = true;
+      serverLogger.error('python', 'the media helper could not start', { args, command: PYTHON_BIN }, e);
+      const err: PythonError = new Error('the media helper could not start');
+      err.status = 502;
+      reject(err);
+    });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (timedOut) return; // already rejected (and logged) by the timer above
+      if (timedOut || failedToStart) return; // already rejected (and logged) above
       if (code !== 0) {
         // The MESSAGE reaches the browser (and toasts), so it must be a
         // sentence, not a Python traceback, those leak absolute server paths
@@ -326,8 +342,14 @@ export async function searchTracks(query: string, { limit = 30 } = {}): Promise<
  *  its own yt-dlp. That is not rare: a player asking for a byte range opens
  *  several requests for one song, so a single play could kick off three or
  *  four downloads of the same file, all fighting for the same throttled
- *  YouTube budget and racing to write the same path. Callers share one run. */
-const inFlight = new Map<string, Promise<string>>();
+ *  YouTube budget and racing to write the same path. Callers share one run.
+ *
+ *  One list per server PROCESS, not per module copy: a production build
+ *  bundles each route on its own (lib/sources/failureMemo), and the stream
+ *  route must see a download the Save route or the auto cache started, or
+ *  it serves the half-written file (isDownloading, below). */
+const IN_FLIGHT_KEY = Symbol.for('ember.ytDownloadsInFlight');
+const inFlight = ((globalThis as Record<symbol, unknown>)[IN_FLIGHT_KEY] ??= new Map()) as Map<string, Promise<string>>;
 
 /** Is yt-dlp currently writing this track?
  *
@@ -440,11 +462,23 @@ export function readTrackGain(videoId: string): number | null {
 }
 
 /** One measurement at a time: it is a full decode of the song, and nobody is
- *  waiting on it (a song without a gain just plays unchanged). */
-const LOUDNESS_LANE = createSemaphore(1, { queueTimeoutMs: 300_000, maxQueue: 256 });
-const measuring = new Map<string, Promise<number | null>>();
-/** A song ffmpeg could not read is not retried on every request. */
-const measureFailedAt = new Map<string, number>();
+ *  waiting on it (a song without a gain just plays unchanged). Per server
+ *  PROCESS, like inFlight: the loudness route and the routes that download
+ *  each bundle their own copy of this module, and with module-level state
+ *  they measured the same song twice at once, several songs in parallel. */
+interface LoudnessState {
+  lane: Semaphore;
+  measuring: Map<string, Promise<number | null>>;
+  /** A song ffmpeg could not read is not retried on every request. */
+  measureFailedAt: Map<string, number>;
+}
+const LOUDNESS_KEY = Symbol.for('ember.loudnessMeasuring');
+const loudnessState = ((globalThis as Record<symbol, unknown>)[LOUDNESS_KEY] ??= {
+  lane: createSemaphore(1, { queueTimeoutMs: 300_000, maxQueue: 256 }),
+  measuring: new Map(),
+  measureFailedAt: new Map(),
+} satisfies LoudnessState) as LoudnessState;
+const { lane: LOUDNESS_LANE, measuring, measureFailedAt } = loudnessState;
 const MEASURE_RETRY_MS = 10 * 60_000;
 
 /** Measure a downloaded song's loudness (once; concurrent callers share the
@@ -970,7 +1004,15 @@ async function fetchLrclib(
   };
 }
 
-export async function getLyrics(title: string, artist: string, durationSec?: number): Promise<LyricsResult> {
+export async function getLyrics(
+  title: string,
+  artist: string,
+  durationSec?: number,
+  /** `beforeHelper` runs right before the Genius helper (a Python process,
+   *  up to 20 s) would start, and never for a cached or LRCLib answer: a
+   *  rate limit throws from it to refuse only the costly lookups. */
+  opts: { beforeHelper?: () => void } = {},
+): Promise<LyricsResult> {
   const cleanTitle = title.trim().slice(0, 200);
   const cleanArtist = artist.trim().slice(0, 200);
   if (!cleanTitle) {
@@ -995,6 +1037,7 @@ export async function getLyrics(title: string, artist: string, durationSec?: num
     return fromLrclib;
   }
 
+  opts.beforeHelper?.();
   const raw = await runPython<RawLyrics>(['lyrics', '--', cleanTitle, cleanArtist], { timeoutMs: 20000 });
   if (raw?.error) {
     const e: PythonError = new Error(raw.error);

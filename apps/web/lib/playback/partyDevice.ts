@@ -1,5 +1,6 @@
 import { canUseDesktopPlugins } from '@/lib/desktopPlugins';
 import { detectShell } from './detectShell';
+import { coarsePointer } from '@/lib/coarsePointer';
 
 /** Whether "party" (the volume slider's above-100% boost) is available on
  *  this device at all: the Tauri desktop app, or a browser with a real
@@ -15,9 +16,6 @@ import { detectShell } from './detectShell';
  *  the Web Audio gain node in webBackend) reads this so a phone or the
  *  Android app never builds the graph and never applies a stored party
  *  level, even one saved from another, eligible device. */
-
-const coarsePointer = () =>
-  typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches ?? false);
 
 export function isPartyEligible(): boolean {
   if (!canUseDesktopPlugins()) return false;

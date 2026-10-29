@@ -160,3 +160,95 @@ describe('useKeyboardShortcuts', () => {
     expect(backend!.play).not.toHaveBeenCalled();
   });
 });
+
+describe('useKeyboardShortcuts and keys a control already handled', () => {
+  it('leaves an arrow key alone that a control under the focus took (tabs, a list), no seek, no volume change', () => {
+    const { backend } = setup();
+    const tab = document.createElement('div');
+    tab.setAttribute('role', 'tab');
+    tab.tabIndex = 0;
+    document.body.appendChild(tab);
+    // What base-ui's Tabs / RadioGroup do with an arrow key: move between
+    // their items and preventDefault, without stopping the event.
+    tab.addEventListener('keydown', (e) => e.preventDefault());
+
+    press({ key: 'ArrowRight' }, tab);
+    press({ key: 'ArrowUp' }, tab);
+    press({ key: ' ', code: 'Space' }, tab);
+
+    expect(backend!.seek).not.toHaveBeenCalled();
+    expect(backend!.play).not.toHaveBeenCalled();
+    expect(backend!.pause).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().volume).toBe(0.5);
+  });
+});
+
+describe('useKeyboardShortcuts and a keyboard-focused button', () => {
+  it('lets Space press the button (no preventDefault, no play/pause)', () => {
+    const { backend } = setup();
+    backend!.paused = true;
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    // happy-dom does not track focus modality: the button shows its ring.
+    button.matches = (selector: string) => selector === ':focus-visible' || Element.prototype.matches.call(button, selector);
+    expect(press({ key: ' ', code: 'Space' }, button)).toBe(true);
+    expect(backend!.play).not.toHaveBeenCalled();
+  });
+});
+
+describe('useKeyboardShortcuts while a modal is open', () => {
+  const mount = (attrs: Record<string, string>) => {
+    const el = document.createElement('div');
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    document.body.appendChild(el);
+    return el;
+  };
+
+  it('leaves every key to an open dialog or sheet (no play/pause, mute, seek or volume)', () => {
+    const modals: Record<string, string>[] = [
+      { 'data-slot': 'dialog-content', 'data-open': '' },
+      { 'data-slot': 'sheet-content', 'data-open': '' },
+      { role: 'dialog', 'aria-modal': 'true' },
+    ];
+    for (const attrs of modals) {
+      const { backend } = setup();
+      const modal = mount(attrs);
+      expect(press({ key: ' ', code: 'Space' })).toBe(true);
+      press({ key: 'm' });
+      press({ key: 'ArrowRight' });
+      press({ key: 'ArrowUp' });
+      expect(backend!.play).not.toHaveBeenCalled();
+      expect(backend!.pause).not.toHaveBeenCalled();
+      expect(backend!.seek).not.toHaveBeenCalled();
+      expect(usePlayerStore.getState().muted).toBe(false);
+      expect(usePlayerStore.getState().volume).toBe(0.5);
+      modal.remove();
+    }
+  });
+
+  it('keeps working while one of the player\'s own sheets is open (queue, equalizer, devices, More)', () => {
+    const { backend } = setup();
+    backend!.paused = true;
+    const sheet = mount({ 'data-slot': 'sheet-content', 'data-open': '', 'data-player-view': '' });
+    expect(press({ key: ' ', code: 'Space' })).toBe(false);
+    expect(backend!.play).toHaveBeenCalledTimes(1);
+    press({ key: 'm' });
+    expect(usePlayerStore.getState().muted).toBe(true);
+    // A real dialog opened over it (Add to playlist, Report a bug) still takes the keys.
+    const dialog = mount({ 'data-slot': 'dialog-content', 'data-open': '' });
+    expect(press({ key: ' ', code: 'Space' })).toBe(true);
+    expect(backend!.play).toHaveBeenCalledTimes(1);
+    dialog.remove();
+    sheet.remove();
+  });
+
+  it('works again once the dialog is closing or gone, and inside the full-screen player', () => {
+    const { backend } = setup();
+    backend!.paused = true;
+    mount({ 'data-slot': 'dialog-content', 'data-closed': '' });
+    mount({ role: 'dialog', 'aria-modal': 'true', 'aria-hidden': 'true' });
+    mount({ role: 'dialog', 'aria-modal': 'true', 'data-player-view': '' });
+    expect(press({ key: ' ', code: 'Space' })).toBe(false);
+    expect(backend!.play).toHaveBeenCalledTimes(1);
+  });
+});

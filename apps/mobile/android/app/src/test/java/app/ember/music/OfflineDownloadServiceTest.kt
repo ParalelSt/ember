@@ -326,4 +326,12 @@ class OfflineDownloadServiceTest {
         assertTrue("Retry on the second list fetched the song", store.audioFileFor("youtube:a").exists())
         assertEquals(1 to 1, store.progress(store.pins().first { it.id == "p1" }))
     }
+
+    /** The plugin sets the progress listener on the main thread and the drain
+     *  calls it from the download executor: without volatile the executor may
+     *  keep calling a dead page's listener, or never see the new one. */
+    @Test fun theProgressListenerIsVolatile() {
+        val field = OfflineDownloadService::class.java.getDeclaredField("listener")
+        assertTrue(java.lang.reflect.Modifier.isVolatile(field.modifiers))
+    }
 }

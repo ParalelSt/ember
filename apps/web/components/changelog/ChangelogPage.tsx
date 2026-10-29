@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { PageTitle } from '@/components/page/PageTitle';
 import { Eyebrow } from '@/components/page/Eyebrow';
-import type { ChangelogEntry } from '@/lib/changelog';
+import type { ChangelogEntry, ChangelogScope } from '@/lib/changelog';
 import { NewBadge } from '@/components/changelog/NewBadge';
 import { HideTagsSwitch } from '@/components/changelog/HideTagsSwitch';
 
@@ -15,9 +15,13 @@ export interface ChangelogPageProps {
   onMarkAllRead: () => void;
 }
 
-export const SCOPE_LABEL: Record<NonNullable<ChangelogEntry['scope']>, string> = {
+export const SCOPE_LABEL: Record<ChangelogScope, string> = {
   desktop: 'Desktop app',
   android: 'Android app',
+  ios: 'iPhone app',
+  windows: 'Windows app',
+  macos: 'Mac app',
+  linux: 'Linux app',
 };
 
 export const entryHref = (id: string) => `/whats-new/${encodeURIComponent(id)}`;

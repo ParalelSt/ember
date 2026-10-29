@@ -6,11 +6,12 @@ import {
 } from "@/lib/auth";
 import { serverLogger } from "@/lib/logger/server";
 import type { ClientSnapshot, ReportContext } from "@/lib/logger/types";
-import { rateLimitResponse } from "@/lib/rateLimit";
+import { rateLimitResponse, releaseRateLimitHit } from "@/lib/rateLimit";
 import { formatSeenBefore, triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { scrubServerEntry, scrubText } from "@/lib/logger/sanitize";
+import { LOG_RETENTION_MS } from "@/lib/logger/retention";
+import { scrubClientEntries, scrubServerEntry, scrubText } from "@/lib/logger/sanitize";
 import { formatTimeline, selectTimeline } from "@/lib/reports/timeline";
 import { entriesForReporter } from "@/lib/reports/reporterEntries";
 import {
@@ -31,9 +32,10 @@ import {
 } from "@/lib/attachments";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
-// How far back "Seen before" looks to tell "this has been happening all
-// week" from "brand new": see formatSeenBefore in lib/ai/triage.ts.
-const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// How far back "Seen before" looks to tell "this keeps happening" from
+// "brand new": as far as the server keeps its logs, since nothing older
+// exists to count (formatSeenBefore in lib/ai/triage.ts).
+const HISTORY_WINDOW_MS = LOG_RETENTION_MS;
 const MAX_NOTE_LEN = 1000;
 // Sane ceiling for individual context strings (route, platform, language,
 // …): a client that sends something absurd here shouldn't blow up the
@@ -133,6 +135,14 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       ? rateLimitResponse(`bug-report:auto:${user.id}`, { windowMs: 60 * 60 * 1000, max: 3 })
       : rateLimitResponse(`bug-report:${user.id}`, { windowMs: 30 * 1000, max: 1 });
     if (limited) return limited;
+    // A person whose report Discord did not take is told to try again: give
+    // the try back, or that try met the 30 s limit (as requests does). An
+    // automatic report keeps it spent: each try costs a model call, and its
+    // hourly cap must hold while Discord is away.
+    const notSent = (res: Response): Response => {
+      if (!automatic) releaseRateLimitHit(`bug-report:${user.id}`);
+      return res;
+    };
 
     // Checked before the webhook itself: a sandbox with no webhook of its
     // own has nowhere to send a test account's report anyway, so this skips
@@ -157,10 +167,17 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     // The desktop log travels inside the client snapshot but goes out as its
     // own attachment, so strip it here: inlined it would also sit in
     // report.json, doubling the payload for no extra information.
+    // The device only scrubbed secret-named keys; the patterns run here,
+    // the same as for the server's own entries and the note.
     const { desktopLog: rawDesktopLog, ...clientRest } = body.client;
-    const client = { ...clientRest, context: sanitizeContext(clientRest.context) };
+    const client = {
+      ...clientRest,
+      current: scrubClientEntries(clientRest.current),
+      previous: scrubClientEntries(clientRest.previous),
+      context: sanitizeContext(clientRest.context),
+    };
     const desktopLog =
-      typeof rawDesktopLog === "string" ? rawDesktopLog.slice(-MAX_DESKTOP_LOG) : "";
+      typeof rawDesktopLog === "string" ? scrubText(rawDesktopLog.slice(-MAX_DESKTOP_LOG)) : "";
 
     // Only what the reporter's own requests logged, plus server-wide
     // entries cut to their message: the log is everyone's, and this report
@@ -170,10 +187,12 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       user.id,
     ).map(scrubServerEntry);
     // Wider window, counts only: how often has each error fingerprint in
-    // this report shown up in the last week (formatSeenBefore, shared with
+    // this report shown up in the kept logs (formatSeenBefore, shared with
     // the triage prompt below). Never displayed verbatim, so it doesn't need
     // scrubServerEntry's redaction pass.
-    const history = await serverLogger.entriesSince(Date.now() - HISTORY_WINDOW_MS);
+    // Problems only (the report's own entries are errors): routine info lines
+    // must not push older occurrences past the read cap.
+    const history = await serverLogger.entriesSince(Date.now() - HISTORY_WINDOW_MS, (e) => e.level !== "info");
 
     const userAgent = request.headers.get("user-agent") ?? "unknown";
     const reportedAtMs = Date.now();
@@ -347,13 +366,13 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     }
     if (discordRes.status === DISCORD_UNREACHABLE) {
       serverLogger.error("api", "bug-report: Discord unreachable", { detail: failText.slice(0, 200) });
-      return jsonError("Couldn't reach Discord, please try again", 502);
+      return notSent(jsonError("Couldn't reach Discord, please try again", 502));
     }
     if (!discordRes.ok) {
-      return jsonError(
+      return notSent(jsonError(
         `Discord rejected the report (${discordRes.status}): ${failText.slice(0, 200)}`,
         502,
-      );
+      ));
     }
 
     // The reporter sees the diagnosis too, it tells them their report was

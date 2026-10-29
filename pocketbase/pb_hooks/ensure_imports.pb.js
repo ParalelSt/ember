@@ -123,8 +123,16 @@ onAfterBootstrap((e) => {
         { name: "dismissed", type: "bool", options: {} },
       ],
     });
-    dao.saveCollection(jobs);
-    console.log("[ensure_imports] created import_jobs");
+    // A failed first-time create must not stop PocketBase from booting:
+    // warn and carry on (bughunt X11). import_items points at the jobs, so
+    // it waits for the next boot too.
+    try {
+      dao.saveCollection(jobs);
+      console.log("[ensure_imports] created import_jobs");
+    } catch (err) {
+      console.warn("[ensure_imports] could not create import_jobs: " + err);
+      return;
+    }
   }
 
   try {
@@ -173,8 +181,12 @@ onAfterBootstrap((e) => {
         { name: "like_id", type: "text", options: { max: 30 } },
       ],
     });
-    dao.saveCollection(items);
-    console.log("[ensure_imports] created import_items");
+    try {
+      dao.saveCollection(items);
+      console.log("[ensure_imports] created import_items");
+    } catch (err) {
+      console.warn("[ensure_imports] could not create import_items: " + err);
+    }
   }
 
   // Fields and select values added after the collections first shipped.

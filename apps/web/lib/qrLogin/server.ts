@@ -8,6 +8,7 @@ import { normalizeCode } from './codes';
 import { csrfRefusal } from './sameOrigin';
 import { hash, isSecret, sameHash } from './secrets';
 import { transition, type QrEvent } from './state';
+import { withLock } from '@/lib/keyedLock';
 
 /** Shared by the QR sign-in routes under app/api/auth/qr (plan 2b). Nothing
  *  here logs a token, a secret, a code or a minted session: log lines carry
@@ -156,23 +157,7 @@ export async function cancelApprovedFor(pb: PocketBase, userId: string): Promise
 
 /** One change at a time per request id in this process, so two polls (or
  *  an approve and a deny) arriving together cannot both act. */
-const locks = new Map<string, Promise<void>>();
-export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const prev = locks.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const mine = new Promise<void>((r) => {
-    release = r;
-  });
-  const chained = prev.then(() => mine);
-  locks.set(key, chained);
-  await prev;
-  try {
-    return await fn();
-  } finally {
-    release();
-    if (locks.get(key) === chained) locks.delete(key);
-  }
-}
+export { withLock };
 
 /** Does the credential in the body (the token from the link, or the typed
  *  code) belong to this row? Compared as hashes, in constant time. */

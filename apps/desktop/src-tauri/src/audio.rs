@@ -111,7 +111,8 @@ pub struct AudioEngine {
     current_url: Mutex<Option<String>>,
     /// The session cookie that URL was loaded with, for the same re-open.
     current_cookie: Mutex<Option<String>>,
-    /// The loaded track is decoded forward-only (a fragmented stream, see
+    /// The loaded track is decoded forward-only (a fragmented stream, or one
+    /// sent with no length, see
     /// `open_decoder`), so its demuxer cannot go back to an earlier packet.
     forward_only: AtomicBool,
     /// Whether the source behind the loaded sink has failed. Set by the
@@ -265,11 +266,6 @@ impl AudioEngine {
         Self { play_budgets, ..self }
     }
 
-    /// Whether a real output device is attached.
-    pub fn has_output(&self) -> bool {
-        self.mixer.is_some()
-    }
-
     /// The output router, when there is a device to route to.
     pub fn outputs(&self) -> Option<&crate::output::OutputRouter> {
         self.outputs.as_ref()
@@ -367,6 +363,7 @@ impl AudioEngine {
     }
 
     /// The equalizer as last set.
+    #[cfg(test)]
     pub fn eq(&self) -> crate::eq::EqSettings {
         self.eq.get()
     }
@@ -428,18 +425,6 @@ impl AudioEngine {
         self.load_seq.load(Ordering::SeqCst) == seq
     }
 
-    /// Whether music is playing, or about to once its load lands. The
-    /// updater used to wait for this before installing; installing now only
-    /// happens in the launch gate, before the engine exists (src/gate.rs).
-    #[allow(dead_code)]
-    pub fn is_playing(&self) -> bool {
-        let Ok(g) = self.sink.lock() else { return false };
-        match g.as_ref() {
-            Some(s) => !s.is_paused() && !s.empty(),
-            None => self.load_in_flight() && self.want_play.load(Ordering::SeqCst),
-        }
-    }
-
     /// Whether the newest load is still connecting, buffering or decoding.
     fn load_in_flight(&self) -> bool {
         self.settled_seq.load(Ordering::SeqCst) < self.load_seq.load(Ordering::SeqCst)
@@ -459,6 +444,20 @@ impl AudioEngine {
 
 /// A load as it was asked for: url, cookie, start, cache key.
 type Requested = (String, Option<String>, f64, Option<String>);
+
+/// Whether a load the webview asks for starts a song, rather than opening
+/// the one it already has again at its playhead (tap to retry, the reload
+/// once back online, an older engine's stall retry). Only a start may move
+/// the output (src/output.rs, `Cmd::SongBoundary`): a reload is mid-song.
+/// The same song is the same track id, or the same URL but for its query
+/// (the listener's retry marks the stream URL).
+pub(crate) fn starts_a_song(previous: Option<&Requested>, url: &str, cache_key: Option<&str>, start_at: f64) -> bool {
+    let Some((was_url, _, _, was_key)) = previous else { return true };
+    let path = |u: &str| u.split(['?', '#']).next().unwrap_or_default().to_string();
+    let same_key = matches!((was_key.as_deref(), cache_key), (Some(a), Some(b)) if a == b);
+    let same = same_key || path(was_url) == path(url);
+    !(same && start_at > 0.0)
+}
 
 // --- Event payloads ---------------------------------------------------------
 
@@ -528,11 +527,7 @@ fn log_audio<R: Runtime>(app: &AppHandle<R>, level: &str, msg: &str) {
     }
 }
 
-fn emit_err<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String) {
-    emit_err_about(app, retry, message, None);
-}
-
-/// `emit_err` for a failure of one particular load's playback.
+/// An `audio:error` about one particular load's playback.
 fn emit_err_about<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String, token: Option<u64>) {
     use tauri::Emitter;
     let _ = app.emit("audio:error", ErrPayload { message, retry, token, retried: false });
@@ -913,7 +908,10 @@ pub(crate) fn open_decoder<R: Read + Seek + Send + Sync + 'static>(
     let skippable = layout.trailing_mdat.zip(len);
     let reader = TailSkip::new(reader, skippable, head_len);
     let built = reader.build_done();
-    let out = build_decoder(reader, len).map(|d| (d, fragmented));
+    // Without a length the decoder is not seekable either (see
+    // `build_decoder`), so it cannot go back any more than a fragmented one.
+    let forward_only = len.is_none();
+    let out = build_decoder(reader, len).map(|d| (d, forward_only));
     built();
     out
 }
@@ -1608,6 +1606,15 @@ pub async fn audio_load<R: Runtime>(
     }
     // A song the webview asks for gets its own native retry after a stall.
     engine.stall_retried.store(false, Ordering::SeqCst);
+    // Between songs: where the output router may move back to the sound
+    // server (src/output.rs). Not the engine's own re-opens, and not the
+    // webview loading the same song again at its playhead: both are mid-song.
+    let previous = engine.requested.lock().ok().and_then(|r| r.clone());
+    if starts_a_song(previous.as_ref(), &url, cache_key.as_deref(), start_at) {
+        if let Some(router) = engine.outputs() {
+            router.song_boundary();
+        }
+    }
     load_track(&app, engine.inner(), url, autoplay, start_at, cookie, cache_key).await
 }
 
@@ -2539,6 +2546,29 @@ mod tests {
     use super::*;
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
+
+    /// The output router moves back to the sound server only when a song
+    /// starts (src/output.rs). The webview also loads the song it already has
+    /// again at its playhead: tap to retry, the reload once back online, an
+    /// older engine's stall retry. That is mid-song, so it is not a start.
+    #[test]
+    fn only_a_new_song_or_one_from_its_start_is_a_song_start() {
+        let stream = |id: &str| format!("http://h/api/youtube/stream/{id}");
+        let was = |url: String, start: f64, key: Option<&str>| -> Requested { (url, None, start, key.map(str::to_string)) };
+        assert!(starts_a_song(None, &stream("a"), None, 42.0), "the first load");
+        let a = was(stream("a"), 0.0, None);
+        assert!(starts_a_song(Some(&a), &stream("b"), None, 0.0), "the next song");
+        assert!(starts_a_song(Some(&a), &stream("b"), None, 30.0), "the next song, where it was left");
+        assert!(starts_a_song(Some(&a), &stream("a"), None, 0.0), "the same song again from 0:00 (repeat one)");
+        assert!(!starts_a_song(Some(&a), &stream("a"), None, 95.0), "tap to retry at the playhead");
+        assert!(
+            !starts_a_song(Some(&a), &format!("{}?retry=1", stream("a")), None, 95.0),
+            "the listener's retry carries a marker on the same stream"
+        );
+        let cached = was("http://127.0.0.1:9/cache/a".into(), 0.0, Some("youtube:a"));
+        assert!(!starts_a_song(Some(&cached), &stream("a"), Some("youtube:a"), 95.0), "same track, now streamed");
+        assert!(starts_a_song(Some(&cached), &stream("b"), Some("youtube:b"), 95.0), "another track");
+    }
     use std::sync::mpsc;
 
     /// Serves one request and reports back which headers it saw.
@@ -2698,6 +2728,26 @@ mod tests {
         std::fs::write(&garbage, [0u8; 4096]).expect("write");
         assert!(open_cached(&garbage).is_err());
         assert!(open_cached(&dir.0.join("missing.bin")).is_err());
+    }
+
+    /// A body sent with no Content-Length is decoded non-seekable, and a
+    /// non-seekable demuxer cannot go back: a backward seek done in place
+    /// failed the next packet with no read error, which the engine reported
+    /// as the end of the song, so the player skipped to the next one. It is
+    /// forward-only now, so `plan_seek` re-opens it at the target, and the
+    /// forward seek that re-open makes still lands.
+    #[test]
+    fn a_body_without_a_length_is_forward_only_and_still_seeks_forward() {
+        use rodio::Source;
+        let body = std::io::Cursor::new(include_bytes!("../test-fixtures/tone-faststart.m4a").to_vec());
+        let (mut decoder, forward_only) = open_decoder(body, None).expect("decodes");
+        assert!(forward_only, "a body with no length cannot seek back");
+        assert_eq!(
+            plan_seek(Some(Duration::from_secs(120)), forward_only, Duration::from_secs(60), 10.0),
+            SeekPlan::Reopen(Duration::from_secs(10))
+        );
+        decoder.try_seek(Duration::from_secs(30)).expect("a forward seek lands");
+        assert!(decoder.by_ref().take(48_000).count() > 0, "it plays on from there");
     }
 
     #[test]

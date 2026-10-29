@@ -20,7 +20,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 // vi.fn() (not a plain arrow) so tests below can assert on call args/keys:
 // vi.mocked() needs a real mock function, not just something shaped like one.
-vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: vi.fn(() => null) }));
+vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: vi.fn(() => null), releaseRateLimitHit: vi.fn() }));
 vi.mock('@/lib/logger/server', () => ({
   serverLogger: { recentSince: vi.fn(async () => []), entriesSince: vi.fn(async () => []), error: vi.fn() },
 }));
@@ -44,7 +44,7 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
 
 const { POST } = await import('./route');
 const { serverLogger } = await import('@/lib/logger/server');
-const { rateLimitResponse } = await import('@/lib/rateLimit');
+const { rateLimitResponse, releaseRateLimitHit } = await import('@/lib/rateLimit');
 const { triageBugReport } = await import('@/lib/ai/triage');
 
 /** The Discord embed the route built (parsed out of the multipart payload). */
@@ -105,6 +105,7 @@ beforeEach(() => {
   vi.mocked(serverLogger.recentSince).mockResolvedValue([]);
   vi.mocked(serverLogger.entriesSince).mockResolvedValue([]);
   vi.mocked(rateLimitResponse).mockReturnValue(null);
+  vi.mocked(releaseRateLimitHit).mockClear();
   vi.mocked(triageBugReport).mockResolvedValue(null);
 });
 
@@ -405,10 +406,10 @@ describe('POST /api/bug-report: Seen before', () => {
     const thisOccurrence = serverError({ ts: now });
     vi.mocked(serverLogger.recentSince).mockResolvedValue([thisOccurrence]);
     // Same route/category/message shape (fingerprint ignores the numeric
-    // id), spread across the past week, including this occurrence.
+    // id), spread across the kept logs, including this occurrence.
     vi.mocked(serverLogger.entriesSince).mockResolvedValue([
-      serverError({ ts: now - 6 * 24 * 60 * 60 * 1000, message: 'GET /api/youtube/stream/xyz789 -> 502' }),
-      serverError({ ts: now - 3 * 24 * 60 * 60 * 1000, message: 'GET /api/youtube/stream/def456 -> 502' }),
+      serverError({ ts: now - 40 * 60 * 60 * 1000, message: 'GET /api/youtube/stream/xyz789 -> 502' }),
+      serverError({ ts: now - 20 * 60 * 60 * 1000, message: 'GET /api/youtube/stream/def456 -> 502' }),
       thisOccurrence,
     ]);
 
@@ -416,8 +417,18 @@ describe('POST /api/bug-report: Seen before', () => {
     expect(res.status).toBe(200);
     const embed = postedEmbed(fetchMock);
     const seenBefore = embed.fields.find((f) => f.name === 'Seen before');
-    expect(seenBefore?.value).toContain('seen 3 times this week');
+    expect(seenBefore?.value).toContain('seen 3 times in the last 2 days');
     expect(seenBefore?.value).not.toContain('first time');
+  });
+
+  it('looks back only as far as the server keeps its logs (2 days), not a week it cannot see', async () => {
+    vi.mocked(serverLogger.recentSince).mockResolvedValue([serverError()]);
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([]);
+    const before = Date.now();
+    await POST(request({ client: snapshot() }), undefined as never);
+    const since = vi.mocked(serverLogger.entriesSince).mock.calls.at(-1)![0];
+    expect(before - since).toBeGreaterThanOrEqual(2 * 24 * 60 * 60 * 1000 - 1000);
+    expect(before - since).toBeLessThanOrEqual(2 * 24 * 60 * 60 * 1000 + 1000);
   });
 
   it('omits server errors with no history from the report and still succeeds', async () => {
@@ -486,6 +497,41 @@ describe('POST /api/bug-report: note scrubbing', () => {
   });
 });
 
+
+describe('POST /api/bug-report: client log scrubbing', () => {
+  it('scrubs the client entries and the desktop log on the server too, not only the note', async () => {
+    const leaky = {
+      ts: Date.now(),
+      kind: 'error' as const,
+      level: 'error' as const,
+      category: 'api',
+      message: 'GET /api/youtube/search?q=secret-words -> 500',
+      stack: 'Error: upstream said Bearer sk-ant-abcdefgh12345678',
+      data: { url: '/api/uploads/x/stream?st=abcdefghijklmnopqrstuvwxyz' },
+      sessionId: 's1',
+    };
+    await POST(
+      request({
+        note: '',
+        client: snapshot({ current: [leaky, 'not an entry' as never], previous: [leaky], desktopLog: 'ya29.a0AfB_byC-xyz_123-abcDEF\nfine' }),
+      }),
+      undefined as never,
+    );
+    const form = postedForm(fetchMock);
+    const everything = [
+      form.get('payload_json') as string,
+      await (form.get('files[0]') as File).text(),
+      await (form.get('files[1]') as File).text(),
+    ].join('\n');
+    for (const secret of ['secret-words', 'sk-ant-abcdefgh12345678', 'abcdefghijklmnopqrstuvwxyz', 'ya29.']) {
+      expect(everything).not.toContain(secret);
+    }
+    expect(everything).toContain('fine');
+    const triageInput = vi.mocked(triageBugReport).mock.calls.at(-1)![0];
+    expect(JSON.stringify(triageInput)).not.toContain('secret-words');
+    expect(triageInput.client.current).toHaveLength(1);
+  });
+});
 
 describe('POST /api/bug-report: attachments', () => {
   const MB = 1024 * 1024;
@@ -645,5 +691,47 @@ describe('POST /api/bug-report: Discord unreachable', () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Couldn't reach Discord, please try again");
     expect(body.error).not.toContain('fetch failed');
+  });
+});
+
+describe('POST /api/bug-report: a report that did not go out', () => {
+  // It said "please try again", and a try within 30 s met the one-a-30-s
+  // limit the failed send had used up (requests already gives its try back).
+  it('gives a person their try back when Discord did not take the report', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(502);
+    expect(releaseRateLimitHit).toHaveBeenCalledWith('bug-report:u1');
+  });
+
+  it('also when Discord refused it', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => 'oops' });
+    await POST(request({ client: snapshot() }), undefined as never);
+    expect(releaseRateLimitHit).toHaveBeenCalledWith('bug-report:u1');
+  });
+
+  it('keeps the try spent once the report went out', async () => {
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(200);
+    expect(releaseRateLimitHit).not.toHaveBeenCalled();
+  });
+
+  // Each automatic try costs a model call: their hourly cap stays the cap
+  // while Discord is away.
+  it('keeps an automatic report\'s try spent either way', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    await POST(request({ client: snapshot(), automatic: true }), undefined as never);
+    expect(releaseRateLimitHit).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/bug-report: "Seen before" history', () => {
+  // The history read is capped: routine info lines are left out while
+  // reading, so they cannot push older occurrences of the error past it.
+  it('asks the log for problems only', async () => {
+    await POST(request({ client: snapshot() }), undefined as never);
+    const keep = vi.mocked(serverLogger.entriesSince).mock.calls.at(-1)![1] as (e: ServerLogEntry) => boolean;
+    expect(keep(serverError({ level: 'info' }))).toBe(false);
+    expect(keep(serverError({ level: 'error' }))).toBe(true);
   });
 });

@@ -16,7 +16,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.IOException
 
-/** The car's browse tree (BrowseTree): tabs, Home, long lists in pages,
+/** The car's browse tree (BrowseTree): tabs, Library, long lists in pages,
  *  covers the car can load, and what it shows offline. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -34,41 +34,33 @@ class BrowseTreeCarTest {
     private fun json(body: String) = server.enqueue(MockResponse().setBody(body))
 
     @Test fun `a car that shows fewer tabs gets the first ones`() {
-        assertEquals(listOf(BrowseTree.HOME, BrowseTree.LIKED), BrowseTree.tabsFor(2))
+        assertEquals(listOf(BrowseTree.FOR_YOU, BrowseTree.LIBRARY), BrowseTree.tabsFor(2))
+        // No limit, or room for all (Android Auto's four): all four.
         assertEquals(4, BrowseTree.tabsFor(0).size)
-        assertEquals(4, BrowseTree.tabsFor(9).size)
+        assertEquals(4, BrowseTree.tabsFor(4).size)
         val tree = BrowseTree(api)
-        assertEquals(listOf(BrowseTree.HOME, BrowseTree.LIKED, BrowseTree.PLAYLISTS), tree.children(BrowseTree.ROOT, rootLimit = 3).map { it.mediaId })
+        assertEquals(listOf(BrowseTree.FOR_YOU), tree.children(BrowseTree.ROOT, rootLimit = 1).map { it.mediaId })
     }
 
-    @Test fun `playlists ask for a grid, the root for lists and search`() {
-        val tabs = BrowseTree(api).children(BrowseTree.ROOT)
-        val playlists = tabs.first { it.mediaId == BrowseTree.PLAYLISTS }
-        assertEquals(MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM, playlists.mediaMetadata.extras!!.getInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE))
+    @Test fun `the root asks for lists by default, and the car may search`() {
         val root = BrowseTree.rootExtras()
         assertEquals(MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM, root.getInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE))
         assertTrue(root.getBoolean("android.media.browse.CONTENT_STYLE_SUPPORTED"))
     }
 
-    @Test fun `home has recently played, each song once, then playlists, under headings`() {
-        json(tracks("a", "b", "a", "c"))
+    @Test fun `library is Liked songs, the playlists with their covers, uploads and the songs on the phone`() {
         json("""{"playlists":[{"id":"p1","name":"Road","artwork_url":"/pb/api/files/playlists/p1/cover.jpg"}]}""")
-        val home = BrowseTree(api, auth).children(BrowseTree.HOME)
-        assertEquals(listOf("home-recent|a", "home-recent|b", "home-recent|c", "playlist:p1"), home.map { it.mediaId })
-        val group = MediaConstants.EXTRAS_KEY_CONTENT_STYLE_GROUP_TITLE
-        assertEquals("Recently played", home[0].mediaMetadata.extras!!.getString(group))
-        assertEquals("Your playlists", home[3].mediaMetadata.extras!!.getString(group))
+        val lib = BrowseTree(api, auth).children(BrowseTree.LIBRARY)
+        assertEquals(listOf(BrowseTree.LIKED, "playlist:p1", BrowseTree.UPLOADS, BrowseTree.DOWNLOADS), lib.map { it.mediaId })
+        assertEquals(listOf("Liked songs", "Road", "Uploads", "On this phone"), lib.map { it.mediaMetadata.title.toString() })
+        assertTrue(lib.all { it.mediaMetadata.isBrowsable == true })
         // The playlist's picture on the Ember server goes out as a content URI.
-        assertEquals("content://$auth/playlist/p1/cover.jpg", home[3].mediaMetadata.artworkUri.toString())
+        assertEquals("content://$auth/playlist/p1/cover.jpg", lib[1].mediaMetadata.artworkUri.toString())
     }
 
-    @Test fun `home with one section down still shows the other, both down is a failure`() {
-        json(tracks("a"))
+    @Test fun `a library that cannot be fetched is a failure the car shows as a line`() {
         server.enqueue(MockResponse().setResponseCode(500))
-        assertEquals(listOf("home-recent|a"), BrowseTree(api).children(BrowseTree.HOME).map { it.mediaId })
-        server.enqueue(MockResponse().setResponseCode(500))
-        server.enqueue(MockResponse().setResponseCode(500))
-        val failed = runCatching { BrowseTree(api).children(BrowseTree.HOME) }.exceptionOrNull()
+        val failed = runCatching { BrowseTree(api).children(BrowseTree.LIBRARY) }.exceptionOrNull()
         assertTrue(failed is IOException)
     }
 
@@ -128,11 +120,6 @@ class BrowseTreeCarTest {
         assertEquals(listOf("a", "b"), got)
     }
 
-    @Test fun `library holds recently played, uploads and the songs on the phone`() {
-        val lib = BrowseTree(api).children(BrowseTree.LIBRARY)
-        assertEquals(listOf(BrowseTree.RECENT, BrowseTree.UPLOADS, BrowseTree.DOWNLOADS), lib.map { it.mediaId })
-    }
-
     @Test fun `downloads play from the phone with their own covers`() {
         val song = JSONObject(t("youtube:d"))
         val tree = BrowseTree(api, auth, downloads = { listOf(song) }, downloadedArt = { it == "youtube:d" })
@@ -147,7 +134,7 @@ class BrowseTreeCarTest {
     @Test fun `offline, the server's lists become the downloads, and search looks through them`() {
         val songs = listOf(JSONObject(t("youtube:d1")).put("title", "Night Drive"), JSONObject(t("youtube:d2")).put("title", "Morning"))
         val tree = BrowseTree(api, auth, downloads = { songs }, online = { false })
-        for (tab in listOf(BrowseTree.HOME, BrowseTree.LIKED, BrowseTree.PLAYLISTS, BrowseTree.RECENT, "playlist:p1")) {
+        for (tab in listOf(BrowseTree.FOR_YOU, BrowseTree.FOR_YOU_MIX, BrowseTree.LIBRARY, BrowseTree.LIKED, BrowseTree.RECENT, "playlist:p1")) {
             val list = tree.children(tab)
             assertEquals("You're offline. Songs on this phone:", list[0].mediaMetadata.title.toString())
             assertFalse(list[0].mediaMetadata.isPlayable == true)

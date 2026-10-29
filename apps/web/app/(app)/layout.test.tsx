@@ -3,10 +3,17 @@ import { act, render, screen } from '@testing-library/react';
 import AppShellLayout from './layout';
 import { LyricsPanel } from '@/components/player/LyricsPanel';
 import { useUiStore } from '@/stores/useUiStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 
 /* The shell's own pieces stand in as plain markers: this test is about
  * where the desktop top bar sits, not about what each piece draws. */
-vi.mock('@/components/nav/Sidebar', () => ({ Sidebar: () => <nav data-testid="sidebar" /> }));
+vi.mock('@/components/nav/Sidebar', () => ({
+  Sidebar: ({ covers }: { covers?: boolean }) => <nav data-testid="sidebar" data-covers={covers ? 'on' : 'off'} />,
+}));
+vi.mock('@/components/nav/CarRail', () => ({ CarRail: () => <nav data-testid="car-rail" /> }));
+// The head unit detection (lib/headUnit) answers what each test says.
+const headUnit = vi.hoisted(() => ({ value: false }));
+vi.mock('@/lib/headUnit', () => ({ isHeadUnit: () => headUnit.value, subscribeHeadUnit: () => () => {} }));
 vi.mock('@/components/nav/TopBar', () => ({ TopBar: () => <header data-testid="phone-topbar" /> }));
 vi.mock('@/components/nav/MobileNav', () => ({ MobileNav: () => <nav data-testid="mobile-nav" /> }));
 vi.mock('@/components/nav/Drawer', () => ({ Drawer: () => null }));
@@ -21,7 +28,10 @@ vi.mock('@/components/player/LyricsPanel', () => ({
 vi.mock('@/components/search/SearchOverlayContainer', () => ({
   SearchOverlayContainer: () => <div role="search" data-testid="search-box" />,
 }));
-vi.mock('@/lib/offline', () => ({ hydrateOfflineStore: vi.fn(async () => {}) }));
+const offline = vi.hoisted(() => ({ hydrateOfflineStore: vi.fn(async () => {}) }));
+vi.mock('@/lib/offline', () => offline);
+const logger = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn(), breadcrumb: vi.fn() }));
+vi.mock('@/lib/logger/client', () => ({ logger }));
 vi.mock('@/hooks/useChangelog', () => ({ useChangelog: () => ({ hasNew: false }) }));
 vi.mock('@/hooks/useSession', () => ({ useReleaseStaleHosting: () => {} }));
 vi.mock('@/components/session/SessionHostBridge', () => ({ SessionHostBridge: () => null }));
@@ -35,6 +45,8 @@ const BAR_H = 80;
 let heightSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   desktop.value = true;
+  headUnit.value = false;
+  useSettingsStore.setState({ headUnitControls: true });
   useUiStore.setState({ searchOpen: false });
   heightSpy = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
     return this.dataset.testid === 'topbar-bar' ? BAR_H : 0;
@@ -162,5 +174,58 @@ describe('LyricsPanel beside the bar', () => {
     // The panel is the row's last child, after <main>, in the scroller.
     const row = scroller().children[1] as HTMLElement;
     expect(row.lastElementChild).toBe(screen.getByTestId('lyrics'));
+  });
+});
+
+// The owner's picks for a car head unit (carlayout2): with the car layout on
+// (Settings > Devices, on by default), a rail of big icons stands in for the
+// sidebar; switched off, or on any other device, the sidebar is back.
+describe('app shell, car head unit', () => {
+  it('a phone, tablet or computer keeps the sidebar as it is, whatever the switch says', () => {
+    renderShell();
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-covers', 'off');
+    expect(screen.queryByTestId('car-rail')).toBeNull();
+    act(() => useSettingsStore.setState({ headUnitControls: false }));
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-covers', 'off');
+  });
+
+  it('a head unit with the car layout on gets the icon rail instead of the sidebar', () => {
+    headUnit.value = true;
+    renderShell();
+    expect(screen.getByTestId('car-rail')).toBeInTheDocument();
+    expect(screen.queryByTestId('sidebar')).toBeNull();
+  });
+
+  it('a head unit with the car layout switched off gets the sidebar back, in its covers look', () => {
+    headUnit.value = true;
+    useSettingsStore.setState({ headUnitControls: false });
+    renderShell();
+    expect(screen.getByTestId('sidebar')).toHaveAttribute('data-covers', 'on');
+    expect(screen.queryByTestId('car-rail')).toBeNull();
+  });
+
+  it('switching the car layout off swaps the rail for the sidebar at once', () => {
+    headUnit.value = true;
+    renderShell();
+    expect(screen.getByTestId('car-rail')).toBeInTheDocument();
+    act(() => useSettingsStore.setState({ headUnitControls: false }));
+    expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+    expect(screen.queryByTestId('car-rail')).toBeNull();
+  });
+});
+
+describe('app shell, offline store', () => {
+  it('a failed offline hydrate is logged, not left as an unhandled rejection', async () => {
+    offline.hydrateOfflineStore.mockImplementationOnce(() => Promise.reject(new Error('no OPFS')));
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      renderShell();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith('offline', expect.any(String), expect.objectContaining({ message: 'no OPFS' }));
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 });

@@ -1,5 +1,6 @@
 package app.ember.music
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -9,6 +10,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -23,6 +25,9 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -51,6 +56,18 @@ class LaunchGateActivity : ComponentActivity() {
     /** Android will install without asking (AppUpdater's view). */
     private var silent = false
     private val updaterListener: (JSONObject) -> Unit = { s -> main.post { onUpdaterState(s) } }
+    /** Android's notification dialog is up, right before the install: the
+     *  "Ember updated, tap to open" notice is the only way back after an
+     *  update from Android 10 on (UpdatedReceiver). */
+    private var askingNotifications = false
+    private val notificationAsk = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!askingNotifications) return@registerForActivityResult
+        askingNotifications = false
+        AppUpdater.gateEvent("update.gate.notifications", if (granted) "allowed" else "refused", JSONObject().put("granted", granted))
+        // Refused or not, the update goes ahead: the notice only brings Ember back.
+        startInstall()
+        render()
+    }
     private val ticker = object : Runnable {
         override fun run() {
             feed(Input.Tick)
@@ -145,7 +162,11 @@ class LaunchGateActivity : ComponentActivity() {
             if (!res.isSuccessful) null to "none"
             else {
                 val offer = GateRules.parseAnswer(runCatching { JSONObject(res.body?.string().orEmpty()) }.getOrNull(), current)
-                offer to (if (offer != null) "update" else "none")
+                when {
+                    offer == null -> null to "none"
+                    GateRules.refusedBefore(offer, AppUpdater.rejectedVersion()) -> null to "refused"
+                    else -> offer to "update"
+                }
             }
         }
     } catch (e: java.io.InterruptedIOException) {
@@ -185,7 +206,17 @@ class LaunchGateActivity : ComponentActivity() {
                 // this process next.
                 GateHistory.mark(this, GateRules.Stage.CLEAN)
                 GateHistory.installStarted(this)
-                if (!AppUpdater.installFromGate(this)) main.post { feed(Input.InstallFailed) }
+                val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (UpdateRules.askNotificationsFirst(Build.VERSION.SDK_INT, granted)) {
+                    askingNotifications = true
+                    AppUpdater.holdForGate()
+                    if (runCatching { notificationAsk.launch(Manifest.permission.POST_NOTIFICATIONS) }.isFailure) {
+                        askingNotifications = false
+                        startInstall()
+                    }
+                } else {
+                    startInstall()
+                }
             }
             is Effect.Quit -> {
                 GateHistory.mark(this, GateRules.Stage.CLEAN)
@@ -197,13 +228,17 @@ class LaunchGateActivity : ComponentActivity() {
         }
     }
 
+    private fun startInstall() {
+        if (!AppUpdater.installFromGate(this)) main.post { feed(Input.InstallFailed) }
+    }
+
     private fun onUpdaterState(s: JSONObject) {
         val m = machine ?: return
         silent = s.optBoolean("silent", silent)
         val progress = if (s.has("progress") && !s.isNull("progress")) s.optDouble("progress") else null
         val waiting = if (s.isNull("waiting")) null else s.optString("waiting").takeIf { it.isNotEmpty() }
         val latest = if (s.isNull("latest")) null else s.optString("latest").takeIf { it.isNotEmpty() }
-        GateRules.fromUpdater(m.phase, s.optString("status"), waiting, progress, latest, m.offer?.version)?.let { feed(it) }
+        GateRules.fromUpdater(m.phase, s.optString("status"), waiting, progress, latest, m.offer?.version, s.optBoolean("gatePending"))?.let { feed(it) }
         if (m.phase is Phase.Installing) render()
     }
 
@@ -263,6 +298,10 @@ class LaunchGateActivity : ComponentActivity() {
 
     override fun onDestroy() {
         main.removeCallbacks(ticker)
+        if (askingNotifications) {
+            askingNotifications = false
+            AppUpdater.releaseGateHold()
+        }
         AppUpdater.removeListener(updaterListener)
         super.onDestroy()
     }
@@ -424,7 +463,8 @@ class LaunchGateActivity : ComponentActivity() {
     private fun render() {
         val m = machine ?: return
         if (!::scrim.isInitialized) return
-        val c = GateRules.copy(m, silent)
+        val back = GateRules.comeback(Build.VERSION.SDK_INT, NotificationManagerCompat.from(this).areNotificationsEnabled())
+        val c = GateRules.copy(m, silent, back, askingNotifications)
         if (c == null) {
             scrim.visibility = View.GONE
             return

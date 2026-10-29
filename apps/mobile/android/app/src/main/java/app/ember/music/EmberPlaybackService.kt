@@ -102,9 +102,13 @@ class EmberPlaybackService : MediaLibraryService() {
             "com.android.car.media",
             "com.google.android.carassistant",
         )
-        /** How long a service started for a media button (the app was
-         *  closed) may take to show its notification before it gives up
-         *  cleanly. Android allows 5 s (10 s on 12+). */
+        /** "Open Ember when this device starts" (BootReceiver): load the
+         *  saved queue, and play it when [EXTRA_PLAY] is true. */
+        const val ACTION_BOOT_RESUME = "app.ember.music.BOOT_RESUME"
+        const val EXTRA_PLAY = "play"
+        /** How long a service started for a media button or at boot (the
+         *  app was closed) may take to show its notification before it
+         *  gives up cleanly. Android allows 5 s (10 s on 12+). */
         const val MEDIA_BUTTON_GUARD_MS = 3_500L
         private const val GUARD_CHANNEL = "ember.resume"
         private const val GUARD_NOTIFICATION_ID = 7201
@@ -145,7 +149,10 @@ class EmberPlaybackService : MediaLibraryService() {
         fun policyTrack(item: MediaItem): AutoCachePolicy.Track {
             val json = TrackItems.trackOf(item)
             fun str(k: String) = json?.takeIf { it.has(k) && !it.isNull(k) }?.optString(k)?.takeIf { it.isNotEmpty() }
-            val stream = if (json == null || str("streamUrl") != null) item.localConfiguration?.uri?.toString() else null
+            // A live station has no end to download to: no address, so the
+            // policy passes it over.
+            val stream = if (TrackItems.isLive(json)) null
+                else if (json == null || str("streamUrl") != null) item.localConfiguration?.uri?.toString() else null
             return AutoCachePolicy.Track(item.mediaId, stream, str("unavailableAt"))
         }
 
@@ -305,6 +312,7 @@ class EmberPlaybackService : MediaLibraryService() {
             online = ::online,
             onLiked = { ids -> handler.post { liked.replace(ids); refreshButtons() } },
             notice = { UpdateRules.carNotice(AppUpdater.isReady(), AppUpdater.installsSilently()) },
+            location = { RadioPlaces.lastKnown(this) },
         )
         // Streams go through the same OkHttp client, so they carry the cookie
         // and get the same 401 retry as the JSON calls. Every byte they bring
@@ -406,7 +414,7 @@ class EmberPlaybackService : MediaLibraryService() {
         if (show == noticeShown || !::session.isInitialized) return
         noticeShown = show
         if (show && carControllers.isNotEmpty()) playbackLog.info("update.car", "car shows: update ready, installs once parked")
-        runCatching { session.notifyChildrenChanged(BrowseTree.HOME, Int.MAX_VALUE, null) }
+        runCatching { session.notifyChildrenChanged(BrowseTree.LIBRARY, Int.MAX_VALUE, null) }
     }
 
     private fun startLog(baseUrl: String) {
@@ -450,7 +458,9 @@ class EmberPlaybackService : MediaLibraryService() {
     private fun refreshButtons() {
         if (!::session.isInitialized) return
         val p = active
-        val state = Triple(liked.isLiked(p.currentMediaItem?.mediaId), shuffle.on, p.repeatMode)
+        // A live station is not a song: no heart for it.
+        val heart = p.currentMediaItem?.takeIf { !TrackItems.isLive(it) }?.let { liked.isLiked(it.mediaId) }
+        val state = Triple(heart, shuffle.on, p.repeatMode)
         if (state == lastButtons) return
         lastButtons = state
         session.setCustomLayout(ImmutableList.copyOf(CarButtons.layout(state.first, state.second, state.third)))
@@ -510,6 +520,7 @@ class EmberPlaybackService : MediaLibraryService() {
     private fun toggleLike(): SessionResult {
         val item = active.currentMediaItem ?: return SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE)
         val track = TrackItems.trackOf(item) ?: return SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE)
+        if (TrackItems.isLive(track)) return SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED)
         val id = item.mediaId
         val was = liked.isLiked(id) ?: return SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)
         liked.set(id, !was)
@@ -547,37 +558,44 @@ class EmberPlaybackService : MediaLibraryService() {
 
     /** The saved queue (SavedQueue), where it was, playing. Nothing saved:
      *  nothing to play (the foreground guard then lets the service go). */
-    private fun resumeAndPlay() {
+    private fun resumeAndPlay() = resumeSaved(play = true, why = "a media button")
+
+    /** The saved queue, where it was, playing or paused ([play]). Something
+     *  already loaded is kept (and played when [play]). */
+    private fun resumeSaved(play: Boolean, why: String) {
         // The service is going away: nothing to load into.
         if (resumeIo.isShutdown) return
         resumeIo.execute {
             val saved = runCatching { savedQueue.resume(api.baseUrl, artAuthority) }.getOrNull()
             handler.post {
                 val p = session.player
-                if (p.mediaItemCount > 0) { androidx.media3.common.util.Util.handlePlayButtonAction(p); return@post }
-                if (saved == null) { Log.i(TAG, "play with nothing saved: nothing to resume"); return@post }
-                Log.i(TAG, "resume ${saved.mediaItems.size} song(s) at ${saved.startIndex} for a media button")
+                if (p.mediaItemCount > 0) { if (play) androidx.media3.common.util.Util.handlePlayButtonAction(p); return@post }
+                if (saved == null) { Log.i(TAG, "resume for $why with nothing saved: nothing to resume"); return@post }
+                Log.i(TAG, "resume ${saved.mediaItems.size} song(s) at ${saved.startIndex} for $why, ${if (play) "playing" else "paused"}")
                 shuffle.clear()
                 shuffleFlag(false)
                 p.setMediaItems(saved.mediaItems, saved.startIndex, saved.startPositionMs)
                 p.prepare()
-                p.play()
+                if (play) p.play()
             }
         }
     }
 
-    /** Started for a media button with the app closed (EmberMediaButtonReceiver):
-     *  Android requires the notification within seconds. Media3 shows it as
-     *  soon as the resumed queue plays; if nothing does (the saved queue
-     *  would not load), the service shows a quiet one of its own for a
-     *  moment and lets go, instead of being killed for it. */
+    /** Started for a media button with the app closed (EmberMediaButtonReceiver),
+     *  or at the device's start (BootReceiver): Android requires the
+     *  notification within seconds. Media3 shows it as soon as the resumed
+     *  queue plays; if nothing does (the saved queue would not load, or it
+     *  was resumed paused), the service shows a quiet one of its own for a
+     *  moment, instead of being killed for it, and lets go when there is
+     *  nothing loaded. */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val result = super.onStartCommand(intent, flags, startId)
         // Only the start the service was created for: the notification's
         // own buttons are media button starts too, of a running service.
         val first = firstStart
         firstStart = false
-        if (first && intent?.action == Intent.ACTION_MEDIA_BUTTON) {
+        if (intent?.action == ACTION_BOOT_RESUME) resumeSaved(play = intent.getBooleanExtra(EXTRA_PLAY, false), why = "the device start")
+        if (first && (intent?.action == Intent.ACTION_MEDIA_BUTTON || intent?.action == ACTION_BOOT_RESUME)) {
             handler.removeCallbacks(foregroundGuard)
             handler.postDelayed(foregroundGuard, MEDIA_BUTTON_GUARD_MS)
         }
@@ -1303,14 +1321,17 @@ class EmberPlaybackService : MediaLibraryService() {
             }
             val query = items.singleOrNull()?.requestMetadata?.searchQuery
             if (!mine && query != null) return voiceSearch(query, controller)
+            var start = startIndex
             val resolved: List<MediaItem> =
-                if (items.size == 1 && items[0].localConfiguration == null && TrackItems.trackOf(items[0]) == null)
-                    tree.queueFor(items[0].mediaId).map { TrackItems.toMediaItem(it, api.baseUrl, artAuthority) }
-                else items.mapNotNull(::resolve)
+                if (items.size == 1 && items[0].localConfiguration == null && TrackItems.trackOf(items[0]) == null) {
+                    val (list, at) = tree.queueAt(items[0].mediaId)
+                    start = at
+                    list.map { TrackItems.toMediaItem(it, api.baseUrl, artAuthority) }
+                } else items.mapNotNull(::resolve)
             Log.i(TAG, "set ${items.size} item(s) from ${controller.packageName} -> queue of ${resolved.size}")
             playbackLog.info("queue.set", "queue of ${resolved.size} from ${controller.packageName}",
                 org.json.JSONObject().put("caller", controller.packageName).put("count", resolved.size))
-            return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(resolved, startIndex.coerceIn(0, maxOf(0, resolved.size - 1)), startPositionMs))
+            return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(resolved, start.coerceIn(0, maxOf(0, resolved.size - 1)), startPositionMs))
         }
 
         /** "Play <song> on Ember" (the Assistant, the car's voice button):

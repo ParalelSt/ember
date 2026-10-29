@@ -28,9 +28,6 @@ export const INPUT_KEYS: readonly ThemeInputKey[] = [
   'sidebar',
 ];
 
-/** The three the editor shows first; the other five auto-fill from them. */
-export const BASIC_KEYS = ['background', 'accent', 'text'] as const satisfies readonly ThemeInputKey[];
-
 export const PRESET_IDS = ['ember', 'midnight', 'forest', 'nebula', 'mono'] as const;
 export type PresetId = (typeof PRESET_IDS)[number];
 
@@ -87,6 +84,14 @@ export function validateInputs(raw: unknown): { ok: true; inputs: ThemeInputs } 
     out[key] = roundOklch(raw[key] as Oklch);
   }
   return { ok: true, inputs: out };
+}
+
+/** The first `max` UTF-16 units of `s` (the unit the 40-character limit
+ *  counts), never ending on half of an emoji: a plain slice there left a
+ *  lone surrogate, which shows as a broken glyph. */
+export function clipName(s: string, max: number): string {
+  const out = s.slice(0, Math.max(0, max));
+  return /[\uD800-\uDBFF]$/.test(out) ? out.slice(0, -1) : out;
 }
 
 /** A theme name trimmed to one line, or null when empty or too long. */

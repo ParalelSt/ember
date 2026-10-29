@@ -112,6 +112,20 @@ async function writeMeta(meta: OfflineMeta): Promise<void> {
   await atomicWriteJson(root, META_FILE, meta);
 }
 
+/** meta.json changes run one at a time: two downloads finishing together
+ *  each read the list before the other wrote it, and the first one's
+ *  playlist dropped off the downloaded list. */
+let metaQueue: Promise<unknown> = Promise.resolve();
+function updateMeta(change: (meta: OfflineMeta) => void): Promise<void> {
+  const run = metaQueue.then(async () => {
+    const meta = await readMeta();
+    change(meta);
+    await writeMeta(meta);
+  });
+  metaQueue = run.catch(() => {});
+  return run;
+}
+
 /** Gives every audio file a browser-storage download holds a blob: URL the
  *  player can load (PlayerProvider reads `webFiles`). The File behind it is a
  *  handle on disk, not the bytes in memory. `fresh` names tracks just written
@@ -219,7 +233,8 @@ export interface DownloadResult {
 /** Saves a playlist for offline playback. Resolves with the counts on the
  *  browser-storage path, or null on Android, where the native plugin only
  *  records the pin and downloads (and counts) in the background. A track
- *  that fails is skipped; only a download that saved nothing rejects. */
+ *  that fails is skipped; only a download that saved nothing rejects, and
+ *  a cancelled one rejects with an AbortError. */
 export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Promise<DownloadResult | null> {
   const playable = playableFor(tracks);
   if (playable.length === 0) throw new Error('Playlist is empty');
@@ -231,19 +246,36 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
 
   await requestPersistence();
 
-  const store = useOfflineStore.getState();
-  store.beginDownload(playlist.id, playable.length);
-
-  const ac = new AbortController();
-  aborters.set(playlist.id, ac);
-
+  // Opened before the download is marked as running: storage that refuses
+  // (a private window) threw here, past the catch below, and left the
+  // playlist "downloading" until a reload, with Cancel doing nothing.
   const root = await getOpfsRoot();
   const playlistDir = await ensureDir(root, [PLAYLISTS_DIR, playlist.id]);
   const audioDir = await ensureDir(playlistDir, ['audio']);
   const artDir = await ensureDir(playlistDir, ['art']);
 
+  // An update of a playlist already saved here: its copies stay until a new
+  // one replaces them. A song that fails this time keeps the copy it had,
+  // and the playlist's size is counted once, not once per update.
+  const previous = await readJson<OfflineManifest>(playlistDir, 'manifest.json');
+
+  const store = useOfflineStore.getState();
+  store.beginDownload(playlist.id, playable.length);
+
+  const ac = new AbortController();
+  aborters.set(playlist.id, ac);
+  const had = new Map((previous?.tracks ?? []).map((t) => [t.id, t]));
+  const previousBytes = (previous?.tracks ?? []).reduce((sum, t) => sum + t.bytesAudio + t.bytesArt, 0);
+  /** The earlier copies of the songs still to come, for a manifest written
+   *  part way (a cancel must not cost the songs not reached yet). */
+  const stillToCome = (from: number) =>
+    playable.slice(from).flatMap((t) => (had.has(t.id) ? [had.get(t.id)!] : []));
+
   const completed: OfflineTrackEntry[] = [];
   let failed = 0;
+  /** Earlier copies kept for songs that failed this time: in the manifest,
+   *  but not songs saved now (each is already counted in `failed`). */
+  let keptCopies = 0;
   let totalBytesThisPlaylist = 0;
 
   try {
@@ -268,6 +300,24 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
         if ((e as Error)?.name === 'AbortError') throw e;
         // One bad track costs that track, not the tracks already saved.
         failed++;
+        const kept = had.get(t.id);
+        if (kept) {
+          completed.push(kept);
+          keptCopies++;
+          totalBytesThisPlaylist += kept.bytesAudio + kept.bytesArt;
+        }
+        // A full disk turns every song after this one away too: stop
+        // fetching them from the server. Songs not reached keep the copies
+        // they had and count as not saved this time.
+        if ((e as Error)?.name === 'QuotaExceededError') {
+          for (const rest of stillToCome(i + 1)) {
+            completed.push(rest);
+            keptCopies++;
+            totalBytesThisPlaylist += rest.bytesAudio + rest.bytesArt;
+          }
+          failed += playable.length - i - 1;
+          break;
+        }
         continue;
       }
 
@@ -310,7 +360,7 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
         name: playlist.name,
         artworkFile: null,
         downloadedAt: new Date(0).toISOString(),
-        tracks: completed,
+        tracks: [...completed, ...stillToCome(i + 1)],
       };
       await atomicWriteJson(playlistDir, 'manifest.json', partialManifest);
     }
@@ -327,14 +377,18 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
     };
     await atomicWriteJson(playlistDir, 'manifest.json', finalManifest);
 
-    const meta = await readMeta();
-    if (!meta.downloadedPlaylistIds.includes(playlist.id)) {
-      meta.downloadedPlaylistIds.push(playlist.id);
-    }
-    meta.totalBytes += totalBytesThisPlaylist;
-    await writeMeta(meta);
+    // Only a finished download was ever counted: the copies a cancelled one
+    // left behind (its partial manifest) are not in the total yet.
+    let counted = 0;
+    await updateMeta((meta) => {
+      counted = meta.downloadedPlaylistIds.includes(playlist.id) ? previousBytes : 0;
+      if (!meta.downloadedPlaylistIds.includes(playlist.id)) {
+        meta.downloadedPlaylistIds.push(playlist.id);
+      }
+      meta.totalBytes = Math.max(0, meta.totalBytes + totalBytesThisPlaylist - counted);
+    });
 
-    store.finishDownload(playlist.id, totalBytesThisPlaylist);
+    store.finishDownload(playlist.id, totalBytesThisPlaylist - counted);
     await indexWebFiles(new Set(completed.map((t) => t.id)));
 
     await notifySwIndex({
@@ -345,12 +399,20 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
         audioFilePath: `${PLAYLISTS_DIR}/${playlist.id}/${t.audioFile}`,
       })),
     });
-    return { saved: completed.length, failed };
+    return { saved: completed.length - keptCopies, failed };
   } catch (e) {
     store.failDownload(playlist.id);
     if ((e as Error)?.name === 'AbortError') {
-      // Partial state intentionally left for resume.
-      return { saved: completed.length, failed };
+      // Partial state intentionally left for resume. Rejecting (not
+      // resolving with counts) is what tells the caller it was cancelled:
+      // a resolve read as a finished download and toasted "Downloaded".
+      throw e;
+    }
+    // A failed update puts the earlier download back; only a first
+    // download that saved nothing is removed.
+    if (previous) {
+      await atomicWriteJson(playlistDir, 'manifest.json', previous).catch(() => {});
+      throw e;
     }
     const playlistsRoot = await getDirIfExists(root, [PLAYLISTS_DIR]);
     if (playlistsRoot) {
@@ -393,10 +455,10 @@ export async function removeDownload(playlistId: string): Promise<void> {
   }
   await deleteEntry(playlistsDir, playlistId, { recursive: true });
 
-  const meta = await readMeta();
-  meta.downloadedPlaylistIds = meta.downloadedPlaylistIds.filter((id) => id !== playlistId);
-  meta.totalBytes = Math.max(0, meta.totalBytes - bytesRemoved);
-  await writeMeta(meta);
+  await updateMeta((meta) => {
+    meta.downloadedPlaylistIds = meta.downloadedPlaylistIds.filter((id) => id !== playlistId);
+    meta.totalBytes = Math.max(0, meta.totalBytes - bytesRemoved);
+  });
 
   useOfflineStore.getState().removeDownload(playlistId, bytesRemoved);
   await indexWebFiles();
@@ -404,7 +466,9 @@ export async function removeDownload(playlistId: string): Promise<void> {
 
 export function cancelDownload(playlistId: string): void {
   if (nativeOfflinePresent()) {
-    void nativeCancel(playlistId).then((s) => useOfflineStore.getState().setNativeStatus(s));
+    // A refused cancel changes nothing: the plugin's next status event still
+    // says what it is doing.
+    void nativeCancel(playlistId).then((s) => useOfflineStore.getState().setNativeStatus(s), () => {});
     return;
   }
   const ac = aborters.get(playlistId);

@@ -7,7 +7,8 @@
  *  ("0 4 * * *", keep 7), never overrides a schedule the host chose (before
  *  or after the hook first ran, including turning them off), lets
  *  EMBER_BACKUP_CRON / EMBER_BACKUP_KEEP win, survives bad values, and that
- *  a backup made now (and by the schedule) really lands in pb_data/backups.
+ *  a backup made now (and by the schedule) really lands in pb_data/backups,
+ *  and that restoring one brings the database back (B7).
  *
  *  Boots its own throwaway PocketBase (this checkout's hooks and migrations,
  *  a temp data dir) on PB_PORT (default 8158), one boot at a time. */
@@ -186,6 +187,41 @@ try {
 
     const log2 = await boot(dir, { EMBER_BACKUP_KEEP: 'lots' }, async () => { s = await backupSettings(); });
     check('B5e a bad EMBER_BACKUP_KEEP is ignored with a warning', same(s, before) && /EMBER_BACKUP_KEEP must be/.test(log2), show(s));
+  }
+
+  // ── B7: a restore from Settings > Backups really brings the data back ──
+  {
+    const dir = freshDir('b7');
+    let names = [];
+    let restored = 0;
+    let health = false;
+    let backups = [];
+    await boot(dir, {}, async () => {
+      const t = await token();
+      const h = { Authorization: t, 'content-type': 'application/json' };
+      const post = (path, body) => fetch(`${PB}${path}`, { method: 'POST', headers: h, body: JSON.stringify(body ?? {}) });
+      await post('/api/collections/allowed_emails/records', { email: 'before@backups.test' });
+      await post('/api/backups', { name: 'pb_backup_b7.zip' });
+      await post('/api/collections/allowed_emails/records', { email: 'after@backups.test' });
+      restored = (await post('/api/backups/pb_backup_b7.zip/restore')).status;
+      // PocketBase restarts itself in place (same process): wait for it to
+      // drop and come back.
+      for (let i = 0; i < 50 && (await fetch(`${PB}/api/health`).then((r) => r.ok, () => false)); i++) await sleep(100);
+      for (let i = 0; i < 100 && !health; i++) {
+        health = await fetch(`${PB}/api/health`).then((r) => r.ok, () => false);
+        if (!health) await sleep(200);
+      }
+      const t2 = await token();
+      const list = await (await fetch(`${PB}/api/collections/allowed_emails/records?perPage=200`, { headers: { Authorization: t2 } })).json();
+      names = (list.items ?? []).map((r) => r.email);
+      backups = await (await fetch(`${PB}/api/backups`, { headers: { Authorization: t2 } })).json();
+    });
+    check('B7a a restore is accepted', restored === 204, `status ${restored}`);
+    check('B7b PocketBase comes back up and the superuser still signs in', health);
+    const kept = { before: names.includes('before@backups.test'), after: names.includes('after@backups.test') };
+    check('B7c the data is as it was at the backup', kept.before && !kept.after, JSON.stringify(kept));
+    check('B7d the backups themselves survive the restore', backups.some((b) => b.key === 'pb_backup_b7.zip'),
+      backups.map((b) => b.key).join(','));
   }
 
   // ── B6: the schedule really fires ──────────────────────────────────────

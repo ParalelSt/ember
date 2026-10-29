@@ -27,6 +27,7 @@
  *  counted in the report, never an error. */
 
 import { sameSong } from '@/lib/tabFetch/ug';
+import { escapeTex } from '@/lib/tabText';
 
 // ── the song page ─────────────────────────────────────────────────────────
 
@@ -309,10 +310,6 @@ export interface SongsterrInputTrack {
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 export function midiName(n: number): string {
   return `${NOTE_NAMES[((n % 12) + 12) % 12]}${Math.floor(n / 12) - 1}`;
-}
-
-function escapeTex(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ');
 }
 
 /** Whole-note fractions as exact rationals: [numerator, denominator]. */

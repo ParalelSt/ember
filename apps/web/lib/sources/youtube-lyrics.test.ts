@@ -109,3 +109,25 @@ describe('getLyrics: an LRCLib failure is not cached', () => {
     expect(pythonCalls.length).toBe(1);
   });
 });
+
+describe('getLyrics: beforeHelper, the hook a rate limit hangs on', () => {
+  it('runs only when the Genius helper is about to start, never for a cached or LRCLib answer', async () => {
+    const t = title();
+    const beforeHelper = vi.fn();
+    lrclib.hits = [];
+    await getLyrics(t, 'Band', 214, { beforeHelper });
+    expect(beforeHelper).toHaveBeenCalledTimes(1);
+    expect(pythonCalls).toHaveLength(1);
+    await getLyrics(t, 'Band', 214, { beforeHelper });
+    lrclib.hits = [STUDIO];
+    await getLyrics(title(), 'Band', 214, { beforeHelper });
+    expect(beforeHelper).toHaveBeenCalledTimes(1);
+  });
+
+  it('a hook that throws stops the helper from starting', async () => {
+    lrclib.hits = [];
+    const refused = new Error('slow down');
+    await expect(getLyrics(title(), 'Band', 214, { beforeHelper: () => { throw refused; } })).rejects.toBe(refused);
+    expect(pythonCalls).toHaveLength(0);
+  });
+});

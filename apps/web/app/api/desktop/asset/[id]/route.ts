@@ -8,7 +8,7 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
  *  token itself.
  *
  *  Public (the updater has no session), so it serves exactly what the
- *  updater needs and nothing else: an asset of the LATEST published release
+ *  updater needs and nothing else: an asset of a desktop platform's CURRENT release
  *  whose name is an update bundle, its .sig or latest.json. Any other id, an
  *  older release's, a draft's, a hand-download installer's, is a 404 before
  *  GitHub is asked (security audit 2026-09-25, M3). */

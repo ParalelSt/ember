@@ -5,6 +5,13 @@ import { loadSession, assertActive, assertMember, sessionsClient } from '@/lib/s
 import { parseAddPosition, planInsert } from '@/lib/carlist';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { withLock } from '@/lib/keyedLock';
+import { rateLimitResponse } from '@/lib/rateLimit';
+
+/** Per person: far above anyone adding songs by hand (20 in a minute is
+ *  normal on a drive), and each add shifts the rows after it under the
+ *  carlist's lock. */
+const ADD_LIMIT = { windowMs: 60_000, max: 60 };
 
 /** Add a track to the live queue (any member, everyone's a DJ).
  *  Body: { track, position?: 'next' | 'end' } (left out: 'end'). 'next'
@@ -13,6 +20,8 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 export const POST = withRequestLog('sessions/[id]/tracks', async (request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/tracks'>) => {
   try {
     const { user } = await requireUser();
+    const limited = rateLimitResponse(`session-add:${user.id}`, ADD_LIMIT);
+    if (limited) return limited;
     const pb = await sessionsClient();
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);
@@ -27,28 +36,40 @@ export const POST = withRequestLog('sessions/[id]/tracks', async (request: NextR
 
     const trackRecordId = await upsertCatalogTrack(track);
 
-    const rows = await pb.collection('session_tracks').getFullList({
-      filter: pb.filter('session = {:s}', { s: session.id }),
-      sort: 'position',
-      fields: 'id,position',
-    });
-    const plan = planInsert(
-      rows.map((r) => Number(r.position) || 0),
-      Number(session.now_index ?? 0),
-      where,
-    );
-    // Make room first (from the end, so no two rows ever share a position
-    // on the way), then take the freed slot.
-    for (const shift of [...plan.shifts].reverse()) {
-      await pb.collection('session_tracks').update(rows[shift.index].id, { position: shift.position });
-    }
+    // One add at a time per carlist: two at once would both read the same
+    // queue and compute the same position.
+    const plan = await withLock(`session-tracks:${session.id}`, async () => {
+      // Which song plays now, read once it is this add's turn: the host may
+      // have moved on while it waited, and a Play next placed after the old
+      // song lands before the playing one, which the host's player has
+      // already passed.
+      const [now, rows] = await Promise.all([
+        pb.collection('sessions').getOne(session.id, { fields: 'now_index' }),
+        pb.collection('session_tracks').getFullList({
+          filter: pb.filter('session = {:s}', { s: session.id }),
+          sort: 'position',
+          fields: 'id,position',
+        }),
+      ]);
+      const plan = planInsert(
+        rows.map((r) => Number(r.position) || 0),
+        Number(now.now_index ?? 0),
+        where,
+      );
+      // Make room first (from the end, so no two rows ever share a position
+      // on the way), then take the freed slot.
+      for (const shift of [...plan.shifts].reverse()) {
+        await pb.collection('session_tracks').update(rows[shift.index].id, { position: shift.position });
+      }
 
-    await pb.collection('session_tracks').create({
-      session: session.id,
-      track: trackRecordId,
-      position: plan.position,
-      added_by: user.id,
-      played: false,
+      await pb.collection('session_tracks').create({
+        session: session.id,
+        track: trackRecordId,
+        position: plan.position,
+        added_by: user.id,
+        played: false,
+      });
+      return plan;
     });
     return Response.json({ ok: true, position: where, ahead: plan.ahead }, { status: 201 });
   } catch (e) {

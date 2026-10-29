@@ -3,20 +3,22 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { VolumeControl } from './VolumeControl';
 
 // Same stub as SeekBar's: a range input standing in for base-ui's slider,
-// which needs pointer capture happy-dom does not have. The volume slider
-// commits on every change, so only onValueChange is wired.
+// which needs pointer capture happy-dom does not have. A change is a drag
+// step; blur stands in for the drag's end (onValueCommitted).
 vi.mock('@/components/ui/slider', () => ({
   Slider: ({
     value,
     max,
     disabled,
     onValueChange,
+    onValueCommitted,
     thumbLabel,
   }: {
     value: number[];
     max?: number;
     disabled?: boolean;
     onValueChange?: (v: number[]) => void;
+    onValueCommitted?: (v: number[]) => void;
     thumbLabel?: string;
   }) => (
     <input
@@ -26,6 +28,7 @@ vi.mock('@/components/ui/slider', () => ({
       disabled={disabled}
       value={value[0]}
       onChange={(e) => onValueChange?.([Number(e.target.value)])}
+      onBlur={(e) => onValueCommitted?.([Number(e.target.value)])}
     />
   ),
 }));
@@ -81,5 +84,22 @@ describe('VolumeControl', () => {
   it('names the thumb "Volume"', () => {
     render(<VolumeControl volume={0.5} muted={false} onChange={vi.fn()} onToggleMute={vi.fn()} />);
     expect(slider()).toHaveAccessibleName('Volume');
+  });
+
+  it('hands the drag\'s end to onCommit, the steps before it to onChange only', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const view = (volume: number) => (
+      <VolumeControl volume={volume} muted={false} onChange={onChange} onCommit={onCommit} onToggleMute={vi.fn()} />
+    );
+    const { rerender } = render(view(0.5));
+    fireEvent.change(slider(), { target: { value: '60' } });
+    fireEvent.change(slider(), { target: { value: '70' } });
+    expect(onChange).toHaveBeenLastCalledWith(0.7);
+    expect(onCommit).not.toHaveBeenCalled();
+    // The player follows the steps (previewVolume), so the slider shows them.
+    rerender(view(0.7));
+    fireEvent.blur(slider());
+    expect(onCommit).toHaveBeenCalledWith(0.7);
   });
 });

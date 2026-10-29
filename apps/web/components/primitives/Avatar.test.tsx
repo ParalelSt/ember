@@ -42,3 +42,19 @@ describe('Avatar', () => {
     expect(screen.getByText('R').className).toContain('h-8 w-8 bg-ember');
   });
 });
+
+describe('Avatar initial from a name that starts with an emoji or an accent', () => {
+  it('shows the whole first character, not half of an emoji', () => {
+    const { container } = render(<Avatar name="🎸 Robin" />);
+    expect(container.textContent).toBe('🎸');
+  });
+
+  it('keeps a flag or a family emoji whole', () => {
+    expect(render(<Avatar name="🇭🇷 Ana" />).container.textContent).toBe('🇭🇷');
+    expect(render(<Avatar name="👨‍👩‍👧 Us" />).container.textContent).toBe('👨‍👩‍👧');
+  });
+
+  it('keeps a letter with a combining accent whole and upper-cases it', () => {
+    expect(render(<Avatar name={'émile'} />).container.textContent).toBe('É');
+  });
+});

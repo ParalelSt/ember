@@ -24,6 +24,10 @@ export interface CrashHandlerDeps {
 // Past this many distinct messages the process is producing a flood of
 // different errors; stop spawning posters (the log still gets every one).
 const MAX_DISTINCT_REPORTS = 50;
+/** The report text travels as one command-line argument, and Linux refuses
+ *  one over 128 KB (E2BIG): the report was then lost. The poster keeps 4000
+ *  characters of it for Discord, so this loses nothing that would show. */
+const MAX_REPORT_TEXT = 8000;
 
 export function createCrashHandlers(deps: CrashHandlerDeps) {
   const reported = new Set<string>();
@@ -43,7 +47,7 @@ export function createCrashHandlers(deps: CrashHandlerDeps) {
     if (!reported.has(message) && reported.size < MAX_DISTINCT_REPORTS) {
       reported.add(message);
       try {
-        deps.spawnReport(`Server error: ${message.slice(0, 100)}`, `${kind}\n${stack}`);
+        deps.spawnReport(`Server error: ${message.slice(0, 100)}`, `${kind}\n${stack}`.slice(0, MAX_REPORT_TEXT));
       } catch {
         // A handler that throws would itself be an uncaught exception.
       }

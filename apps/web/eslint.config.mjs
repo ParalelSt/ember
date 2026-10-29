@@ -123,6 +123,7 @@ const eslintConfig = defineConfig([
     files: [
       "lib/useBackDismiss.ts",
       "lib/useOnline.ts",
+      "lib/useOnline.test.ts",
       "lib/offlineNative.ts",
       "lib/offlineNative.test.ts",
       "lib/pocketbase/server.ts",

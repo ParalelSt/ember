@@ -39,7 +39,7 @@ const player = vi.hoisted(() => ({
   setRate: vi.fn(),
   canSetRate: true,
 }));
-vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => player }));
+vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => player, usePlayerPosition: () => player.position }));
 
 const api = vi.hoisted(() => ({
   getTrackTabs: vi.fn(),

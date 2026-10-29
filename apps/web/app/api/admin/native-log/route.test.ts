@@ -6,7 +6,7 @@ import type { ServerLogEntry } from '@/lib/logger/types';
 /** GET /api/admin/native-log: the car and Android Auto log, per device,
  *  newest first, admins only. */
 
-const state = vi.hoisted(() => ({ role: 'admin' as 'admin' | 'member' | 'anon', entries: [] as ServerLogEntry[], since: 0 }));
+const state = vi.hoisted(() => ({ role: 'admin' as 'admin' | 'member' | 'anon', entries: [] as ServerLogEntry[], since: 0, keep: undefined as undefined | ((e: unknown) => boolean) }));
 
 vi.mock('@/lib/auth', () => {
   class UnauthorizedError extends Error {}
@@ -25,8 +25,9 @@ vi.mock('@/lib/auth', () => {
 });
 vi.mock('@/lib/logger/server', () => ({
   serverLogger: {
-    entriesSince: async (since: number) => {
+    entriesSince: async (since: number, keep?: (e: unknown) => boolean) => {
       state.since = since;
+      state.keep = keep;
       return state.entries;
     },
   },
@@ -104,5 +105,13 @@ describe('GET /api/admin/native-log', () => {
 
   it('refuses an unknown surface', async () => {
     expect((await get('?surface=tv')).status).toBe(400);
+  });
+
+  // The log read is capped: the app's entries are picked while reading, or
+  // the web's own warnings push older car events past the cap.
+  it('asks the log for the app\'s entries only', async () => {
+    await get();
+    expect(state.keep?.({ category: 'native' })).toBe(true);
+    expect(state.keep?.({ category: 'api' })).toBe(false);
   });
 });

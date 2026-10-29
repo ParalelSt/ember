@@ -63,6 +63,13 @@ internal fun queueContextArgs(data: JSONObject): Bundle = Bundle().apply {
     putInt("baseCount", data.optInt("baseCount", 0).coerceAtLeast(0))
 }
 
+/** setQueue's `tracks` as media items, in order. A malformed entry (not an
+ *  object, no id) fails the whole list: thrown out of the plugin method,
+ *  Capacitor rethrows it on its plugin thread and the app goes down. */
+internal fun queueItemsArg(tracks: JSONArray, baseUrl: String, artAuthority: String?): Result<List<MediaItem>> =
+    runCatching { (0 until tracks.length()).map { TrackItems.toMediaItem(tracks.getJSONObject(it), baseUrl, artAuthority) } }
+        .recoverCatching { throw IllegalArgumentException("tracks must be songs") }
+
 /** The `unplayable` event's name, and its payload: { notices: [...] }, each
  *  { trackId, title, kind, reason, outcome } (lib/playback/unplayable.ts). */
 internal const val EVENT_UNPLAYABLE = "unplayable"
@@ -230,6 +237,11 @@ internal fun back(controller: MediaController, index: Int) {
 @CapacitorPlugin(name = "EmberPlayer")
 class EmberPlayerPlugin : Plugin() {
     private var controller: MediaController? = null
+    /** The connection on its way, released with the plugin even when it has
+     *  not landed yet (see handleOnDestroy). */
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    /** Set by handleOnDestroy. Main thread only. */
+    private var destroyed = false
     private val main = Handler(Looper.getMainLooper())
     private val pending = ArrayList<(MediaController) -> Unit>()
     /** Keeps the app's own queue changes from being reported back to it. */
@@ -254,8 +266,12 @@ class EmberPlayerPlugin : Plugin() {
         main.post { startCast() }
         val token = SessionToken(context, ComponentName(context, EmberPlaybackService::class.java))
         val future = MediaController.Builder(context, token).setListener(sessionEvents).buildAsync()
+        controllerFuture = future
         // On the main thread, like every read of `controller` and `pending`.
         future.addListener({
+            // Landed after the page went away: releaseFuture has let it go,
+            // and a dead page must not start its position ticks again.
+            if (destroyed) return@addListener
             val c = runCatching { future.get() }.getOrNull() ?: return@addListener
             controller = c
             c.addListener(listener)
@@ -378,7 +394,10 @@ class EmberPlayerPlugin : Plugin() {
         // Optional (newer web builds): where the song starts, in seconds.
         val startMs = ((call.getDouble("startSec") ?: 0.0).coerceAtLeast(0.0) * 1000).toLong()
         val art = ArtworkUris.authority(context.packageName)
-        val items = (0 until tracks.length()).map { TrackItems.toMediaItem(tracks.getJSONObject(it), ServerConfig.baseUrl(context), art) }
+        val items = queueItemsArg(tracks, ServerConfig.baseUrl(context), art).getOrElse {
+            NativeLog.warn("player", "setQueue rejected: ${it.message}")
+            return call.reject(it.message)
+        }
         // Optional (newer web builds): where the queue came from, so the
         // native prefetch window wraps loop-all where the web player does.
         val queueContext = queueContextArgs(call.data)
@@ -833,7 +852,13 @@ class EmberPlayerPlugin : Plugin() {
         main.removeCallbacks(tickTask)
         UnplayableNotices.setOnScreen(false)
         UnplayableNotices.detach(unplayableSink)
-        controller?.release(); controller = null
+        destroyed = true
+        // Not just the controller in hand: a page destroyed before its connection
+        // landed had no controller yet, and the one that landed later was
+        // never released, keeping the player service bound for good.
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+        controllerFuture = null
+        controller = null
         main.post {
             discover(false)
             castContext?.removeCastStateListener(castListener)

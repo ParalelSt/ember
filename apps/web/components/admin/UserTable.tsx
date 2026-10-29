@@ -10,6 +10,7 @@ import { useIsDesktop } from '@/hooks/useIsDesktop';
 import type { AdminUser } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { RenameForm, type UserActions } from './UserCards';
+import { pbDateLabel } from '@/lib/pocketbase/dates';
 
 const TRIGGER = 'grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground';
 
@@ -47,7 +48,7 @@ export function UserTable({ users, actorId, ...actions }: UserActions & { users:
                 </td>
                 <td className="px-row py-row text-muted-foreground">{u.email}</td>
                 <td className="px-row py-row"><span className={cn('rounded-full px-cluster py-inset text-xs font-semibold', u.isAdmin ? 'bg-ember/15 text-ember' : 'bg-muted text-muted-foreground')}>{u.isAdmin ? 'Admin' : 'Member'}</span></td>
-                <td className="px-row py-row whitespace-nowrap text-muted-foreground tabular-nums">{new Date(u.created).toLocaleDateString()}</td>
+                <td className="px-row py-row whitespace-nowrap text-muted-foreground tabular-nums">{pbDateLabel(u.created)}</td>
                 <td className="px-row py-row">
                   {isDesktop ? (
                     <DropdownMenu>

@@ -19,6 +19,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * `scanQr()`: "Scan QR code" (apps/web/lib/qrScan/nativeScan.ts), Google's
  * code scanner; always resolves `{ status, value? }` (QrScan).
+ *
+ * `getBootStart()` / `setBootStart({ enabled, keepPlaying })`: "Open Ember
+ * when this device starts" (apps/web/lib/bootStart.ts, BootStart); both
+ * resolve `{ enabled, keepPlaying }` as stored.
  */
 @CapacitorPlugin(name = "EmberApp")
 class EmberAppPlugin : Plugin() {
@@ -44,6 +48,25 @@ class EmberAppPlugin : Plugin() {
             }
         }
     }
+
+    @PluginMethod
+    fun getBootStart(call: PluginCall) {
+        call.resolve(bootStartJs(BootStart.load(BootStart.prefs(context))))
+    }
+
+    @PluginMethod
+    fun setBootStart(call: PluginCall) {
+        val was = BootStart.load(BootStart.prefs(context))
+        val next = BootStart.Settings(
+            enabled = call.getBoolean("enabled") ?: was.enabled,
+            keepPlaying = call.getBoolean("keepPlaying") ?: was.keepPlaying,
+        )
+        runCatching { BootStart.save(context, next) }
+            .onSuccess { call.resolve(bootStartJs(next)) }
+            .onFailure { call.reject("could not save the setting: ${it.message}", "save-failed") }
+    }
+
+    private fun bootStartJs(s: BootStart.Settings) = JSObject().put("enabled", s.enabled).put("keepPlaying", s.keepPlaying)
 
     private fun toJs(outcome: QrScanOutcome): JSObject {
         val js = JSObject()

@@ -3,6 +3,7 @@
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger/client';
 import type { BackendKind } from '@/lib/autoCache/select';
+import { coarsePointer } from '@/lib/coarsePointer';
 import { detectShell } from '@/lib/playback/detectShell';
 import { nativePlatform } from '@/lib/playback/nativePlatform';
 import type { AudioBackend } from '@/lib/playback/types';
@@ -32,9 +33,6 @@ let provider: OutputProvider | null = null;
 let unwatch: (() => void) | null = null;
 let unwatchCast: (() => void) | null = null;
 let startedKind: BackendKind | null = null;
-
-const coarsePointer = () =>
-  typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches ?? false);
 
 /** This page's provider, or null when it cannot pick an output. */
 export function providerFor(env: OutputEnv): OutputProvider | null {
