@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { usePlayerPosition } from '@/components/player/PlayerProvider';
-import { LiveBadge } from '@/components/player/LiveBadge';
 import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -95,15 +94,19 @@ export function SeekBar({ position, duration, onSeek, labels = 'none', className
 /** SeekBar on the player's own playhead. It reads the position itself, so
  *  the view that holds it (the player bars, the full-screen player, which
  *  stays mounted while closed) does not re-render on every report. A live
- *  station (`live`) has nothing to seek: the bar gives way to the LIVE
- *  badge, or to nothing on the phone bar's bare strip. */
+ *  station (`live`) has nothing to show or seek: the bar gives way to an
+ *  empty space as tall as the bar with its times, so the controls around it
+ *  stay where they were when a station follows a song, and to nothing on
+ *  the phone bar's bare strip. */
 export function PlayheadSeekBar({ live = false, ...props }: Omit<SeekBarProps, 'position'> & { live?: boolean }) {
   if (live) {
     if (!props.labels || props.labels === 'none') return null;
     return (
-      <div data-testid="seek-live" className={cn('flex justify-center', props.className)}>
-        <LiveBadge />
-      </div>
+      <div
+        aria-hidden
+        data-testid="seek-live"
+        className={cn(props.labels === 'inline' ? 'h-7' : 'h-12.5', props.className)}
+      />
     );
   }
   return <PlayheadSeekBarInner {...props} />;
