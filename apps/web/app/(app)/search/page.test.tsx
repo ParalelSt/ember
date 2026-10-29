@@ -23,6 +23,12 @@ vi.mock('@/hooks/useVoiceSearch', () => ({
 // its own tests; a page test only needs to know the slot is wired.
 vi.mock('@/components/track/menus/TrackMenu', () => ({
   renderTrackMenu: () => null,
+  TrackMenu: ({ track, onRemove, removeLabel }: { track: Track; onRemove?: () => void; removeLabel?: string }) => (
+    <span>
+      <button type="button">{`More for ${track.title}`}</button>
+      {onRemove && <button type="button" onClick={onRemove}>{removeLabel}</button>}
+    </span>
+  ),
 }));
 
 const trackActions = vi.hoisted(() => ({
@@ -98,7 +104,10 @@ describe('SearchPage', () => {
     renderPage();
 
     expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove "Midnight Drive" from recent searches' }));
+    // No X of its own any more: Remove lives in the song's ... menu.
+    expect(screen.queryByRole('button', { name: 'Remove "Midnight Drive" from recent searches' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'More for Midnight Drive' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from recent searches' }));
     expect(recents.removeMutate).toHaveBeenCalledWith(track.id);
   });
 

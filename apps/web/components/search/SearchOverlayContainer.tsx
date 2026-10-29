@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { TrackList } from '@/components/track/TrackList';
 import { TrackRow } from '@/components/track/TrackRow';
-import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
+import { TrackMenu, renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { MusicIcon } from '@/components/icons';
 import { SearchOverlay } from '@/components/search/SearchOverlay';
 import { SectionHeader } from '@/components/page/SectionHeader';
@@ -101,9 +101,13 @@ export function SearchOverlayContainer() {
             artworkSrc={trackActions.artworkSrcFor(t)}
             onPlay={() => trackActions.onPlay(t)}
             onToggle={trackActions.onToggle}
-            trailing={renderTrackMenu(t)}
-            onRemove={() => removeRecentTrack.mutate(t.id)}
-            removeLabel={`Remove "${t.title}" from recent searches`}
+            trailing={
+              <TrackMenu
+                track={t}
+                onRemove={() => removeRecentTrack.mutate(t.id)}
+                removeLabel="Remove from recent searches"
+              />
+            }
           />
         ))}
       </div>

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
 import { TrackRow } from '@/components/track/TrackRow';
-import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
+import { TrackMenu, renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { CloseIcon, MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
 import { useSearchQuery } from '@/hooks/useSearchQuery';
 import { OnlineOnly } from '@/components/OnlineOnly';
@@ -46,9 +46,13 @@ export default function SearchPage() {
             artworkFallback={RECENTS_FALLBACK}
             artworkSrc={trackActions.artworkSrcFor(t)}
             onPlay={() => trackActions.onPlay(t)}
-            trailing={renderTrackMenu(t)}
-            onRemove={() => removeRecentTrack.mutate(t.id)}
-            removeLabel={`Remove "${t.title}" from recent searches`}
+            trailing={
+              <TrackMenu
+                track={t}
+                onRemove={() => removeRecentTrack.mutate(t.id)}
+                removeLabel="Remove from recent searches"
+              />
+            }
             trailingPlayControl
           />
         ))}

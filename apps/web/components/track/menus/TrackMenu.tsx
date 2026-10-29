@@ -3,7 +3,7 @@
 import { toast } from 'sonner';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
 import { canShare, shareTrack } from '../ShareButton';
-import { BlockIcon, QueueIcon, RefreshIcon, ShareIcon } from '@/components/icons';
+import { BlockIcon, CloseIcon, QueueIcon, RefreshIcon, ShareIcon, TrashIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useBlockedTracks } from '@/hooks/useBlockedTracks';
 import type { MenuAction } from '@/components/ui/action-sheet';
@@ -15,7 +15,25 @@ import type { Track } from '@/types/track';
 
 /** Row actions share one More menu, including imported-track re-matching:
  *  a dropdown on desktop, a sheet from the bottom on a phone. */
-export function TrackMenu({ track, onRematch }: { track: Track; onRematch?: () => void }) {
+/** How a row's own Remove sits in the menu (recent searches; /dizajn R1-R4):
+ *  R1 last action, plain with an X; R2 last action, red with a bin; R3 first
+ *  action, plain with an X; R4 apart at the very end, red with a bin. */
+export type RemoveStyle = 'R1' | 'R2' | 'R3' | 'R4';
+export const DEFAULT_REMOVE_STYLE: RemoveStyle = 'R4';
+
+export function TrackMenu({
+  track,
+  onRematch,
+  onRemove,
+  removeLabel = 'Remove',
+  removeStyle = DEFAULT_REMOVE_STYLE,
+}: {
+  track: Track;
+  onRematch?: () => void;
+  onRemove?: () => void;
+  removeLabel?: string;
+  removeStyle?: RemoveStyle;
+}) {
   const { playTrack } = usePlayer();
   const { user } = useAuth();
   const { isBlocked, block, unblock } = useBlockedTracks();
@@ -43,14 +61,27 @@ export function TrackMenu({ track, onRematch }: { track: Track; onRematch?: () =
     toast.success(`Added "${track.title}" to the queue`);
   };
 
+  const red = removeStyle === 'R2' || removeStyle === 'R4';
+  const remove: MenuAction | null = onRemove
+    ? { key: 'remove', label: removeLabel, icon: red ? TrashIcon : CloseIcon, onSelect: onRemove, destructive: red }
+    : null;
   const actions: MenuAction[] = [
+    ...(remove && removeStyle === 'R3' ? [remove] : []),
     ...(!isUnavailable(track) ? [{ key: 'queue', label: 'Add to queue', icon: QueueIcon, onSelect: queue }] : []),
     ...(canShare(track) ? [{ key: 'share', label: 'Share', icon: ShareIcon, onSelect: () => void shareTrack(track) }] : []),
     ...(onRematch ? [{ key: 'rematch', label: 'Wrong song? Re-match', icon: RefreshIcon, onSelect: onRematch }] : []),
     ...(user ? [{ key: 'block', label: blocked ? 'Unblock song' : 'Block song', icon: BlockIcon, onSelect: toggleBlock }] : []),
+    ...(remove && (removeStyle === 'R1' || removeStyle === 'R2') ? [remove] : []),
   ];
 
-  return <AddToPlaylistMenu allowAdd={!isUnavailable(track)} track={track} actions={actions} />;
+  return (
+    <AddToPlaylistMenu
+      allowAdd={!isUnavailable(track)}
+      track={track}
+      actions={actions}
+      footer={remove && removeStyle === 'R4' ? remove : undefined}
+    />
+  );
 }
 
 /** Ready-made `trailing` callback, so each page spells it once. */

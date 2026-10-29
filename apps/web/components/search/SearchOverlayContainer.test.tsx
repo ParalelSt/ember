@@ -36,6 +36,12 @@ vi.mock('@/hooks/useVoiceSearch', () => ({
 
 vi.mock('@/components/track/menus/TrackMenu', () => ({
   renderTrackMenu: (t: Track) => <button type="button">{`More for ${t.title}`}</button>,
+  TrackMenu: ({ track, onRemove, removeLabel }: { track: Track; onRemove?: () => void; removeLabel?: string }) => (
+    <span>
+      <button type="button">{`More for ${track.title}`}</button>
+      {onRemove && <button type="button" onClick={onRemove}>{removeLabel}</button>}
+    </span>
+  ),
 }));
 
 const trackActions = vi.hoisted(() => ({
@@ -224,11 +230,14 @@ describe('SearchOverlayContainer', () => {
     expect(trackActions.onToggle).not.toHaveBeenCalled();
   });
 
-  it('gives every recents row the song menu, next to play and remove', () => {
+  it('gives every recents row the song menu with Remove inside it, and no X of its own', () => {
     recents.tracks = [makeTrack()];
     renderOverlay();
     expect(screen.getByRole('button', { name: 'More for Midnight Drive' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Play Midnight Drive' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove "Midnight Drive" from recent searches' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from recent searches' }));
+    expect(recents.removeMutate).toHaveBeenCalledWith('youtube:a1');
   });
 
   it('pauses and resumes the recents row that is the current song', () => {

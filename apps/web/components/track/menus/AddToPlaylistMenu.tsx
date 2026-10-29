@@ -53,6 +53,7 @@ export function AddToPlaylistMenu({
   actions,
   triggerClassName,
   allowAdd = true,
+  footer,
 }: {
   track: Track;
   onRematch?: () => void;
@@ -63,6 +64,9 @@ export function AddToPlaylistMenu({
   actions?: MenuAction[];
   triggerClassName?: string;
   allowAdd?: boolean;
+  /** One action set apart at the very end, after a divider (recent
+   *  searches' Remove, /dizajn option R4). */
+  footer?: MenuAction;
 }) {
   const { user } = useAuth();
   const { data: playlists = [] } = useQueryPlaylists();
@@ -219,6 +223,14 @@ export function AddToPlaylistMenu({
                   Wrong song? Re-match
                 </ActionSheetItem>
               )}
+              {footer && (
+                <>
+                  <div role="separator" className="mx-row my-cluster h-px bg-border" />
+                  <ActionSheetItem icon={footer.icon} onSelect={run(footer.onSelect)} tone={footer.destructive ? 'destructive' : undefined}>
+                    {footer.label}
+                  </ActionSheetItem>
+                </>
+              )}
             </>
           ) : (
             <>
@@ -320,6 +332,14 @@ export function AddToPlaylistMenu({
           );
         })}
         </>}
+        {footer && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={footer.onSelect} variant={footer.destructive ? 'destructive' : undefined}>
+              <footer.icon className="h-3.5 w-3.5" /> {footer.label}
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
       {createDialog}
     </DropdownMenu>

@@ -41,6 +41,12 @@ vi.mock('@/hooks/useVoiceSearch', () => ({
 
 vi.mock('@/components/track/menus/TrackMenu', () => ({
   renderTrackMenu: () => null,
+  TrackMenu: ({ track, onRemove, removeLabel }: { track: { title: string }; onRemove?: () => void; removeLabel?: string }) => (
+    <span>
+      <button type="button">{`More for ${track.title}`}</button>
+      {onRemove && <button type="button" onClick={onRemove}>{removeLabel}</button>}
+    </span>
+  ),
 }));
 
 const trackActions = vi.hoisted(() => ({

@@ -9,12 +9,12 @@ const toastSuccess = vi.fn();
 // The menu itself (dropdown or phone sheet) is AddToPlaylistMenu's; here it
 // just lists the actions TrackMenu hands it.
 vi.mock('./AddToPlaylistMenu', () => ({
-  AddToPlaylistMenu: ({ actions }: { actions?: MenuAction[] }) => (
+  AddToPlaylistMenu: ({ actions, footer }: { actions?: MenuAction[]; footer?: MenuAction }) => (
     <div>
       <button type="button">{actions?.length ? 'More' : 'Add to playlist'}</button>
       <div role="menu">
-        {actions?.map((a) => (
-          <div key={a.key} role="menuitem" onClick={a.onSelect}>
+        {[...(actions ?? []), ...(footer ? [{ ...footer, key: `footer-${footer.key}` }] : [])].map((a) => (
+          <div key={a.key} role="menuitem" data-key={a.key} data-destructive={a.destructive ? 'true' : undefined} onClick={a.onSelect}>
             {a.label}
           </div>
         ))}
@@ -157,5 +157,34 @@ describe('TrackMenu block (owner request 2026-10-22)', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Unblock song' }));
     expect(blocking.unblock).toHaveBeenCalledWith(track);
     expect(blocking.block).not.toHaveBeenCalled();
+  });
+});
+
+describe('TrackMenu Remove (recent searches, /dizajn R1-R4)', () => {
+  const keys = () => screen.getAllByRole('menuitem').map((m) => m.getAttribute('data-key'));
+  const removeItem = () => screen.getByRole('menuitem', { name: 'Remove from recent searches' });
+
+  for (const [style, place, red] of [
+    ['R1', 'last', false],
+    ['R2', 'last', true],
+    ['R3', 'first', false],
+    ['R4', 'footer', true],
+  ] as const) {
+    it(`${style}: Remove is ${place}${red ? ', in red' : ''}, and runs onRemove`, () => {
+      const onRemove = vi.fn();
+      render(<TrackMenu track={track} onRemove={onRemove} removeLabel="Remove from recent searches" removeStyle={style} />);
+      const k = keys();
+      if (place === 'first') expect(k[0]).toBe('remove');
+      if (place === 'last') expect(k[k.length - 1]).toBe('remove');
+      if (place === 'footer') expect(k[k.length - 1]).toBe('footer-remove');
+      expect(removeItem().getAttribute('data-destructive')).toBe(red ? 'true' : null);
+      fireEvent.click(removeItem());
+      expect(onRemove).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it('offers no Remove when the row has nothing to remove', () => {
+    render(<TrackMenu track={track} />);
+    expect(screen.queryByRole('menuitem', { name: /Remove/ })).toBeNull();
   });
 });
