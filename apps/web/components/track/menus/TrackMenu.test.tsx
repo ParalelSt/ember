@@ -188,3 +188,10 @@ describe('TrackMenu Remove (recent searches, /dizajn R1-R4)', () => {
     expect(screen.queryByRole('menuitem', { name: /Remove/ })).toBeNull();
   });
 });
+
+it("owner's pick: without a style, Remove is the last item, plain, with an X (R1)", () => {
+  render(<TrackMenu track={track} onRemove={vi.fn()} removeLabel="Remove from recent searches" />);
+  const items = screen.getAllByRole('menuitem');
+  expect(items[items.length - 1].getAttribute('data-key')).toBe('remove');
+  expect(items[items.length - 1].getAttribute('data-destructive')).toBeNull();
+});

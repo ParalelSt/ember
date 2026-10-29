@@ -19,7 +19,7 @@ import type { Track } from '@/types/track';
  *  R1 last action, plain with an X; R2 last action, red with a bin; R3 first
  *  action, plain with an X; R4 apart at the very end, red with a bin. */
 export type RemoveStyle = 'R1' | 'R2' | 'R3' | 'R4';
-export const DEFAULT_REMOVE_STYLE: RemoveStyle = 'R4';
+export const DEFAULT_REMOVE_STYLE: RemoveStyle = 'R1';
 
 export function TrackMenu({
   track,
