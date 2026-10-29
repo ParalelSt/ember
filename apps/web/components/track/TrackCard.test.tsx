@@ -167,4 +167,21 @@ describe('TrackCard, desktop tile (tile-lg)', () => {
     expect(screen.getByText('Midnight Drive')).toHaveClass('text-ember');
     expect(screen.getByRole('button', { name: 'Pause' })).toHaveClass('opacity-100');
   });
+
+  it('draws a tile\'s own cover in place of the art, with the play button still on it', () => {
+    render(<TrackCard track={track} variant="tile-lg" onActivate={() => {}} cover={<div data-testid="own-cover" />} />);
+    expect(screen.getByTestId('own-cover')).toBeTruthy();
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(document.querySelector('img')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
+  });
+
+  it('keeps a tile title to one line when asked, two by default', () => {
+    const { unmount } = render(<TrackCard track={track} variant="tile" onActivate={() => {}} titleLines={1} />);
+    expect(screen.getByText('Midnight Drive')).toHaveClass('truncate');
+    expect(screen.getByText('Midnight Drive')).not.toHaveClass('line-clamp-2');
+    unmount();
+    render(<TrackCard track={track} variant="tile" onActivate={() => {}} />);
+    expect(screen.getByText('Midnight Drive')).toHaveClass('line-clamp-2');
+  });
 });

@@ -32,6 +32,11 @@ interface Props {
   /** The tile's kind word before the artist ("Song" reads "Song · Artist"),
    *  like Spotify's Recents tiles. Omit for the artist alone. */
   kind?: string;
+  /** Tiles only: drawn in place of the cover art, inside the same square
+   *  box the play button sits on (a radio station's logo tile). */
+  cover?: ReactNode;
+  /** Tiles only: how many lines the title may take; default 2. */
+  titleLines?: 1 | 2;
   className?: string;
 }
 
@@ -56,7 +61,7 @@ function ArtistLine({ track, className, kind }: { track: Track; className: strin
 
 /** Presentational only: a square track card with a hover-revealed play
  *  button. Playback state and the activate handler come from props. */
-export function TrackCard({ track, active = false, playing = false, onActivate, subtitle, artworkFallback, variant = 'card', kind, className }: Props) {
+export function TrackCard({ track, active = false, playing = false, onActivate, subtitle, artworkFallback, variant = 'card', kind, cover, titleLines = 2, className }: Props) {
   if (variant === 'tile' || variant === 'tile-lg') {
     const lg = variant === 'tile-lg';
     return (
@@ -66,16 +71,18 @@ export function TrackCard({ track, active = false, playing = false, onActivate, 
         className={cn('group min-w-0 cursor-pointer select-none', className)}
       >
         <div className="relative">
-          <Artwork
-            src={track.artworkUrl}
-            loading="lazy"
-            className={cn(
-              'aspect-square w-full rounded-[8px] bg-art',
-              !track.artworkUrl && artworkFallback && 'grid place-items-center text-foreground/20',
-            )}
-          >
-            {artworkFallback}
-          </Artwork>
+          {cover ?? (
+            <Artwork
+              src={track.artworkUrl}
+              loading="lazy"
+              className={cn(
+                'aspect-square w-full rounded-[8px] bg-art',
+                !track.artworkUrl && artworkFallback && 'grid place-items-center text-foreground/20',
+              )}
+            >
+              {artworkFallback}
+            </Artwork>
+          )}
           <PlayButton
             size="sm"
             playing={active && playing}
@@ -96,7 +103,8 @@ export function TrackCard({ track, active = false, playing = false, onActivate, 
         </div>
         <div
           className={cn(
-            'mt-cluster line-clamp-2 break-words font-bold leading-snug',
+            'mt-cluster font-bold leading-snug',
+            titleLines === 1 ? 'truncate' : 'line-clamp-2 break-words',
             lg ? 'text-[15px]' : 'text-sm',
             active ? 'text-ember' : 'text-foreground',
           )}

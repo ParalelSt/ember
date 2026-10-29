@@ -12,6 +12,9 @@ export const RADIO_LIMITS = {
   browse: { windowMs: 60_000, max: 60 },
   /** Streams opened; switching stations fast is a few a minute. */
   stream: { windowMs: 60_000, max: 30 },
+  /** Station logos: a page of shelves asks for one per station shown (up
+   *  to a few hundred), and the browser keeps them for a week after. */
+  logo: { windowMs: 60_000, max: 600 },
 } satisfies Record<string, RateLimitConfig>;
 
 /** Runs `fn` for a signed-in member within the `scope` budget; a 401 for

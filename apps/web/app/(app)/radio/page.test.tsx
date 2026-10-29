@@ -93,7 +93,7 @@ describe('Radio page', () => {
     expect(await screen.findByText('Favourites')).toBeTruthy();
   });
 
-  it('lists the favourites first, then the stations around, as rows with logo, name, town and distance', async () => {
+  it('shows the favourites first, then the stations around, as shelves of logo tiles with name, region and distance', async () => {
     api.radioFavorites.mockResolvedValue({ stations: [HR[1]] });
     const near = { ...NEAR[0], distanceKm: 3.2, state: 'Zagreb' };
     const nearRows = [{ ...near, track: stationTrack(near) }, { ...station(5, 'HR 2'), distanceKm: 0.4 }];
@@ -102,13 +102,60 @@ describe('Radio page', () => {
     renderPage();
     await screen.findByText('Favourites');
     await screen.findByText('Radio Sljeme');
-    const [favs, around] = screen.getAllByTestId('station-list');
+    expect(screen.queryByTestId('station-list')).toBeNull();
+    const favs = screen.getByRole('region', { name: 'Favourites' });
+    const around = screen.getByRole('region', { name: 'Nearby' });
     expect(within(favs).getByText('Narodni')).toBeTruthy();
-    expect(within(favs).queryByTestId('station-distance')).toBeNull();
-    expect(within(around).getByText('Zagreb, Croatia')).toBeTruthy();
-    expect(within(around).getAllByTestId('station-distance').map((d) => d.textContent)).toEqual(['3 km', 'Under 1 km']);
+    expect(within(favs).getByText('Croatia')).toBeTruthy();
+    expect(within(around).getByText('Zagreb · 3 km')).toBeTruthy();
+    expect(within(around).getByText('Croatia · Under 1 km')).toBeTruthy();
+    expect(within(around).getAllByTestId('station-tile')).toHaveLength(2);
     const headings = screen.getAllByRole('heading').map((h) => h.textContent);
     expect(headings.indexOf('Favourites')).toBeLessThan(headings.indexOf('Nearby'));
+  });
+
+  it('holds every station of a section in its shelf, with no "Show all"', async () => {
+    const many = Array.from({ length: 14 }, (_, i) => station(i, `Station ${i}`)).map((s, i) => ({ ...s, id: `00000000-0000-4000-8000-0000000001${String(i).padStart(2, '0')}` }));
+    api.radioCountry.mockResolvedValue({ stations: many });
+    renderPage();
+    await screen.findByText('Station 13');
+    expect(within(screen.getByRole('region', { name: 'Croatia' })).getAllByRole('listitem')).toHaveLength(14);
+    expect(screen.queryByText('Show all')).toBeNull();
+  });
+
+  it('keeps "Use my location" beside the Croatia shelf', async () => {
+    renderPage();
+    await screen.findByText('Otvoreni');
+    const shelf = screen.getByRole('region', { name: 'Croatia' });
+    expect(within(shelf).getByText('Otvoreni')).toBeTruthy();
+    expect(within(shelf).getByRole('button', { name: /use my location/i })).toBeTruthy();
+  });
+
+  it('the heart on a tile keeps a favourite without playing the station', async () => {
+    renderPage();
+    await screen.findByText('Otvoreni');
+    fireEvent.click(screen.getByRole('button', { name: 'Favourite Narodni' }));
+    await waitFor(() => expect(api.addRadioFavorite).toHaveBeenCalledWith(HR[1].id));
+    expect(player.playTrack).not.toHaveBeenCalled();
+  });
+
+  it('keeps the wording while the stations load and when radio cannot be reached', async () => {
+    api.radioCountry.mockReturnValue(new Promise(() => {}));
+    const { unmount } = renderPage();
+    expect(await within(screen.getByRole('region', { name: 'Croatia' })).findByText('Loading…')).toBeTruthy();
+    unmount();
+    api.radioCountry.mockRejectedValue(new Error('down'));
+    renderPage();
+    expect(await screen.findByText("Radio isn't reachable right now. Try again in a moment.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: /use my location/i })).toBeTruthy();
+  });
+
+  it('lists search finds as rows, not a shelf', async () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText('Search stations'), { target: { value: 'antena' } });
+    expect(await screen.findByText('Antena Zagreb')).toBeTruthy();
+    expect(screen.getByTestId('station-list')).toBeTruthy();
+    expect(screen.queryByTestId('station-tile')).toBeNull();
   });
 
   it('searches stations by name', async () => {

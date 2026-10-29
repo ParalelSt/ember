@@ -36,26 +36,35 @@ export interface RowHeaderProps {
   /** Where "Show all" points; pass it only when the row holds more than it
    *  shows. */
   showAllHref?: string;
+  /** Something of the row's own beside the title (Radio's "Use my
+   *  location"), before "Show all". */
+  action?: ReactNode;
 }
 
 /** Presentational only: a phone Home row's header, Spotify style. A big
  *  bold title that wraps to at most two lines inside its own box (it never
  *  pushes "Show all" off or the page wider), and a quiet bold "Show all". */
-export function RowHeader({ title, showAllHref }: RowHeaderProps) {
+export function RowHeader({ title, showAllHref, action }: RowHeaderProps) {
+  const showAll = showAllHref ? (
+    <Link
+      href={showAllHref}
+      className="shrink-0 whitespace-nowrap pb-[2px] text-sm font-bold text-muted-foreground hover:text-foreground transition-colors"
+    >
+      Show all
+    </Link>
+  ) : null;
   return (
     <SectionHeader
       title={title}
       className="mb-row min-w-0 items-end"
       titleClassName="min-w-0 line-clamp-2 break-words text-[22px] leading-7 font-bold tracking-tight"
       action={
-        showAllHref ? (
-          <Link
-            href={showAllHref}
-            className="shrink-0 whitespace-nowrap pb-[2px] text-sm font-bold text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Show all
-          </Link>
-        ) : undefined
+        action ? (
+          <div className="flex shrink-0 items-center gap-cluster">
+            {action}
+            {showAll}
+          </div>
+        ) : showAll ?? undefined
       }
     />
   );
@@ -77,15 +86,16 @@ function ShowAll({ href }: { href: string }) {
 /** Presentational only: a desktop Home row's header. The 24px bold title,
  *  and on the right the row's < and > buttons (when it has a row to move)
  *  then "Show all". */
-export function WideRowHeader({ title, showAllHref, arrows }: RowHeaderProps & { arrows?: ReactNode }) {
+export function WideRowHeader({ title, showAllHref, arrows, action }: RowHeaderProps & { arrows?: ReactNode }) {
   return (
     <SectionHeader
       title={title}
       className="mb-row min-w-0 items-center"
       titleClassName={WIDE_TITLE_CLASS}
       action={
-        arrows || showAllHref ? (
+        arrows || action || showAllHref ? (
           <div className="flex shrink-0 items-center gap-cluster">
+            {action}
             {arrows}
             {showAllHref ? <ShowAll href={showAllHref} /> : null}
           </div>
@@ -121,7 +131,7 @@ function FadeEdge({ dir, enabled, onClick }: { dir: -1 | 1; enabled: boolean; on
  *  tilt wheel, Shift+wheel) or a mouse drag moves the row, and a soft fade marks each
  *  side that has more; clicking a fade moves the row by about 80% of its
  *  width. */
-function WideRowShelf({ title, showAllHref, tiles, className }: { title: string; showAllHref?: string; tiles: ReactNode[]; className?: string }) {
+function WideRowShelf({ title, showAllHref, action, tiles, className }: { title: string; showAllHref?: string; action?: ReactNode; tiles: ReactNode[]; className?: string }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [ends, setEnds] = useState({ canLeft: false, canRight: false });
   const count = tiles.length;
@@ -170,7 +180,7 @@ function WideRowShelf({ title, showAllHref, tiles, className }: { title: string;
   };
   return (
     <section className={cn('mb-section', className)} aria-label={title}>
-      <WideRowHeader title={title} showAllHref={showAllHref} />
+      <WideRowHeader title={title} showAllHref={showAllHref} action={action} />
       <div className="relative">
         <div ref={rowRef} role="list" data-row-shelf="wide" className={WIDE_SCROLL_CLASS}>
           {tiles.map((tile, i) => (
@@ -202,21 +212,23 @@ export interface RowShelfProps {
   variant?: 'phone' | 'desktop';
   /** A phone tile width other than 140px (the mix cards' 172px). */
   phoneTileClassName?: string;
+  /** Something of the row's own in its header, beside the title. */
+  action?: ReactNode;
 }
 
 /** Presentational only: the phone Home's sideways shelf, Spotify style. A
  *  RowHeader, then a row of tiles that scrolls by touch (snapping to a
  *  tile, no bar showing) and runs from screen edge to screen edge while
  *  lining up with the page's gutter at rest. */
-export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, className, variant = 'phone', phoneTileClassName }: RowShelfProps) {
+export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, className, variant = 'phone', phoneTileClassName, action }: RowShelfProps) {
   const all = Children.toArray(children);
   if (all.length === 0) return null;
   const tiles = all.slice(0, limit);
   const more = all.length > tiles.length ? showAllHref : undefined;
-  if (variant === 'desktop') return <WideRowShelf title={title} showAllHref={more} tiles={tiles} className={className} />;
+  if (variant === 'desktop') return <WideRowShelf title={title} showAllHref={more} action={action} tiles={tiles} className={className} />;
   return (
     <section className={cn('mb-section', className)} aria-label={title}>
-      <RowHeader title={title} showAllHref={more} />
+      <RowHeader title={title} showAllHref={more} action={action} />
       <div role="list" data-row-shelf className={ROW_SCROLL_CLASS}>
         {tiles.map((tile, i) => (
           <div key={isValidElement(tile) && tile.key != null ? tile.key : i} role="listitem" className={phoneTileClassName ? cn(ROW_TILE_CLASS, phoneTileClassName) : ROW_TILE_CLASS}>

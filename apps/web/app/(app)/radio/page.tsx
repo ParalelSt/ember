@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { LocateIcon, SearchIcon } from '@/components/icons';
@@ -8,8 +8,11 @@ import { OnlineOnly } from '@/components/OnlineOnly';
 import { EmptyState } from '@/components/page/EmptyState';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { RowHeader, WideRowHeader } from '@/components/page/RowShelf';
 import { StationList } from '@/components/radio/StationList';
+import { StationShelf } from '@/components/radio/StationShelf';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
   locationAlreadyAllowed,
   readRadioPlace,
@@ -26,10 +29,16 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 /** Live internet radio: stations near the listener (their country's until
  *  they share where they are), their favourites, and a search by name. The
+ *  favourites and the stations around are Home style shelves of logo tiles
+ *  (the owner's "Shelves" pick), every station in its row; a search lists
+ *  its finds as rows. The
  *  location is only ever read when they tap "Use my location", or when this
  *  site already has their permission (which asks nothing). */
 export default function RadioPage() {
   const { user } = useAuth();
+  // Shelves as on Home: 140px tiles by touch on a phone, 180px ones on a
+  // desktop window.
+  const isDesktop = useIsDesktop();
   const [place, setPlace] = useState<RadioPlace | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -74,14 +83,48 @@ export default function RadioPage() {
 
   if (!user) return <EmptyState>Sign in to listen to radio</EmptyState>;
 
-  const list = (stations: RadioStation[] | undefined, name: string, loading: boolean, failed: boolean, empty: string) => {
+  /** What stands in for a list that has nothing to show yet, or null. */
+  const listState = (stations: RadioStation[] | undefined, loading: boolean, failed: boolean, empty: string) => {
     if (failed && !stations?.length) return <EmptyState className="text-sm">{"Radio isn't reachable right now. Try again in a moment."}</EmptyState>;
     if (loading && !stations?.length) return <EmptyState className="text-sm">Loading…</EmptyState>;
     if (!stations?.length) return <EmptyState className="text-sm">{empty}</EmptyState>;
-    return <StationList stations={stations} name={name} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} />;
+    return null;
+  };
+
+  const list = (stations: RadioStation[] | undefined, name: string, loading: boolean, failed: boolean, empty: string) =>
+    listState(stations, loading, failed, empty)
+    ?? <StationList stations={stations!} name={name} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} />;
+
+  const shelf = (title: string, stations: RadioStation[] | undefined, loading: boolean, failed: boolean, empty: string, action?: ReactNode) => {
+    const state = listState(stations, loading, failed, empty);
+    if (state) {
+      const Header = isDesktop ? WideRowHeader : RowHeader;
+      return (
+        <section className="mb-section" aria-label={title}>
+          <Header title={title} action={action} />
+          {state}
+        </section>
+      );
+    }
+    return (
+      <StationShelf
+        title={title}
+        stations={stations!}
+        name={title}
+        favoriteIds={favoriteIds}
+        onToggleFavorite={onToggleFavorite}
+        variant={isDesktop ? 'desktop' : 'phone'}
+        action={action}
+      />
+    );
   };
 
   const nearbyName = place ? 'Nearby' : 'Croatia';
+  const locationAction = place ? undefined : (
+    <Button variant="ghost" size="sm" onClick={useMyLocation} disabled={locating} className="text-muted-foreground hover:text-foreground">
+      <LocateIcon /> {locating ? 'Finding you…' : 'Use my location'}
+    </Button>
+  );
 
   return (
     <OnlineOnly>
@@ -108,25 +151,11 @@ export default function RadioPage() {
               : list(search.data, 'Search', search.isFetching, search.isError, 'No stations by that name.')}
           </>
         ) : (
-          <>
-            {!!favorites.data?.length && (
-              <>
-                <SectionHeader title="Favourites" className="mt-section mb-block" />
-                {list(favorites.data, 'Favourites', favorites.isLoading, favorites.isError, '')}
-              </>
-            )}
-            <SectionHeader
-              title={nearbyName}
-              className="mt-section mb-block"
-              action={place ? undefined : (
-                <Button variant="ghost" size="sm" onClick={useMyLocation} disabled={locating} className="text-muted-foreground hover:text-foreground">
-                  <LocateIcon /> {locating ? 'Finding you…' : 'Use my location'}
-                </Button>
-              )}
-            />
+          <div className="mt-section md:mt-block">
+            {!!favorites.data?.length && shelf('Favourites', favorites.data, favorites.isLoading, favorites.isError, '')}
             {locationError && <p className="mb-block text-sm text-muted-foreground">{locationError}</p>}
-            {list(nearby.data, nearbyName, nearby.isLoading, nearby.isError, 'No stations found here.')}
-          </>
+            {shelf(nearbyName, nearby.data, nearby.isLoading, nearby.isError, 'No stations found here.', locationAction)}
+          </div>
         )}
       </div>
     </OnlineOnly>

@@ -39,6 +39,13 @@ export function stationStreamPath(id: string): string {
   return `/api/radio/stream/${id}`;
 }
 
+/** A station's logo, fetched through the host (app/api/radio/logo), so the
+ *  page may read its pixels for the tile's colour. It takes the station id
+ *  only; the server fetches the logo Radio Browser listed for it. */
+export function stationLogoPath(id: string): string {
+  return `/api/radio/logo/${id}`;
+}
+
 /** ~0.1 degree (about 10 km): enough for "near me", too coarse to say where
  *  someone lives, and it lets everyone in a town share one cached list. The
  *  app rounds before it asks; the server rounds again whatever it is sent. */
@@ -59,6 +66,12 @@ export function isLiveTrack(track: Pick<Track, 'source'> | null | undefined): bo
 /** The line under a station's name: where it is. */
 export function stationSubtitle(s: { state?: string; country?: string }): string {
   return [s.state, s.country].map((v) => v?.trim()).filter(Boolean).join(', ') || 'Live radio';
+}
+
+/** The region a station is in, for a tile's short line: its state, or
+ *  its country when Radio Browser names no state. */
+export function stationRegion(s: { state?: string; country?: string }): string {
+  return s.state?.trim() || s.country?.trim() || 'Live radio';
 }
 
 /** The player's item for a station. */

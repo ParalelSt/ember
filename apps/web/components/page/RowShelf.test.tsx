@@ -235,3 +235,31 @@ describe('RowShelf, desktop mouse drag', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('RowShelf header action', () => {
+  it('puts a row\'s own control beside the title, before Show all, on a phone and a desktop', () => {
+    for (const variant of ['phone', 'desktop'] as const) {
+      const { unmount } = render(
+        <RowShelf title="Croatia" variant={variant} limit={1} showAllHref="/x" action={<button type="button">Use my location</button>}>
+          <div key="a">A</div>
+          <div key="b">B</div>
+        </RowShelf>,
+      );
+      const region = screen.getByRole('region', { name: 'Croatia' });
+      const button = within(region).getByRole('button', { name: 'Use my location' });
+      const showAll = within(region).getByRole('link', { name: 'Show all' });
+      expect(button.compareDocumentPosition(showAll) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it('shows the action alone when there is no Show all', () => {
+    render(
+      <RowShelf title="Croatia" action={<button type="button">Use my location</button>}>
+        <div key="a">A</div>
+      </RowShelf>,
+    );
+    expect(screen.getByRole('button', { name: 'Use my location' })).toBeTruthy();
+    expect(screen.queryByText('Show all')).toBeNull();
+  });
+});

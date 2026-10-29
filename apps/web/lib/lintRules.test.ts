@@ -286,6 +286,7 @@ const COLOUR_BASELINE: Record<string, number> = {
   // what keeps a label readable over album art.
   'components/AttachmentPicker.tsx': 2, // bg-black/60 caption strip + text-white
   'components/page/CollectionHeader.tsx': 2, // "Change cover" hover scrim + text-white
+  'components/radio/StationCard.tsx': 5, // heart scrim bg-black/40 (+ hover) + text-white (+ hover) on the station's own colour, white initials on it
   'components/import/parts.tsx': 3, // play/pause scrim on a candidate cover + text-white
   'components/import/ReviewSheet.tsx': 1, // sheet backdrop bg-black/20
   'components/tabs/TabSourceSheet.tsx': 1, // tap-to-close backdrop bg-black/50
