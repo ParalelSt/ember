@@ -201,7 +201,7 @@ export function TrackRow({
       size="icon"
       data-testid="track-row-play"
       className={cn(
-        compact ? 'size-hit md:size-8 transition-opacity' : 'hidden @3xl:inline-flex size-8 transition-opacity',
+        'size-hit md:size-8 transition-opacity',
         active
           ? 'text-ember hover:text-ember'
           : 'text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-md:opacity-100',

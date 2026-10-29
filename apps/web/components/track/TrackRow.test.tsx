@@ -397,6 +397,13 @@ describe('TrackRow (trailingPlayControl)', () => {
         expect(reveal(button)).toContain('max-md:opacity-100');
       });
 
+      it('is never display-hidden, so search rows on a phone and in the desktop dropdown keep it', () => {
+        render(row());
+        const button = screen.getByTestId('track-row-play');
+        expect(reveal(button).split(/\s+/)).not.toContain('hidden');
+        expect(reveal(button)).toContain('size-hit');
+      });
+
       it('keyboard focus reveals it: the row is the group and the button can take focus', () => {
         const { container } = render(row());
         const button = screen.getByTestId('track-row-play');
@@ -421,7 +428,7 @@ describe('TrackRow (trailingPlayControl)', () => {
 
       it('uses the phone touch size and the desktop row size', () => {
         render(row());
-        expect(reveal(screen.getByTestId('track-row-play'))).toContain(density === 'compact' ? 'size-hit md:size-8' : 'hidden @3xl:inline-flex');
+        expect(reveal(screen.getByTestId('track-row-play'))).toContain('size-hit md:size-8');
       });
 
       it('plays this track, then pauses and resumes it once it is the current one', () => {
