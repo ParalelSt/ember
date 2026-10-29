@@ -255,3 +255,16 @@ describe('TrackShelf desktop row layout (the desktop Home)', () => {
     expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
   });
 });
+
+describe('TrackShelf row limit', () => {
+  it('holds every track when the row is given no cap, on a phone and a desktop', () => {
+    for (const layout of ['row', 'desktop-row'] as const) {
+      const { unmount } = render(
+        <TrackShelf layout={layout} title="Recently played" tracks={makeTracks(ROW_MAX + 4)} limit={Infinity} renderCard={renderCard} />,
+      );
+      expect(screen.getAllByRole('listitem')).toHaveLength(ROW_MAX + 4);
+      expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+      unmount();
+    }
+  });
+});

@@ -203,28 +203,21 @@ describe('Home on a phone', () => {
     expect(hero.parentElement!.className).not.toMatch(/-m[xl]-/);
   });
 
-  it('offers Show all only on rows that hold more than they show', () => {
+  it('offers no Show all on any row, the card with more suggestions than it shows included', () => {
     render(<HomePage />);
-    // 4 played, 5 popular, 2 playlists: everything is already on screen.
-    for (const name of ['Recently played', 'Popular now', 'Your playlists']) {
-      expect(within(screen.getByRole('region', { name })).queryByRole('link', { name: 'Show all' })).toBeNull();
-    }
-    // 6 suggestions, the card holds 4.
-    expect(
-      within(screen.getByRole('region', { name: 'Because you played "hist song 0"' })).getByRole('link', { name: 'Show all' }),
-    ).toHaveAttribute('href', '/?focus=recommended');
+    // 6 suggestions, the card holds 4: the rest still play from its button.
+    expect(screen.getByRole('region', { name: 'Because you played "hist song 0"' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
   });
 
-  it('links Show all to the focus view, and Your playlists to the Library, once a row overflows', () => {
-    state.history = makeTracks('hist', ROW_MAX + 1);
-    state.playlists = Array.from({ length: ROW_MAX + 1 }, (_, i) => toSummary({ kind: 'playlist', id: `p${i}` }, { name: `List ${i}` }));
+  it('holds every song and playlist in its row, past the usual row cap, with no Show all', () => {
+    state.history = makeTracks('hist', ROW_MAX + 5);
+    state.playlists = Array.from({ length: ROW_MAX + 3 }, (_, i) => toSummary({ kind: 'playlist', id: `p${i}` }, { name: `List ${i}` }));
     render(<HomePage />);
-    const showAll = (name: string) =>
-      within(screen.getByRole('region', { name })).getByRole('link', { name: 'Show all' });
-    expect(showAll('Recently played')).toHaveAttribute('href', '/?focus=history');
-    // Popular now is a row of chart tiles: no Show all.
-    expect(within(screen.getByRole('region', { name: 'Popular now' })).queryByRole('link', { name: 'Show all' })).toBeNull();
-    expect(showAll('Your playlists')).toHaveAttribute('href', '/library');
+    const items = (name: string) => within(screen.getByRole('region', { name })).getAllByRole('listitem');
+    expect(items('Recently played')).toHaveLength(ROW_MAX + 5);
+    expect(items('Your playlists')).toHaveLength(ROW_MAX + 3);
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
   });
 
   it('subtitles tiles like Spotify Recents: "Playlist · <owner>" and "Song · <artist>"', () => {
@@ -349,7 +342,7 @@ describe('Home on a phone, playback', () => {
     expect(state.playTrack).not.toHaveBeenCalled();
   });
 
-  it('Show all opens the full grid of that row', () => {
+  it('an old ?focus= link still opens the full grid of that row', () => {
     state.focus = 'history';
     render(<HomePage />);
     expect(screen.getByRole('heading', { level: 1, name: 'Recently played' })).toBeInTheDocument();
@@ -412,7 +405,7 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
     expect(headings()).toEqual(['Your playlists']);
   });
 
-  it('every row scrolls sideways with 180px tiles and < > in its header, Show all only when there is more', () => {
+  it('every row scrolls sideways with 180px tiles and its edge fades, holding everything with no Show all', () => {
     state.history = makeTracks('hist', ROW_MAX + 1);
     render(<HomePage />);
     for (const name of ['Recently played', 'Because you played "hist song 0"', 'Popular now', 'Your playlists']) {
@@ -424,9 +417,8 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
       expect(region.getByRole('button', { name: 'Scroll right' })).toBeInTheDocument();
       expect(region.getByRole('heading', { level: 2 })).toHaveClass('text-2xl', 'font-bold');
     }
-    expect(within(screen.getByRole('region', { name: 'Recently played' })).getByRole('link', { name: 'Show all' }))
-      .toHaveAttribute('href', '/?focus=history');
-    expect(within(screen.getByRole('region', { name: 'Popular now' })).queryByRole('link', { name: 'Show all' })).toBeNull();
+    expect(within(screen.getByRole('region', { name: 'Recently played' })).getAllByRole('listitem')).toHaveLength(ROW_MAX + 1);
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
   });
 
   it('uses the full width: no bleed past the gutter and the content cap lifted', () => {
@@ -489,7 +481,7 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
     }
   });
 
-  it('Show all still opens the full grid of that row', () => {
+  it('an old ?focus= link still opens the full grid of that row', () => {
     state.focus = 'trending';
     render(<HomePage />);
     expect(screen.getByRole('heading', { level: 1, name: 'Popular now' })).toBeInTheDocument();
@@ -497,7 +489,7 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
   });
 });
 
-describe('Show all and back', () => {
+describe('a focus view and back', () => {
   it('starts the page at the top: the shell scroller, not <main>, is reset', () => {
     const scroller = document.createElement('div');
     scroller.setAttribute('data-app-scroller', '');

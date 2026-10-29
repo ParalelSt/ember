@@ -174,7 +174,9 @@ export default function HomePage() {
   const renderRow = (key: HomeRowKey) => {
     if (key === 'playlists') {
       return (
-        <RowShelf key={key} title="Your playlists" showAllHref="/library" variant={isDesktop ? 'desktop' : 'phone'}>
+        // Every playlist gets a tile: Home's rows have no Show all (the
+        // owner's pick), so the row is the way to them all.
+        <RowShelf key={key} title="Your playlists" variant={isDesktop ? 'desktop' : 'phone'} limit={Infinity}>
           {recentFirst(playlists, playingPlaylistId).map((p) => (
             <CollectionCard
               key={p.href}
@@ -261,7 +263,6 @@ export default function HomePage() {
           isPlaying={isPlaying}
           onPlay={playTrack}
           onToggle={toggle}
-          showAllHref="/?focus=recommended"
         />
       );
     }
@@ -274,7 +275,9 @@ export default function HomePage() {
         title={s.title}
         tracks={s.tracks}
         loading={s.loading}
-        showAllHref={`/?focus=${encodeURIComponent(s.key)}`}
+        // No Show all on Home's rows (the owner's pick): each holds all
+        // its songs. The ?focus= views stay for old links.
+        limit={Infinity}
         renderCard={renderTile}
       />
     );
