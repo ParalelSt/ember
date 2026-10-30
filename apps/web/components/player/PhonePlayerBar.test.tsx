@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from './PhonePlayerBar';
+import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import type { Track } from '@/types/track';
 
 // base-ui's Slider reaches the repo root's hoisted React 18 through its own
@@ -227,5 +228,15 @@ describe('PhonePlayerBar', () => {
     expect(PLAYER_BAR_CHROME.split(' ')).not.toContain('safe-area-bottom');
     expect(PLAYER_BAR_CHROME.split(' ')).toContain('bg-sidebar');
     expect(PLAYER_BAR_CHROME.split(' ')).toContain('border-t');
+  });
+});
+
+describe('PhonePlayerBar offline', () => {
+  it('keeps the artist line: the offline sign is the banner above the bar', () => {
+    useAutoCacheStore.setState({ online: false });
+    setup();
+    expect(screen.getByText(TRACK.artist)).toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
+    useAutoCacheStore.setState({ online: true });
   });
 });

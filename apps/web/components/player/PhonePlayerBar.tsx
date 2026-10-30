@@ -2,7 +2,6 @@
 
 import type { MouseEvent } from 'react';
 import { MarqueeText } from '@/components/player/MarqueeText';
-import { OfflineBadge } from '@/components/player/OfflineBadge';
 import { PlayheadSeekBar } from '@/components/player/SeekBar';
 import { UnplayableMessage, useUnplayableMessage } from '@/components/player/UnplayableMessage';
 import { Artwork } from '@/components/primitives/Artwork';
@@ -11,7 +10,6 @@ import { NextIcon, PauseIcon, PlayIcon } from '@/components/icons';
 import { useTrackArtSrc } from '@/lib/offlineNative';
 import { cn } from '@/lib/utils';
 import { isLiveTrack } from '@/lib/radio/station';
-import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import type { Track } from '@/types/track';
 
 /** The player bar's chrome: the strip's own background and its top border.
@@ -92,9 +90,6 @@ export function PhonePlayerBar({
   // Prefer a downloaded copy's own local art over the remote URL, the same
   // way the desktop bar's NowPlayingSummary does.
   const artSrc = useTrackArtSrc(track);
-  // Offline, the artist line gives way to the offline state: same height,
-  // so the bar never jumps.
-  const online = useAutoCacheStore((s) => s.online);
   // A song that could not play: the bar says so in place of the song for a
   // few seconds (or until the listener acts, when the music stopped).
   const unplayable = useUnplayableMessage();
@@ -133,13 +128,9 @@ export function PhonePlayerBar({
                 the title inside it, which is what keeps measuring it stable. */}
             <div className="min-w-0 flex-1">
               <MarqueeText text={track.title} className="text-base font-semibold" />
-              {online ? (
-                <div className="truncate text-sm text-muted-foreground" title={track.artist}>
-                  {track.artist}
-                </div>
-              ) : (
-                <OfflineBadge inline className="flex" />
-              )}
+              <div className="truncate text-sm text-muted-foreground" title={track.artist}>
+                {track.artist}
+              </div>
             </div>
           </button>
         )}

@@ -1,7 +1,6 @@
 'use client';
 
 import { Artwork } from '@/components/primitives/Artwork';
-import { OfflineBadge } from '@/components/player/OfflineBadge';
 import { TransportControls } from '@/components/player/TransportControls';
 import { UnplayableMessage, useUnplayableMessage } from '@/components/player/UnplayableMessage';
 import { useSwipeSkip } from '@/hooks/player/useSwipeSkip';
@@ -46,7 +45,6 @@ export function CarPlayerBar({ track, playing, onToggle, onNext, onPrev, onRetry
             </div>
           </>
         )}
-        <OfflineBadge />
       </div>
       <TransportControls playing={playing} onToggle={onToggle} onNext={onNext} onPrev={onPrev} size="car" />
     </div>

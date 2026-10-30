@@ -86,6 +86,19 @@ export function serverUnreachable(): void {
   lookLater();
 }
 
+/** The listener asked (the offline banner's Try again): asks the server right
+ *  now, by the same rule as the watch (two answers in a row). When it answers
+ *  the player is back online, whatever the browser's own flag says, and it
+ *  handles that as the connection returning; nothing playing is disturbed.
+ *  False while the server still does not answer. */
+export async function checkServerNow(): Promise<boolean> {
+  if (!(await answers()) || !(await answers())) return false;
+  connectionOk();
+  const store = useAutoCacheStore.getState();
+  if (!store.online) store.setOnline(true);
+  return true;
+}
+
 /** True while waiting for the server to answer again. */
 export function waitingForServer(): boolean {
   return watching;

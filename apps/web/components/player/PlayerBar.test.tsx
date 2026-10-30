@@ -1,7 +1,8 @@
 import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { PlayerBar } from './PlayerBar';
+import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
@@ -419,4 +420,28 @@ it.each(['narrow', 'native'])('hides guitar tabs on %s devices with the plugin e
   render(<PlayerBar />);
   expect(screen.queryByRole('button', { name: 'Guitar tabs' })).toBeNull();
   expect(screen.queryByRole('menuitem', { name: 'Guitar tabs' })).toBeNull();
+});
+
+describe('PlayerBar: offline banner', () => {
+  afterEach(() => useAutoCacheStore.setState({ online: true, offlineStalled: false }));
+
+  it.each([
+    ['desktop', true, false],
+    ['phone', false, false],
+    ['car', true, true],
+  ])('%s: a line at the very top of the footer, above the bar, only offline', (_name, isDesktop, isCar) => {
+    desktop.value = isDesktop;
+    car.value = isCar;
+    render(<PlayerBar />);
+    expect(screen.queryByTestId('offline-banner')).toBeNull();
+    const before = bar().children.length;
+    act(() => useAutoCacheStore.setState({ online: false }));
+    const banner = screen.getByTestId('offline-banner');
+    expect(bar().firstElementChild).toBe(banner);
+    expect(bar().children.length).toBe(before + 1);
+    expect(within(banner).getByRole('status')).toHaveTextContent('You are offline');
+    expect(within(banner).getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    // Only the one offline sign, in the bar or anywhere else.
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
 });

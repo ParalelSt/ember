@@ -19,7 +19,7 @@ import { ShareButton, canShare, shareTrack } from '@/components/track/ShareButto
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
 import { UnplayableMessage, useUnplayableMessage } from '@/components/player/UnplayableMessage';
-import { OfflineBadge } from '@/components/player/OfflineBadge';
+import { OfflineBanner } from '@/components/player/OfflineBanner';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
 import { PlayheadSeekBar } from '@/components/player/SeekBar';
 import { CarPlayerBar } from '@/components/player/CarPlayerBar';
@@ -101,6 +101,7 @@ export function PlayerBar() {
   if (!isDesktop) {
     return (
       <footer data-testid="player-bar" className={PLAYER_BAR_CHROME}>
+        <OfflineBanner onResumeStalled={retry} />
         <PhonePlayerBar
           track={current}
           playing={isPlaying}
@@ -122,6 +123,7 @@ export function PlayerBar() {
   if (carLayout) {
     return (
       <footer data-testid="player-bar" data-layout="car" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom touch-hit')}>
+        <OfflineBanner onResumeStalled={retry} />
         <CarPlayerBar
           track={current}
           playing={isPlaying}
@@ -204,6 +206,7 @@ export function PlayerBar() {
   // phone bar above leaves the inset to MobileNav instead).
   return (
     <footer data-testid="player-bar" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom touch-hit')}>
+    <OfflineBanner onResumeStalled={retry} />
     {/* The title's column has a floor at every width (13.5rem, 16.5rem,
         20rem), so the song name always keeps at least ~75px, 120px and
         140px; from about 1600 wide the old 1fr / 2fr / 1fr split is back
@@ -217,7 +220,6 @@ export function PlayerBar() {
         ) : (
           <NowPlayingSummary track={current} size="sm" />
         )}
-        <OfflineBadge />
         {current && user && !live && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
             <LikeButton liked={isLiked} onToggle={toggleLike} />
