@@ -17,6 +17,10 @@ export interface NavLinksProps {
   size?: 'md' | 'lg';
 }
 
+/** Active row at normal size: a soft ember wash, the plain foreground for the
+ *  word (readable on any theme) and an ember icon. Shared with WhatsNewLink. */
+export const ACTIVE_MD = 'bg-ember/14 text-sidebar-foreground';
+
 const ICONS: Record<NavIcon, typeof HomeIcon> = {
   home: HomeIcon,
   search: SearchIcon,
@@ -52,11 +56,13 @@ export function NavLinks({ items, activePath, onNavigate, onSearchClick, size = 
                 ? 'flex min-h-12 items-center gap-row px-row rounded-lg text-base font-semibold transition-colors'
                 : 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
               isActive
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                ? size === 'lg'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : ACTIVE_MD
                 : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
             )}
           >
-            <Icon className={size === 'lg' ? 'size-6' : 'h-4 w-4'} />
+            <Icon className={cn(size === 'lg' ? 'size-6' : 'h-4 w-4', isActive && size !== 'lg' && 'text-ember')} />
             {label}
           </Link>
         );

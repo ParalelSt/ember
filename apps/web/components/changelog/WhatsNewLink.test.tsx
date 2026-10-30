@@ -10,7 +10,7 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-const ACTIVE_CLASS = 'bg-sidebar-accent text-sidebar-accent-foreground';
+const ACTIVE_CLASS = 'bg-ember/14 text-sidebar-foreground';
 
 describe('WhatsNewLink', () => {
   it('links to /whats-new', () => {

@@ -18,7 +18,7 @@ const items: NavItem[] = [
   { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
-const ACTIVE_CLASS = 'bg-sidebar-accent text-sidebar-accent-foreground';
+const ACTIVE_CLASS = 'bg-ember/14 text-sidebar-foreground';
 
 describe('NavLinks', () => {
   it('renders every item as a link to its href', () => {
@@ -79,5 +79,20 @@ describe('NavLinks', () => {
     const withSearch = [...items, { href: '/search', label: 'Search', icon: 'search' as const }];
     render(<NavLinks items={withSearch} activePath="/" />);
     expect(screen.getByRole('link', { name: 'Search' })).toHaveAttribute('href', '/search');
+  });
+
+  it('gives the active row an ember icon and no grey fill at normal size', () => {
+    render(<NavLinks items={items} activePath="/library" />);
+    const link = screen.getByRole('link', { name: 'Library' });
+    expect(link.className).not.toContain('bg-sidebar-accent ');
+    expect(link.querySelector('svg')?.getAttribute('class')).toContain('text-ember');
+    expect(screen.getByRole('link', { name: 'Home' }).querySelector('svg')?.getAttribute('class')).not.toContain('text-ember');
+  });
+
+  it('keeps the car lg variant on the sidebar-accent look', () => {
+    render(<NavLinks items={items} activePath="/library" size="lg" />);
+    const link = screen.getByRole('link', { name: 'Library' });
+    expect(link.className).toContain('bg-sidebar-accent text-sidebar-accent-foreground');
+    expect(link.className).not.toContain('bg-ember/14');
   });
 });
