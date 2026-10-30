@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { CopyIcon, EditIcon, PlusIcon, TrashIcon } from '@/components/icons';
+import { CheckIcon, CopyIcon, EditIcon, PlusIcon, TrashIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ThemeSwatch } from '@/components/settings/appearance/ThemeSwatch';
@@ -9,10 +9,21 @@ import { THEME_NAME_MAX, type PresetId, type ThemeInputs } from '@/lib/theme/mod
 import { PRESETS } from '@/lib/theme/presets';
 import type { SavedTheme, SharedTheme } from '@/lib/theme/saved';
 
-const swatch = (inputs: ThemeInputs) => ({ background: formatOklch(inputs.background), accent: formatOklch(inputs.accent) });
+const swatch = (inputs: ThemeInputs) => ({
+  background: formatOklch(inputs.background),
+  accent: formatOklch(inputs.accent),
+  surface: formatOklch(inputs.surface),
+});
 
-const ROW = 'flex items-center gap-row rounded-md border px-row py-inset';
-const rowState = (active: boolean) => (active ? 'border-ember bg-card' : 'border-transparent hover:bg-card');
+/** Two columns of cards at every width. A card keeps its own minimum width at
+ *  0, so a long name truncates inside it instead of widening its column. */
+const GRID = 'grid grid-cols-2 gap-cluster';
+const CARD = 'flex min-w-0 flex-col gap-cluster rounded-[14px] border p-cluster transition-colors';
+const cardState = (active: boolean) =>
+  active ? 'border-ember bg-ember/10 ring-1 ring-ember' : 'border-transparent bg-card hover:bg-accent';
+/** A card being renamed or asked about deleting needs the room: the whole row. */
+const WIDE = 'col-span-2 flex-row flex-wrap items-center';
+const FOCUS = 'outline-none focus-visible:ring-3 focus-visible:ring-ring/50';
 
 export interface ThemeLibraryProps {
   /** The preset the preview shows, when no saved theme is. */
@@ -50,8 +61,8 @@ export interface ThemeLibraryProps {
  *  duplicate, delete, share, with the count against the cap) and everyone
  *  else's shared themes (preview, or copy into mine). Each of mine has its
  *  own share switch (bughunt F3); presets and other people's themes have
- *  none. The one the preview shows is
- *  outlined; the one in use says "In use". Props in, callbacks out. */
+ *  none. Each is a card with a preview of its colours; the one the preview
+ *  shows is ember; the one in use says "In use". Props in, callbacks out. */
 export function ThemeLibrary(props: ThemeLibraryProps) {
   const { shownPreset, shownThemeId, inUsePreset, inUseThemeId, mine, shared, cap, loadFailed, looseName } = props;
   const full = mine !== null && mine.length >= cap;
@@ -67,26 +78,26 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
 
       <div role="radiogroup" aria-label="Presets" className="flex flex-col gap-inset">
         <div className="text-eyebrow mb-inset">Presets</div>
-        {PRESETS.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            role="radio"
-            aria-checked={p.id === shownPreset}
-            data-preset={p.id}
-            onClick={() => props.onPickPreset(p.id)}
-            className={cn(ROW, 'text-left transition-colors', rowState(p.id === shownPreset))}
-          >
-            <ThemeSwatch {...swatch(p.inputs)} />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-cluster text-sm font-medium">
-                {p.name}
+        <div className={GRID}>
+          {PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              role="radio"
+              aria-checked={p.id === shownPreset}
+              data-preset={p.id}
+              title={p.description}
+              onClick={() => props.onPickPreset(p.id)}
+              className={cn(CARD, FOCUS, 'text-left', cardState(p.id === shownPreset))}
+            >
+              <Preview inputs={p.inputs} selected={p.id === shownPreset} />
+              <CardName name={p.name} selected={p.id === shownPreset}>
                 {p.id === inUsePreset && <InUse />}
-              </span>
-              <span className="block truncate text-xs text-muted-foreground">{p.description}</span>
-            </span>
-          </button>
-        ))}
+              </CardName>
+              <span className="line-clamp-2 text-xs text-muted-foreground">{p.description}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <section aria-label="My themes" className="flex flex-col gap-inset">
@@ -117,21 +128,23 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
         ) : mine.length === 0 ? (
           <p className="text-sm text-muted-foreground">None yet. Change a colour and apply it, or press New, to make one.</p>
         ) : (
-          mine.map((t) => (
-            <MyThemeRow
-              key={t.id}
-              theme={t}
-              active={t.id === shownThemeId}
-              inUse={t.id === inUseThemeId}
-              onUse={() => props.onUse(t.id)}
-              onRename={(name) => props.onRename(t.id, name)}
-              onDuplicate={() => props.onDuplicate(t.id)}
-              onDelete={() => props.onDelete(t.id)}
-              canDuplicate={!full}
-              sharing={props.sharing?.has(t.id) ?? false}
-              onShare={(on) => props.onShare(t.id, on)}
-            />
-          ))
+          <div className={GRID}>
+            {mine.map((t) => (
+              <MyThemeCard
+                key={t.id}
+                theme={t}
+                active={t.id === shownThemeId}
+                inUse={t.id === inUseThemeId}
+                onUse={() => props.onUse(t.id)}
+                onRename={(name) => props.onRename(t.id, name)}
+                onDuplicate={() => props.onDuplicate(t.id)}
+                onDelete={() => props.onDelete(t.id)}
+                canDuplicate={!full}
+                sharing={props.sharing?.has(t.id) ?? false}
+                onShare={(on) => props.onShare(t.id, on)}
+              />
+            ))}
+          </div>
         )}
       </section>
 
@@ -140,44 +153,74 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
         {shared === null ? null : shared.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nobody has shared a theme yet.</p>
         ) : (
-          shared.map((t) => (
-            <div key={t.id} data-testid="shared-theme" className={cn(ROW, rowState(t.id === shownThemeId))}>
-              <ThemeSwatch {...swatch(t.inputs)} />
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-cluster text-sm font-medium">
-                  <span className="truncate">{t.name}</span>
+          <div className={GRID}>
+            {shared.map((t) => (
+              <div key={t.id} data-testid="shared-theme" className={cn(CARD, cardState(t.id === shownThemeId))}>
+                <Preview inputs={t.inputs} selected={t.id === shownThemeId} />
+                <CardName name={t.name} selected={t.id === shownThemeId}>
                   {t.id === inUseThemeId && <InUse />}
-                </div>
+                </CardName>
                 <div className="truncate text-xs text-muted-foreground">by {t.ownerName}</div>
+                <div className="mt-auto flex flex-wrap items-center gap-inset">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => props.onCopyShared(t.id)}
+                    disabled={full}
+                    aria-label={`Copy ${t.name} to my themes`}
+                  >
+                    Copy
+                  </Button>
+                  <Button
+                    size="xs"
+                    onClick={() => props.onUse(t.id)}
+                    disabled={t.id === shownThemeId}
+                    aria-label={`Preview ${t.name}`}
+                  >
+                    {t.id === shownThemeId ? 'Showing' : 'Preview'}
+                  </Button>
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-cluster">
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => props.onCopyShared(t.id)}
-                  disabled={full}
-                  aria-label={`Copy ${t.name} to my themes`}
-                >
-                  Copy
-                </Button>
-                <Button
-                  size="xs"
-                  onClick={() => props.onUse(t.id)}
-                  disabled={t.id === shownThemeId}
-                  aria-label={`Preview ${t.name}`}
-                >
-                  {t.id === shownThemeId ? 'Showing' : 'Preview'}
-                </Button>
-              </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </section>
     </div>
   );
 }
 
-function MyThemeRow({
+/** A card's preview, with an ember tick on the one the preview shows. */
+function Preview({ inputs, selected }: { inputs: ThemeInputs; selected: boolean }) {
+  return (
+    <span className="relative block">
+      <ThemeSwatch {...swatch(inputs)} />
+      {selected && (
+        <span
+          data-testid="theme-selected"
+          aria-hidden
+          className="absolute right-inset top-inset grid size-5 place-items-center rounded-full bg-ember text-ember-foreground"
+        >
+          <CheckIcon className="size-3" />
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** The name under the preview, truncated, and any tags on their own line, so
+ *  they never squeeze it in a narrow column. */
+function CardName({ name, selected, children }: { name: string; selected: boolean; children?: ReactNode }) {
+  return (
+    <span className="flex min-w-0 flex-col items-start gap-inset">
+      <span title={name} className={cn('w-full truncate text-sm font-medium', selected && 'text-ember')}>
+        {name}
+      </span>
+      {children}
+    </span>
+  );
+}
+
+function MyThemeCard({
   theme,
   active,
   inUse,
@@ -219,8 +262,8 @@ function MyThemeRow({
 
   if (mode === 'rename') {
     return (
-      <form data-testid="my-theme" onSubmit={submit} className={cn(ROW, 'flex-wrap', rowState(active))}>
-        <ThemeSwatch {...swatch(theme.inputs)} />
+      <form data-testid="my-theme" onSubmit={submit} className={cn(CARD, WIDE, cardState(active))}>
+        <ThemeSwatch {...swatch(theme.inputs)} className="h-8 w-14 items-center p-inset" />
         <Input
           autoFocus
           aria-label={`New name for ${theme.name}`}
@@ -252,7 +295,7 @@ function MyThemeRow({
 
   if (mode === 'delete') {
     return (
-      <div data-testid="my-theme" className={cn(ROW, 'flex-wrap', rowState(active))}>
+      <div data-testid="my-theme" className={cn(CARD, WIDE, cardState(active))}>
         <p className="min-w-0 flex-1 text-sm">Delete {theme.name}?</p>
         <div className="flex shrink-0 items-center gap-cluster">
           <Button
@@ -274,41 +317,50 @@ function MyThemeRow({
   }
 
   return (
-    <div data-testid="my-theme" className={cn(ROW, rowState(active))}>
+    <div data-testid="my-theme" className={cn(CARD, cardState(active))}>
       <button
         type="button"
         onClick={onUse}
         aria-pressed={active}
         aria-label={`Preview ${theme.name}`}
-        className="flex min-w-0 flex-1 items-center gap-row text-left"
+        className={cn(FOCUS, 'flex min-w-0 flex-col gap-cluster rounded-[10px] text-left')}
       >
-        <ThemeSwatch {...swatch(theme.inputs)} />
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-cluster text-sm font-medium">
-            <span className="truncate">{theme.name}</span>
-            {theme.shared && <SharedTag />}
-            {inUse && <InUse />}
-          </span>
-          <span className="block text-xs text-muted-foreground">
-            {theme.shared ? 'Everyone can use it' : 'Only you'}
-          </span>
+        <Preview inputs={theme.inputs} selected={active} />
+        <CardName name={theme.name} selected={active}>
+          {(theme.shared || inUse) && (
+            <span className="flex flex-wrap gap-inset">
+              {theme.shared && <SharedTag />}
+              {inUse && <InUse />}
+            </span>
+          )}
+        </CardName>
+        <span className="block text-xs text-muted-foreground">
+          {theme.shared ? 'Everyone can use it' : 'Only you'}
         </span>
       </button>
-      <div className="flex shrink-0 items-center">
-        <ShareSwitch name={theme.name} checked={theme.shared} busy={sharing} onChange={onShare} />
-        <IconAction label={`Rename ${theme.name}`} onClick={() => {
-            setName(theme.name);
-            setMode('rename');
-          }}
-        >
-          <EditIcon className="h-3.5 w-3.5" />
-        </IconAction>
-        <IconAction label={`Duplicate ${theme.name}`} onClick={onDuplicate} disabled={!canDuplicate}>
-          <CopyIcon className="h-3.5 w-3.5" />
-        </IconAction>
-        <IconAction label={`Delete ${theme.name}`} onClick={() => setMode('delete')}>
-          <TrashIcon className="h-3.5 w-3.5" />
-        </IconAction>
+      {/* Four hit boxes do not fit a phone's column: the switch gets a line of its own there. */}
+      <div className="mt-auto flex flex-wrap items-center justify-between md:flex-nowrap">
+        <div className="flex w-full items-center justify-between md:w-auto">
+          <span aria-hidden className="text-xs text-muted-foreground md:hidden">
+            Share
+          </span>
+          <ShareSwitch name={theme.name} checked={theme.shared} busy={sharing} onChange={onShare} />
+        </div>
+        <div className="flex w-full items-center justify-between md:w-auto">
+          <IconAction label={`Rename ${theme.name}`} onClick={() => {
+              setName(theme.name);
+              setMode('rename');
+            }}
+          >
+            <EditIcon className="h-3.5 w-3.5" />
+          </IconAction>
+          <IconAction label={`Duplicate ${theme.name}`} onClick={onDuplicate} disabled={!canDuplicate}>
+            <CopyIcon className="h-3.5 w-3.5" />
+          </IconAction>
+          <IconAction label={`Delete ${theme.name}`} onClick={() => setMode('delete')}>
+            <TrashIcon className="h-3.5 w-3.5" />
+          </IconAction>
+        </div>
       </div>
     </div>
   );
