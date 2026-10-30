@@ -13,6 +13,8 @@ import { QK } from '@/hooks/useLibrary';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import type { PinStatus } from '@/lib/offlineNative';
 import type { Track } from '@/types/track';
+import { DownloadIcon } from '@/components/icons';
+import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { StorageBar } from '@/components/settings/StorageBar';
 import { AutoCacheSettings } from '@/components/settings/AutoCacheSettings';
@@ -100,6 +102,16 @@ export default function DownloadsSettingsPage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {count === 0 && (
+        <EmptyState
+          icon={<DownloadIcon />}
+          title="No downloads yet"
+          action={{ label: 'Go to Library', href: '/library' }}
+        >
+          Open a playlist and tap Download for offline to keep it on this device.
+        </EmptyState>
       )}
 
       <Button

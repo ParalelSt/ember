@@ -248,6 +248,16 @@ describe('Your uploads rows', () => {
     expect(await screen.findByText(/Nothing uploaded yet/)).toBeInTheDocument();
   });
 
+  it('with none, Add songs opens the drop zone', async () => {
+    state.uploads = [];
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'Nothing uploaded yet' })).toBeInTheDocument();
+    expect(screen.getByTestId('empty-icon')).toBeInTheDocument();
+    expect(document.getElementById('upload-drop')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add songs' }));
+    expect(document.getElementById('upload-drop')).not.toBeNull();
+  });
+
   it('the ... menu on a phone is a sheet with the upload on top: Edit details and Remove; Remove asks first, then deletes', async () => {
     renderPage();
     const [first] = await screen.findAllByTestId('my-upload-row');

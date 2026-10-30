@@ -212,4 +212,24 @@ describe('Library page, phone', () => {
     expect(screen.getByRole('heading', { name: 'Downloaded' })).toBeInTheDocument();
     expect(document.querySelector('[data-phone-library]')).toBeNull();
   });
+
+  it('desktop with no playlists: an icon, a title and New playlist opens the create dialog', () => {
+    state.desktop = true;
+    state.playlists = [];
+    render(<LibraryPage />);
+    expect(screen.getByRole('heading', { name: 'No playlists yet' })).toBeInTheDocument();
+    expect(screen.getByTestId('empty-icon')).toBeInTheDocument();
+    // By its text: the header's + is an aria-label of the same name.
+    fireEvent.click(screen.getByText('New playlist'));
+    expect(screen.getByRole('dialog', { name: 'New playlist' })).toBeInTheDocument();
+  });
+
+  it('offline with nothing downloaded: an icon and the honest way, and no button that cannot work', () => {
+    state.online = false;
+    render(<LibraryPage />);
+    expect(screen.getByRole('heading', { name: 'No downloaded playlists' })).toBeInTheDocument();
+    expect(screen.getByText(/Go online and tap/)).toBeInTheDocument();
+    expect(screen.getByTestId('empty-icon')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
 });

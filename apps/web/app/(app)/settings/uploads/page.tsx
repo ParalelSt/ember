@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { PlusIcon } from '@/components/icons';
+import { PlusIcon, UploadIcon } from '@/components/icons';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { EmptyState } from '@/components/page/EmptyState';
@@ -81,7 +81,13 @@ export default function UploadsPage() {
         ) : isError && uploads.length === 0 ? (
           <p className="text-meta">Couldn&apos;t load your uploads. Please try again.</p>
         ) : uploads.length === 0 ? (
-          <p className="text-meta">Nothing uploaded yet. Use Upload songs to add songs from your device.</p>
+          <EmptyState
+            icon={<UploadIcon />}
+            title="Nothing uploaded yet"
+            action={{ label: 'Add songs', onClick: () => setDropOpen(true) }}
+          >
+            Add songs from your device and everyone on this server can play them.
+          </EmptyState>
         ) : (
           <ul aria-label="Your uploads" className="flex flex-col">
             {uploads.map((u) => (

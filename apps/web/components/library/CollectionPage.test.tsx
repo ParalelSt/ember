@@ -409,3 +409,33 @@ describe('CollectionPage Edit order', () => {
     expect(screen.queryByRole('menuitem', { name: 'Edit order' })).toBeNull();
   });
 });
+
+describe('CollectionPage empty state', () => {
+  it('stays a plain line without `empty`', () => {
+    render(<CollectionPage {...props({ tracks: [] })} />);
+    expect(screen.getByText('No liked songs yet.')).toBeInTheDocument();
+    expect(screen.queryByTestId('empty-icon')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Find songs' })).toBeNull();
+  });
+
+  it('with `empty`, shows the icon, title, sentence and next step', () => {
+    render(
+      <CollectionPage
+        {...props({
+          tracks: [],
+          emptyMessage: 'Tap the heart.',
+          empty: { icon: <svg />, title: 'Nothing liked yet', action: { label: 'Find songs', href: '/search' } },
+        })}
+      />,
+    );
+    expect(screen.getByTestId('empty-icon')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nothing liked yet' })).toBeInTheDocument();
+    expect(screen.getByText('Tap the heart.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Find songs' })).toHaveAttribute('href', '/search');
+  });
+
+  it('with songs, shows none of it', () => {
+    render(<CollectionPage {...props({ empty: { icon: <svg />, title: 'Nothing liked yet' } })} />);
+    expect(screen.queryByRole('heading', { name: 'Nothing liked yet' })).toBeNull();
+  });
+});

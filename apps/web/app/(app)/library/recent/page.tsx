@@ -10,6 +10,7 @@ import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
 import { useQueryHistory } from '@/hooks/useLibrary';
 import { EmptyState } from '@/components/page/EmptyState';
+import { ClockIcon } from '@/components/icons';
 
 const REF = { kind: 'recent' } as const;
 
@@ -43,7 +44,12 @@ export default function RecentPage() {
       emptyMessage={
         offlineEmpty
           ? 'Offline. Open this once while online to see its songs.'
-          : 'Nothing played yet.'
+          : 'Songs you play show up here.'
+      }
+      empty={
+        offlineEmpty
+          ? undefined
+          : { icon: <ClockIcon />, title: 'Nothing played yet', action: { label: 'Find songs', href: '/search' } }
       }
     />
   );

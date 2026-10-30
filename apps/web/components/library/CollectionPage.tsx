@@ -14,7 +14,7 @@ import { DownloadButton, type DownloadButtonProps } from '@/components/library/D
 import type { CollectionCoverProps } from '@/components/primitives/CollectionCover';
 import { cn } from '@/lib/utils';
 import type { PlaybackContext, PlaylistPerson, Track } from '@/types/track';
-import { EmptyState } from '@/components/page/EmptyState';
+import { EmptyState, type EmptyStateProps } from '@/components/page/EmptyState';
 
 // Same shape as hooks/useCollectionPlayback's CollectionPlayback, restated
 // here rather than imported: presentational components under components/
@@ -72,6 +72,9 @@ export interface CollectionPageProps {
   /** Per-row menu; pages pass `renderTrackMenu`. */
   trailing?: (track: Track) => ReactNode;
   emptyMessage: string;
+  /** Dresses `emptyMessage` as the sentence of a full empty state: an icon,
+   *  a title and the next step. Left out, it stays a plain line. */
+  empty?: Pick<EmptyStateProps, 'icon' | 'title' | 'action'>;
   /** Between the header and the list (an import's progress or summary). */
   banner?: ReactNode;
   /** Replaces the track list (an import's rows with its placeholders). */
@@ -134,6 +137,7 @@ export function CollectionPage({
   trackActions,
   trailing,
   emptyMessage,
+  empty,
   banner,
   list,
   children,
@@ -220,7 +224,7 @@ export function CollectionPage({
           </ActionBar>}
         {banner}
         {list ?? (tracks.length === 0 ? (
-          <EmptyState>{emptyMessage}</EmptyState>
+          <EmptyState {...empty}>{emptyMessage}</EmptyState>
         ) : (
           <div className="flex flex-col gap-cluster">
             {(selecting || editingOrder) && (

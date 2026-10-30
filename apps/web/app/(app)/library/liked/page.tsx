@@ -24,7 +24,7 @@ import { formatAddedDate } from '@/lib/format';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
 import { useExecuteReplaceLike, useQueryLikes, QK } from '@/hooks/useLibrary';
 import { EmptyState } from '@/components/page/EmptyState';
-import { UploadIcon } from '@/components/icons';
+import { HeartIcon, UploadIcon } from '@/components/icons';
 import type { ImportItem } from '@/lib/import/types';
 import type { CollectionTrack, Track } from '@/types/track';
 
@@ -132,7 +132,12 @@ export default function LikedPage() {
       emptyMessage={
         offlineEmpty
           ? 'Offline. Open this once while online to see its songs.'
-          : 'Nothing liked yet. Tap the heart on any song.'
+          : 'Tap the heart on any song and it lands here.'
+      }
+      empty={
+        offlineEmpty
+          ? undefined
+          : { icon: <HeartIcon />, title: 'Nothing liked yet', action: { label: 'Find songs', href: '/search' } }
       }
     >
       {job && (

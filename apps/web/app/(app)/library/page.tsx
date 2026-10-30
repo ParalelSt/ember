@@ -5,7 +5,7 @@ import { HeaderIconButton } from '@/components/page/HeaderIconButton';
 import { CollectionShelf } from '@/components/library/CollectionShelf';
 import { UploadTrackDialog } from '@/components/track/menus/UploadTrackDialog';
 import { CarlistButton } from '@/components/session/CarlistButton';
-import { PlusIcon, UploadIcon } from '@/components/icons';
+import { DownloadIcon, LibraryIcon, PlusIcon, UploadIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useCollections } from '@/hooks/useCollections';
 import { useOfflineStore } from '@/stores/useOfflineStore';
@@ -90,8 +90,8 @@ export default function LibraryPage() {
             };
           })}
           empty={
-            <EmptyState>
-              No downloaded playlists. Go online and tap “Download for offline” on a playlist to pin it.
+            <EmptyState icon={<DownloadIcon />} title="No downloaded playlists">
+              Go online and tap “Download for offline” on a playlist to pin it.
             </EmptyState>
           }
         />
@@ -140,7 +140,15 @@ export default function LibraryPage() {
           shared: !!sharing,
           sharedBy,
         }))}
-        empty={<EmptyState>No playlists yet</EmptyState>}
+        empty={
+          <EmptyState
+            icon={<LibraryIcon />}
+            title="No playlists yet"
+            action={{ label: 'New playlist', onClick: () => setCreateOpen(true) }}
+          >
+            Make one and keep the songs you love together.
+          </EmptyState>
+        }
       />
     </div>
   );

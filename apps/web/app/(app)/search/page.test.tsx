@@ -193,3 +193,20 @@ describe('SearchPage', () => {
     expect(trackActions.onPlay).toHaveBeenCalledWith(track, [track], { type: 'search', query: 'second wind' });
   });
 });
+
+describe('Search page, no results', () => {
+  it('shows an icon, a title and the query, with no button and no bare "No tracks"', async () => {
+    api.search.mockResolvedValue({ tracks: [] });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <SearchPage />
+      </QueryClientProvider>,
+    );
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'zzqx' } });
+    expect(await screen.findByRole('heading', { name: 'No results' }, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByText(/Nothing matched "zzqx"/)).toBeInTheDocument();
+    expect(screen.getByTestId('empty-icon')).toBeInTheDocument();
+    expect(screen.queryByText('No tracks')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+});

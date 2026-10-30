@@ -203,6 +203,15 @@ describe('SearchOverlayContainer', () => {
     expect(screen.queryByText('No tracks')).toBeNull();
   });
 
+  it('a query with no results shows the icon and title, not a bare "No tracks"', async () => {
+    api.search.mockResolvedValue({ tracks: [] });
+    renderOverlay();
+    fireEvent.change(screen.getByPlaceholderText('What do you want to listen to?'), { target: { value: 'zzqx' } });
+    expect(await screen.findByRole('heading', { name: 'No results' }, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByText(/Nothing matched "zzqx"/)).toBeInTheDocument();
+    expect(screen.queryByText('No tracks')).toBeNull();
+  });
+
   it('still renders results for an actual query, with no Trending heading', async () => {
     const track = makeTrack({ id: 'youtube:c3', sourceId: 'c3', title: 'Third Wheel' });
     api.search.mockResolvedValue({ tracks: [track] });

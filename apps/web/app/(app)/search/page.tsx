@@ -11,6 +11,7 @@ import { useSearchQuery } from '@/hooks/useSearchQuery';
 import { OnlineOnly } from '@/components/OnlineOnly';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/page/EmptyState';
+import { SearchNoResults } from '@/components/search/SearchNoResults';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
@@ -71,6 +72,8 @@ export default function SearchPage() {
     <EmptyState className="text-sm">{"Search isn't working right now. Try again in a moment."}</EmptyState>
   ) : isFetching && !data?.length ? (
     <EmptyState className="text-sm">Searching…</EmptyState>
+  ) : debouncedQ && !data?.length ? (
+    <SearchNoResults query={debouncedQ} />
   ) : (
     <TrackList
       tracks={data ?? []}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
+import { SearchNoResults } from '@/components/search/SearchNoResults';
 import { TrackList } from '@/components/track/TrackList';
 import { TrackRow } from '@/components/track/TrackRow';
 import { TrackMenu, renderTrackMenu } from '@/components/track/menus/TrackMenu';
@@ -139,9 +140,11 @@ export function SearchOverlayContainer({ leading }: { leading?: ReactNode } = {}
     </div>
   ) : null;
 
-  const resultsNode = (
+  const resultsNode = !data?.length ? (
+    <SearchNoResults query={debouncedQ} />
+  ) : (
     <TrackList
-      tracks={data ?? []}
+      tracks={data}
       context={{ type: 'search', query: debouncedQ }}
       trailing={renderTrackMenu}
       trailingPlayControl
