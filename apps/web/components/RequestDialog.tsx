@@ -139,7 +139,7 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
     >
       <div className="mt-2 flex flex-col gap-4">
           <Tabs value={kind} onValueChange={(v) => setKind(v as Kind)}>
-            <TabsList className="w-full">
+            <TabsList variant="line">
               <TabsTrigger value="feature">New feature</TabsTrigger>
               <TabsTrigger value="fix">Fix</TabsTrigger>
             </TabsList>
