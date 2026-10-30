@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import { formatBytes, formatCount } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 
 export const AUTO_CACHE_UNAVAILABLE_TEXT = 'Automatic caching is not available in this browser or app version.';
 export const AUTO_CACHE_UPDATE_APP_TEXT = 'Automatic caching needs a newer version of the Ember app. Update the app to turn it on.';
@@ -31,24 +31,12 @@ export function SwitchRow({
         <div className="font-semibold">{name}</div>
         <p className="mt-inset text-sm text-muted-foreground">{description}</p>
       </div>
-      <button
-        type="button"
-        onClick={onToggle}
+      <Switch
+        checked={on}
+        onCheckedChange={() => onToggle()}
         disabled={disabled}
-        aria-pressed={on}
         aria-label={on ? `Turn off ${name}` : `Turn on ${name}`}
-        className={cn(
-          'shrink-0 relative h-6 w-11 rounded-full transition-colors disabled:opacity-50',
-          on ? 'bg-ember' : 'bg-muted',
-        )}
-      >
-        <span
-          className={cn(
-            'absolute top-0.5 left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform',
-            on ? 'translate-x-5 bg-ember-foreground' : 'bg-foreground',
-          )}
-        />
-      </button>
+      />
     </div>
   );
 }

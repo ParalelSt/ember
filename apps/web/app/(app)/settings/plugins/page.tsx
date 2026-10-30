@@ -1,7 +1,7 @@
 'use client';
 
 import { useSettingsStore } from '@/stores/useSettingsStore';
-import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { EqualizerPanel } from '@/components/settings/EqualizerPanel';
 import { useDesktopPlugins } from '@/hooks/useDesktopPlugins';
@@ -105,23 +105,11 @@ function PluginToggle({ name, description, on, onToggle, tag }: ToggleProps) {
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-pressed={on}
+      <Switch
+        checked={on}
+        onCheckedChange={() => onToggle()}
         aria-label={on ? `Turn off ${name}` : `Turn on ${name}`}
-        className={cn(
-          'shrink-0 relative h-6 w-11 rounded-full transition-colors',
-          on ? 'bg-ember' : 'bg-muted',
-        )}
-      >
-        <span
-          className={cn(
-            'absolute top-0.5 left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform',
-            on ? 'translate-x-5 bg-ember-foreground' : 'bg-foreground',
-          )}
-        />
-      </button>
+      />
     </div>
   );
 }

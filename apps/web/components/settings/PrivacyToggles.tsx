@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { Switch } from '@/components/ui/switch';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 
-/** A plain accessible switch, the UI kit has no Switch component and this is
- *  the only place that needs one. */
+/** A labelled switch row. */
 function Toggle({
   id,
   checked,
@@ -29,29 +29,15 @@ function Toggle({
         </label>
         <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
       </div>
-      <button
+      <Switch
         id={id}
-        type="button"
-        role="switch"
-        aria-checked={checked}
+        variant="outline"
+        checked={checked}
+        onCheckedChange={onChange}
         aria-label={label}
         disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-          checked ? 'bg-ember' : 'bg-card border border-border'
-        }`}
-      >
-        {/* left-0 is load-bearing: without it the thumb has no position of
-            its own and falls back to its STATIC position, which a button
-            centres (text-align: center). That put its origin at the middle of
-            the track and the translate then pushed it clean outside the
-            pill, the switch read as "on" in both states. */}
-        <span
-          className={`absolute left-0 top-0.5 h-5 w-5 rounded-full transition-transform ${
-            checked ? 'translate-x-[22px] bg-ember-foreground' : 'translate-x-0.5 bg-foreground'
-          }`}
-        />
-      </button>
+        className="mt-0.5"
+      />
     </div>
   );
 }

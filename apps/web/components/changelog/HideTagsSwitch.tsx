@@ -1,3 +1,4 @@
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 export interface HideTagsSwitchProps {
@@ -15,21 +16,12 @@ export function HideTagsSwitch({ checked, onCheckedChange, className }: HideTags
       <span className="text-muted-foreground" aria-hidden="true">
         Don&apos;t show New tags
       </span>
-      <button
-        type="button"
+      <Switch
         data-testid="hide-tags-switch"
-        onClick={() => onCheckedChange(!checked)}
-        aria-pressed={checked}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
         aria-label="Don't show New tags"
-        className={cn('shrink-0 relative h-6 w-11 rounded-full transition-colors', checked ? 'bg-ember' : 'bg-muted')}
-      >
-        <span
-          className={cn(
-            'absolute top-0.5 left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform',
-            checked ? 'translate-x-5 bg-ember-foreground' : 'bg-foreground',
-          )}
-        />
-      </button>
+      />
     </div>
   );
 }

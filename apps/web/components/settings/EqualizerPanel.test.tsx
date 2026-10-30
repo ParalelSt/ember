@@ -43,15 +43,15 @@ describe('EqualizerPanel', () => {
       expect(screen.getByTestId('equalizer-preamp')).not.toBeVisible();
     };
     expectClosed();
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn on Equalizer' }));
     expect(screen.getByRole('group', { name: 'Presets' })).toBeVisible();
     expect(screen.getAllByRole('slider')).toHaveLength(5);
     expect(screen.getByRole('slider', { name: '60 Hz' })).toHaveValue('3');
     expect(screen.getByTestId('equalizer-preamp')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Reset' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Turn off Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn off Equalizer' }));
     expectClosed();
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn on Equalizer' }));
     expect(screen.getByRole('slider', { name: '60 Hz' })).toHaveValue('3');
   });
 
@@ -61,11 +61,11 @@ describe('EqualizerPanel', () => {
     expect(settings).toHaveAttribute('inert');
     expect(settings).toHaveStyle({ gridTemplateRows: '0fr' });
     expect(settings).toHaveClass('transition-[grid-template-rows]', 'motion-reduce:transition-none');
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn on Equalizer' }));
     expect(settings).not.toHaveAttribute('inert');
     expect(settings).toHaveAttribute('aria-hidden', 'false');
     expect(settings).toHaveStyle({ gridTemplateRows: '1fr' });
-    fireEvent.click(screen.getByRole('button', { name: 'Turn off Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn off Equalizer' }));
     expect(settings).toHaveAttribute('inert');
     expect(settings).toHaveStyle({ gridTemplateRows: '0fr' });
   });
@@ -73,15 +73,15 @@ describe('EqualizerPanel', () => {
   it('the switch turns it on and off and keeps the bands', () => {
     useSettingsStore.setState({ equalizer: { enabled: false, bands: [3, 0, 0, 0, 0] } });
     render(<EqualizerPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn on Equalizer' }));
     expect(eq()).toEqual({ enabled: true, bands: [3, 0, 0, 0, 0] });
-    fireEvent.click(screen.getByRole('button', { name: 'Turn off Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn off Equalizer' }));
     expect(eq()).toEqual({ enabled: false, bands: [3, 0, 0, 0, 0] });
   });
 
   it('lists the seven presets; picking one sets its bands and marks it', () => {
     render(<EqualizerPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn on Equalizer' }));
     const presets = within(screen.getByRole('group', { name: 'Presets' })).getAllByRole('button');
     expect(presets.map((b) => b.textContent)).toEqual([
       'Flat', 'Bass boost', 'Treble boost', 'Vocal', 'Acoustic', 'Electronic', 'Loudness',
@@ -94,7 +94,7 @@ describe('EqualizerPanel', () => {
 
   it('five bands from 60 Hz to 14 kHz, -12..+12 dB; moving one reads as custom', () => {
     render(<EqualizerPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn on Equalizer' }));
     const sliders = screen.getAllByRole('slider');
     expect(sliders.map((s) => s.getAttribute('aria-label'))).toEqual(['60 Hz', '230 Hz', '910 Hz', '3.6 kHz', '14 kHz']);
     for (const s of sliders) {
@@ -131,10 +131,10 @@ describe('EqualizerPanel', () => {
     expect(screen.getByRole('note')).toHaveTextContent(/on for your other devices/);
     expect(screen.queryByRole('group', { name: 'Presets' })).toBeNull();
     expect(screen.queryByRole('slider')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn on Equalizer' }));
     expect(useSettingsStore.getState().eqChosenHere).toBe(true);
     expect(eq()).toEqual({ enabled: true, bands: [7, 4, 0, 0, 0] });
-    expect(screen.getByRole('button', { name: 'Turn off Equalizer' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('switch', { name: 'Turn off Equalizer' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('note')).not.toHaveTextContent(/other devices/);
   });
 

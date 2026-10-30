@@ -4,6 +4,7 @@ import { useSyncExternalStore } from 'react';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { autoPreampDb, clampBand, EQ_BANDS, EQ_MAX_DB, EQ_PRESETS, presetFor } from '@/lib/playback/eq';
 import { eqForDevice, phoneWebAudio } from '@/lib/playback/eqDevice';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 const BAND_LABELS = EQ_BANDS.map((f) => (f >= 1000 ? `${f / 1000} kHz` : `${f} Hz`));
@@ -54,20 +55,11 @@ export function EqualizerPanel({ className }: Props) {
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setEqualizer({ ...eq, enabled: !eq.enabled })}
-          aria-pressed={eq.enabled}
+        <Switch
+          checked={eq.enabled}
+          onCheckedChange={(enabled) => setEqualizer({ ...eq, enabled })}
           aria-label={eq.enabled ? 'Turn off Equalizer' : 'Turn on Equalizer'}
-          className={cn('shrink-0 relative h-6 w-11 rounded-full transition-colors motion-reduce:transition-none', eq.enabled ? 'bg-ember' : 'bg-muted')}
-        >
-          <span
-            className={cn(
-              'absolute top-0.5 left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform motion-reduce:transition-none',
-              eq.enabled ? 'translate-x-5 bg-ember-foreground' : 'bg-foreground',
-            )}
-          />
-        </button>
+        />
       </div>
 
       <div

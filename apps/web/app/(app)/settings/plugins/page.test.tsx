@@ -23,37 +23,37 @@ describe('Settings > Plugins', () => {
     render(<SettingsPlugins />);
     expect(screen.getByText('Songsterr integration')).toBeInTheDocument();
     expect(screen.getByText('Work in progress')).toBeInTheDocument();
-    const toggle = screen.getByRole('button', { name: 'Turn off Songsterr integration' });
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    const toggle = screen.getByRole('switch', { name: 'Turn off Songsterr integration' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
   });
 
   it('clicking it flips tabsEnabled and aria-pressed', () => {
     render(<SettingsPlugins />);
-    const toggle = screen.getByRole('button', { name: 'Turn off Songsterr integration' });
+    const toggle = screen.getByRole('switch', { name: 'Turn off Songsterr integration' });
     fireEvent.click(toggle);
     expect(useSettingsStore.getState().tabsEnabled).toBe(false);
-    expect(screen.getByRole('button', { name: 'Turn on Songsterr integration' })).toHaveAttribute(
-      'aria-pressed',
+    expect(screen.getByRole('switch', { name: 'Turn on Songsterr integration' })).toHaveAttribute(
+      'aria-checked',
       'false',
     );
   });
 
   it('has a Normalize volume toggle, on by default, bound to normalizeVolume', () => {
     render(<SettingsPlugins />);
-    const toggle = screen.getByRole('button', { name: 'Turn off Normalize volume' });
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    const toggle = screen.getByRole('switch', { name: 'Turn off Normalize volume' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(toggle);
     expect(useSettingsStore.getState().normalizeVolume).toBe(false);
-    expect(screen.getByRole('button', { name: 'Turn on Normalize volume' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('switch', { name: 'Turn on Normalize volume' })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('gates equalizer settings behind its toggle', () => {
     render(<SettingsPlugins />);
-    expect(screen.getByRole('button', { name: 'Turn on Equalizer' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('switch', { name: 'Turn on Equalizer' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.queryByRole('group', { name: 'Presets' })).toBeNull();
     expect(screen.queryByRole('slider')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on Equalizer' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn on Equalizer' }));
     expect(screen.getAllByRole('slider')).toHaveLength(5);
     expect(screen.getByRole('group', { name: 'Presets' })).toBeInTheDocument();
   });
@@ -68,12 +68,12 @@ describe('Settings > Plugins', () => {
   describe('the party-size volume slider toggle is desktop-only', () => {
     it('shows it, bound to partyVolume, on an eligible device', () => {
       render(<SettingsPlugins />);
-      const toggle = screen.getByRole('button', { name: 'Turn on Party-size volume slider' });
-      expect(toggle).toHaveAttribute('aria-pressed', 'false');
+      const toggle = screen.getByRole('switch', { name: 'Turn on Party-size volume slider' });
+      expect(toggle).toHaveAttribute('aria-checked', 'false');
       fireEvent.click(toggle);
       expect(useSettingsStore.getState().partyVolume).toBe(true);
-      expect(screen.getByRole('button', { name: 'Turn off Party-size volume slider' })).toHaveAttribute(
-        'aria-pressed',
+      expect(screen.getByRole('switch', { name: 'Turn off Party-size volume slider' })).toHaveAttribute(
+        'aria-checked',
         'true',
       );
     });

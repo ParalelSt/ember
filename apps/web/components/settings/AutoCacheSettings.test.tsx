@@ -24,19 +24,19 @@ beforeEach(() => {
 describe('AutoCacheSettings', () => {
   it('shows the switch with its default and the storage line', () => {
     render(<AutoCacheSettings />);
-    expect(screen.getByRole('button', { name: 'Turn off Cache upcoming songs' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('switch', { name: 'Turn off Cache upcoming songs' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText(/on Wi-Fi and mobile data/)).toBeInTheDocument();
     // There is no mobile data switch: caching always works on it.
     expect(screen.queryByRole('button', { name: /mobile data/ })).toBeNull();
-    expect(screen.getAllByRole('button', { name: /^Turn (on|off) / })).toHaveLength(1);
+    expect(screen.getAllByRole('switch', { name: /^Turn (on|off) / })).toHaveLength(1);
     expect(screen.getByTestId('auto-cache-stats')).toHaveTextContent('Cached: 34.0 MB, 9 songs');
   });
 
   it('the switch flips the device setting', () => {
     render(<AutoCacheSettings />);
-    fireEvent.click(screen.getByRole('button', { name: 'Turn off Cache upcoming songs' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn off Cache upcoming songs' }));
     expect(useSettingsStore.getState().autoCacheEnabled).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on Cache upcoming songs' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Turn on Cache upcoming songs' }));
     expect(useSettingsStore.getState().autoCacheEnabled).toBe(true);
   });
 
@@ -54,7 +54,7 @@ describe('AutoCacheSettings', () => {
     render(<AutoCacheSettings />);
     expect(screen.getByText(AUTO_CACHE_UNAVAILABLE_TEXT)).toBeInTheDocument();
     expect(screen.queryByTestId('auto-cache-stats')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Turn off Cache upcoming songs' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Turn off Cache upcoming songs' })).toBeDisabled();
   });
 
   it('an app too old for the cache says to update it', () => {

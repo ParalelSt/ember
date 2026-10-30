@@ -34,8 +34,8 @@ function androidWith(stored = { enabled: false, keepPlaying: false }) {
   return setBootStart;
 }
 
-const startSwitch = (state: 'on' | 'off') => screen.getByRole('button', { name: `Turn ${state} Open Ember when this device starts` });
-const keepSwitch = (state: 'on' | 'off') => screen.getByRole('button', { name: `Turn ${state} And keep playing` });
+const startSwitch = (state: 'on' | 'off') => screen.getByRole('switch', { name: `Turn ${state} Open Ember when this device starts` });
+const keepSwitch = (state: 'on' | 'off') => screen.getByRole('switch', { name: `Turn ${state} And keep playing` });
 
 describe('HeadUnitSettings', () => {
   it('shows nothing in a browser or the iPhone app', () => {
@@ -50,8 +50,8 @@ describe('HeadUnitSettings', () => {
     androidWith();
     render(<HeadUnitSettings />);
     await waitFor(() => expect(startSwitch('on')).toBeEnabled());
-    expect(startSwitch('on')).toHaveAttribute('aria-pressed', 'false');
-    expect(keepSwitch('on')).toHaveAttribute('aria-pressed', 'false');
+    expect(startSwitch('on')).toHaveAttribute('aria-checked', 'false');
+    expect(keepSwitch('on')).toHaveAttribute('aria-checked', 'false');
     expect(keepSwitch('on')).toBeDisabled();
   });
 
@@ -60,19 +60,19 @@ describe('HeadUnitSettings', () => {
     render(<HeadUnitSettings />);
     await waitFor(() => expect(startSwitch('on')).toBeEnabled());
     fireEvent.click(startSwitch('on'));
-    await waitFor(() => expect(startSwitch('off')).toHaveAttribute('aria-pressed', 'true'));
+    await waitFor(() => expect(startSwitch('off')).toHaveAttribute('aria-checked', 'true'));
     expect(save).toHaveBeenLastCalledWith({ enabled: true, keepPlaying: false });
     await waitFor(() => expect(keepSwitch('on')).toBeEnabled());
     fireEvent.click(keepSwitch('on'));
-    await waitFor(() => expect(keepSwitch('off')).toHaveAttribute('aria-pressed', 'true'));
+    await waitFor(() => expect(keepSwitch('off')).toHaveAttribute('aria-checked', 'true'));
     expect(save).toHaveBeenLastCalledWith({ enabled: true, keepPlaying: true });
   });
 
   it('shows what the app has stored', async () => {
     androidWith({ enabled: true, keepPlaying: true });
     render(<HeadUnitSettings />);
-    await waitFor(() => expect(startSwitch('off')).toHaveAttribute('aria-pressed', 'true'));
-    expect(keepSwitch('off')).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(startSwitch('off')).toHaveAttribute('aria-checked', 'true'));
+    expect(keepSwitch('off')).toHaveAttribute('aria-checked', 'true');
   });
 
   it('goes back and says so when the app cannot save it', async () => {
@@ -84,7 +84,7 @@ describe('HeadUnitSettings', () => {
     await waitFor(() => expect(startSwitch('on')).toBeEnabled());
     fireEvent.click(startSwitch('on'));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
-    expect(startSwitch('on')).toHaveAttribute('aria-pressed', 'false');
+    expect(startSwitch('on')).toHaveAttribute('aria-checked', 'false');
   });
 
   it('an Android app from before the setting says to update it', () => {
@@ -98,11 +98,11 @@ describe('HeadUnitSettings', () => {
     headUnit.value = true;
     androidWith();
     render(<HeadUnitSettings />);
-    const sw = screen.getByRole('button', { name: 'Turn off Car layout' });
-    expect(sw).toHaveAttribute('aria-pressed', 'true');
+    const sw = screen.getByRole('switch', { name: 'Turn off Car layout' });
+    expect(sw).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(sw);
     expect(useSettingsStore.getState().headUnitControls).toBe(false);
-    expect(screen.getByRole('button', { name: 'Turn on Car layout' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('switch', { name: 'Turn on Car layout' })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('elsewhere there is no car layout switch', async () => {

@@ -60,7 +60,7 @@ describe('What\'s new page', () => {
   it('the switch hides the tags and saves only hideNew', async () => {
     render(<WhatsNewPage />);
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: "Don't show New tags" }));
+      fireEvent.click(screen.getByRole('switch', { name: "Don't show New tags" }));
     });
     expect(updateChangelog).toHaveBeenCalledTimes(1);
     expect(updateChangelog).toHaveBeenCalledWith({ hideNew: true });

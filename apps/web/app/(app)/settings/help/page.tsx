@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { BugIcon, RequestIcon } from '@/components/icons';
 import { useUiStore } from '@/stores/useUiStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
-import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { RequestDialog } from '@/components/RequestDialog';
 
@@ -46,23 +46,11 @@ export default function SettingsHelp() {
             capped at a few per session, so bugs get noticed even when nobody stops to report them.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setAutoReportEnabled(!autoReportEnabled)}
-          aria-pressed={autoReportEnabled}
+        <Switch
+          checked={autoReportEnabled}
+          onCheckedChange={setAutoReportEnabled}
           aria-label={autoReportEnabled ? 'Turn off automatic crash reports' : 'Turn on automatic crash reports'}
-          className={cn(
-            'shrink-0 relative h-6 w-11 rounded-full transition-colors',
-            autoReportEnabled ? 'bg-ember' : 'bg-muted',
-          )}
-        >
-          <span
-            className={cn(
-              'absolute top-0.5 left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform',
-              autoReportEnabled ? 'translate-x-5 bg-ember-foreground' : 'bg-foreground',
-            )}
-          />
-        </button>
+        />
       </div>
       <RequestDialog open={requestOpen} onOpenChange={setRequestOpen} />
     </section>

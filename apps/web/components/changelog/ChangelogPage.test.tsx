@@ -103,8 +103,8 @@ describe('ChangelogPage', () => {
     const onSeen = vi.fn();
     const onHide = vi.fn();
     render(<Harness onSeen={onSeen} onHide={onHide} />);
-    const sw = screen.getByRole('button', { name: "Don't show New tags" });
-    expect(sw).toHaveAttribute('aria-pressed', 'false');
+    const sw = screen.getByRole('switch', { name: "Don't show New tags" });
+    expect(sw).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(sw);
     expect(onHide).toHaveBeenCalledWith(true);
     expect(onSeen).not.toHaveBeenCalled();
