@@ -151,4 +151,21 @@ describe('CollaborateSheet, a member', () => {
     expect(screen.queryByTestId('collab-stop-sharing')).toBeNull();
     expect(screen.getAllByTestId('collab-person').map((r) => r.textContent)).toEqual(['OOlgaOwner', 'MiaYou', 'XXan']);
   });
+
+  it('soft blocks: filled sections without outlines, primary buttons are pills', () => {
+    setup({ inviteLink: 'https://ember.test/playlist/join/abc', picking: true });
+    for (const id of ['collab-link', 'collab-picker']) {
+      const el = screen.getByTestId(id);
+      expect(el.className).toMatch(/bg-card/);
+      expect(el.className).toMatch(/rounded-2xl/);
+      expect(el.className).not.toMatch(/\bborder\b/);
+    }
+    expect(screen.getByTestId('collab-link-copy').className).toMatch(/rounded-full/);
+  });
+
+  it('the create button is a pill too', () => {
+    setup();
+    expect(screen.getByTestId('collab-link-create').className).toMatch(/rounded-full/);
+  });
 });
+

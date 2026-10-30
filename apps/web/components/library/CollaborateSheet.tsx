@@ -113,7 +113,7 @@ export function CollaborateSheet({
           {!state && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
 
           {state && isOwner && (
-            <section data-testid="collab-link" className="flex flex-col gap-cluster rounded-lg border border-border p-block">
+            <section data-testid="collab-link" className="flex flex-col gap-cluster rounded-2xl bg-card p-block">
               <div className="flex items-center gap-cluster text-sm font-semibold">
                 <LinkIcon className="size-4 text-ember" /> Invite link
               </div>
@@ -126,7 +126,7 @@ export function CollaborateSheet({
                     data-testid="collab-link-url"
                     onFocus={(e) => e.currentTarget.select()}
                   />
-                  <Button variant="ember" className="h-10 w-full" data-testid="collab-link-copy" onClick={onCopyLink}>
+                  <Button variant="ember" className="h-10 w-full rounded-full" data-testid="collab-link-copy" onClick={onCopyLink}>
                     <CopyIcon /> Copy link
                   </Button>
                   <div className="flex flex-wrap gap-cluster">
@@ -148,7 +148,7 @@ export function CollaborateSheet({
                   </p>
                   <Button
                     variant="ember"
-                    className="h-10 w-full"
+                    className="h-10 w-full rounded-full"
                     data-testid="collab-link-create"
                     disabled={busy}
                     onClick={onShareLink}
@@ -172,7 +172,7 @@ export function CollaborateSheet({
               </div>
 
               {isOwner && picking && (
-                <div data-testid="collab-picker" className="flex flex-col gap-cluster rounded-lg border border-border p-cluster">
+                <div data-testid="collab-picker" className="flex flex-col gap-cluster rounded-2xl bg-card p-cluster">
                   <div className="flex items-center gap-cluster">
                     <Input
                       autoFocus

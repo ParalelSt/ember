@@ -38,7 +38,7 @@ export function InvitePreviewCard({ preview, busy, onJoin, onDecline }: InvitePr
         </div>
       </div>
       {preview.songs.length > 0 && (
-        <div className="flex w-full flex-col gap-inset rounded-lg border border-border p-cluster text-left">
+        <div className="flex w-full flex-col gap-inset rounded-2xl bg-card p-cluster text-left">
           {preview.songs.map((s, i) => (
             <div key={i} data-testid="invite-song" className="flex min-h-12 items-center gap-row px-cluster">
               <Artwork src={s.artworkUrl} size="xs" className="shrink-0 rounded bg-art" />
@@ -52,12 +52,12 @@ export function InvitePreviewCard({ preview, busy, onJoin, onDecline }: InvitePr
         </div>
       )}
       <p className="text-xs text-muted-foreground">You can add, remove and reorder songs. You can leave any time.</p>
-      <div className="grid w-full grid-cols-2 gap-cluster">
-        <Button variant="outline" className="h-10" disabled={busy} onClick={onDecline}>
-          Not now
-        </Button>
-        <Button variant="ember" className="h-10" disabled={busy} onClick={onJoin}>
+      <div className="flex w-full flex-col gap-cluster">
+        <Button variant="ember" className="h-11 w-full rounded-full" disabled={busy} onClick={onJoin}>
           Join
+        </Button>
+        <Button variant="ghost" className="h-10 w-full rounded-full" disabled={busy} onClick={onDecline}>
+          Not now
         </Button>
       </div>
     </div>
