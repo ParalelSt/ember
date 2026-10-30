@@ -109,6 +109,10 @@
   --input: oklch(1 0 0 / 12%);
   --ring: oklch(0.68 0.20 25);
   --radius: 16px;
+  /* Text boxes (ui/input, ui/textarea). Not in @theme: tailwind-merge has to
+     see rounded-(--radius-field) as a radius, so a call site's rounded-full
+     replaces it instead of racing it in the stylesheet. */
+  --radius-field: 12px;
   --sidebar: oklch(0.13 0.005 260);
   --sidebar-foreground: oklch(0.95 0 0);
   --sidebar-primary: oklch(0.68 0.20 25);

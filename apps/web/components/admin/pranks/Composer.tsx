@@ -155,7 +155,7 @@ export function Composer({
                 value={everyMin}
                 onChange={(e) => setEveryMin(e.target.value)}
                 aria-label="Every how many minutes"
-                className="w-16"
+                className="w-20"
               />
               min
             </label>
@@ -166,7 +166,7 @@ export function Composer({
                 value={until}
                 onChange={(e) => setUntil(e.target.value)}
                 aria-label="Stop time"
-                className="w-28"
+                className="w-32"
               />
             </label>
             <span>(1 min to 2 h apart, for 2 h at most)</span>

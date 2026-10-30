@@ -52,7 +52,7 @@ export default function AdminTracksPage() {
             <SectionHeader title={`Tracks${data ? ` · ${data.totalItems}` : ''}`} />
             <form
               onSubmit={(e) => { e.preventDefault(); submitSearch(); }}
-              className="flex gap-2"
+              className="flex items-center gap-2"
             >
               <Input
                 placeholder="Search title or artist…"
@@ -102,7 +102,7 @@ export default function AdminTracksPage() {
               onChange={(e) => setSearchInput(e.target.value)}
               className="flex-1"
             />
-            <Button type="submit" variant="outline">Search</Button>
+            <Button type="submit" variant="outline" className="h-11">Search</Button>
           </form>
           {data && (
             <p className="text-xs text-muted-foreground">

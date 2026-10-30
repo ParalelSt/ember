@@ -291,7 +291,7 @@ export function DevicesPanel() {
               spellCheck={false}
               maxLength={12}
               aria-invalid={codeError ? true : undefined}
-              className="h-11 min-w-0 flex-1 border-transparent bg-background/30 font-mono tracking-widest text-ember-foreground placeholder:text-ember-foreground/60"
+              className="h-11 min-w-0 flex-1 border-transparent bg-background/30 font-mono tracking-widest text-ember-foreground placeholder:text-ember-foreground/60 focus-visible:ring-ember-foreground aria-invalid:ring-ember-foreground"
             />
             <Button type="submit" className="h-11 bg-ember-foreground text-ember hover:bg-ember-foreground/90">
               Continue
