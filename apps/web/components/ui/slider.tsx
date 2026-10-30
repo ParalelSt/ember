@@ -56,6 +56,11 @@ function Slider({
     onValueCommitted?.(val, details)
   }
 
+  // The "Thick" look: an 8px track and an 18px thumb in the same 28px box as
+  // ever (8 + 2 x 10 of padding), so the bars around it, and SeekBar's
+  // live-station spacer (h-7), keep their heights. The thumb is absolutely
+  // placed, so it adds nothing to the box, and -inset-2 keeps its hit area
+  // bigger than itself.
   return (
     <SliderPrimitive.Root
       className={cn("data-horizontal:w-full data-vertical:h-full", className)}
@@ -69,15 +74,15 @@ function Slider({
       onValueCommitted={handleValueCommitted}
       {...props}
     >
-      <SliderPrimitive.Control className="relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-horizontal:py-3 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col">
+      <SliderPrimitive.Control className="relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-horizontal:py-2.5 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col">
         <SliderPrimitive.Track
           data-slot="slider-track"
-          className="relative grow overflow-hidden rounded-full bg-muted select-none data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1"
+          className="relative grow overflow-hidden rounded-full bg-muted select-none data-horizontal:h-2 data-horizontal:w-full data-vertical:h-full data-vertical:w-2"
         >
           <SliderPrimitive.Indicator
             data-slot="slider-range"
             className={cn(
-              "bg-primary select-none data-horizontal:h-full data-vertical:w-full",
+              "bg-ember select-none data-horizontal:h-full data-vertical:w-full",
               smooth && "transition-[inset-inline-start,width] duration-250 ease-linear data-dragging:transition-none",
             )}
           />
@@ -89,7 +94,7 @@ function Slider({
             getAriaLabel={thumbLabel ? () => thumbLabel : undefined}
             getAriaValueText={getAriaValueText}
             className={cn(
-              "relative block size-3 shrink-0 rounded-full border border-ring bg-foreground ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50",
+              "relative block size-4.5 shrink-0 rounded-full border border-ring bg-foreground ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50",
               smooth && "transition-[inset-inline-start,color,box-shadow] duration-250 ease-linear data-dragging:transition-none",
             )}
           />

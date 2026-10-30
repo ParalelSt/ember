@@ -150,7 +150,7 @@ export function PhonePlayerBar({
         </div>
       </div>
 
-      {/* The thin progress slider along the bottom edge: visible, draggable,
+      {/* The progress slider along the bottom edge: visible, draggable,
           no labels. Outside the row, so dragging it never opens anything. */}
       {/* Lined up with the row above (the owner's "Aligned", then "12px
           left"): the line starts under the artwork (16px in) and ends under
