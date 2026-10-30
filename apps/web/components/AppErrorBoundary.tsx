@@ -1,7 +1,10 @@
 'use client';
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { AlertIcon } from '@/components/icons';
+import { EmptyState } from '@/components/page/EmptyState';
 import { logger } from '@/lib/logger/client';
+import { useUiStore } from '@/stores/useUiStore';
 
 interface State {
   hasError: boolean;
@@ -30,24 +33,21 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
 /** What a crash shows instead of the app (this boundary) or instead of the
  *  page under the app shell (app/(app)/error.tsx, which keeps the sidebar,
  *  the player and the menu). `onReload`: the full reload here, Next's
- *  retry of the page there. */
+ *  retry of the page there. Report a bug opens the one dialog, which the
+ *  root layout mounts beside this boundary, so a crash here leaves it up. */
 export function CrashFallback({ onReload }: { onReload: () => void }) {
+  const openBugReport = useUiStore((s) => s.setBugReportOpen);
   return (
-    <div className="min-h-dvh grid place-items-center px-6 text-center">
-      <div className="max-w-md">
-        <h1 className="text-2xl font-bold tracking-tight">Something broke</h1>
-        <p className="mt-3 text-sm text-muted-foreground">
-          The error has been logged. Reload the page to recover, then{' '}
-          <span className="text-foreground">Report a bug</span> from the menu if it keeps happening.
-        </p>
-        <button
-          type="button"
-          onClick={onReload}
-          className="mt-6 inline-flex h-10 items-center rounded-md bg-ember px-4 text-sm font-semibold text-ember-foreground hover:bg-ember-soft"
-        >
-          Reload
-        </button>
-      </div>
+    <div className="min-h-dvh grid place-items-center px-page">
+      <EmptyState
+        icon={<AlertIcon />}
+        title="Something broke"
+        titleAs="h1"
+        action={{ label: 'Try again', onClick: onReload }}
+        secondaryAction={{ label: 'Report a bug', onClick: () => openBugReport(true) }}
+      >
+        Try again, and report it if it keeps happening.
+      </EmptyState>
     </div>
   );
 }

@@ -9,6 +9,7 @@ const logger = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), breadcrumb: vi
 vi.mock('@/lib/logger/client', () => ({ logger }));
 
 const { default: AppSegmentError } = await import('./error');
+const { useUiStore } = await import('@/stores/useUiStore');
 
 beforeEach(() => {
   logger.error.mockClear();
@@ -19,7 +20,8 @@ describe('app/(app)/error.tsx', () => {
     const error = Object.assign(new Error('boom in a widget'), { digest: 'd1' });
     render(<AppSegmentError error={error} reset={vi.fn()} unstable_retry={vi.fn()} />);
     expect(screen.getByRole('heading', { name: 'Something broke' })).toBeInTheDocument();
-    expect(screen.getByText(/The error has been logged/)).toBeInTheDocument();
+    expect(screen.getByText(/Try again, and report it/)).toBeInTheDocument();
+    expect(screen.getByTestId('empty-icon')).toBeInTheDocument();
     expect(logger.error).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledWith('react', 'boom in a widget', { digest: 'd1' }, error);
   });
@@ -28,15 +30,25 @@ describe('app/(app)/error.tsx', () => {
     const retry = vi.fn();
     const reset = vi.fn();
     render(<AppSegmentError error={new Error('x')} reset={reset} unstable_retry={retry} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(retry).toHaveBeenCalledTimes(1);
     expect(reset).not.toHaveBeenCalled();
+  });
+
+  it('Report a bug opens the bug dialog and retries nothing', () => {
+    const retry = vi.fn();
+    useUiStore.setState({ bugReportOpen: false });
+    render(<AppSegmentError error={new Error('x')} reset={vi.fn()} unstable_retry={retry} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Report a bug' }));
+    expect(useUiStore.getState().bugReportOpen).toBe(true);
+    expect(retry).not.toHaveBeenCalled();
+    useUiStore.setState({ bugReportOpen: false });
   });
 
   it('falls back to reset where Next passes no unstable_retry', () => {
     const reset = vi.fn();
     render(<AppSegmentError error={new Error('x')} reset={reset} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(reset).toHaveBeenCalledTimes(1);
   });
 });
