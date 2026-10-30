@@ -34,7 +34,7 @@ export function LyricsPanel() {
 
   return (
     <aside
-      className="hidden md:flex flex-col shrink-0 self-start sticky z-30 border-l border-sidebar-border bg-sidebar text-sidebar-foreground"
+      className="hidden md:flex flex-col shrink-0 self-start sticky z-30 border-l border-sidebar-border bg-background text-sidebar-foreground"
       style={FULL_HEIGHT}
       aria-label="Lyrics"
     >

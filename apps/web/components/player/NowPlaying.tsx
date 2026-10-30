@@ -527,7 +527,7 @@ export function NowPlaying() {
           the safe-area inset. */}
       <div
         ref={lyricsRef}
-        className="mt-8 mb-6 -mr-6 -ml-3.5 h-[70vh] rounded-t-2xl bg-sidebar/90 text-sidebar-foreground backdrop-blur-sm flex flex-col"
+        className="mt-8 mb-6 -mr-6 -ml-3.5 h-[70vh] rounded-t-2xl text-sidebar-foreground flex flex-col"
       >
         <LyricsBody active={open} showHeader={false} reportOpen={reportOpen} onReportOpenChange={setReportOpen} />
       </div>

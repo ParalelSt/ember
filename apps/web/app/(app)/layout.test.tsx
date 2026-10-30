@@ -196,6 +196,8 @@ describe('LyricsPanel beside the bar', () => {
     expect(aside.className).toMatch(/\bsticky\b/);
     expect(aside.className).toMatch(/\bself-start\b/);
     expect(aside.className).toMatch(/\bz-30\b/);
+    // The backdrop fades into the app's background: same colour behind it.
+    expect(aside.className).toMatch(/\bbg-background\b/);
     // Phones never show it (they scroll to the lyrics in Now playing).
     expect(aside.className).toMatch(/(^|\s)hidden(\s|$)/);
     expect(aside.className).toMatch(/\bmd:flex\b/);

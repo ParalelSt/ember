@@ -1,6 +1,8 @@
 import type { ComponentProps, PropsWithChildren } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { LyricsBody } from './LyricsBody';
 import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
@@ -22,6 +24,13 @@ vi.mock('@/hooks/useLyrics', () => ({
     isLoading: false,
     error: null,
   }),
+}));
+const cover = vi.hoisted(() => ({ color: null as string | null, asked: [] as Array<string | null | undefined> }));
+vi.mock('@/hooks/useCoverColor', () => ({
+  useCoverColor: (url?: string | null) => {
+    cover.asked.push(url);
+    return cover.color;
+  },
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // base-ui pieces reach the root's hoisted React 18 (see RequestDialog.test.tsx).
@@ -54,6 +63,8 @@ beforeEach(() => {
   player.position = 25;
   player.seek.mockClear();
   lyrics.synced = linesA;
+  cover.color = null;
+  cover.asked = [];
   // No IntersectionObserver: the lyrics count as on screen right away.
   vi.stubGlobal('IntersectionObserver', undefined);
   scrollTo = vi.fn();
@@ -231,5 +242,67 @@ describe('LyricsBody: the report form', () => {
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(`Couldn't send: ${NO_ANSWER_MESSAGE}`);
     expect(screen.getByRole('textbox')).toHaveValue('The chorus is wrong');
+  });
+});
+
+describe('LyricsBody: colour backdrop', () => {
+  const backdrop = () => screen.getByTestId('lyrics-backdrop');
+
+  it('paints the colour of the song\'s cover', () => {
+    cover.color = 'rgb(100, 25, 50)';
+    player.current = { id: 'a', title: 'Song A', artist: 'Artist', artworkUrl: 'https://i.ytimg.com/a.jpg' } as typeof player.current;
+    renderBody();
+    expect(cover.asked.at(-1)).toBe('https://i.ytimg.com/a.jpg');
+    expect(backdrop()).toHaveClass('lyrics-backdrop');
+    expect(backdrop().style.getPropertyValue('--lyrics-cover')).toBe('rgb(100, 25, 50)');
+  });
+
+  it('with no colour to read, sets none: the plain background shows', () => {
+    renderBody();
+    expect(backdrop().style.getPropertyValue('--lyrics-cover')).toBe('');
+  });
+
+  it('does not read the cover while nobody can see the lyrics', () => {
+    player.current = { id: 'a', title: 'Song A', artist: 'Artist', artworkUrl: 'https://i.ytimg.com/a.jpg' } as typeof player.current;
+    render(<LyricsBody active={false} />);
+    expect(cover.asked.at(-1)).toBeNull();
+  });
+
+  it('the gradient runs fully into the background, fades between songs, and holds still under reduced motion', () => {
+    const css = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8');
+    expect(css).toContain('linear-gradient(170deg, var(--lyrics-cover), var(--background) 75%)');
+    expect(css).toMatch(/@property --lyrics-cover \{\s*syntax: '<color>';/);
+    expect(css).toContain('transition: --lyrics-cover 700ms ease-out');
+    expect(css).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.lyrics-backdrop \{ transition: none; \}/);
+    // Dark themes only: a light theme's words are dark.
+    expect(css).toContain('.dark .lyrics-backdrop');
+  });
+
+  it('has no borders on the header, the song row or the report row', () => {
+    const { container } = render(<LyricsBody active onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Close lyrics' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Report incorrect lyrics' })).toBeInTheDocument();
+    expect(container.querySelector('[class*="border-"]')).toBeNull();
+  });
+
+  it('lines are big and bold, the current one solid and the rest dimmed', () => {
+    renderBody();
+    const line = (name: string) => screen.getByRole('button', { name });
+    for (const name of ['Line 1', 'Line 3', 'Line 4']) expect(line(name)).toHaveClass('text-xl', 'font-bold');
+    expect(line('Line 3')).toHaveClass('text-foreground');
+    expect(line('Line 4')).toHaveClass('text-foreground/45');
+    expect(line('Line 1')).toHaveClass('text-foreground/45');
+  });
+
+  it('tapping a line still seeks to it', () => {
+    renderBody();
+    fireEvent.click(screen.getByRole('button', { name: 'Line 7' }));
+    expect(player.seek).toHaveBeenCalledWith(60);
+  });
+
+  it('plain lyrics are big and bold too', () => {
+    lyrics.synced = [];
+    render(<LyricsBody active />);
+    expect(screen.getByText('x')).toHaveClass('text-xl', 'font-bold', 'text-foreground');
   });
 });

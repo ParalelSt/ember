@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { Popup } from '@/components/ui/popup';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowDownIcon, ArrowUpIcon, CloseIcon } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
 import { usePlayer, usePlayerPosition } from '@/components/player/PlayerProvider';
+import { useCoverColor } from '@/hooks/useCoverColor';
 import { useQueryLyrics, type LyricsLine } from '@/hooks/useLyrics';
 import { centerLine, useLyricsFollow, type FollowDirection } from '@/hooks/useLyricsFollow';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,9 @@ interface Props {
 export function LyricsBody({ active, onClose, showHeader = true, reportOpen: reportOpenProp, onReportOpenChange }: Props) {
   const { current, seek } = usePlayer();
   const { data, isLoading, error } = useQueryLyrics(current, active);
+  // The backdrop's colour (the owner's "Colour backdrop", .lyrics-backdrop in
+  // globals.css). Not fetched while nobody can see it.
+  const coverColor = useCoverColor(active ? current?.artworkUrl : null);
 
   const [reportOpenState, setReportOpenState] = useState(false);
   const reportOpen = reportOpenProp ?? reportOpenState;
@@ -91,9 +95,13 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
   const synced = data?.synced && data.synced.length > 0 ? data.synced : null;
 
   return (
-    <>
+    <div
+      data-testid="lyrics-backdrop"
+      className="lyrics-backdrop flex min-h-0 flex-1 flex-col rounded-[inherit]"
+      style={coverColor ? ({ '--lyrics-cover': coverColor } as CSSProperties) : undefined}
+    >
       {showHeader && (
-        <header className="px-4 py-4 border-b border-sidebar-border flex items-center justify-between gap-3">
+        <header className="px-4 py-4 flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold">Lyrics</h2>
           {onClose && (
             <Button
@@ -110,13 +118,13 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
       )}
 
       {current && (
-        <div className="px-4 py-3 border-b border-sidebar-border flex items-center gap-3">
+        <div className="px-4 py-3 flex items-center gap-3">
           {current.artworkUrl && (
             <Artwork src={current.artworkUrl} size="sm" className="rounded shrink-0 bg-art" />
           )}
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{current.title}</div>
-            <div className="truncate text-xs text-sidebar-foreground/55">{current.artist}</div>
+            <div className="truncate text-xs text-sidebar-foreground/70">{current.artist}</div>
           </div>
         </div>
       )}
@@ -145,7 +153,7 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
         )}
 
         {current && data && !synced && data.lyrics && (
-          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-sidebar-foreground">
+          <pre className="whitespace-pre-wrap font-sans text-xl font-bold leading-snug text-foreground">
             {data.lyrics}
           </pre>
         )}
@@ -175,7 +183,7 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
       </div>
 
       {hasLyrics && (
-        <div className="border-t border-sidebar-border px-4 py-3">
+        <div className="px-4 py-3">
           <Button
             variant="ghost"
             size="sm"
@@ -210,7 +218,7 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
               rows={5}
             />
       </Popup>
-    </>
+    </div>
   );
 }
 
@@ -229,9 +237,8 @@ const LOOKAHEAD_SEC = 0.2;
  *  line can never seek somewhere else. */
 const PILL_GUARD_MS = 600;
 
-/** Karaoke-style lyric scroller: lines dim by distance from the current
- *  position, the active line is highlighted, and the active line is
- *  smooth-scrolled into the center of the lyrics scroller as the song
+/** Karaoke-style lyric scroller: big bold lines, the active one solid and the
+ *  rest dimmed, and the active line is smooth-scrolled into the center of the lyrics scroller as the song
  *  plays, unless the user has scrolled away to read (see useLyricsFollow).
  *  Clicking a line seeks playback to that timestamp. */
 function SyncedLyrics({
@@ -367,7 +374,6 @@ function SyncedLyrics({
       <div className="flex flex-col gap-2 py-2">
         {inView && lines.map((line, i) => {
           const isActive = i === activeIdx;
-          const isPast = i < activeIdx;
           const text = line.text || '♪';
           return (
             <button
@@ -386,18 +392,12 @@ function SyncedLyrics({
                 onSeek(line.time);
               }}
               className={cn(
-                'text-left rounded-md px-2 py-1.5 text-sm transition-all duration-100',
-                'leading-relaxed cursor-pointer outline-none',
+                'text-left rounded-md px-2 py-1.5 text-xl font-bold transition-colors duration-100 motion-reduce:transition-none',
+                'leading-snug cursor-pointer outline-none',
                 'focus-visible:bg-sidebar-foreground/10',
-                // Keep font-size constant across all states so a long
-                // active line doesn't re-wrap and shove the lines below it
-                // out of view. Scale is a GPU transform: visible pop
-                // without touching layout.
-                isActive
-                  ? 'text-foreground font-semibold scale-[1.02] origin-left'
-                  : isPast
-                    ? 'text-sidebar-foreground/30'
-                    : 'text-sidebar-foreground/65 hover:text-sidebar-foreground',
+                // One weight and size in every state, so the current line
+                // never re-wraps and shoves the lines below it out of view.
+                isActive ? 'text-foreground' : 'text-foreground/45 hover:text-foreground',
               )}
             >
               {text}

@@ -459,3 +459,26 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
   .ember-playing-bar:nth-child(2) { transform: scaleY(1); }
   .ember-playing-bar:nth-child(3) { transform: scaleY(0.75); }
 }
+
+/* The lyrics' "Colour backdrop" (components/player/LyricsBody.tsx): the
+   song's cover colour at the top left, gone into the app's background by
+   three quarters of the way, so the panel has no visible end. The colour is
+   a registered property so it can fade from song to song; a browser without
+   @property just swaps it. No colour (or a light theme, where the words are
+   dark) leaves the plain background. */
+@property --lyrics-cover {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+.lyrics-backdrop {
+  --lyrics-cover: var(--background);
+  background-color: var(--background);
+  transition: --lyrics-cover 700ms ease-out;
+}
+.dark .lyrics-backdrop {
+  background-image: linear-gradient(170deg, var(--lyrics-cover), var(--background) 75%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-backdrop { transition: none; }
+}
