@@ -39,14 +39,14 @@ beforeEach(() => {
 const open = () => fireEvent.click(screen.getByTestId('carlist-entry'));
 
 describe('CarlistButton (Your library)', () => {
-  it('nothing live: an icon-only squircle button labelled Carlist, no sheet yet', () => {
+  it('nothing live: a soft neutral pill with the car and the word, no outline, no sheet yet', () => {
     render(<CarlistButton />);
-    const btn = screen.getByTestId('carlist-entry');
-    expect(btn).toHaveAttribute('aria-label', 'Carlist');
-    expect(btn).toHaveAttribute('data-shape', 'squircle');
-    expect(btn.className).toContain('rounded-[32%]');
-    expect(btn.className).toContain('size-11');
-    expect(btn.textContent).toBe('');
+    const btn = screen.getByRole('button', { name: 'Carlist' });
+    expect(btn).toBe(screen.getByTestId('carlist-entry'));
+    expect(btn).toHaveTextContent('Carlist');
+    expect(btn.querySelector('svg')).not.toBeNull();
+    expect(btn).toHaveClass('rounded-full', 'bg-secondary');
+    expect(btn.className).not.toMatch(/(^|\s)border(-|\s|$)/);
     expect(screen.queryByTestId('carlist-sheet')).toBeNull();
   });
 
@@ -104,6 +104,9 @@ describe('CarlistButton (Your library)', () => {
     const link = screen.getByTestId('carlist-live');
     expect(link).toHaveTextContent('Live · K7MPQ4');
     expect(link).toHaveAttribute('href', '/session/s1');
+    expect(link).toHaveClass('rounded-full', 'bg-ember/15', 'text-ember');
+    expect(link.className).not.toMatch(/(^|\s)border(-|\s|$)/);
+    expect(link.querySelector('.animate-pulse')).not.toBeNull();
     expect(screen.queryByTestId('carlist-entry')).toBeNull();
   });
 });
