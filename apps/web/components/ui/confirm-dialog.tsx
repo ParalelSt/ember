@@ -1,15 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Popup } from '@/components/ui/popup';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -57,27 +49,20 @@ export function ConfirmDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
-        </DialogHeader>
-        <DialogFooter className="mt-2">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-            {cancelLabel}
-          </Button>
-          <Button
-            type="button"
-            onClick={handleConfirm}
-            disabled={busy}
-            variant={variant === 'destructive' ? 'default' : 'ember'}
-            className={cn(variant === 'destructive' && 'bg-destructive hover:bg-destructive/90 text-white')}
-          >
-            {busy ? '…' : confirmLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <Popup
+      open={open}
+      onOpenChange={onOpenChange}
+      className="sm:max-w-sm"
+      title={title}
+      description={description}
+      cancelLabel={cancelLabel}
+      actionLabel={confirmLabel}
+      busyLabel="…"
+      busy={busy}
+      onAction={handleConfirm}
+      actionVariant={variant === 'destructive' ? 'default' : 'ember'}
+      actionClassName={cn(variant === 'destructive' && 'bg-destructive hover:bg-destructive/90 text-white')}
+      footerClassName="mt-2"
+    />
   );
 }

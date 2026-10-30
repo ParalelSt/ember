@@ -3,15 +3,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Popup } from '@/components/ui/popup';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
@@ -123,21 +115,24 @@ export function UploadTrackDialog({
   };
 
   return (
-    <Dialog
+    <Popup
       open={open}
       onOpenChange={(o) => {
         if (!o) reset();
         onOpenChange(o);
       }}
+      className="sm:max-w-md"
+      title="Upload a song"
+      description="Adds a file from your device to this server. Everyone signed in can search and play it."
+      actionLabel="Upload"
+      busyLabel="Uploading…"
+      busy={upload.isPending}
+      actionDisabled={!file || !title.trim()}
+      onSubmit={submit}
+      // The fields' gap ran on to the buttons, and the box's own is 4px more.
+      footerClassName="-mt-1"
     >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Upload a song</DialogTitle>
-          <DialogDescription>
-            Adds a file from your device to this server. Everyone signed in can search and play it.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="mt-2 flex flex-col gap-3">
+      <div className="mt-2 flex flex-col gap-3">
           <input
             ref={inputRef}
             type="file"
@@ -154,20 +149,7 @@ export function UploadTrackDialog({
               {durationSec > 0 && ` · ${formatTime(durationSec)}`}
             </div>
           )}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={close} disabled={upload.isPending}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!file || !title.trim() || upload.isPending}
-              variant="ember"
-            >
-              {upload.isPending ? 'Uploading…' : 'Upload'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </Popup>
   );
 }

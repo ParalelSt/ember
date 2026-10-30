@@ -4,15 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Popup } from '@/components/ui/popup';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useQueryPlaylists } from '@/hooks/useLibrary';
@@ -55,14 +47,17 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Start a session</DialogTitle>
-          <DialogDescription>
-            Your phone plays the music; everyone with the code can add songs and skip.
-          </DialogDescription>
-        </DialogHeader>
+    <Popup
+      open={open}
+      onOpenChange={onOpenChange}
+      className="sm:max-w-md"
+      title="Start a session"
+      description="Your phone plays the music; everyone with the code can add songs and skip."
+      actionLabel="Go live"
+      busyLabel="Starting…"
+      busy={busy}
+      onAction={() => void start()}
+    >
         {/* min-w-0 here and on the select: a select is as wide as its
             longest option, and a long playlist name would otherwise push the
             whole dialog wider than the screen. */}
@@ -88,16 +83,7 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
             ))}
           </select>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={() => void start()} disabled={busy} variant="ember">
-            {busy ? 'Starting…' : 'Go live'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </Popup>
   );
 }
 
@@ -131,14 +117,19 @@ export function JoinSessionDialog({ open, onOpenChange }: DialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Join a carlist</DialogTitle>
-          <DialogDescription>
-            Scan the host&apos;s QR code or open their link. Or type the 6-character code here.
-          </DialogDescription>
-        </DialogHeader>
+    <Popup
+      open={open}
+      onOpenChange={onOpenChange}
+      className="sm:max-w-md"
+      title="Join a carlist"
+      description={<>Scan the host&apos;s QR code or open their link. Or type the 6-character code here.</>}
+      cancelLabel={null}
+      actionLabel="Join"
+      busyLabel="Joining…"
+      busy={busy}
+      actionDisabled={!input.trim()}
+      onAction={() => void join()}
+    >
         <Input
           autoFocus
           aria-label="Join code"
@@ -157,12 +148,6 @@ export function JoinSessionDialog({ open, onOpenChange }: DialogProps) {
           autoCapitalize="characters"
           className={cn('mt-2 text-center', !/[/:]/.test(input) && 'tracking-[0.3em]')}
         />
-        <DialogFooter>
-          <Button onClick={() => void join()} disabled={busy || !input.trim()} variant="ember">
-            {busy ? 'Joining…' : 'Join'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </Popup>
   );
 }

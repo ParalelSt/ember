@@ -1,15 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Popup } from '@/components/ui/popup';
 import { Input } from '@/components/ui/input';
 import { EyeIcon, EyeOffIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
@@ -74,15 +66,22 @@ export function PasswordResetDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          {/* pr-stack keeps a long email clear of the close X in the corner. */}
-          <DialogTitle className="pr-stack break-words">Reset password for {targetEmail}</DialogTitle>
-          <DialogDescription>
-            The user&apos;s existing sessions will be invalidated.
-          </DialogDescription>
-        </DialogHeader>
+    <Popup
+      open={open}
+      onOpenChange={(o) => !busy && onOpenChange(o)}
+      className="sm:max-w-sm"
+      // pr-stack keeps a long email clear of the close X in the corner.
+      titleClassName="pr-stack break-words"
+      title={`Reset password for ${targetEmail}`}
+      description={<>The user&apos;s existing sessions will be invalidated.</>}
+      actionLabel="Save"
+      busyLabel="…"
+      busy={busy}
+      actionDisabled={!valid}
+      actionClassName={cn(busy && 'opacity-70')}
+      onAction={handleSubmit}
+      footerClassName="mt-2"
+    >
 
         {isSelfReset && (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -122,22 +121,6 @@ export function PasswordResetDialog({
         {validationMessage && (
           <p className="text-xs text-destructive">{validationMessage}</p>
         )}
-
-        <DialogFooter className="mt-2">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!valid || busy}
-            variant="ember"
-            className={cn(busy && 'opacity-70')}
-          >
-            {busy ? '…' : 'Save'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </Popup>
   );
 }

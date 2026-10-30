@@ -2,15 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Popup } from '@/components/ui/popup';
 import { Textarea } from '@/components/ui/textarea';
 import { useUiStore } from '@/stores/useUiStore';
 import { logger } from '@/lib/logger/client';
@@ -131,12 +123,16 @@ export function BugReportDialog() {
 
   if (triage) {
     return (
-      <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Report sent</DialogTitle>
-            <DialogDescription>Here&apos;s what the logs look like from our side.</DialogDescription>
-          </DialogHeader>
+      <Popup
+        open={open}
+        onOpenChange={(o) => (o ? setOpen(true) : close())}
+        className="sm:max-w-md"
+        title="Report sent"
+        description={<>Here&apos;s what the logs look like from our side.</>}
+        cancelLabel={null}
+        actionLabel="Done"
+        onAction={close}
+      >
           <div className="mt-2 flex flex-col gap-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${SEVERITY_STYLE[triage.severity]}`}>
@@ -166,26 +162,24 @@ export function BugReportDialog() {
               This is an automated guess from the logs, not a verdict. The full report is with the host.
             </p>
           </div>
-          <DialogFooter>
-            <Button type="button" onClick={close} variant="ember">
-              Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      </Popup>
     );
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Report a bug</DialogTitle>
-          <DialogDescription>
-            Sends diagnostic logs to the host&apos;s Discord channel along with your note.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="mt-2 flex flex-col gap-4">
+    <Popup
+      open={open}
+      onOpenChange={onOpenChange}
+      className="sm:max-w-md"
+      title="Report a bug"
+      description={<>Sends diagnostic logs to the host&apos;s Discord channel along with your note.</>}
+      actionLabel="Send report"
+      busyLabel="Sending…"
+      busy={busy}
+      actionDisabled={attachmentProblem(files) !== null}
+      onSubmit={submit}
+    >
+      <div className="mt-2 flex flex-col gap-4">
           <Textarea
             value={note}
             onChange={(e) => setNote(e.target.value.slice(0, MAX_NOTE))}
@@ -199,20 +193,7 @@ export function BugReportDialog() {
             {' '}(version, shell, route, current song), the last few minutes of server logs
             {counts.isDesktop ? ', and the desktop app log' : ''}.
           </div>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={busy || attachmentProblem(files) !== null}
-              variant="ember"
-            >
-              {busy ? 'Sending…' : 'Send report'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </Popup>
   );
 }

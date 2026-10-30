@@ -3,15 +3,7 @@
 import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Popup } from '@/components/ui/popup';
 import { Artwork } from '@/components/primitives/Artwork';
 import { api } from '@/lib/api';
 import { formatTime } from '@/lib/format';
@@ -89,12 +81,18 @@ export function ReplaceTrackDialog({ track, open, onOpenChange, onConfirm }: Pro
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{track ? `Replace "${track.title}"` : 'Replace'}</DialogTitle>
-          <DialogDescription>Same song, different upload. Pick the one to keep in this list.</DialogDescription>
-        </DialogHeader>
+    // Not `busy`: Cancel stays live while a replacement is being saved.
+    <Popup
+      open={open}
+      onOpenChange={onOpenChange}
+      title={track ? `Replace "${track.title}"` : 'Replace'}
+      description="Same song, different upload. Pick the one to keep in this list."
+      cancelVariant="outline"
+      actionVariant="default"
+      actionLabel={submitting ? 'Replacing…' : 'Replace'}
+      actionDisabled={!pickedId || submitting}
+      onAction={handleConfirm}
+    >
 
         {isLoading ? (
           <div className="py-10 text-center text-sm text-muted-foreground">Searching YouTube...</div>
@@ -136,14 +134,6 @@ export function ReplaceTrackDialog({ track, open, onOpenChange, onConfirm }: Pro
             })}
           </div>
         )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleConfirm} disabled={!pickedId || submitting}>
-            {submitting ? 'Replacing…' : 'Replace'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </Popup>
   );
 }

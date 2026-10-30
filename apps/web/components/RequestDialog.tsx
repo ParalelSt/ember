@@ -2,15 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Popup } from '@/components/ui/popup';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -133,15 +125,19 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Send a request</DialogTitle>
-          <DialogDescription>
-            New features and fixes go to the project&apos;s Discord, each to its own channel.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="mt-2 flex flex-col gap-4">
+    <Popup
+      open={open}
+      onOpenChange={close}
+      className="sm:max-w-md"
+      title="Send a request"
+      description={<>New features and fixes go to the project&apos;s Discord, each to its own channel.</>}
+      actionLabel="Send"
+      busyLabel="Sending…"
+      busy={busy}
+      actionDisabled={!canSend}
+      onSubmit={submit}
+    >
+      <div className="mt-2 flex flex-col gap-4">
           <Tabs value={kind} onValueChange={(v) => setKind(v as Kind)}>
             <TabsList className="w-full">
               <TabsTrigger value="feature">New feature</TabsTrigger>
@@ -169,20 +165,7 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
           </div>
           <AttachmentPicker files={files} onChange={setFiles} disabled={busy} />
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => close(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!canSend}
-              variant="ember"
-            >
-              {busy ? 'Sending…' : 'Send'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </Popup>
   );
 }

@@ -2,14 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Popup } from '@/components/ui/popup';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowDownIcon, ArrowUpIcon, CloseIcon } from '@/components/icons';
@@ -194,34 +187,29 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
         </div>
       )}
 
-      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-        <DialogContent className="sm:max-w-md">
-          <form onSubmit={submitReport}>
-            <DialogHeader>
-              <DialogTitle>Report wrong lyrics</DialogTitle>
-              <DialogDescription>
-                What&apos;s wrong with the lyrics for &quot;{reportFor?.title ?? current?.title}&quot;? Goes to the project&apos;s Discord channel.
-              </DialogDescription>
-            </DialogHeader>
+      <Popup
+        open={reportOpen}
+        onOpenChange={setReportOpen}
+        className="sm:max-w-md"
+        title="Report wrong lyrics"
+        description={
+          <>
+            What&apos;s wrong with the lyrics for &quot;{reportFor?.title ?? current?.title}&quot;? Goes to the project&apos;s Discord channel.
+          </>
+        }
+        actionLabel="Send"
+        busy={submitting}
+        actionDisabled={!note.trim()}
+        onSubmit={submitReport}
+      >
             <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="e.g. The chorus is wrong / different song / wrong artist / missing the second verse…"
               maxLength={1000}
               rows={5}
-              className="mt-4"
             />
-            <DialogFooter className="mt-4">
-              <Button type="button" variant="ghost" onClick={() => setReportOpen(false)} disabled={submitting}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting || !note.trim()} variant="ember">
-                Send
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      </Popup>
     </>
   );
 }

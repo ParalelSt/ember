@@ -18,7 +18,7 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 import { Label } from '@/components/ui/label';
 import { FloatingActionButton } from '@/components/ui/floating-action-button';
 import { AdminSheet } from '@/components/admin/AdminSheet';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popup } from '@/components/ui/popup';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export default function AdminInvitesPage() {
@@ -78,6 +78,7 @@ export default function AdminInvitesPage() {
           type="submit"
           disabled={addInvite.isPending || !newEmail.trim()}
           variant="ember"
+          className="h-11"
         >
           <PlusIcon className="h-4 w-4" />
           Add
@@ -118,22 +119,21 @@ export default function AdminInvitesPage() {
       </div>
 
       {isDesktop && (
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogContent className="sm:max-w-sm">
-            <DialogHeader><DialogTitle>Add invite</DialogTitle></DialogHeader>
-            <form onSubmit={onAdd} className="flex flex-col gap-block">
-              <div className="flex flex-col gap-cluster">
-                <Label htmlFor="desktop-invite-email">Email</Label>
-                <Input id="desktop-invite-email" type="email" placeholder="email@example.com" autoFocus
-                  value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
-                <Button type="submit" variant="ember" disabled={addInvite.isPending || !newEmail.trim()}>Add invite</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <Popup
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          className="sm:max-w-sm"
+          title="Add invite"
+          actionLabel="Add invite"
+          actionDisabled={addInvite.isPending || !newEmail.trim()}
+          onSubmit={onAdd}
+        >
+          <div className="flex flex-col gap-cluster">
+            <Label htmlFor="desktop-invite-email">Email</Label>
+            <Input id="desktop-invite-email" type="email" placeholder="email@example.com" autoFocus
+              value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+          </div>
+        </Popup>
       )}
 
       {!isDesktop && (

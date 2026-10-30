@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Popup } from '@/components/ui/popup';
 import { Input } from '@/components/ui/input';
 
 interface Props {
@@ -45,30 +44,25 @@ export function RenamePlaylistDialog({ open, onOpenChange, name, onRename }: Pro
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" data-testid="rename-dialog">
-        <form onSubmit={submit} className="flex flex-col gap-block">
-          <DialogHeader>
-            <DialogTitle>Rename playlist</DialogTitle>
-          </DialogHeader>
-          <Input
-            autoFocus
-            aria-label="Playlist name"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            maxLength={200}
-            required
-          />
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="ember" disabled={busy || !value.trim()}>
-              Save
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <Popup
+      open={open}
+      onOpenChange={onOpenChange}
+      className="sm:max-w-md"
+      data-testid="rename-dialog"
+      title="Rename playlist"
+      actionLabel="Save"
+      busy={busy}
+      actionDisabled={!value.trim()}
+      onSubmit={submit}
+    >
+      <Input
+        autoFocus
+        aria-label="Playlist name"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        maxLength={200}
+        required
+      />
+    </Popup>
   );
 }
