@@ -7,8 +7,8 @@ export type CollectionHeaderVariant = 'collection' | 'album' | 'artist';
 
 // Every page family shipped its own hero geometry, so the variant keeps the
 // exact cover size, radius and text-column behaviour each one had:
-// collection (playlists, Liked, Recent, Uploads) 192 -> 232px rounded card,
-// album (and the track page) 176 -> 224px, artist 144 -> 176px circle.
+// collection (playlists, Liked, Recent, Uploads, a song) 192 -> 232px rounded card,
+// album 176 -> 224px, artist 144 -> 176px circle.
 export const HEADER_VARIANTS: Record<CollectionHeaderVariant, { cover: string; radius: string; text: string }> = {
   collection: { cover: 'size-art-lg md:size-[232px]', radius: 'rounded-2xl', text: 'min-w-0 w-full md:w-auto' },
   album: { cover: 'size-art-hero md:size-art-xl', radius: 'rounded-md', text: 'min-w-0 w-full md:w-auto' },
@@ -49,7 +49,7 @@ export const HEADER_CLASSES = {
 } as const;
 
 /** Presentational only: a collection's title block, shared by the playlist
- *  page, Liked/Recent/Uploads, and the album, artist and track heroes.
+ *  page, Liked/Recent/Uploads, the song page, and the album and artist heroes.
  *  `children` is the action bar, which sits in the text column beside the
  *  cover on desktop (md:flex-row items-end). */
 export function CollectionHeader({

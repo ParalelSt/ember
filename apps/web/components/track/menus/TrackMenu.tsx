@@ -27,12 +27,15 @@ export function TrackMenu({
   onRemove,
   removeLabel = 'Remove',
   removeStyle = DEFAULT_REMOVE_STYLE,
+  triggerClassName,
 }: {
   track: Track;
   onRematch?: () => void;
   onRemove?: () => void;
   removeLabel?: string;
   removeStyle?: RemoveStyle;
+  /** The More button's look, where it is not a row's (the song page). */
+  triggerClassName?: string;
 }) {
   const { playTrack } = usePlayer();
   const { user } = useAuth();
@@ -80,6 +83,7 @@ export function TrackMenu({
       track={track}
       actions={actions}
       footer={remove && removeStyle === 'R4' ? remove : undefined}
+      triggerClassName={triggerClassName}
     />
   );
 }
