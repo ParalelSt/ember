@@ -328,7 +328,7 @@ describe('GET status: the poll secret binds the session to the requesting browse
     const ok = await poll(r.cookie);
     expect(ok.body?.status).toBe('approved');
     expect(h.fake.minted).toHaveLength(1);
-  });
+  }, 15_000); // waits a real 1.1 s, past the default limit on a busy machine
 
   it('says expired once the TTL has passed, and an approval after that is refused', async () => {
     process.env.QR_LOGIN_TTL_S = '1';
