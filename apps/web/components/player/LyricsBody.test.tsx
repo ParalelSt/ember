@@ -214,6 +214,7 @@ describe('LyricsBody: the report form', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
     expect(body).toMatchObject({ trackTitle: 'Song A', trackArtist: 'Artist', lyrics: 'x', note: 'The chorus is wrong' });
+    expect(body.context).toMatchObject({ shellPlatform: 'browser' });
   });
 
   it('a Wi-Fi sign-in page answering 200 is not "Report sent": the note stays and it says so', async () => {

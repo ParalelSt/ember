@@ -6,6 +6,7 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { DISCORD_UNREACHABLE, postToDiscord, webhookUrl } from '@/lib/reports/discord';
 import { serverLogger } from '@/lib/logger/server';
 import { scrubText } from '@/lib/logger/sanitize';
+import { reportVersionLabel, type VersionContext } from '@/lib/versions/label';
 
 const MAX_NOTE_LEN = 1000;
 const MAX_LYRICS_LEN = 4000;
@@ -16,6 +17,7 @@ interface RequestBody {
   source?: string;
   note?: string;
   lyrics?: string;
+  context?: VersionContext;
 }
 
 export const POST = withRequestLog('lyrics-report', async (request: NextRequest) => {
@@ -56,6 +58,7 @@ export const POST = withRequestLog('lyrics-report', async (request: NextRequest)
         { name: 'Artist', value: artist || '_(unknown)_', inline: true },
         { name: 'Source', value: source, inline: true },
         { name: 'Reporter', value: user.email, inline: true },
+        { name: 'Version', value: reportVersionLabel(body.context), inline: false },
       ],
     };
 

@@ -201,6 +201,17 @@ describe('runDigest', () => {
     expect(errorFields.some((f) => f.value.includes('more lines omitted'))).toBe(true);
   });
 
+  it('says which build the server runs', async () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_VERSION', '0.7.34 (a1b2c3d 2026-10-22)');
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([entry()]);
+    await runDigest();
+    expect(postedEmbed().fields.find((f) => f.name === 'Version')?.value).toBe('Server web 0.7.34');
+    const form = fetchMock.mock.calls[0][1].body as FormData;
+    const file = JSON.parse(await (form.get('files[0]') as File).text());
+    expect(file.serverVersion).toBe('0.7.34 (a1b2c3d 2026-10-22)');
+    vi.unstubAllEnvs();
+  });
+
   it('uses the model headline and lines when the summary comes back', async () => {
     vi.mocked(serverLogger.entriesSince).mockResolvedValue([entry()]);
     vi.mocked(summarizeDigest).mockResolvedValue({

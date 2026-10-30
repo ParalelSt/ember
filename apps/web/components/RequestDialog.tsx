@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { logger } from '@/lib/logger/client';
 import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
+import { loadDeviceInfo } from '@/lib/versions/device';
 import { AttachmentPicker } from '@/components/AttachmentPicker';
 import {
   ATTACHMENT_FIELD,
@@ -90,13 +91,14 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
     setBusy(true);
     setError(null);
     try {
+      await loadDeviceInfo();
       const snapshot = logger.snapshot();
-      const { appVersion, shell, route, platform } = snapshot.context;
+      const { appVersion, shell, shellVersion, shellPlatform, route, platform } = snapshot.context;
       const payload = JSON.stringify({
         kind,
         name: name.trim(),
         main: main.trim(),
-        context: { appVersion, shell, route, platform },
+        context: { appVersion, shell, shellVersion, shellPlatform, route, platform },
       });
       // Plain JSON as before without files; with files, the same JSON as a
       // `payload` part next to them (the browser sets the multipart header).

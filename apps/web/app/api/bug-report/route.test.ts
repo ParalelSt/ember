@@ -488,6 +488,52 @@ describe('POST /api/bug-report: field restructure', () => {
   });
 });
 
+describe('POST /api/bug-report: the version', () => {
+  const versionOf = async (context: unknown, extra: Record<string, unknown> = {}) => {
+    await POST(request({ note: 'x', client: snapshot({ context: context as ClientSnapshot['context'] }), ...extra }), undefined as never);
+    return postedEmbed(fetchMock).fields.find((f) => f.name === 'Version')?.value;
+  };
+
+  it('shows the app and the web build, near the top', async () => {
+    expect(
+      await versionOf({ appVersion: '0.7.34 (a1b2c3d 2026-10-22)', shell: 'capacitor', shellPlatform: 'android', shellVersion: '0.4.28' }),
+    ).toBe('Android app 0.4.28, web 0.7.34');
+    expect(postedEmbed(fetchMock).fields[1].name).toBe('Version');
+  });
+
+  it('shows a browser', async () => {
+    expect(await versionOf({ appVersion: '0.7.34', shell: 'web', shellPlatform: 'browser', shellVersion: null })).toBe('Browser, web 0.7.34');
+  });
+
+  it('shows an old phone app that cannot say its version', async () => {
+    expect(await versionOf({ appVersion: '0.7.34', shell: 'capacitor', shellPlatform: 'android', shellVersion: null })).toBe('Android app (version unknown), web 0.7.34');
+  });
+
+  it('an automatic report shows it too', async () => {
+    expect(await versionOf({ appVersion: '0.7.34', shell: 'web', shellPlatform: 'browser' }, { automatic: true })).toBe('Browser, web 0.7.34');
+  });
+
+  it('says unknown without a context', async () => {
+    expect(await versionOf(undefined)).toBe('Version unknown');
+  });
+
+  it('cleans what goes to report.json and never shows a forged value', async () => {
+    expect(await versionOf({ appVersion: '@everyone', shell: 'web', shellPlatform: '<@1>', shellVersion: '<@1>' })).toBe('Browser, web unknown');
+    const embed = JSON.stringify(postedEmbed(fetchMock));
+    expect(embed).not.toContain('<@1>');
+    const reportJson = JSON.parse(await (postedForm(fetchMock).get('files[0]') as File).text());
+    expect(reportJson.client.context).not.toHaveProperty('shellVersion');
+    expect(reportJson.client.context).not.toHaveProperty('shellPlatform');
+  });
+
+  it('the "Where" line no longer repeats it', async () => {
+    await versionOf({ appVersion: '0.7.34', shell: 'web', route: '/library' });
+    const where = postedEmbed(fetchMock).fields.find((f) => f.name === 'Where')!.value;
+    expect(where).toContain('/library');
+    expect(where).not.toContain('0.7.34');
+  });
+});
+
 describe('POST /api/bug-report: note scrubbing', () => {
   it('redacts a token pasted into the note', async () => {
     await POST(request({ note: 'it broke after Authorization: Bearer sk-ant-abcdefgh12345678', client: { current: [], previous: [], sessionId: 's' } }), {} as never);

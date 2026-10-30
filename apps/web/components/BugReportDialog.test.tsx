@@ -137,6 +137,8 @@ describe('BugReportDialog: attachments', () => {
     const payload = JSON.parse(form.get('payload') as string);
     expect(payload.note).toBe('It went silent');
     expect(Array.isArray(payload.client.current)).toBe(true);
+    // The shell's half of the version, in the context the report goes out with.
+    expect(payload.client.context.shellPlatform).toBeDefined();
     expect((form.getAll('attachments') as File[]).map((f) => f.name)).toEqual(['shot.png', 'clip.webm']);
     await waitFor(() => expect(screen.queryAllByTestId('attach-thumb')).toHaveLength(0));
   });

@@ -124,6 +124,8 @@ function buildContextBlock(ctx: ReportContext | undefined): string {
   const lines = [
     contextLine('app version', ctx.appVersion),
     contextLine('shell', ctx.shell),
+    contextLine('shell platform', ctx.shellPlatform),
+    contextLine('shell version', ctx.shellVersion),
     contextLine('platform', ctx.platform),
     contextLine('language', ctx.language),
     contextLine('online', ctx.online),

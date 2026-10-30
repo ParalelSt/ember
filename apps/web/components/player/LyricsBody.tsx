@@ -19,6 +19,7 @@ import { useQueryLyrics, type LyricsLine } from '@/hooks/useLyrics';
 import { centerLine, useLyricsFollow, type FollowDirection } from '@/hooks/useLyricsFollow';
 import { cn } from '@/lib/utils';
 import { GATEWAY_STATUSES, NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
+import { loadDeviceInfo } from '@/lib/versions/device';
 
 interface Props {
   /** Active flag drives the lazy fetch, only goes to /api/lyrics while
@@ -66,11 +67,17 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
     if (!reportFor) return;
     setSubmitting(true);
     try {
+      const device = await loadDeviceInfo();
       const res = await fetch('/api/lyrics-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
+          context: {
+            appVersion: device.webVersion,
+            shellPlatform: device.platform,
+            shellVersion: device.shellVersion,
+          },
           trackTitle: reportFor.title,
           trackArtist: reportFor.artist,
           source: reportFor.source,

@@ -18,6 +18,7 @@ import { readDesktopLog } from '@/lib/desktopLog';
 import { detectShell } from '@/lib/playback/detectShell';
 import { scrubText } from '@/lib/logger/sanitize';
 import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
+import { loadDeviceInfo } from '@/lib/versions/device';
 import { AttachmentPicker } from '@/components/AttachmentPicker';
 import {
   ATTACHMENT_FIELD,
@@ -65,6 +66,7 @@ export function BugReportDialog() {
     if (busy || attachmentProblem(files) !== null) return;
     setBusy(true);
     try {
+      await loadDeviceInfo();
       const snapshot = logger.snapshot();
       // Desktop only, best effort: the shell's own log holds what the WebView
       // never sees. An empty string means there is nothing to attach.

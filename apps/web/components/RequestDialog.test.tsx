@@ -5,6 +5,9 @@ import userEvent from '@testing-library/user-event';
 import { RequestDialog } from './RequestDialog';
 import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
 
+vi.mock('@/lib/versions/device', () => ({
+  loadDeviceInfo: vi.fn(async () => ({ platform: 'android', shellVersion: '0.4.28', webVersion: '1.0.0' })),
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 vi.mock('@/lib/logger/client', () => ({
   logger: {
@@ -12,7 +15,7 @@ vi.mock('@/lib/logger/client', () => ({
       current: [],
       previous: [],
       sessionId: 's1',
-      context: { appVersion: '1.0.0', shell: 'web', route: '/settings/help', platform: 'MacIntel' },
+      context: { appVersion: '1.0.0', shell: 'capacitor', shellPlatform: 'android', shellVersion: '0.4.28', route: '/settings/help', platform: 'MacIntel' },
     }),
   },
 }));
@@ -161,7 +164,7 @@ describe('RequestDialog: submit', () => {
       kind: 'feature',
       name: 'Sleep timer',
       main: 'Stop after 30 min',
-      context: { appVersion: '1.0.0', shell: 'web', route: '/settings/help', platform: 'MacIntel' },
+      context: { appVersion: '1.0.0', shell: 'capacitor', shellPlatform: 'android', shellVersion: '0.4.28', route: '/settings/help', platform: 'MacIntel' },
     });
   });
 

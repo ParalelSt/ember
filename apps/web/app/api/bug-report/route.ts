@@ -25,6 +25,7 @@ import {
   type EmbedField as EmbedFieldT,
 } from "@/lib/reports/discord";
 import { readReportBody } from "@/lib/reports/readBody";
+import { cleanShellFields, reportVersionLabel } from "@/lib/versions/label";
 import {
   droppedAttachmentsField,
   isTooLargeForDiscord,
@@ -68,8 +69,6 @@ function isSandboxReporter(email: string): boolean {
 function formatContextCompact(ctx: Partial<ReportContext> | undefined): string {
   if (!ctx) return "(no context)";
   const parts: string[] = [];
-  const shellVersion = [ctx.shell, ctx.appVersion].filter(Boolean).join(" ");
-  if (shellVersion) parts.push(shellVersion);
   if (ctx.route) parts.push(ctx.route);
   parts.push(ctx.online === false ? "offline" : "online");
   parts.push(
@@ -102,7 +101,7 @@ function sanitizeContext(ctx: unknown): ReportContext | undefined {
   for (const [k, v] of Object.entries(ctx as Record<string, unknown>)) {
     out[k] = typeof v === "string" ? v.slice(0, MAX_CONTEXT_STRING_LEN) : v;
   }
-  return out as unknown as ReportContext;
+  return cleanShellFields(out) as unknown as ReportContext;
 }
 
 export const POST = withRequestLog('bug-report', async (request: NextRequest) => {
@@ -278,6 +277,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     // must never push the total over what Discord accepts.
     const beforeEvidence: EmbedFieldT[] = [
       field("What broke", whatBroke),
+      field("Version", reportVersionLabel(client.context)),
       { name: "Where", value: formatContextCompact(client.context), inline: false },
     ];
     const afterEvidence: EmbedFieldT[] = [

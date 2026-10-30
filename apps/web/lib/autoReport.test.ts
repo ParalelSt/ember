@@ -112,6 +112,7 @@ describe('maybeAutoReport: sends', () => {
     expect(body.automatic).toBe(true);
     expect(body.note).toBe('playback: native audio failed');
     expect(body.client).toBeDefined();
+    expect(body.client.context.shellPlatform).toBeDefined();
   });
 
   it('debounces a burst of the same fingerprint into a single report', async () => {

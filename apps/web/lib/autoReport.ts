@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { readDesktopLog } from './desktopLog';
 import { scrubText } from './logger/sanitize';
+import { loadDeviceInfo } from './versions/device';
 import { GATEWAY_STATUSES, PERSIST_MS, networkFailure, whenConnectionBack } from './connectionBlip';
 
 /** Silent crash reports: when the client logger records an error-level
@@ -95,6 +96,7 @@ function isSignedIn(): boolean {
 async function send(entry: LogEntry, retryWhenBack = false): Promise<void> {
   let reached = false;
   try {
+    await loadDeviceInfo();
     const snapshot = logger.snapshot();
     // Desktop only, best effort: same as BugReportDialog's submit.
     const desktopLog = await readDesktopLog();
