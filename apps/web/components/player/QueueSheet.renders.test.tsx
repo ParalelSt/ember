@@ -1,7 +1,7 @@
 /** The queue sheet lives inside the player bar and the full-screen player,
  *  which re-render on every playhead report to move their seek bars. An open
  *  queue of a few thousand songs (a Liked list) was rebuilt row by row each
- *  time; only its progress line follows the position. */
+ *  time; nothing in it follows the position. */
 import type { PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
@@ -18,6 +18,8 @@ vi.mock('@/components/ui/sheet', () => ({
   SheetTitle: ({ children }: PropsWithChildren) => <div>{children}</div>,
 }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('@/components/ui/dialog', () => import('@/test-utils/dialogMock'));
 const rowRendered = vi.hoisted(() => vi.fn());
 vi.mock('@/components/track/TrackRow', () => ({
   TrackRow: ({ track }: { track: { title: string } }) => {

@@ -284,6 +284,18 @@ describe('the last song is gone: radio finds the next one', () => {
     expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual([KLINCEK.id, GONE.id, NEXT.id]);
   });
 
+  it('Next up emptied by hand: no radio to wait for, says so and stops there', async () => {
+    setQueue([KLINCEK, GONE, NEXT], 1);
+    verdict[GONE.id] = { unavailable: true, reason: 'removed' };
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    act(() => usePlayerStore.getState().clearUpcoming());
+    act(() => events!.onError());
+    await waitFor(() => expect(messages()).toContain('Couldn\'t play "Radio Song One": removed from YouTube. Nothing left to play.'));
+    expect(api.getRecommended).not.toHaveBeenCalled();
+    expect(current().id).toBe(GONE.id);
+    act(() => usePlayerStore.setState({ radioHeldFor: null }));
+  });
+
   it('radio finds nothing: says so and stops there', async () => {
     setQueue([KLINCEK, GONE], 1);
     verdict[GONE.id] = { unavailable: true, reason: 'removed' };

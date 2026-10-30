@@ -57,6 +57,8 @@ export function useRadioExtend({
     // Hosting a live carlist session: the queue is exactly what the group
     // added, so no radio extension.
     if (useSessionStore.getState().hostingSessionId) return;
+    // The listener just emptied Next up by hand: not refilled under them.
+    if (usePlayerStore.getState().radioHeldFor === current.id) return;
     // Extend when nothing PLAYABLE is left after this song: the last song,
     // or a tail of songs found unavailable (greyed in the queue). Radio
     // songs that turn out dead used to leave the queue with nothing to go

@@ -3,6 +3,8 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { shuffle } from '@/lib/shuffle';
+import * as queueEdit from '@/lib/playback/queueEdit';
+import { nextPlayable } from '@/lib/playback/queueNav';
 import type { PlaybackContext, Track } from '@/types/track';
 
 export type LoopMode = 'off' | 'all' | 'one';
@@ -71,7 +73,31 @@ interface PlayerState {
   setMuted: (b: boolean) => void;
   toggleMuted: () => void;
   setNowPlayingOpen: (b: boolean) => void;
+  /** The queue sheet's Next up edits (lib/playback/queueEdit): queue
+   *  positions, songs after the one playing only. The native Android
+   *  player gets the new queue like any other change made here
+   *  (PlayerProvider's setQueue effect). */
+  moveUpcoming: (from: number, to: number) => void;
+  removeUpcoming: (at: number) => void;
+  playNextUpcoming: (at: number) => void;
+  clearUpcoming: () => void;
+  /** Next up in a random order, once. Not the shuffle mode: the button
+   *  stays as it was. */
+  shuffleUpcoming: () => void;
+  /** The song whose Next up the listener emptied by hand (Clear, or removing
+   *  the last song): radio leaves it empty while that song plays, or Next up
+   *  would refill the moment it was cleared. Not saved. */
+  radioHeldFor: string | null;
 }
+
+/** Applies a queue edit; no edit leaves the state (and its save) alone. An
+ *  edit that leaves nothing playable ahead holds radio back (radioHeldFor). */
+const applyEdit = (edit: (s: PlayerState) => queueEdit.QueueEdit) => (s: PlayerState): Partial<PlayerState> => {
+  const next = edit(s);
+  if (!next) return s;
+  const nothingAhead = nextPlayable(next.queue, s.index + 1, 1, false).index < 0;
+  return { ...next, radioHeldFor: nothingAhead ? s.queue[s.index]?.id ?? null : null };
+};
 
 /** The queue put back in its pre-shuffle order, as it is NOW: the snapshot
  *  only decides the order. A song removed since stays removed, a song added
@@ -148,6 +174,7 @@ export const usePlayerStore = create<PlayerState>()(
       muted: false,
       nowPlayingOpen: false,
       played: [],
+      radioHeldFor: null,
       setQueue: (queue) => set({ queue }),
       setIndex: (index) => set({ index }),
       setPosition: (position) => set({ position, positionAt: stamp() }),
@@ -184,6 +211,11 @@ export const usePlayerStore = create<PlayerState>()(
       setMuted: (muted) => set({ muted }),
       toggleMuted: () => set((s) => ({ muted: !s.muted })),
       setNowPlayingOpen: (nowPlayingOpen) => set({ nowPlayingOpen }),
+      moveUpcoming: (from, to) => set(applyEdit((s) => queueEdit.moveUpcoming(s, from, to))),
+      removeUpcoming: (at) => set(applyEdit((s) => queueEdit.removeUpcoming(s, at))),
+      playNextUpcoming: (at) => set(applyEdit((s) => queueEdit.playNextUpcoming(s, at))),
+      clearUpcoming: () => set(applyEdit(queueEdit.clearUpcoming)),
+      shuffleUpcoming: () => set(applyEdit((s) => queueEdit.shuffleUpcoming(s))),
     }),
     {
       name: 'ember.player.v1',

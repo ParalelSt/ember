@@ -25,7 +25,11 @@ function SheetPortal({ ...props }: SheetPrimitive.Portal.Props) {
 
 function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
   return (
+    // forceRender: base-ui leaves a nested popup without a backdrop, so a tap
+    // beside a menu over the queue sheet landed on the row behind it and
+    // played that song, with the menu still open.
     <SheetPrimitive.Backdrop
+      forceRender
       data-slot="sheet-overlay"
       className={cn(
         "fixed inset-0 z-50 bg-black/10 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-xs",

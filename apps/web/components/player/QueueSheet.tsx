@@ -1,35 +1,24 @@
 'use client';
 
 import { memo, useCallback, useLayoutEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { TrackRow } from '@/components/track/TrackRow';
 import { CouldntPlaySection, couldntPlayEntries } from '@/components/player/CouldntPlaySection';
 import { usePlayer } from '@/components/player/PlayerProvider';
+import { PlayingBars } from '@/components/player/PlayingBars';
+import { QueueUpNext } from '@/components/player/QueueUpNext';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { localArtFor } from '@/lib/offlineNative';
 import { isPlayableOffline, isUnavailable, playedWalk } from '@/lib/playback/queueNav';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import { useUnplayableStore } from '@/stores/useUnplayableStore';
-import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
 
 /** The sheet's section headings: "Played", "Couldn't play", "Next up". */
 const SECTION_LABEL = 'px-3 text-[11px] uppercase tracking-widest text-sidebar-foreground/55 mb-1.5';
-
-/** The thin line under the Now playing card, following playback. Its own
- *  component so the position's many updates re-render only the line. */
-function NowProgress() {
-  const position = usePlayerStore((s) => s.position);
-  const duration = usePlayerStore((s) => s.duration);
-  const pct = duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0;
-  return (
-    <div className="mx-row h-0.5 overflow-hidden rounded-full bg-sidebar-foreground/15" aria-hidden>
-      <div data-testid="now-progress-fill" className="h-full rounded-full bg-ember" style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
 
 interface Props {
   open: boolean;
@@ -38,13 +27,13 @@ interface Props {
 
 /** Memoized: the player bar and the full-screen player that hold it
  *  re-render on every playhead report, and an open queue can be thousands of
- *  rows. Its own store reads (and NowProgress) still update it. */
+ *  rows. Its own store reads (and the playing bars) still update it. */
 export const QueueSheet = memo(function QueueSheet({ open, onOpenChange }: Props) {
   const isDesktop = useIsDesktop();
   const queue = usePlayerStore((s) => s.queue);
   const index = usePlayerStore((s) => s.index);
   const played = usePlayerStore((s) => s.played);
-  const { playAt, playBack } = usePlayer();
+  const { playBack } = usePlayer();
   const artFiles = useOfflineStore((s) => s.artFiles);
   // Downloaded tracks keep their art locally, so the queue still shows
   // thumbnails offline instead of a blank box from the dead remote URL.
@@ -68,6 +57,31 @@ export const QueueSheet = memo(function QueueSheet({ open, onOpenChange }: Props
   // newest sits right above Now playing).
   const history = current ? playedWalk(queue, index, played).map((step) => queue[step.index]).reverse() : [];
 
+  // Go to artist, from a Next up row's menu: the sheet closes, and so does
+  // the full-screen player it may sit in. That one pops the history entry
+  // useBackDismiss pushed, which would undo a navigation issued before it
+  // lands: navigate once the pop has happened (or shortly after), as the
+  // full-screen player's own Go to artist does.
+  const router = useRouter();
+  const goToArtist = useCallback((href: string) => {
+    onOpenChange(false);
+    const { nowPlayingOpen, setNowPlayingOpen } = usePlayerStore.getState();
+    if (!nowPlayingOpen) {
+      router.push(href);
+      return;
+    }
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('popstate', go);
+      router.push(href);
+    };
+    window.addEventListener('popstate', go);
+    setNowPlayingOpen(false);
+    window.setTimeout(go, 400);
+  }, [onOpenChange, router]);
+
   // The sheet opens scrolled so Now playing (with "Couldn't play" right
   // above it) is at the top: the history is only seen by scrolling up.
   // Again each time it opens, and a new song while open glides to it.
@@ -75,21 +89,25 @@ export const QueueSheet = memo(function QueueSheet({ open, onOpenChange }: Props
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
   const landedRef = useRef(false);
+  // Room under Now playing for it to reach the top when Next up is short (a
+  // scroll stops at the end of the list).
+  const fitSpacer = useCallback(() => {
+    const sc = scrollerRef.current;
+    const anchor = anchorRef.current;
+    const spacer = spacerRef.current;
+    if (!sc || !anchor || !spacer) return;
+    spacer.style.height = '0px';
+    spacer.style.height = `${Math.max(0, sc.clientHeight - (sc.scrollHeight - anchor.offsetTop))}px`;
+  }, []);
   const land = useCallback((smooth: boolean) => {
     const sc = scrollerRef.current;
     const anchor = anchorRef.current;
     if (!sc || !anchor) return;
-    // Room under Now playing for it to reach the top when Next up is short
-    // (a scroll stops at the end of the list).
-    const spacer = spacerRef.current;
-    if (spacer) {
-      spacer.style.height = '0px';
-      spacer.style.height = `${Math.max(0, sc.clientHeight - (sc.scrollHeight - anchor.offsetTop))}px`;
-    }
+    fitSpacer();
     const top = anchor.offsetTop;
     if (smooth && typeof sc.scrollTo === 'function') sc.scrollTo({ top, behavior: 'smooth' });
     else sc.scrollTop = top;
-  }, []);
+  }, [fitSpacer]);
   // The sheet's content mounts in a portal, possibly after this component's
   // own layout effects: landing when the list itself mounts covers that.
   const scrollerMounted = useCallback((node: HTMLDivElement | null) => {
@@ -108,6 +126,16 @@ export const QueueSheet = memo(function QueueSheet({ open, onOpenChange }: Props
     land(landedRef.current);
     landedRef.current = true;
   }, [open, currentKey, land]);
+  // Next up shrinking (a remove, Clear) must not drag the list down under the
+  // listener: the spacer takes up what left, and the scroll stays where it was.
+  const upcomingCount = upcoming.length;
+  useLayoutEffect(() => {
+    const sc = scrollerRef.current;
+    if (!open || !sc) return;
+    const at = sc.scrollTop;
+    fitSpacer();
+    sc.scrollTop = at;
+  }, [open, upcomingCount, fitSpacer]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -162,53 +190,35 @@ export const QueueSheet = memo(function QueueSheet({ open, onOpenChange }: Props
             <CouldntPlaySection entries={failed} artworkSrcFor={artworkSrcFor} labelClassName={SECTION_LABEL} />
 
             {current && (
-              <div data-testid="now-playing" className="rounded-xl bg-sidebar-accent px-inset pt-cluster pb-row ring-1 ring-ember/30">
-                <div className="px-row text-[11px] uppercase tracking-widest text-ember">Now playing</div>
-                {/* No onPlay: the current row is a label, not a control. */}
+              <section data-testid="now-playing">
+                <div className={SECTION_LABEL}>Now playing</div>
+                {/* No onPlay: the current row is a label, not a control.
+                    A plain row (owner's pick "B. Plain row"): the title in
+                    ember with the playing bars before it. */}
                 <TrackRow
                   track={current}
                   density="compact"
                   tone="sidebar"
                   showDuration
                   active
+                  titleLeading={<PlayingBars />}
                   unavailable={isUnavailable(current)}
                   artworkFallback={null}
                   artworkSrc={artworkSrcFor(current)}
                   className="hover:bg-transparent"
                 />
-                <NowProgress />
-              </div>
+              </section>
             )}
 
-            {upcoming.length > 0 && (
-              <div>
-                <div className={SECTION_LABEL}>Next up · {upcoming.length}</div>
-                <div className="flex flex-col">
-                  {upcoming.map((t, i) => (
-                    <TrackRow
-                      key={`${t.id}-${index + 1 + i}`}
-                      track={t}
-                      density="compact"
-                      tone="sidebar"
-                      showDuration
-                      // Greyed with its reason, not dropped: a song that could
-                      // not play stays where it was, and says why.
-                      unavailable={isUnavailable(t)}
-                      artworkFallback={null}
-                      artworkSrc={artworkSrcFor(t)}
-                      className={cn('hover:bg-sidebar-accent/60', outOfReach(t) && 'opacity-50')}
-                      // A jump inside the queue, not a new queue: playTrack
-                      // would collapse a search-started queue to one song,
-                      // turn shuffle off and move the loop point.
-                      onPlay={() => playAt(index + 1 + i)}
-                      // A real Play button too: the row's own click is a
-                      // mouse-only handler on a div that Tab never reaches.
-                      trailingPlayControl
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+            <QueueUpNext
+              upcoming={upcoming}
+              index={index}
+              labelClassName={SECTION_LABEL}
+              artworkSrcFor={artworkSrcFor}
+              outOfReach={outOfReach}
+              scrollerRef={scrollerRef}
+              onGoToArtist={goToArtist}
+            />
 
             {!current && upcoming.length === 0 && (
               <div className="text-sidebar-foreground/55 text-sm px-4 py-8 text-center">

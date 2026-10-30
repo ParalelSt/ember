@@ -48,8 +48,38 @@ function setup(over: Partial<Props> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   api.getRecommended.mockResolvedValue({ tracks: [rec1, rec2] });
-  usePlayerStore.setState({ queue: [], index: -1, orderBackup: null, shuffle: false });
+  usePlayerStore.setState({ queue: [], index: -1, orderBackup: null, shuffle: false, radioHeldFor: null });
   useSessionStore.setState({ hostingSessionId: null });
+});
+
+describe('useRadioExtend after Next up was emptied by hand', () => {
+  it('leaves it empty while that song plays, and extends again for the next song', async () => {
+    const other = makeTrack({ id: 'youtube:o', sourceId: 'o', title: 'Other' });
+    const { rerender } = setup({ queue: [seed, other], index: 0 });
+    usePlayerStore.getState().clearUpcoming();
+    expect(usePlayerStore.getState().radioHeldFor).toBe(seed.id);
+    rerender({ ...base, queue: usePlayerStore.getState().queue, index: 0 });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(api.getRecommended).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual([seed.id]);
+
+    // The listener plays another song on its own: radio is back for it.
+    usePlayerStore.setState({ queue: [other], index: 0 });
+    rerender({ ...base, current: other, queue: [other], index: 0 });
+    await waitFor(() => expect(api.getRecommended).toHaveBeenCalledTimes(1));
+  });
+
+  it('an answer already on its way when Next up was cleared is dropped', async () => {
+    let answer: (v: { tracks: Track[] }) => void = () => {};
+    api.getRecommended.mockImplementation(() => new Promise((r) => { answer = r; }));
+    const dead = makeTrack({ id: 'youtube:d', sourceId: 'd', title: 'Dead', unavailableAt: '2026-10-01T10:00:00Z' });
+    setup({ queue: [seed, dead], index: 0 });
+    expect(api.getRecommended).toHaveBeenCalledTimes(1);
+    usePlayerStore.getState().clearUpcoming();
+    answer({ tracks: [rec1] });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual([seed.id]);
+  });
 });
 
 describe('useRadioExtend', () => {

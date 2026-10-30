@@ -49,6 +49,12 @@ export interface TrackRowProps {
   removeLabel?: string;
   /** Extra controls beside the heart (the More menu). */
   trailing?: ReactNode;
+  /** `compact` only: a control before the artwork (the queue's drag
+   *  handle). */
+  leading?: ReactNode;
+  /** `compact` only: a mark right before the title (the queue's playing
+   *  bars). */
+  titleLeading?: ReactNode;
   /** The server has confirmed this track can no longer be streamed. Greys
    *  the row, badges the title, disables its play cell, and turns a click
    *  into an explanation instead of silent nothing. A compact row (the
@@ -107,6 +113,8 @@ export function TrackRow({
   onRemove,
   removeLabel = 'Remove',
   trailing,
+  leading,
+  titleLeading,
   unavailable = false,
   onReplace,
   artworkFallback,
@@ -267,9 +275,11 @@ export function TrackRow({
           className,
         )}
       >
+        {leading}
         {artwork}
         <div className="min-w-0 flex-1">
           <div data-testid="track-row-title" className={cn('flex min-w-0 items-center gap-cluster text-sm font-medium', emberTitle)}>
+            {titleLeading}
             <span className="truncate">{track.title}</span>
             {unavailablePill}
           </div>

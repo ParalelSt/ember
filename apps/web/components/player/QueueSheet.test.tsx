@@ -23,7 +23,20 @@ vi.mock('@/components/ui/sheet', () => ({
 }));
 const screenSize = vi.hoisted(() => ({ desktop: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => screenSize.desktop }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/', useRouter: () => ({ push: vi.fn() }) }));
+const router = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/', useRouter: () => router }));
+vi.mock('@/components/ui/dialog', () => import('@/test-utils/dialogMock'));
+// The menu itself (dropdown or phone sheet) is AddToPlaylistMenu's, tested
+// on its own; here it lists the actions the queue row hands it.
+vi.mock('@/components/track/menus/AddToPlaylistMenu', () => ({
+  AddToPlaylistMenu: ({ track, actions, allowAdd }: { track: { title: string }; actions?: { key: string; label: string; onSelect: () => void }[]; allowAdd?: boolean }) => (
+    <div role="menu" aria-label={`${track.title} menu`} data-allow-add={allowAdd ? 'true' : 'false'}>
+      {actions?.map((a) => (
+        <button key={a.key} type="button" role="menuitem" onClick={a.onSelect}>{a.label}</button>
+      ))}
+    </div>
+  ),
+}));
 
 beforeEach(() => {
   screenSize.desktop = true;
@@ -170,8 +183,8 @@ describe('QueueSheet: "Couldn\'t play" (songs this session skipped)', () => {
 });
 
 /** The songs already played this session sit above "Now playing" (the
- *  owner's pick, /dizajn queue history: dimmed rows under "Played · N", a
- *  highlighted Now playing card, this session only, opening on Now playing). */
+ *  owner's pick, /dizajn queue history: dimmed rows under "Played · N", this
+ *  session only, opening on Now playing). */
 describe('QueueSheet: played history', () => {
   const a = makeTrack({ id: 'youtube:a', title: 'Alpha' });
   const b = makeTrack({ id: 'youtube:b', title: 'Bravo' });
@@ -234,20 +247,29 @@ describe('QueueSheet: played history', () => {
     expect(screen.queryByTestId('played')).toBeNull();
   });
 
-  it('Now playing is a highlighted card with a progress line that follows playback', () => {
-    usePlayerStore.setState({ queue: [a, b], index: 0, context: null, position: 50, duration: 200 });
+  it('Now playing is a plain row under its own label: no card, no progress line, the title in ember after the playing bars', () => {
+    usePlayerStore.setState({ queue: [a, b], index: 0, context: null, position: 50, duration: 200, isPlaying: true });
     render(<QueueSheet open onOpenChange={() => {}} />);
-    const card = screen.getByTestId('now-playing');
-    expect(card).toHaveClass('rounded-xl');
-    expect(card).toHaveClass('bg-sidebar-accent');
-    expect(within(card).getByText('Now playing')).toBeInTheDocument();
-    const fill = within(card).getByTestId('now-progress-fill');
-    expect(fill.style.width).toBe('25%');
-    act(() => usePlayerStore.setState({ position: 150 }));
-    expect(fill.style.width).toBe('75%');
-    // Unknown length: an empty line, not NaN.
-    act(() => usePlayerStore.setState({ duration: 0 }));
-    expect(fill.style.width).toBe('0%');
+    const section = screen.getByTestId('now-playing');
+    expect(section).not.toHaveClass('rounded-xl');
+    expect(section).not.toHaveClass('bg-sidebar-accent');
+    expect(section.className).not.toMatch(/ring/);
+    expect(within(section).queryByTestId('now-progress-fill')).toBeNull();
+    // The label reads like the other sections'.
+    const label = within(section).getByText('Now playing');
+    expect(label).toHaveClass('uppercase', 'text-sidebar-foreground/55');
+    expect(label).not.toHaveClass('text-ember');
+    // The row: ember title, the bars before it, playing.
+    const title = within(section).getByTestId('track-row-title');
+    expect(title.textContent).toBe('Alpha');
+    expect(title.closest('.text-ember')).not.toBeNull();
+    const bars = within(title).getByTestId('playing-bars');
+    expect(title.firstElementChild).toBe(bars);
+    expect(bars).toHaveAttribute('data-playing', 'true');
+    expect(bars).toHaveAttribute('aria-hidden');
+    // Paused playback holds the bars.
+    act(() => usePlayerStore.setState({ isPlaying: false }));
+    expect(bars).toHaveAttribute('data-playing', 'false');
   });
 
   describe('opening on Now playing', () => {

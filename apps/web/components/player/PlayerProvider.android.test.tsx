@@ -129,6 +129,36 @@ describe('android: one setQueue per queue change', () => {
     expect(play).toBe(true);
   });
 
+  it('a Next up edit reaches native as one setQueue: same song, same index, playing on', () => {
+    usePlayerStore.setState({ queue: [A, B, C, D], index: 1, isPlaying: true, baseCount: 4 });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    native.setQueue.mockClear();
+    act(() => { usePlayerStore.getState().moveUpcoming(3, 2); });
+    expect(native.setQueue.mock.calls).toEqual([[[A, B, D, C], 1, true]]);
+    native.setQueue.mockClear();
+    act(() => { usePlayerStore.getState().clearUpcoming(); });
+    expect(native.setQueue.mock.calls).toEqual([[[A, B], 1, true]]);
+  });
+
+  it('a Next up edit made right after native moved to the next song still reaches native', () => {
+    usePlayerStore.setState({ queue: [A, B, C, D], index: 0, isPlaying: true, baseCount: 4 });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    native.setQueue.mockClear();
+    act(() => { ev!.onQueueIndex!(1); });
+    expect(usePlayerStore.getState().index).toBe(1);
+    act(() => { usePlayerStore.getState().removeUpcoming(3); });
+    expect(native.setQueue.mock.calls).toEqual([[[A, B, C], 1, true]]);
+  });
+
+  it('a queue that came from native is not sent back to it', () => {
+    usePlayerStore.setState({ queue: [A, B], index: 0, isPlaying: true });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    native.setQueue.mockClear();
+    act(() => { ev!.onQueueReplaced!([A, B, C], 0); });
+    expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual([A.id, B.id, C.id]);
+    expect(native.setQueue).not.toHaveBeenCalled();
+  });
+
   it('a tap on the second copy of a song in the queue sends native THAT entry, not the first copy', () => {
     // The song added to the queue by hand is also further down the playlist.
     usePlayerStore.setState({ queue: [A, B, C, B], index: 0, isPlaying: true });

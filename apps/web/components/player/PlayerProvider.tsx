@@ -363,6 +363,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       },
       onQueueReplaced: (tracks, i, info) => {
         nativeChangeAt.current = Date.now();
+        // What native has now: not to be sent back (the setQueue effect).
+        sentQueueRef.current = tracks;
         const at = Math.max(0, Math.min(i, tracks.length - 1));
         loadedTrackRef.current = tracks[at]?.id ?? null;
         const st = usePlayerStore.getState();
@@ -1254,7 +1256,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       nextRef.current();
       return;
     }
-    if (radioCanExtend(st.loopMode)) {
+    if (radioCanExtend(st.loopMode) && st.radioHeldFor !== track.id) {
       awaitingRadioRef.current = notice;
       return;
     }
@@ -1284,13 +1286,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useDiscordPresence({ current, isPlaying, position, duration });
 
   // Queue-owning backend (Android): whenever the store's queue changes from
-  // THIS side (radio append, add to queue), hand the new queue over. Changes
-  // that arrived from native are flagged and skipped, or they would bounce,
-  // and so is a queue playTrack has just handed over itself.
+  // THIS side (radio append, add to queue, a queue sheet edit), hand the new
+  // queue over. A queue that came from native is skipped, or it would bounce,
+  // and so is one playTrack has just handed over itself: both are this ref.
+  // By identity, not by time: an edit made just after native moved to the
+  // next song still has to reach it.
   useEffect(() => {
     // Not before the first load: the page's opening render would send the
     // saved queue here, and then the cold-start load sends it again.
-    if (!backendReady || backendKindRef.current !== 'android' || fromNative()) return;
+    if (!backendReady || backendKindRef.current !== 'android') return;
     const b = backendRef.current;
     if (!b?.setQueue || !current || queue === sentQueueRef.current) return;
     sentQueueRef.current = queue;
@@ -1442,6 +1446,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // want a shuffled start (the playlist Shuffle button) set it right after.
       shuffle: false,
       orderBackup: null,
+      radioHeldFor: null,
     });
     // loadAndPlay (above) already records a 'load' breadcrumb with track id +
     // source, and the backend's onPlay event records 'play' once it actually

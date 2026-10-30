@@ -433,3 +433,25 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
 @media (prefers-reduced-motion: reduce) {
   .ember-just-approved { animation: none !important; }
 }
+
+/* The queue sheet's Now playing bars (components/player/PlayingBars.tsx):
+   three bars rising and falling at their own pace. Paused playback holds
+   them where they are; reduced motion leaves them still, at three
+   different heights. */
+@keyframes ember-playing-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+.ember-playing-bar {
+  transform-origin: bottom;
+  animation: ember-playing-bar 0.9s ease-in-out infinite;
+}
+.ember-playing-bar:nth-child(2) { animation-duration: 0.7s; animation-delay: -0.3s; }
+.ember-playing-bar:nth-child(3) { animation-duration: 1.1s; animation-delay: -0.6s; }
+[data-playing="false"] > .ember-playing-bar { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .ember-playing-bar { animation: none !important; }
+  .ember-playing-bar:nth-child(1) { transform: scaleY(0.55); }
+  .ember-playing-bar:nth-child(2) { transform: scaleY(1); }
+  .ember-playing-bar:nth-child(3) { transform: scaleY(0.75); }
+}
