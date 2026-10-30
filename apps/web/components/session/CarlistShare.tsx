@@ -40,8 +40,8 @@ export function QrCode({ value, size = 176, className }: { value: string; size?:
   return <QrSvg value={value} size={size} className={className} label="QR code to join" />;
 }
 
-/** QR first (scan it in the car), then the link for chats, and the code
- *  small for reading aloud. */
+/** QR first (scan it in the car), with the code small for reading aloud, on
+ *  one soft block; then the link for chats, as pills and the line under them. */
 export function CarlistSharePanel({ code }: { code: string }) {
   const link = joinLinkFor(code);
   const share = async () => {
@@ -58,21 +58,23 @@ export function CarlistSharePanel({ code }: { code: string }) {
   };
   return (
     <div data-testid="carlist-share" className="flex flex-col items-center gap-block text-center">
-      <QrCode value={link} />
-      <div>
-        <div className="text-sm font-semibold">Scan with the phone camera to join</div>
-        <div className="mt-inset text-xs text-muted-foreground">
-          or type the code{' '}
-          <span data-testid="share-code" className="font-mono font-bold tracking-widest text-foreground">
-            {code}
-          </span>
+      <div data-testid="carlist-share-card" className="flex w-full flex-col items-center gap-block rounded-[18px] bg-card p-block">
+        <QrCode value={link} />
+        <div>
+          <div className="text-sm font-semibold">Scan with the phone camera to join</div>
+          <div className="mt-inset text-xs text-muted-foreground">
+            or type the code{' '}
+            <span data-testid="share-code" className="font-mono font-bold tracking-widest text-foreground">
+              {code}
+            </span>
+          </div>
         </div>
       </div>
       <div className="flex w-full gap-cluster">
-        <Button variant="ember" className="h-10 flex-1" onClick={() => void copyJoinLink(code)}>
+        <Button variant="ember" className="h-10 flex-1 rounded-full" onClick={() => void copyJoinLink(code)}>
           <CopyIcon /> Copy link
         </Button>
-        <Button variant="outline" className="h-10" onClick={() => void share()}>
+        <Button variant="secondary" className="h-10 rounded-full" onClick={() => void share()}>
           <ShareIcon /> Share
         </Button>
       </div>

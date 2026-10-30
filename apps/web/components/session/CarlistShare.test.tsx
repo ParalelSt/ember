@@ -23,6 +23,37 @@ describe('CarlistSharePanel', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(link));
     expect(toast.success).toHaveBeenCalledWith('Join link copied');
   });
+
+  it('the QR, heading and code sit on a soft block; the link and pills sit under it', () => {
+    render(<CarlistSharePanel code="K7MPQ4" />);
+    const card = screen.getByTestId('carlist-share-card');
+    expect(card).toHaveClass('bg-card', 'rounded-[18px]');
+    expect(card).toContainElement(screen.getByTestId('qr'));
+    expect(card).toContainElement(screen.getByTestId('share-code'));
+    expect(card).toHaveTextContent('Scan with the phone camera to join');
+    expect(card).not.toContainElement(screen.getByTestId('share-link'));
+
+    const copy = screen.getByRole('button', { name: /Copy link/ });
+    const share = screen.getByRole('button', { name: /Share/ });
+    expect(card).not.toContainElement(copy);
+    expect(copy).toHaveClass('rounded-full');
+    expect(share).toHaveClass('rounded-full');
+    expect(share).toHaveClass('bg-secondary');
+    expect(share).not.toHaveClass('border-border');
+  });
+
+  it('Share hands the link to the system sheet, and falls back to copying', async () => {
+    const shareFn = vi.fn().mockRejectedValue(new Error('no'));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'share', { value: shareFn, configurable: true });
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(<CarlistSharePanel code="K7MPQ4" />);
+    const link = `${window.location.origin}/session/join/K7MPQ4`;
+    fireEvent.click(screen.getByRole('button', { name: /Share/ }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(link));
+    expect(shareFn).toHaveBeenCalledWith({ title: 'Join my carlist', url: link });
+    Reflect.deleteProperty(navigator, 'share');
+  });
 });
 
 describe('QrCode', () => {
