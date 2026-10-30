@@ -121,17 +121,15 @@ export default function SettingsProfile() {
 
       <PrivacyToggles />
 
-      <div className="mt-12 pt-6 border-t border-border">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Account</h3>
-        <Button
+      <div className="mt-12 overflow-hidden rounded-md bg-card">
+        <button
           type="button"
-          variant="ghost"
           onClick={() => void signOut()}
-          className="mt-3 text-destructive hover:text-destructive hover:bg-destructive/10"
+          className="flex w-full items-center gap-row px-block py-row text-left text-sm font-semibold text-destructive transition-colors hover:bg-destructive/10"
         >
           <LogOutIcon className="h-4 w-4" />
           Sign out
-        </Button>
+        </button>
       </div>
     </div>
   );

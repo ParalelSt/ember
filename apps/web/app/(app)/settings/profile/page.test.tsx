@@ -5,6 +5,7 @@ import SettingsProfile from './page';
 const auth = vi.hoisted(() => ({
   user: { id: 'u1', email: 'robin@ember.test' } as { id: string; email: string } | null,
   name: 'Robin' as string | null,
+  signOut: vi.fn(),
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuth: () => ({
@@ -12,7 +13,7 @@ vi.mock('@/components/providers/AuthProvider', () => ({
     name: auth.name,
     avatarUrl: '/pb/api/files/users/u1/avatar.png',
     refresh: vi.fn(),
-    signOut: vi.fn(),
+    signOut: auth.signOut,
   }),
 }));
 const api = vi.hoisted(() => ({ updateProfile: vi.fn(async () => ({})) }));
@@ -79,5 +80,16 @@ describe('SettingsProfile name, opened before the account is known', () => {
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(api.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ name: '' })));
+  });
+
+  it('signs out from a full-width red row in its own block, with no Account heading', () => {
+    render(<SettingsProfile />);
+    const row = screen.getByRole('button', { name: 'Sign out' });
+    expect(row.className).toContain('w-full');
+    expect(row.className).toContain('text-destructive');
+    expect(row.parentElement?.className).toContain('bg-card');
+    expect(screen.queryByText('Account')).toBeNull();
+    fireEvent.click(row);
+    expect(auth.signOut).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,10 +10,11 @@ import { clearAllDownloads, downloadPlaylist, pinList } from '@/lib/offline';
 import { refFromPinId } from '@/lib/collections';
 import { nativeRetry, useNativeOfflinePresent } from '@/lib/offlineNative';
 import { QK } from '@/hooks/useLibrary';
-import { formatBytes, formatCount } from '@/lib/format';
+import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import type { PinStatus } from '@/lib/offlineNative';
 import type { Track } from '@/types/track';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { StorageBar } from '@/components/settings/StorageBar';
 import { AutoCacheSettings } from '@/components/settings/AutoCacheSettings';
 
 /** What the user can do about a pin that failed for good. The native side
@@ -30,6 +31,7 @@ export default function DownloadsSettingsPage() {
   const totalBytes = useOfflineStore((s) => s.totalBytes);
   const [pendingClear, setPendingClear] = useState(false);
   const qc = useQueryClient();
+  const cacheBytes = useAutoCacheStore((s) => s.stats.bytes);
   const native = useNativeOfflinePresent();
   const count = native ? pins.length : downloaded.length;
 
@@ -75,11 +77,7 @@ export default function DownloadsSettingsPage() {
         </p>
       </header>
 
-      <div className="rounded-md bg-card px-4 py-3">
-        <div className="text-2xl font-bold tabular-nums">{formatBytes(totalBytes)}</div>
-        <div className="text-meta">
-          Across {formatCount(count, 'pin')}
-        </div>
+      <StorageBar downloadsBytes={totalBytes} cacheBytes={cacheBytes} canEstimate={!native} />
       </div>
 
       {native && pins.length > 0 && (
