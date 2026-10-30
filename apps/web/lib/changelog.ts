@@ -26,6 +26,16 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'update-confirm-fix',
+    version: '0.7.36',
+    date: '2026-10-30',
+    title: 'Updates finish properly',
+    summary: 'Updating when you open the app no longer says it failed after you confirm.',
+    bullets: [
+      'Android: updates no longer say "Couldn\'t update" after you confirm the install when opening the app.',
+    ],
+  },
+  {
     id: 'device-versions',
     version: '0.7.35',
     date: '2026-10-30',
