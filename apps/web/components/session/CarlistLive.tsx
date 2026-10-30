@@ -2,10 +2,18 @@
 
 import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ActionSheet, ActionSheetItem, type MenuAction } from '@/components/ui/action-sheet';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Avatar } from '@/components/primitives/Avatar';
 import { Artwork } from '@/components/primitives/Artwork';
 import { SectionHeader } from '@/components/page/SectionHeader';
-import { CheckIcon, MusicIcon, NextIcon, PlusIcon } from '@/components/icons';
+import { CheckIcon, ListPlusIcon, MusicIcon, NextIcon, PlusIcon } from '@/components/icons';
 import { personLabel, whosePhone, type AddPosition } from '@/lib/carlist';
 import { cn } from '@/lib/utils';
 import type { PlaylistPerson, SessionQueueItem, SessionState, Track } from '@/types/track';
@@ -51,7 +59,9 @@ export function FaceStack({ people, viewerId }: { people: PlaylistPerson[]; view
   );
 }
 
-/** The add control on a search result: Add, then Play next or Add to end. */
+/** The add control on a search result: a round + that opens a menu with
+ *  Play next and Add to end (a dropdown on desktop, a bottom sheet with the
+ *  song on top on a phone, like the song's ⋯ menu). */
 export function AddChoice({
   track,
   isAdded,
@@ -63,7 +73,8 @@ export function AddChoice({
   busy?: boolean;
   onAdd: (position: AddPosition) => void;
 }) {
-  const [asking, setAsking] = useState(false);
+  const isDesktop = useIsDesktop();
+  const [open, setOpen] = useState(false);
   if (isAdded) {
     return (
       <span className="inline-flex h-8 shrink-0 items-center gap-inset px-cluster text-sm text-muted-foreground">
@@ -71,42 +82,104 @@ export function AddChoice({
       </span>
     );
   }
-  if (asking) {
+  const actions: MenuAction[] = [
+    {
+      key: 'next',
+      label: 'Play next',
+      description: 'Right after the current song',
+      ariaLabel: `Play ${track.title} next`,
+      icon: NextIcon,
+      onSelect: () => onAdd('next'),
+    },
+    {
+      key: 'end',
+      label: 'Add to end',
+      description: 'After everything in the list',
+      ariaLabel: `Add ${track.title} to the end`,
+      icon: ListPlusIcon,
+      onSelect: () => onAdd('end'),
+    },
+  ];
+  // 44px hit area around a 32px round button.
+  const triggerClass = 'group grid size-11 shrink-0 place-items-center rounded-full outline-none disabled:opacity-50';
+  const plus = (
+    <span className="grid size-8 place-items-center rounded-full border border-border text-foreground transition-colors group-hover:bg-accent group-focus-visible:ring-2 group-focus-visible:ring-ring">
+      <PlusIcon className="size-4" />
+    </span>
+  );
+
+  if (!isDesktop) {
+    const header = (
+      <div className="flex min-w-0 items-center gap-row text-left">
+        <Artwork src={track.artworkUrl} className="size-12 shrink-0 rounded-md bg-art">
+          <div className="grid h-full w-full place-items-center text-foreground/30">
+            <MusicIcon className="h-5 w-5" />
+          </div>
+        </Artwork>
+        <div className="min-w-0">
+          <div className="truncate text-base font-semibold">{track.title}</div>
+          <div className="truncate text-sm text-muted-foreground">{track.artist}</div>
+        </div>
+      </div>
+    );
     return (
-      <span className="flex shrink-0 gap-inset" data-testid="add-choice">
-        <Button
-          size="sm"
-          variant="ember"
-          className="h-8 px-cluster text-xs"
+      <>
+        <button
+          type="button"
+          className={triggerClass}
+          aria-label={`Add ${track.title}`}
+          aria-haspopup="dialog"
           disabled={busy}
-          onClick={() => onAdd('next')}
-          aria-label={`Play ${track.title} next`}
+          onClick={() => setOpen(true)}
         >
-          Play next
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 px-cluster text-xs"
-          disabled={busy}
-          onClick={() => onAdd('end')}
-          aria-label={`Add ${track.title} to the end`}
-        >
-          Add to end
-        </Button>
-      </span>
+          {plus}
+        </button>
+        <ActionSheet open={open} onOpenChange={setOpen} title={`Add ${track.title}`} header={header}>
+          <span data-testid="add-choice" className="flex flex-col">
+            {actions.map((a) => (
+              <ActionSheetItem
+                key={a.key}
+                icon={a.icon}
+                description={a.description}
+                ariaLabel={a.ariaLabel}
+                disabled={busy}
+                onSelect={() => {
+                  setOpen(false);
+                  a.onSelect();
+                }}
+              >
+                {a.label}
+              </ActionSheetItem>
+            ))}
+          </span>
+        </ActionSheet>
+      </>
     );
   }
+
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      className="h-8 shrink-0 gap-inset"
-      aria-label={`Add ${track.title}`}
-      onClick={() => setAsking(true)}
-    >
-      <PlusIcon className="size-3.5" /> Add
-    </Button>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger className={triggerClass} aria-label={`Add ${track.title}`} disabled={busy}>
+        {plus}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64" data-testid="add-choice">
+        {actions.map((a) => (
+          <DropdownMenuItem
+            key={a.key}
+            aria-label={a.ariaLabel}
+            disabled={busy}
+            onClick={a.onSelect}
+            className="items-start gap-row px-row py-cluster"
+          >
+            <a.icon className="size-4 text-muted-foreground" />
+            <span className="min-w-0">
+              <span className="block text-sm">{a.label}</span>
+              <span className="block text-xs text-muted-foreground">{a.description}</span>
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

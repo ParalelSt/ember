@@ -9,6 +9,9 @@ import type { SessionState, Track } from '@/types/track';
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), message: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
 
+vi.mock('@/components/ui/dropdown-menu', () => import('@/test-utils/dropdownMenuMock'));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 const midnight: Track = {
   id: 'youtube:ddddddddddd',
   source: 'youtube',
@@ -87,7 +90,7 @@ describe('/session/[id] adding a song', () => {
     mutateAsync.mockResolvedValue({ ok: true, position: 'next', ahead: 0 });
     await open();
     fireEvent.click(screen.getByRole('button', { name: 'Add Midnight City' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Play Midnight City next' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Play Midnight City next' }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Added "Midnight City", plays next'));
     expect(mutateAsync).toHaveBeenCalledWith({ track: midnight, position: 'next' });
   });
@@ -96,7 +99,7 @@ describe('/session/[id] adding a song', () => {
     mutateAsync.mockResolvedValue({ ok: true, position: 'end', ahead: 3 });
     await open();
     fireEvent.click(screen.getByRole('button', { name: 'Add Midnight City' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add Midnight City to the end' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add Midnight City to the end' }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Added "Midnight City", 4th in line'));
     expect(mutateAsync).toHaveBeenCalledWith({ track: midnight, position: 'end' });
   });
@@ -105,7 +108,7 @@ describe('/session/[id] adding a song', () => {
     mutateAsync.mockRejectedValue(new Error('nope'));
     await open();
     fireEvent.click(screen.getByRole('button', { name: 'Add Midnight City' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Play Midnight City next' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Play Midnight City next' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
   });
 

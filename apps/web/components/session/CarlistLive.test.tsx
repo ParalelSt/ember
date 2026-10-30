@@ -1,7 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { AddChoice, CarlistLive, type CarlistLiveProps } from './CarlistLive';
+import type { CarlistLiveProps } from './CarlistLive';
 import type { SessionState, Track } from '@/types/track';
+
+vi.mock('@/components/ui/dropdown-menu', () => import('@/test-utils/dropdownMenuMock'));
+const screenSize = vi.hoisted(() => ({ desktop: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => screenSize.desktop }));
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ open, children }: { open: boolean; children?: unknown }) => (open ? <div>{children as never}</div> : null),
+  SheetContent: ({ children }: { children?: unknown }) => <div role="dialog">{children as never}</div>,
+  SheetHeader: ({ children }: { children?: unknown }) => <div>{children as never}</div>,
+  SheetTitle: ({ children }: { children?: unknown }) => <h2>{children as never}</h2>,
+}));
+
+const { AddChoice, CarlistLive } = await import('./CarlistLive');
 
 const track = (id: string, title: string, artist: string): Track => ({
   id: `youtube:${id}`,
@@ -150,15 +162,45 @@ describe('CarlistLive: the bottom (queue and add)', () => {
 describe('AddChoice', () => {
   const t = track('d', 'Midnight City', 'M83');
 
-  it('Add, then Play next or Add to end', () => {
+  it('desktop: a round + opens a menu with Play next and Add to end, each with help', () => {
+    screenSize.desktop = true;
     const onAdd = vi.fn();
     render(<AddChoice track={t} isAdded={false} onAdd={onAdd} />);
     expect(screen.queryByTestId('add-choice')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Add Midnight City' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Play Midnight City next' }));
+    const menu = screen.getByRole('menu');
+    expect(menu).toHaveTextContent('Right after the current song');
+    expect(menu).toHaveTextContent('After everything in the list');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Play Midnight City next' }));
     expect(onAdd).toHaveBeenLastCalledWith('next');
-    fireEvent.click(screen.getByRole('button', { name: 'Add Midnight City to the end' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Midnight City' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add Midnight City to the end' }));
     expect(onAdd).toHaveBeenLastCalledWith('end');
+  });
+
+  it('phone: a bottom sheet with the song on top; a row runs and closes it', () => {
+    screenSize.desktop = false;
+    const onAdd = vi.fn();
+    render(<AddChoice track={t} isAdded={false} onAdd={onAdd} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Midnight City' }));
+    const sheet = screen.getByRole('dialog');
+    expect(sheet).toHaveTextContent('Midnight City');
+    expect(sheet).toHaveTextContent('M83');
+    expect(sheet).toHaveTextContent('Right after the current song');
+    expect(sheet).toHaveTextContent('After everything in the list');
+    fireEvent.click(screen.getByRole('button', { name: 'Add Midnight City to the end' }));
+    expect(onAdd).toHaveBeenCalledWith('end');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    screenSize.desktop = true;
+  });
+
+  it('busy: the + is disabled', () => {
+    screenSize.desktop = true;
+    render(<AddChoice track={t} isAdded busy={false} onAdd={vi.fn()} />);
+    expect(screen.queryByRole('button')).toBeNull();
+    render(<AddChoice track={t} isAdded={false} busy onAdd={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Add Midnight City' })).toBeDisabled();
   });
 
   it('already in the carlist: Added, no choice', () => {

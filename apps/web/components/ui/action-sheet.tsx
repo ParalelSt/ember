@@ -12,6 +12,10 @@ export interface MenuAction {
   icon: ComponentType<{ className?: string }>;
   onSelect: () => void;
   destructive?: boolean;
+  /** Optional line of help under the label. */
+  description?: string;
+  /** Accessible name when it should differ from the label. */
+  ariaLabel?: string;
 }
 
 /** The phone's ⋯ menu (owner's popups1 pick): a sheet up from the bottom with
@@ -59,6 +63,8 @@ export function ActionSheetItem({
   disabled,
   trailing,
   testId,
+  description,
+  ariaLabel,
 }: {
   icon?: ComponentType<{ className?: string }>;
   children: ReactNode;
@@ -67,11 +73,15 @@ export function ActionSheetItem({
   disabled?: boolean;
   trailing?: ReactNode;
   testId?: string;
+  /** A line of help under the label. */
+  description?: string;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       data-testid={testId}
+      aria-label={ariaLabel}
       onClick={onSelect}
       disabled={disabled}
       className={cn(
@@ -83,7 +93,14 @@ export function ActionSheetItem({
       {Icon && (
         <Icon className={cn('h-5 w-5 shrink-0', tone ? 'text-current' : 'text-muted-foreground')} />
       )}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {description ? (
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{children}</span>
+          <span className="block truncate text-xs font-normal text-muted-foreground">{description}</span>
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1 truncate">{children}</span>
+      )}
       {trailing}
     </button>
   );
