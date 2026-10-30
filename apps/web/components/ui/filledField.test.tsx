@@ -9,8 +9,8 @@ const read = (rel: string) => readFileSync(join(__dirname, '..', '..', rel), 'ut
 const classes = (el: HTMLElement) => el.className.split(/\s+/);
 
 describe.each([
-  ['Input', Input, 'textbox'],
-  ['Textarea', Textarea, 'textbox'],
+  ['Input', Input],
+  ['Textarea', Textarea],
 ] as const)('%s, the Filled text box', (_name, Field) => {
   const renderField = (className?: string) => {
     render(<Field aria-label="f" className={className} />);
