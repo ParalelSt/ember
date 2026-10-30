@@ -14,6 +14,7 @@ import type { TabSummary } from '@/lib/tabSources';
 import type { RadioStation } from '@/lib/radio/station';
 import type { NativeDevice } from '@/lib/logger/nativeLog';
 import type { NativeSurface } from '@/lib/logger/types';
+import type { DevicePlatform } from '@/lib/versions/label';
 import type { TabTiming } from '@/lib/tabSync';
 import type { StoredPlugins } from '@/lib/pluginSettings';
 import type { NavPatch, NavPrefs } from '@/lib/navPlaylists';
@@ -31,6 +32,19 @@ import type {
   PresenceReport,
 } from '@/lib/pranks/types';
 
+/** One device of a member on the admin Users page (lib/versions/store.ts). */
+export interface AdminDevice {
+  id: string;
+  platform: DevicePlatform;
+  shellVersion: string | null;
+  webVersion: string | null;
+  lastSeen: string;
+  newestShell: string | null;
+  newestWeb: string | null;
+  shellBehind: boolean;
+  webBehind: boolean;
+}
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -38,6 +52,7 @@ export interface AdminUser {
   avatarUrl: string | null;
   isAdmin: boolean;
   created: string;
+  devices: AdminDevice[];
 }
 
 export interface AdminTrack extends Track {

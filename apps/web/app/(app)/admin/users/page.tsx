@@ -20,6 +20,7 @@ import type { AdminUser } from '@/lib/api';
 import { pbDateLabel } from '@/lib/pocketbase/dates';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/page/EmptyState';
+import { UserDevices } from '@/components/admin/UserDevices';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function AdminUsersPage() {
@@ -259,6 +260,7 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassw
           </Button>
         </div>
       </div>
+      <UserDevices email={user.email} devices={user.devices} />
     </div>
   );
 }
