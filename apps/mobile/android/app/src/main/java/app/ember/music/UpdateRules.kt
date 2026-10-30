@@ -251,4 +251,13 @@ object UpdateRules {
         silent -> "Ember update ready" to "Installs when you're parked and the music is stopped"
         else -> "Ember update ready" to "Once you're parked, open Ember on your phone to install"
     }
+
+    /** Whether an install with no answer from Android ends now, back to
+     *  "tap to install". [force]: the 60 s limit. Otherwise only after a
+     *  confirm screen this run opened, and not for the launch gate
+     *  ([gateInstall]): there, leaving that screen is not a failure and the
+     *  real answer (UpdateInstallReceiver) or the limit decides. Settings
+     *  has no such wait, so it shows the Install button again at once. */
+    fun unstickNow(force: Boolean, confirmShown: Boolean, gateInstall: Boolean): Boolean =
+        force || (confirmShown && !gateInstall)
 }

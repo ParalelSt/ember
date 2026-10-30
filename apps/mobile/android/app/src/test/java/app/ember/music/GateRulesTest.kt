@@ -360,4 +360,46 @@ class GateRulesTest {
         val src = java.io.File("src/main/java/app/ember/music/GateRules.kt").readText()
         assertFalse(src.contains('\u2014'))
     }
+
+    // Android's confirm screen over the gate (first install not from Ember).
+    private fun installing(): Machine {
+        val m = Machine(recovery = false, resumed = true)
+        m.handle(Input.Checked(Offer("0.4.23", false, null, null), ready = true))
+        m.handle(Input.UpdateNow)
+        assertEquals(Phase.Installing, m.phase)
+        return m
+    }
+
+    @Test fun `returning from the confirm screen keeps Installing`() {
+        val m = installing()
+        m.handle(Input.Resumed(false))
+        m.handle(Input.Resumed(true))
+        // AppUpdater stays "installing" now, and says nothing new.
+        assertNull(GateRules.fromUpdater(m.phase, "installing", null, null))
+        assertEquals(Phase.Installing, m.phase)
+    }
+
+    @Test fun `a real failure from the receiver gives Couldn't update, then the app opens`() {
+        val m = installing()
+        assertEquals(Input.InstallFailed, GateRules.fromUpdater(m.phase, "ready", "tap", null))
+        m.handle(Input.InstallFailed)
+        assertEquals(Phase.Failed, m.phase)
+        assertTrue(Effect.EnterApp in m.handle(Input.FailedTimeout))
+    }
+
+    @Test fun `cancelling on Android's screen (aborted) is an answer that ends the wait`() {
+        // onInstallFailed(aborted, keep) publishes READY with waiting "tap".
+        val m = installing()
+        m.handle(GateRules.fromUpdater(m.phase, "ready", "tap", null)!!)
+        assertEquals(Phase.Failed, m.phase)
+        assertTrue(Effect.EnterApp in m.handle(Input.FailedTimeout))
+    }
+
+    @Test fun `the 60 s limit ends the wait and the gate opens the app`() {
+        // unstick(force) publishes READY with waiting "tap".
+        val m = installing()
+        m.handle(GateRules.fromUpdater(m.phase, "ready", "tap", null)!!)
+        assertTrue(Effect.EnterApp in m.handle(Input.FailedTimeout))
+        assertEquals(Phase.Done, m.phase)
+    }
 }

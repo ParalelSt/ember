@@ -292,10 +292,8 @@ class LaunchGateActivity : ComponentActivity() {
 
     override fun onDestroy() {
         main.removeCallbacks(ticker)
-        if (askingNotifications) {
-            askingNotifications = false
-            AppUpdater.releaseGateHold()
-        }
+        askingNotifications = false
+        AppUpdater.releaseGateHold()
         AppUpdater.removeListener(updaterListener)
         super.onDestroy()
     }

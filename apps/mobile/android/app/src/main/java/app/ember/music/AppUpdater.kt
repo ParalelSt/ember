@@ -148,6 +148,9 @@ object AppUpdater {
      *  re-evaluation, still "ready") say so, so the gate does not read them
      *  as the install having failed. */
     @Volatile private var gatePending = false
+    /** The current install was asked for by the launch gate, which waits for
+     *  the real answer instead of reading a left confirm screen as failure. */
+    @Volatile private var gateInstall = false
     private var activity: WeakReference<Activity>? = null
     private var lastDecision: UpdateRules.Decision? = null
     private val idleCheck = Runnable { evaluate(false) }
@@ -173,7 +176,7 @@ object AppUpdater {
      *  installFromGate: states published meanwhile are from before the
      *  install too. Released when the gate goes away without installing. */
     fun holdForGate() { gatePending = true }
-    fun releaseGateHold() { gatePending = false }
+    fun releaseGateHold() { gatePending = false; gateInstall = false }
 
     /** A version refused for good (UpdateRules.isPermanent), if any. */
     fun rejectedVersion(): String? = prefs().getString(KEY_REJECTED, null)
@@ -186,6 +189,7 @@ object AppUpdater {
     fun installFromGate(a: Activity): Boolean {
         if (readyVersion() == null) return false
         gatePending = true
+        gateInstall = true
         attachActivity(a)
         UpdatePresence.setForeground(true)
         var tries = 0
@@ -430,6 +434,7 @@ object AppUpdater {
         GateHistory.installStarted(app)
         main.post {
             autoBlocked = false
+            gateInstall = false
             val confirm = pendingConfirm
             if (confirm != null && UpdatePresence.foreground && !carSession() && launch(confirm)) {
                 // Kept: a Back out of the screen can be followed by another tap.
@@ -524,8 +529,9 @@ object AppUpdater {
     private fun unstick(force: Boolean) {
         val r = ready ?: return
         if (status != Status.INSTALLING) return
-        if (!force && !confirmShown) return
+        if (!UpdateRules.unstickNow(force, confirmShown, gateInstall)) return
         confirmShown = false
+        gateInstall = false
         main.removeCallbacks(stuckCheck)
         autoBlocked = true
         lastDecision = UpdateRules.Decision.ASK_USER
@@ -566,6 +572,7 @@ object AppUpdater {
             prefs().edit().remove(KEY_INSTALLING).apply()
             main.removeCallbacks(stuckCheck)
             confirmShown = false
+            gateInstall = false
             autoBlocked = true
             pendingConfirm = null
             if (aborted) log.info("update.declined", "install of ${r?.version} not confirmed")

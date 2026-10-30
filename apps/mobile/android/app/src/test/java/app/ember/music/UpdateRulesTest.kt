@@ -219,4 +219,19 @@ class UpdateRulesTest {
         assertFalse(UpdateRules.askNotificationsFirst(sdk = 35, granted = true))
         assertFalse(UpdateRules.askNotificationsFirst(sdk = 32, granted = false))
     }
+
+    @Test fun `Settings drops back to tap to install as soon as the confirm screen is left`() {
+        assertTrue(UpdateRules.unstickNow(force = false, confirmShown = true, gateInstall = false))
+        assertFalse(UpdateRules.unstickNow(force = false, confirmShown = false, gateInstall = false))
+    }
+
+    @Test fun `the launch gate waits for Android's answer after the confirm screen`() {
+        assertFalse(UpdateRules.unstickNow(force = false, confirmShown = true, gateInstall = true))
+    }
+
+    @Test fun `past the 60 s limit the wait ends for the gate and for Settings`() {
+        assertTrue(UpdateRules.unstickNow(force = true, confirmShown = true, gateInstall = true))
+        assertTrue(UpdateRules.unstickNow(force = true, confirmShown = false, gateInstall = true))
+        assertTrue(UpdateRules.unstickNow(force = true, confirmShown = false, gateInstall = false))
+    }
 }
