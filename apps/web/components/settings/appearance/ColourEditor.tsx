@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { ColourRow } from '@/components/settings/appearance/ColourRow';
+import { ColourRow, ColourSwatch } from '@/components/settings/appearance/ColourRow';
 import { ReadabilityNotes } from '@/components/settings/appearance/ReadabilityNotes';
 import type { Finding } from '@/lib/theme/guard';
 import type { Oklch } from '@/lib/theme/oklch';
@@ -47,12 +47,21 @@ export interface ColourEditorProps {
   onCopy?: () => void;
 }
 
-/** The Colours tab: Basics (background, accent, text), More (the other
- *  five, auto-filled until touched), the readability findings, and Reset to
- *  the preset the theme started from. */
+/** 3 across, 2 on a narrow phone. */
+const GRID = 'grid grid-cols-2 gap-cluster min-[360px]:grid-cols-3';
+
+/** The Colours tab: Basics (background, accent, text) and More (the other
+ *  five, auto-filled until touched) as grids of swatches, the selected one's
+ *  controls under them (one place, so the grids never jump when the selection
+ *  moves between groups), the readability findings, and Reset to the preset
+ *  the theme started from. Someone else's theme can still be looked through,
+ *  with the controls read-only. */
 export function ColourEditor(props: ColourEditorProps) {
   const { inputs, pinned, findings, owner, hint, baseName, canReset } = props;
   const [confirming, setConfirming] = useState(false);
+  const [selected, setSelected] = useState<ThemeInputKey>('background');
+  const selectedMore = MORE.find((m) => m.key === selected);
+  const selectedLabel = selectedMore?.label ?? BASICS.find((b) => b.key === selected)?.label ?? '';
   const readOnly = !!owner || !!props.readOnly;
 
   return (
@@ -73,32 +82,47 @@ export function ColourEditor(props: ColourEditorProps) {
 
       <div className="flex flex-col gap-row">
         <div className="text-eyebrow">Basics</div>
-        {BASICS.map(({ key, label }) => (
-          <ColourRow
-            key={key}
-            name={key}
-            label={label}
-            value={inputs[key]}
-            readOnly={readOnly}
-            onChange={(v) => props.onChange(key, v)}
-          />
-        ))}
+        <div className={GRID}>
+          {BASICS.map(({ key, label }) => (
+            <ColourSwatch
+              key={key}
+              label={label}
+              value={inputs[key]}
+              selected={selected === key}
+              onSelect={() => setSelected(key)}
+            />
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-col gap-row">
         <div className="text-eyebrow">More</div>
-        {MORE.map(({ key, label }) => (
-          <ColourRow
-            key={key}
-            name={key}
-            label={label}
-            value={inputs[key]}
-            auto={!pinned.has(key)}
-            readOnly={readOnly}
-            onChange={(v) => props.onChange(key, v)}
-            onReset={() => props.onUnpin(key)}
-          />
-        ))}
+        <div className={GRID}>
+          {MORE.map(({ key, label }) => (
+            <ColourSwatch
+              key={key}
+              label={label}
+              value={inputs[key]}
+              auto={!pinned.has(key)}
+              selected={selected === key}
+              onSelect={() => setSelected(key)}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div id="colour-panel" data-testid="colour-panel" className="rounded-xl bg-card p-row">
+        {/* Keyed: a half-typed hex belongs to its own colour. */}
+        <ColourRow
+          key={selected}
+          name={selected}
+          label={selectedLabel}
+          value={inputs[selected]}
+          auto={selectedMore ? !pinned.has(selectedMore.key) : undefined}
+          readOnly={readOnly}
+          onChange={(v) => props.onChange(selected, v)}
+          onReset={selectedMore ? () => props.onUnpin(selectedMore.key) : undefined}
+        />
       </div>
 
       <ReadabilityNotes findings={findings} readOnly={readOnly} onFix={props.onFix} />

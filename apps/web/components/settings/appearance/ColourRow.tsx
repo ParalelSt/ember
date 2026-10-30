@@ -17,7 +17,48 @@ export interface ColourRowProps {
   onReset?: () => void;
 }
 
-/** One colour: the native picker as the swatch, a hex field (checked when
+export interface ColourSwatchProps {
+  label: string;
+  value: Oklch;
+  /** More colours only: true while following the Basics. */
+  auto?: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}
+
+/** One big swatch of the grid, with its name under it. A plain button, so
+ *  Tab, Enter and Space work. The ember outline (kept apart from the colour
+ *  by its offset, as the colour may be ember too) and the stronger name mark
+ *  the selected one; the hairline keeps a swatch visible on a page of its
+ *  own colour. */
+export function ColourSwatch({ label, value, auto, selected, onSelect }: ColourSwatchProps) {
+  return (
+    <button
+      type="button"
+      data-testid="colour-swatch"
+      aria-label={auto ? `${label}, auto` : label}
+      aria-pressed={selected}
+      aria-controls="colour-panel"
+      onClick={onSelect}
+      className="flex min-w-0 flex-col gap-cluster rounded-xl p-inset text-center outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          'block h-16 w-full rounded-xl border border-border bg-(--swatch)',
+          selected && 'outline-2 outline-offset-2 outline-ember',
+        )}
+        style={{ ['--swatch' as string]: oklchToHex(value) }}
+      />
+      <span className={cn('min-w-0 text-xs', selected ? 'font-semibold text-foreground' : 'text-muted-foreground')}>
+        <span className="block truncate">{label}</span>
+        {auto && <span className="block font-normal text-muted-foreground">Auto</span>}
+      </span>
+    </button>
+  );
+}
+
+/** One colour's controls, under the grid: the native picker, a hex field (checked when
  *  it loses focus or on Enter) and, for a More row, an Auto / Reset pill. */
 export function ColourRow({ name, label, value, auto, readOnly, onChange, onReset }: ColourRowProps) {
   const hex = oklchToHex(value);

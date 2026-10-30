@@ -117,7 +117,12 @@ function start(doc: ThemeDoc = DEFAULT_THEME) {
 }
 
 const tab = (name: string) => fireEvent.click(screen.getByRole('tab', { name }));
-const hexField = (label: string) => screen.getByLabelText(`${label} hex`) as HTMLInputElement;
+const swatch = (label: string) => screen.getByRole('button', { name: new RegExp(`^${label}(, auto)?$`) });
+/** A colour's hex field: only the selected swatch has its controls up. */
+const hexField = (label: string) => {
+  fireEvent.click(swatch(label));
+  return screen.getByLabelText(`${label} hex`) as HTMLInputElement;
+};
 function typeHex(label: string, hex: string) {
   const field = hexField(label);
   fireEvent.change(field, { target: { value: hex } });
@@ -153,7 +158,8 @@ describe('Settings > Appearance', () => {
     expect(await screen.findByTestId('theme-count')).toHaveTextContent('0 of 20');
 
     tab('Colours');
-    expect(screen.getAllByTestId('colour-row')).toHaveLength(8);
+    expect(screen.getAllByTestId('colour-swatch')).toHaveLength(8);
+    expect(screen.getAllByTestId('colour-row')).toHaveLength(1);
     expect(screen.queryByRole('switch')).toBeNull();
   });
 
@@ -438,7 +444,7 @@ describe('Settings > Appearance', () => {
       expect(screen.queryByTestId('apply-bar')).toBeNull();
 
       // Pin Surface by hand; a Background change leaves it alone.
-      const pill = () => screen.getByRole('button', { name: /Surface/ });
+      const pill = () => screen.getByRole('button', { name: /Surface (follows|to follow)/ });
       expect(pill()).toHaveTextContent('Auto');
       typeHex('Surface', '#404040');
       expect(pill()).toHaveTextContent('Reset');
@@ -522,7 +528,7 @@ describe('Settings > Appearance', () => {
       const before = hexField('Text').value;
       typeHex('Text', 'purple');
       expect(screen.getByText('Use a colour like #1a2b3c.')).toBeInTheDocument();
-      expect(hexField('Text').value).toBe(before);
+      expect((screen.getByLabelText('Text hex') as HTMLInputElement).value).toBe(before);
     });
   });
 
