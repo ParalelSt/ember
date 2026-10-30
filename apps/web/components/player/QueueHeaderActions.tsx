@@ -2,12 +2,15 @@
 
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ShuffleIcon, TrashIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
-/** The buttons' look, in one place: the owner picks their final style
- *  separately (plain small pills until then). */
-const PILL =
-  'inline-flex h-6 items-center rounded-full border border-sidebar-border px-cluster text-[11px] font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40';
+/** The owner's "Icons only" pick: a 30px round icon button, muted until
+ *  hovered, then the foreground colour on a soft round fill. The `after:`
+ *  box grows the hit area to 44px (phone sized) without changing what is
+ *  drawn. */
+const ICON_BTN =
+  'relative inline-flex size-7.5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 after:absolute after:-inset-[7px]';
 
 /** Beside "Next up · N" (owner's pick "B. Clear and Shuffle"): Clear empties
  *  Next up after asking, Shuffle puts it in a random order once. The song
@@ -27,11 +30,11 @@ export function QueueHeaderActions({
   const [confirming, setConfirming] = useState(false);
   return (
     <div data-testid="queue-header-actions" className={cn('flex shrink-0 items-center gap-inset', className)}>
-      <button type="button" className={PILL} onClick={() => setConfirming(true)} disabled={count === 0} aria-label="Clear Next up">
-        Clear
+      <button type="button" className={ICON_BTN} onClick={onShuffle} disabled={count < 2} aria-label="Shuffle Next up" title="Shuffle Next up">
+        <ShuffleIcon className="size-4" />
       </button>
-      <button type="button" className={PILL} onClick={onShuffle} disabled={count < 2} aria-label="Shuffle Next up">
-        Shuffle
+      <button type="button" className={ICON_BTN} onClick={() => setConfirming(true)} disabled={count === 0} aria-label="Clear Next up" title="Clear Next up">
+        <TrashIcon className="size-4" />
       </button>
       <ConfirmDialog
         open={confirming}

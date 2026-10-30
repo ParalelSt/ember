@@ -42,6 +42,18 @@ describe('QueueHeaderActions', () => {
     expect(screen.getByRole('button', { name: 'Shuffle Next up' })).toBeDisabled();
   });
 
+  it('icons only: shuffle then bin, each titled, round, with an svg and no text', () => {
+    show(3);
+    const [first, second] = within(screen.getByTestId('queue-header-actions')).getAllByRole('button');
+    expect(first).toHaveAttribute('aria-label', 'Shuffle Next up');
+    expect(second).toHaveAttribute('aria-label', 'Clear Next up');
+    for (const b of [first, second]) {
+      expect(b).toHaveAttribute('title', b.getAttribute('aria-label'));
+      expect(b.querySelector('svg')).not.toBeNull();
+      expect(b.textContent).toBe('');
+    }
+  });
+
   it('both buttons share one look, and Clear is off with nothing to clear', () => {
     show(0);
     const clear = screen.getByRole('button', { name: 'Clear Next up' });
