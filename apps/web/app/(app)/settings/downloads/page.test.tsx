@@ -8,6 +8,7 @@ import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 vi.mock('@/lib/offline', () => ({ clearAllDownloads: vi.fn(), downloadPlaylist: vi.fn(), pinList: vi.fn() }));
 vi.mock('@/lib/offlineNative', () => ({ nativeRetry: vi.fn(), useNativeOfflinePresent: () => false }));
 vi.mock('@/components/settings/AutoCacheSettings', () => ({ AutoCacheSettings: () => null }));
+vi.mock('@/components/ui/confirm-dialog', () => ({ ConfirmDialog: () => null }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 beforeEach(() => {
