@@ -4,7 +4,7 @@ import { use } from 'react';
 import { TrackList } from '@/components/track/TrackList';
 import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { useTrackActions } from '@/hooks/useTrackActions';
-import { AlbumRow } from '@/components/artist/AlbumRow';
+import { AlbumShelf } from '@/components/artist/AlbumShelf';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
 import { ActionBar } from '@/components/page/ActionBar';
@@ -72,19 +72,8 @@ function ArtistView({ id }: { id: string }) {
           </div>
         </section>
 
-        {albums.length > 0 && (
-          <section>
-            <SectionHeader title="Discography" className="mb-block" />
-            <AlbumRow albums={albums} />
-          </section>
-        )}
-
-        {singles.length > 0 && (
-          <section>
-            <SectionHeader title="Singles & EPs" className="mb-block" />
-            <AlbumRow albums={singles} />
-          </section>
-        )}
+        <AlbumShelf title="Discography" albums={albums} />
+        <AlbumShelf title="Singles & EPs" albums={singles} />
       </div>
     </div>
   );
