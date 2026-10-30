@@ -28,6 +28,8 @@ vi.mock('next/link', () => ({
 }));
 // The page's ⋯ menu is a dropdown on desktop (a sheet on a phone).
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+// The tab list is the shared sheet, whose base-ui Dialog cannot run here.
+vi.mock('@/components/ui/sheet', () => import('@/test-utils/dialogMock'));
 vi.mock('@/components/ui/dropdown-menu', () => {
   const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
   return {

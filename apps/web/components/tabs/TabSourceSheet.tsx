@@ -1,9 +1,8 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { CloseIcon, DrumIcon, TabsIcon, UploadIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { BEST_BADGE, PICK_BADGE } from '@/lib/tabPick';
@@ -12,7 +11,15 @@ import type { InstrumentChoice, VersionChoice } from '@/lib/tabChoose';
 /** Choosing a tab, instrument first (the owner's pick): what you play as
  *  tiles with how many versions each has, then that instrument's versions,
  *  best match first, with Line it up and Delete on each and Add a file
- *  under them. A side sheet on desktop, a bottom sheet on phone.
+ *  under them. The app's shared sheet: at the side on desktop, from the bottom
+ *  on phone; Escape and a tap outside close it, focus stays in it and goes back
+ *  to where it was.
+ *
+ *  Nothing on the page has to be reached with it open: a pick closes it, so the
+ *  new score is seen at once, and the song plays on behind it. Two things keep
+ *  that page in use. On desktop the scrim is clear, so the score stays readable
+ *  beside the panel, and data-player-view leaves the player's keys working
+ *  (Space, the arrows), as they did before it was a shared sheet.
  *
  *  Presentational: the tiles and rows come from lib/tabChoose.ts, actions
  *  are callbacks. */
@@ -44,8 +51,6 @@ export interface TabSourceSheetProps {
   searching?: boolean;
   /** Said when there is nothing to list. */
   emptyNote?: string;
-  /** Over the whole window (the app) or inside the nearest positioned box. */
-  position?: 'fixed' | 'absolute';
   onPick: (id: string, track: number) => void;
   onClose: () => void;
   onLineUp?: (id: string) => void;
@@ -177,130 +182,101 @@ function VersionRow({
 }
 
 export function TabSourceSheet(p: TabSourceSheetProps) {
-  const fixed = (p.position ?? 'fixed') === 'fixed';
   const chosen = p.instruments.find((i) => i.key === p.instrument) ?? null;
 
-  const body = (
-    <>
-      <div className="flex shrink-0 items-start justify-between gap-row px-block pt-block">
-        <div className="min-w-0">
-          <div className="text-eyebrow">What do you want to play?</div>
-          <div className="min-w-0 truncate font-semibold">
-            {p.title}
-            {p.artist && <span className="font-normal text-muted-foreground"> · {p.artist}</span>}
-          </div>
-        </div>
-        <button
-          type="button"
-          aria-label="Close the tab list"
-          onClick={p.onClose}
-          className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <CloseIcon className="size-4" />
-        </button>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-block overflow-y-auto overflow-x-hidden px-block py-block">
-        {p.instruments.length > 0 && (
-          <div role="group" aria-label="Instrument" className="-mx-block flex gap-cluster overflow-x-auto px-block pb-inset">
-            {p.instruments.map((i) => (
-              <button
-                key={i.key}
-                type="button"
-                aria-pressed={i.key === p.instrument}
-                data-testid="tab-instrument-tile"
-                onClick={() => p.onInstrument(i.key)}
-                className={cn(
-                  'flex w-24 shrink-0 flex-col items-center gap-inset rounded-xl border p-cluster text-center text-xs transition-colors',
-                  i.key === p.instrument ? 'border-ember bg-ember/10 text-foreground' : 'border-border text-muted-foreground hover:bg-card',
-                )}
-              >
-                <InstrumentIcon name={i.name} className="size-6" />
-                <span className="line-clamp-2 font-medium">{i.name}</span>
-                <small className="text-[10.5px] text-muted-foreground">
-                  {i.count} version{i.count === 1 ? '' : 's'}
-                </small>
-              </button>
-            ))}
-          </div>
-        )}
-        {p.searching && (
-          <div className="flex flex-col gap-row">
-            <SiteChecks />
-            {[0, 1].map((i) => (
-              <Skeleton key={i} className="h-16 w-full rounded-xl" />
-            ))}
-          </div>
-        )}
-        {!p.searching && p.instruments.length === 0 && (
-          <p className="text-sm text-muted-foreground">{p.emptyNote ?? 'Nothing found online for this song yet.'}</p>
-        )}
-        {chosen && (
-          <div role="radiogroup" aria-label={`${chosen.name}, best first`} className="flex min-w-0 flex-col gap-cluster">
-            <div className="text-eyebrow">{chosen.name}, best first</div>
-            {p.versions.map((row, i) => (
-              <VersionRow
-                key={row.id}
-                row={row}
-                best={i === 0 && p.versions.length > 1}
-                on={!!p.current && p.current.id === row.id && p.current.track === row.track}
-                onPick={() => p.onPick(row.id, row.track)}
-                onLineUp={p.onLineUp && (() => p.onLineUp!(row.id))}
-                onDelete={p.onDelete && (() => p.onDelete!(row.id))}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-      {p.actions && p.actions.length > 0 && (
-        <div className="flex min-w-0 shrink-0 flex-wrap gap-cluster border-t border-border px-block py-row">
-          {p.actions.map((a) => (
-            <Button key={a.id} size="sm" variant={a.variant ?? 'outline'} disabled={a.disabled} onClick={a.onClick} className="min-w-0">
-              {a.id === 'add-file' && <UploadIcon className="size-3.5" />}
-              <span className="min-w-0 truncate">{a.label}</span>
-            </Button>
-          ))}
-        </div>
-      )}
-    </>
-  );
-
-  if (!p.open) return null;
-
-  const sheet = p.phone ? (
-    <div
-      data-testid="tab-source-sheet"
-      data-phone="true"
-      className={cn('z-50 flex flex-col', fixed ? 'fixed inset-0' : 'absolute inset-0')}
-    >
-      <button type="button" aria-label="Close the tab list" onClick={p.onClose} className="h-[18%] shrink-0 bg-black/50" />
-      <div
-        role="dialog"
+  return (
+    <Sheet open={p.open} onOpenChange={(open) => !open && p.onClose()}>
+      <SheetContent
+        data-testid="tab-source-sheet"
+        data-phone={p.phone ? 'true' : 'false'}
+        data-player-view
         aria-label="Choose a tab"
-        className="safe-area-bottom flex min-h-0 min-w-0 flex-1 flex-col rounded-t-2xl border-t border-border bg-sidebar text-sidebar-foreground shadow-soft"
+        side={p.phone ? 'bottom' : 'right'}
+        showCloseButton={false}
+        overlayClassName={p.phone ? undefined : 'bg-transparent supports-backdrop-filter:backdrop-blur-none'}
+        className="gap-0 border-sidebar-border bg-sidebar text-sidebar-foreground data-[side=bottom]:h-[82dvh] data-[side=bottom]:overflow-hidden data-[side=bottom]:rounded-t-2xl data-[side=right]:w-[min(420px,100vw)] data-[side=right]:sm:max-w-none"
       >
-        <div aria-hidden className="mx-auto mt-cluster h-1 w-10 shrink-0 rounded-full bg-muted" />
-        {body}
-      </div>
-    </div>
-  ) : (
-    <aside
-      data-testid="tab-source-sheet"
-      data-phone="false"
-      role="dialog"
-      aria-label="Choose a tab"
-      className={cn(
-        'z-40 flex w-[min(420px,100vw)] flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground shadow-soft',
-        fixed ? 'fixed inset-y-0 right-0' : 'absolute inset-y-0 right-0',
-      )}
-    >
-      {body}
-    </aside>
+        {p.phone && <div aria-hidden className="mx-auto mt-cluster h-1 w-10 shrink-0 rounded-full bg-muted" />}
+        <div className="flex shrink-0 items-start justify-between gap-row px-block pt-block">
+          <div className="min-w-0">
+            <div className="text-eyebrow">What do you want to play?</div>
+            <div className="min-w-0 truncate font-semibold">
+              {p.title}
+              {p.artist && <span className="font-normal text-muted-foreground"> · {p.artist}</span>}
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Close the tab list"
+            onClick={p.onClose}
+            className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <CloseIcon className="size-4" />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-block overflow-y-auto overflow-x-hidden px-block py-block">
+          {p.instruments.length > 0 && (
+            <div role="group" aria-label="Instrument" className="-mx-block flex gap-cluster overflow-x-auto px-block pb-inset">
+              {p.instruments.map((i) => (
+                <button
+                  key={i.key}
+                  type="button"
+                  aria-pressed={i.key === p.instrument}
+                  data-testid="tab-instrument-tile"
+                  onClick={() => p.onInstrument(i.key)}
+                  className={cn(
+                    'flex w-24 shrink-0 flex-col items-center gap-inset rounded-xl border p-cluster text-center text-xs transition-colors',
+                    i.key === p.instrument ? 'border-ember bg-ember/10 text-foreground' : 'border-border text-muted-foreground hover:bg-card',
+                  )}
+                >
+                  <InstrumentIcon name={i.name} className="size-6" />
+                  <span className="line-clamp-2 font-medium">{i.name}</span>
+                  <small className="text-[10.5px] text-muted-foreground">
+                    {i.count} version{i.count === 1 ? '' : 's'}
+                  </small>
+                </button>
+              ))}
+            </div>
+          )}
+          {p.searching && (
+            <div className="flex flex-col gap-row">
+              <SiteChecks />
+              {[0, 1].map((i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-xl" />
+              ))}
+            </div>
+          )}
+          {!p.searching && p.instruments.length === 0 && (
+            <p className="text-sm text-muted-foreground">{p.emptyNote ?? 'Nothing found online for this song yet.'}</p>
+          )}
+          {chosen && (
+            <div role="radiogroup" aria-label={`${chosen.name}, best first`} className="flex min-w-0 flex-col gap-cluster">
+              <div className="text-eyebrow">{chosen.name}, best first</div>
+              {p.versions.map((row, i) => (
+                <VersionRow
+                  key={row.id}
+                  row={row}
+                  best={i === 0 && p.versions.length > 1}
+                  on={!!p.current && p.current.id === row.id && p.current.track === row.track}
+                  onPick={() => p.onPick(row.id, row.track)}
+                  onLineUp={p.onLineUp && (() => p.onLineUp!(row.id))}
+                  onDelete={p.onDelete && (() => p.onDelete!(row.id))}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+        {p.actions && p.actions.length > 0 && (
+          <div className="flex min-w-0 shrink-0 flex-wrap gap-cluster border-t border-border px-block py-row">
+            {p.actions.map((a) => (
+              <Button key={a.id} size="sm" variant={a.variant ?? 'outline'} disabled={a.disabled} onClick={a.onClick} className="min-w-0">
+                {a.id === 'add-file' && <UploadIcon className="size-3.5" />}
+                <span className="min-w-0 truncate">{a.label}</span>
+              </Button>
+            ))}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   );
-
-  if (!fixed) return sheet;
-  // Over the whole window, outside the page's scroller and its transforms.
-  // The sheet only exists once someone opened it, so the server never
-  // renders this branch and there is nothing to hydrate.
-  if (typeof document === 'undefined') return null;
-  return createPortal(sheet as ReactNode, document.body);
 }

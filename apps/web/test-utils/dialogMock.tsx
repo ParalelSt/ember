@@ -16,12 +16,12 @@ function Root({ open = false, children }: RootProps) {
   return <OpenCtx.Provider value={open}>{children}</OpenCtx.Provider>;
 }
 
-type ContentProps = { children?: ReactNode; className?: string; showCloseButton?: boolean; side?: string } & Record<string, unknown>;
+type ContentProps = { children?: ReactNode; className?: string; showCloseButton?: boolean; side?: string; overlayClassName?: string } & Record<string, unknown>;
 function Content({ children, className, ...rest }: ContentProps) {
   const open = useContext(OpenCtx);
   if (!open) return null;
   // Drop the real component's own props; keep data-* and the like.
-  const attrs = Object.fromEntries(Object.entries(rest).filter(([k]) => k !== 'showCloseButton' && k !== 'side'));
+  const attrs = Object.fromEntries(Object.entries(rest).filter(([k]) => k !== 'showCloseButton' && k !== 'side' && k !== 'overlayClassName'));
   return (
     <div role="dialog" className={className} {...attrs}>
       {children}

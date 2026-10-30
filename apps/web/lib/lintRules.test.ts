@@ -287,7 +287,6 @@ const COLOUR_BASELINE: Record<string, number> = {
   'components/radio/StationCard.tsx': 5, // heart scrim bg-black/40 (+ hover) + text-white (+ hover) on the station's own colour, white initials on it
   'components/import/parts.tsx': 3, // play/pause scrim on a candidate cover + text-white
   'components/import/ReviewSheet.tsx': 1, // sheet backdrop bg-black/20
-  'components/tabs/TabSourceSheet.tsx': 1, // tap-to-close backdrop bg-black/50
   'components/ui/dialog.tsx': 1, // shadcn overlay bg-black/10
   'components/ui/sheet.tsx': 1, // shadcn overlay bg-black/10
   // A camera preview is a photo: black around it, white on it, in every theme.
@@ -472,7 +471,8 @@ describe('safe-area insets', () => {
     const uses = (file: string, token: string) =>
       expect(readFileSync(join(ROOT, file), 'utf8'), file).toContain(token);
     uses('components/import/ReviewSheet.tsx', 'max-md:pb-(--safe-bottom)');
-    uses('components/tabs/TabSourceSheet.tsx', 'safe-area-bottom');
+    // The tab list is the shared sheet, which spends the inset itself.
+    uses('components/tabs/TabSourceSheet.tsx', "from '@/components/ui/sheet'");
     // Back to top sits in the scroller's column, above the bars that spend
     // the inset, so it spends none of its own (bughunt V12).
     uses('components/nav/BackToTop.tsx', "'bottom-stack',");

@@ -1,7 +1,32 @@
+import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { InstrumentChoice, VersionChoice } from '@/lib/tabChoose';
-import { TabSourceSheet } from './TabSourceSheet';
+import { OPEN_MODAL } from '@/hooks/player/useKeyboardShortcuts';
+
+// base-ui's Dialog cannot run under the unit tests' React (test-utils/
+// dialogMock.tsx): the stand-in records what the sheet asks of the shared one
+// and hands over onOpenChange, which is what Escape and a tap outside call.
+const h = vi.hoisted(() => ({
+  dismiss: null as null | ((open: boolean) => void),
+  content: null as null | Record<string, unknown>,
+}));
+vi.mock('@/components/ui/sheet', async () => {
+  const real = await import('@/test-utils/dialogMock');
+  return {
+    ...real,
+    Sheet: (props: ComponentProps<typeof real.Sheet>) => {
+      h.dismiss = props.onOpenChange ?? null;
+      return <real.Sheet {...props} />;
+    },
+    SheetContent: (props: ComponentProps<typeof real.SheetContent>) => {
+      h.content = props;
+      return <real.SheetContent {...props} />;
+    },
+  };
+});
+
+const { TabSourceSheet } = await import('./TabSourceSheet');
 
 /** The sheet that chooses a tab, instrument first: the tiles, the list of
  *  the chosen instrument's versions, what each row says and offers, and the
@@ -95,11 +120,45 @@ describe('TabSourceSheet, instrument first', () => {
     expect(screen.getByRole('dialog', { name: 'Choose a tab' })).toBeInTheDocument();
   });
 
-  it('on a phone the bar above it closes it', () => {
-    const p = sheet({ phone: true });
+  it('uses the shared sheet: at the side on desktop, from the bottom on phone, its own close button', () => {
+    sheet();
+    expect(h.content).toMatchObject({ side: 'right', showCloseButton: false });
+    cleanup();
+    sheet({ phone: true });
     expect(screen.getByTestId('tab-source-sheet')).toHaveAttribute('data-phone', 'true');
-    fireEvent.click(screen.getAllByRole('button', { name: 'Close the tab list' })[0]);
+    expect(h.content).toMatchObject({ side: 'bottom', showCloseButton: false });
+  });
+
+  it('Escape or a tap outside (onOpenChange false) closes it, on desktop and phone', () => {
+    for (const phone of [false, true]) {
+      const p = sheet({ phone });
+      act(() => h.dismiss?.(false));
+      expect(p.onClose).toHaveBeenCalledTimes(1);
+      cleanup();
+    }
+  });
+
+  it('its close button closes it', () => {
+    const p = sheet();
+    fireEvent.click(screen.getByRole('button', { name: 'Close the tab list' }));
     expect(p.onClose).toHaveBeenCalled();
+  });
+
+  it('desktop keeps the score readable behind a clear scrim; a phone has the normal one', () => {
+    sheet();
+    expect(h.content?.overlayClassName).toContain('bg-transparent');
+    cleanup();
+    sheet({ phone: true });
+    expect(h.content?.overlayClassName).toBeUndefined();
+  });
+
+  it('the player keeps its keys while it is open: it is not a modal to the shortcuts', () => {
+    sheet();
+    const el = screen.getByTestId('tab-source-sheet');
+    // What base-ui adds to a real open sheet.
+    el.setAttribute('data-slot', 'sheet-content');
+    el.setAttribute('data-open', '');
+    expect(el.matches(OPEN_MODAL)).toBe(false);
   });
 
   it('asks the instrument first: a tile each, with how many versions, the one listed pressed', () => {
