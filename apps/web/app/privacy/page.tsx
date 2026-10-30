@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: 'Privacy policy · Ember' };
  *  change it when the code changes. */
 export default function PrivacyPage() {
   return (
-    <LegalPage title="Privacy policy" updated="23 September 2026">
+    <LegalPage title="Privacy policy" updated="30 October 2026">
       <p>
         Ember is a private music app that one person runs on their own computer for a small group of
         friends. It is not a company, it shows no ads, and it sells nothing to anyone.
@@ -20,6 +20,11 @@ export default function PrivacyPage() {
           <li>Your email address, the name you pick, and your profile picture if you add one.</li>
           <li>Your likes, playlists, what you played and when, and your recent searches.</li>
           <li>Files you upload yourself, such as songs or cover art.</li>
+          <li>
+            For each device you use: what kind it is (Android, iOS, Windows, macOS, Linux or a browser), the
+            Ember version numbers it runs, and when it last checked in, so the person who runs the server can
+            see who needs an update.
+          </li>
         </ul>
         <p>
           All of it lives on the computer of the person who runs your Ember server. It is not sent

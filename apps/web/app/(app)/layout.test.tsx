@@ -37,6 +37,7 @@ vi.mock('@/hooks/useSession', () => ({ useReleaseStaleHosting: () => {} }));
 vi.mock('@/components/session/SessionHostBridge', () => ({ SessionHostBridge: () => null }));
 vi.mock('@/components/import/TransferStatus', () => ({ TransferStatus: () => null }));
 vi.mock('@/components/auth/QrScanHost', () => ({ QrScanHost: () => null }));
+vi.mock('@/components/DeviceVersionReporter', () => ({ DeviceVersionReporter: () => <span data-testid="device-version-reporter" /> }));
 vi.mock('@/components/auth/ApproveSheetHost', () => ({ ApproveSheetHost: () => null }));
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
@@ -210,6 +211,13 @@ describe('app shell, car head unit', () => {
     act(() => useSettingsStore.setState({ headUnitControls: false }));
     expect(screen.getByTestId('sidebar')).toBeInTheDocument();
     expect(screen.queryByTestId('car-rail')).toBeNull();
+  });
+});
+
+describe('app shell, device versions', () => {
+  it('runs the check-in for whoever uses the app', () => {
+    const { container } = renderShell();
+    expect(container.querySelector('[data-testid="device-version-reporter"]')).not.toBeNull();
   });
 });
 
