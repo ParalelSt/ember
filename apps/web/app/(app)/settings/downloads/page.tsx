@@ -78,7 +78,6 @@ export default function DownloadsSettingsPage() {
       </header>
 
       <StorageBar downloadsBytes={totalBytes} cacheBytes={cacheBytes} canEstimate={!native} />
-      </div>
 
       {native && pins.length > 0 && (
         <ul className="space-y-2" data-testid="offline-pins">
