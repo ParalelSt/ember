@@ -1,3 +1,11 @@
+# 0.7.34: Keeps trying when the connection drops (android 0.4.28)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh as usual, only the What's new page changes.
+Phones get the new app without it. New apps: Android 0.4.28 (versionCode 33).
+Unchanged: iOS 0.4.24, Windows 0.4.26, macOS 0.4.26, Linux 0.4.26. Tags:
+`android-v0.4.28`.
+
 # 0.7.33: Radio and the car (android 0.4.27)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

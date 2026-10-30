@@ -26,6 +26,17 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'offline-retry',
+    version: '0.7.34',
+    date: '2026-10-30',
+    title: 'Keeps trying when the connection drops',
+    summary: 'The Android app tries a few times before saying you are offline.',
+    bullets: [
+      'Android: with no connection, the app now tries 5 times to reach Ember before it shows the Offline screen.',
+      'Downloaded songs show right away while it keeps trying, and it never interrupts the song you are playing.',
+    ],
+  },
+  {
     id: 'radio-and-car',
     version: '0.7.33',
     date: '2026-10-24',
