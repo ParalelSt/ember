@@ -17,7 +17,7 @@ export interface ApplyBarProps {
   onDiscard: () => void;
 }
 
-/** The inspector's header line. With nothing to apply it names the theme in
+/** The inspector's header line, a soft filled block. With nothing to apply it names the theme in
  *  use; while the preview differs it says what is being tried, with Apply
  *  (makes it the theme everywhere) and Back to current. It keeps one height
  *  either way, so the list under it does not jump when a pick makes it
@@ -28,8 +28,8 @@ export function ApplyBar({ dirty, name, inUseName, edited, canApply, applying, o
     <div
       data-testid={dirty ? 'apply-bar' : 'in-use-bar'}
       className={cn(
-        'flex min-h-16 flex-wrap items-center gap-row rounded-lg border px-row py-cluster',
-        dirty ? 'sticky top-0 z-10 border-ember/40 bg-card' : 'border-border',
+        'flex min-h-16 flex-wrap items-center gap-row rounded-[12px] bg-card p-row',
+        dirty && 'sticky top-0 z-10',
       )}
     >
       {dirty ? (
