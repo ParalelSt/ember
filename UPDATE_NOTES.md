@@ -1,3 +1,9 @@
+# 0.7.35: See which version everyone runs
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** The update restarts PocketBase by itself, which loads the new
+user_devices collection.
+
 # 0.7.34: Keeps trying when the connection drops (android 0.4.28)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

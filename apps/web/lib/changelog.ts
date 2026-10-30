@@ -26,6 +26,18 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'device-versions',
+    version: '0.7.35',
+    date: '2026-10-30',
+    title: 'See which version everyone runs',
+    summary: 'Admins can see each person\'s app and web version, and reports now name the version.',
+    bullets: [
+      'Admin: the Users page lists each person\'s devices with their app version, web version and when they were last seen, and marks the ones behind the newest release.',
+      'Reports: bug reports and feature requests now say which version they came from, like Android app 0.4.28, web 0.7.34.',
+      'Privacy: only the device type, version numbers, last seen time and a random device id are stored, and the privacy page says so.',
+    ],
+  },
+  {
     id: 'offline-retry',
     version: '0.7.34',
     date: '2026-10-30',
