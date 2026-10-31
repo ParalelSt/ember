@@ -58,7 +58,9 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
       busy={busy}
       onAction={() => void start()}
     >
-        {/* min-w-0 here and on the select: a select is as wide as its
+        {/* The select is drawn like the text box above it (components/ui/input):
+            same height, width, fill and corners.
+            min-w-0 here and on the select: a select is as wide as its
             longest option, and a long playlist name would otherwise push the
             whole dialog wider than the screen. */}
         <div className="flex min-w-0 flex-col gap-3 py-2">
@@ -72,7 +74,7 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
           <select
             value={seedId}
             onChange={(e) => setSeedId(e.target.value)}
-            className="h-9 w-full min-w-0 truncate rounded-md bg-card px-3 text-sm text-foreground border-0 outline-none"
+            className="h-11 w-full min-w-0 truncate rounded-(--radius-field) border-0 bg-input px-3.5 text-base text-foreground outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ember md:text-sm [&>option]:bg-popover [&>option]:text-popover-foreground"
             aria-label="Seed from playlist"
           >
             <option value="">Start with an empty queue</option>

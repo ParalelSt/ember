@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -93,5 +95,22 @@ describe('StartSessionDialog', () => {
     expect(select).toHaveTextContent(LONG);
     expect(select).toHaveClass('w-full', 'min-w-0', 'truncate');
     expect(select.parentElement).toHaveClass('min-w-0');
+  });
+
+  it('draws the playlist select at the height and width of the name box', () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <StartSessionDialog open onOpenChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    const select = screen.getByRole('combobox', { name: 'Seed from playlist' });
+    // The real text box's own classes (components/ui/input.tsx).
+    const box = readFileSync(join(__dirname, '../ui/input.tsx'), 'utf8');
+    for (const c of ['h-11', 'w-full', 'rounded-(--radius-field)', 'bg-input', 'px-3.5', 'text-base', 'md:text-sm']) {
+      expect(box).toContain(c);
+      expect(select).toHaveClass(c);
+    }
+    expect(select).not.toHaveClass('h-9');
+    expect(select.parentElement!.firstElementChild!.tagName).toBe('INPUT');
   });
 });
