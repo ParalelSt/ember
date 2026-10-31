@@ -10,7 +10,6 @@ const state = vi.hoisted(() => ({
   liked: false,
   toggle: vi.fn(),
   playTrack: vi.fn(),
-  share: vi.fn(),
 }));
 
 vi.mock('next/link', () => ({
@@ -22,10 +21,6 @@ vi.mock('@/hooks/useLikeToggle', () => ({
   useLikeToggle: () => ({ liked: state.liked, toggle: state.toggle }),
 }));
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => ({ playTrack: state.playTrack }) }));
-vi.mock('@/components/track/ShareButton', () => ({
-  canShare: (t: Track) => t.source === 'youtube',
-  shareTrack: state.share,
-}));
 vi.mock('@/components/track/menus/TrackMenu', () => ({
   TrackMenu: ({ track, triggerClassName }: { track: Track; triggerClassName?: string }) => (
     <button type="button" aria-label={`More for ${track.title}`} className={triggerClassName} />
@@ -76,24 +71,21 @@ describe('Song page', () => {
     expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
       'Play Midnight Drive',
       'Like',
-      'Share Midnight Drive',
       'More for Midnight Drive',
     ]);
   });
 
-  it('Play plays the song, the heart toggles, share shares', () => {
+  it('Play plays the song, the heart toggles', () => {
     render(<TrackPageClient videoId="a1" />);
     fireEvent.click(screen.getByRole('button', { name: 'Play Midnight Drive' }));
     expect(state.playTrack).toHaveBeenCalledWith(TRACK);
     fireEvent.click(screen.getByRole('button', { name: 'Like' }));
     expect(state.toggle).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Share Midnight Drive' }));
-    expect(state.share).toHaveBeenCalledWith(TRACK);
   });
 
   it('every button but Play is a round action circle, and the menu keeps the same shape', () => {
     render(<TrackPageClient videoId="a1" />);
-    for (const name of ['Like', 'Share Midnight Drive', 'More for Midnight Drive']) {
+    for (const name of ['Like', 'More for Midnight Drive']) {
       const b = screen.getByRole('button', { name });
       expect(b.className).toContain('size-12');
       expect(b.className).toContain('rounded-full');
@@ -108,8 +100,7 @@ describe('Song page', () => {
     expect(heart.className).toContain('text-ember');
   });
 
-  it('a song with no share id has no share button', () => {
-    state.query = { data: { ...TRACK, source: 'jamendo' }, isLoading: false, error: null };
+  it('has no Share button of its own: it is in the song menu', () => {
     render(<TrackPageClient videoId="a1" />);
     expect(screen.queryByRole('button', { name: /^Share/ })).toBeNull();
   });
