@@ -26,6 +26,16 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'update-tap-only',
+    version: '0.7.37',
+    date: '2026-10-31',
+    title: 'No more surprise scans',
+    summary: 'Android updates no longer install in the background.',
+    bullets: [
+      'Android: updates no longer install in the background, so the security scan won\'t pop up at random. Ember asks when you open it.',
+    ],
+  },
+  {
     id: 'update-confirm-fix',
     version: '0.7.36',
     date: '2026-10-30',
