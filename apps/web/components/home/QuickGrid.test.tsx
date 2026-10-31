@@ -58,6 +58,21 @@ describe('QuickGrid', () => {
     expect([...cover.querySelectorAll('img')].map((i) => i.getAttribute('src'))).toEqual(mosaic);
   });
 
+  it('draws Recently played and Uploads with the Library covers', () => {
+    render(<QuickGrid items={[
+      { key: 'recent', title: 'Recently played', href: '/library/recent', src: null, icon: 'clock' },
+      { key: 'uploads', title: 'Uploads', href: '/settings/uploads', src: null, icon: 'upload' },
+    ]} />);
+    const recent = screen.getByRole('link', { name: 'Recently played' });
+    const up = screen.getByRole('link', { name: 'Uploads' });
+    expect(recent).toHaveAttribute('href', '/library/recent');
+    expect(up).toHaveAttribute('href', '/settings/uploads');
+    expect(recent.querySelector('svg')).not.toBeNull();
+    expect(up.querySelector('svg')).not.toBeNull();
+    expect(recent.innerHTML).toContain('#246373');
+    expect(up.innerHTML).toContain('#a16a2c');
+  });
+
   it('renders nothing with no items', () => {
     const { container } = render(<QuickGrid items={[]} />);
     expect(container).toBeEmptyDOMElement();

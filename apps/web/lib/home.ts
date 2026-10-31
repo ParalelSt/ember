@@ -49,11 +49,13 @@ export interface QuickMix {
   cover: { artworkUrls: string[] };
 }
 
-/** The quick grid: Liked songs, then a live carlist (it is happening now),
+/** The quick grid: Liked songs, (phone) Recently played and Uploads, then a live carlist (it is happening now),
  *  then the member's top two genre mixes, then your playlists, up to
  *  QUICK_MAX tiles. */
 export function quickPicks({
   liked,
+  recent,
+  uploads,
   playlists,
   carlist,
   playingPlaylistId,
@@ -61,6 +63,10 @@ export function quickPicks({
   max = QUICK_MAX,
 }: {
   liked: CollectionSummary | undefined;
+  /** Phone only: Recently played and Uploads tiles, right after Liked songs.
+   *  Pass them only when they hold songs; the desktop leaves them out. */
+  recent?: CollectionSummary;
+  uploads?: CollectionSummary;
   playlists: readonly CollectionSummary[];
   carlist: LiveCarlist | null | undefined;
   playingPlaylistId?: string | null;
@@ -71,6 +77,9 @@ export function quickPicks({
 }): QuickPick[] {
   const picks: QuickPick[] = [];
   if (liked) picks.push({ key: liked.pinId, title: liked.title, href: liked.href, src: null, icon: liked.icon, ref: liked.ref });
+  for (const c of [recent, uploads]) {
+    if (c) picks.push({ key: c.pinId, title: c.title, href: c.href, src: null, icon: c.icon, ref: c.ref });
+  }
   if (carlist) {
     picks.push({ key: `carlist-${carlist.id}`, title: carlist.name || 'Carlist', href: `/session/${carlist.id}`, src: null, icon: 'car' });
   }

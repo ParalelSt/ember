@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
   desktop: false,
   history: [] as Track[],
   liked: [] as Track[],
+  uploads: [] as Track[],
   trending: [] as Track[],
   trendingLoading: false,
   recommended: [] as Track[],
@@ -44,6 +45,7 @@ vi.mock('@/components/OnlineOnly', () => ({ OnlineOnly: ({ children }: { childre
 vi.mock('@/hooks/useLibrary', () => ({
   useQueryHistory: () => ({ data: state.history }),
   useQueryLikes: () => ({ data: state.liked }),
+  useQueryUploads: () => ({ data: state.uploads }),
   useQueryTrending: () => ({ data: state.trending, isLoading: state.trendingLoading }),
   useQueryRecommended: (seed: string | undefined) => {
     state.seed = seed;
@@ -54,7 +56,11 @@ vi.mock('@/hooks/useLibrary', () => ({
 }));
 vi.mock('@/hooks/useCollections', () => ({
   useCollections: () => ({
-    system: [toSummary({ kind: 'liked' }, { count: state.liked.length })],
+    system: [
+      toSummary({ kind: 'liked' }, { count: state.liked.length }),
+      toSummary({ kind: 'recent' }, { count: state.history.length }),
+      toSummary({ kind: 'uploads' }, { count: state.uploads.length }),
+    ],
     playlists: state.playlists,
   }),
 }));
@@ -111,6 +117,7 @@ beforeEach(() => {
     desktop: false,
     history: makeTracks('hist', 4),
     liked: makeTracks('like', 3),
+    uploads: [],
     trending: makeTracks('trend', 5),
     trendingLoading: false,
     recommended: makeTracks('rec', 6),
@@ -145,9 +152,25 @@ describe('Home on a phone', () => {
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
     const grid = screen.getByRole('list', { name: 'Your collections' });
     const names = within(grid).getAllByRole('link').map((a) => a.textContent);
-    expect(names).toEqual(['Liked songs', 'Road trip', 'Gym']);
+    expect(names).toEqual(['Liked songs', 'Recently played', 'Road trip', 'Gym']);
     expect(within(grid).getByRole('link', { name: 'Liked songs' })).toHaveAttribute('href', '/library/liked');
     expect(within(grid).getByRole('link', { name: 'Road trip' })).toHaveAttribute('href', '/playlist/p1');
+  });
+
+  it('adds Uploads after Recently played once it has songs, linking to the uploads page', () => {
+    state.uploads = makeTracks('up', 2);
+    render(<HomePage />);
+    const grid = screen.getByRole('list', { name: 'Your collections' });
+    expect(within(grid).getAllByRole('link').map((a) => a.textContent)).toEqual(['Liked songs', 'Recently played', 'Uploads', 'Road trip', 'Gym']);
+    expect(within(grid).getByRole('link', { name: 'Recently played' })).toHaveAttribute('href', '/library/recent');
+    expect(within(grid).getByRole('link', { name: 'Uploads' })).toHaveAttribute('href', '/settings/uploads');
+  });
+
+  it('hides Recently played while there is no history, and the Playlists chip keeps the grid', () => {
+    state.history = [];
+    render(<HomePage />);
+    const names = () => within(screen.getByRole('list', { name: 'Your collections' })).getAllByRole('link').map((a) => a.textContent);
+    expect(names()).toEqual(['Liked songs', 'Road trip', 'Gym']);
   });
 
   it('adds a live carlist to the quick grid and puts the playing playlist first', () => {
@@ -155,7 +178,7 @@ describe('Home on a phone', () => {
     state.context = { type: 'playlist', playlistId: 'p2', playlistName: 'Gym' };
     render(<HomePage />);
     const grid = screen.getByRole('list', { name: 'Your collections' });
-    expect(within(grid).getAllByRole('link').map((a) => a.textContent)).toEqual(['Liked songs', 'Friday drive', 'Gym', 'Road trip']);
+    expect(within(grid).getAllByRole('link').map((a) => a.textContent)).toEqual(['Liked songs', 'Recently played', 'Friday drive', 'Gym', 'Road trip']);
   });
 
   it('orders the rows like the owner\'s order B, with Popular now and no "From your liked songs"', () => {
@@ -266,7 +289,8 @@ describe('Home filter chips on a phone', () => {
     render(<HomePage />);
     fireEvent.click(chip('Playlists'));
     expect(chip('Playlists')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('list', { name: 'Your collections' })).toBeInTheDocument();
+    const grid = screen.getByRole('list', { name: 'Your collections' });
+    expect(within(grid).getAllByRole('link').map((a) => a.textContent)).toEqual(['Liked songs', 'Recently played', 'Road trip', 'Gym']);
     expect(headings()).toEqual(['Your playlists']);
     fireEvent.click(chip('All'));
     expect(headings()).toEqual([
@@ -374,6 +398,13 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
     expect(grid()).toHaveClass('grid-cols-4');
     // The chips come first, then the grid.
     expect(bar.compareDocumentPosition(grid()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('does not get the phone-only Recently played and Uploads tiles', () => {
+    state.uploads = makeTracks('up', 2);
+    render(<HomePage />);
+    expect(within(grid()).queryByRole('link', { name: 'Recently played' })).toBeNull();
+    expect(within(grid()).queryByRole('link', { name: 'Uploads' })).toBeNull();
   });
 
   it('holds eight tiles: Liked songs, then your playlists', () => {
@@ -632,7 +663,7 @@ describe('Your mixes on Home', () => {
     state.mixes = someMixes();
     render(<HomePage />);
     const grid = screen.getByRole('list', { name: 'Your collections' });
-    expect(within(grid).getAllByRole('link').map((a) => a.textContent)).toEqual(['Liked songs', 'Rock & Metal Mix', 'Balkan Mix', 'Road trip', 'Gym']);
+    expect(within(grid).getAllByRole('link').map((a) => a.textContent)).toEqual(['Liked songs', 'Recently played', 'Rock & Metal Mix', 'Balkan Mix', 'Road trip', 'Gym']);
     expect(within(grid).getByRole('link', { name: 'Balkan Mix' })).toHaveAttribute('href', '/mix/balkan');
   });
 

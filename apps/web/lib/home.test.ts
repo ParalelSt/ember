@@ -22,6 +22,31 @@ describe('recentFirst', () => {
   });
 });
 
+describe('quickPicks, phone Recently played and Uploads', () => {
+  const recent = toSummary({ kind: 'recent' }, { count: 2 });
+  const uploads = toSummary({ kind: 'uploads' }, { count: 4 });
+  const base = { liked, playlists: [pl('a', 'A'), pl('b', 'B'), pl('c', 'C'), pl('d', 'D'), pl('e', 'E')], carlist: null };
+
+  it('orders Liked, Recently played, Uploads, car, mixes, playlists and caps at 6', () => {
+    const mix = (key: string) => ({ key, title: key, cover: { artworkUrls: [] } });
+    const picks = quickPicks({ ...base, recent, uploads, carlist: { id: 's1', code: 'X', name: 'Drive', isHost: true }, mixes: [mix('m1'), mix('m2')] });
+    expect(picks.map((p) => p.title)).toEqual(['Liked songs', 'Recently played', 'Uploads', 'Drive', 'm1 Mix', 'm2 Mix']);
+    expect(picks).toHaveLength(QUICK_MAX);
+    expect(picks[1]).toMatchObject({ href: '/library/recent', icon: 'clock', ref: { kind: 'recent' } });
+    expect(picks[2]).toMatchObject({ href: '/settings/uploads', icon: 'upload', ref: { kind: 'uploads' } });
+  });
+
+  it('hides an empty one (not passed) and keeps the rest in order', () => {
+    expect(quickPicks({ ...base, uploads }).map((p) => p.title)).toEqual(['Liked songs', 'Uploads', 'A', 'B', 'C', 'D']);
+    expect(quickPicks({ ...base, recent }).map((p) => p.title)).toEqual(['Liked songs', 'Recently played', 'A', 'B', 'C', 'D']);
+  });
+
+  it('desktop stays as before when the page passes neither', () => {
+    const picks = quickPicks({ ...base, max: QUICK_MAX_DESKTOP });
+    expect(picks.map((p) => p.title)).toEqual(['Liked songs', 'A', 'B', 'C', 'D', 'E']);
+  });
+});
+
 describe('quickPicks', () => {
   it('gives the member\'s top two mixes a slot after Liked songs and a live carlist', () => {
     const mix = (key: string, title: string) => ({ key, title, cover: { artworkUrls: [`/art/${key}.jpg`] } });

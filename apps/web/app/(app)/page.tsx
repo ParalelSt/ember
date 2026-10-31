@@ -8,6 +8,7 @@ import {
   useQueryCharts,
   useQueryMixes,
   useQueryHistory,
+  useQueryUploads,
   useQueryLikes,
   useQueryRecommended,
   useQueryTrending,
@@ -118,6 +119,7 @@ export default function HomePage() {
 
   const { data: history = [] } = useQueryHistory();
   const { data: liked = [] } = useQueryLikes();
+  const { data: uploads = [] } = useQueryUploads();
   const { data: trending = [], isLoading: trendingLoading } = useQueryTrending();
   const { data: charts } = useQueryCharts();
   const genreCharts = charts?.genres ?? [];
@@ -160,6 +162,9 @@ export default function HomePage() {
 
   const quick = quickPicks({
     liked: system.find((c) => c.ref.kind === 'liked'),
+    // Phone only (desktop styles are not chosen): each shows once it has songs.
+    recent: !isDesktop && history.length > 0 ? system.find((c) => c.ref.kind === 'recent') : undefined,
+    uploads: !isDesktop && uploads.length > 0 ? system.find((c) => c.ref.kind === 'uploads') : undefined,
     playlists,
     carlist,
     playingPlaylistId,
