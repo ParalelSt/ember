@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Switch } from '@/components/ui/switch';
+import { ToggleRow } from '@/components/ui/switch';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 
 /** A labelled switch row. */
@@ -22,23 +22,23 @@ function Toggle({
   hint: string;
 }) {
   return (
-    <div className="flex items-start justify-between gap-6 py-3">
+    <ToggleRow
+      rowClassName="flex items-start justify-between gap-6 py-3"
+      id={id}
+      variant="outline"
+      checked={checked}
+      onCheckedChange={onChange}
+      aria-label={label}
+      disabled={disabled}
+      className="mt-0.5"
+    >
       <div className="min-w-0">
         <label htmlFor={id} className="text-sm font-medium">
           {label}
         </label>
         <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
       </div>
-      <Switch
-        id={id}
-        variant="outline"
-        checked={checked}
-        onCheckedChange={onChange}
-        aria-label={label}
-        disabled={disabled}
-        className="mt-0.5"
-      />
-    </div>
+    </ToggleRow>
   );
 }
 

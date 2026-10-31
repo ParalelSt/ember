@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { BugIcon, RequestIcon } from '@/components/icons';
 import { useUiStore } from '@/stores/useUiStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
-import { Switch } from '@/components/ui/switch';
+import { ToggleRow } from '@/components/ui/switch';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { RequestDialog } from '@/components/RequestDialog';
 
@@ -38,7 +38,12 @@ export default function SettingsHelp() {
         </Button>
       </div>
 
-      <div className="mt-4 rounded-2xl bg-card p-6 shadow-soft flex items-start justify-between gap-4">
+      <ToggleRow
+        rowClassName="mt-4 rounded-2xl bg-card p-6 shadow-soft flex items-start justify-between gap-4"
+        checked={autoReportEnabled}
+        onCheckedChange={setAutoReportEnabled}
+        aria-label={autoReportEnabled ? 'Turn off automatic crash reports' : 'Turn on automatic crash reports'}
+      >
         <div className="min-w-0">
           <div className="font-semibold">Send crash reports automatically</div>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -46,12 +51,7 @@ export default function SettingsHelp() {
             capped at a few per session, so bugs get noticed even when nobody stops to report them.
           </p>
         </div>
-        <Switch
-          checked={autoReportEnabled}
-          onCheckedChange={setAutoReportEnabled}
-          aria-label={autoReportEnabled ? 'Turn off automatic crash reports' : 'Turn on automatic crash reports'}
-        />
-      </div>
+      </ToggleRow>
       <RequestDialog open={requestOpen} onOpenChange={setRequestOpen} />
     </section>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useSettingsStore } from '@/stores/useSettingsStore';
-import { Switch } from '@/components/ui/switch';
+import { ToggleRow } from '@/components/ui/switch';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { EqualizerPanel } from '@/components/settings/EqualizerPanel';
 import { useDesktopPlugins } from '@/hooks/useDesktopPlugins';
@@ -93,7 +93,12 @@ interface ToggleProps {
 
 function PluginToggle({ name, description, on, onToggle, tag }: ToggleProps) {
   return (
-    <div className="rounded-2xl bg-card p-5 shadow-soft flex items-start justify-between gap-4">
+    <ToggleRow
+      rowClassName="rounded-2xl bg-card p-5 shadow-soft flex items-start justify-between gap-4"
+      checked={on}
+      onCheckedChange={() => onToggle()}
+      aria-label={on ? `Turn off ${name}` : `Turn on ${name}`}
+    >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-semibold">{name}</span>
@@ -105,11 +110,6 @@ function PluginToggle({ name, description, on, onToggle, tag }: ToggleProps) {
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
-      <Switch
-        checked={on}
-        onCheckedChange={() => onToggle()}
-        aria-label={on ? `Turn off ${name}` : `Turn on ${name}`}
-      />
-    </div>
+    </ToggleRow>
   );
 }

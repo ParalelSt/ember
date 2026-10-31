@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import { formatBytes, formatCount } from '@/lib/format';
-import { Switch } from '@/components/ui/switch';
+import { ToggleRow } from '@/components/ui/switch';
 
 export const AUTO_CACHE_UNAVAILABLE_TEXT = 'Automatic caching is not available in this browser or app version.';
 export const AUTO_CACHE_UPDATE_APP_TEXT = 'Automatic caching needs a newer version of the Ember app. Update the app to turn it on.';
@@ -26,18 +26,18 @@ export function SwitchRow({
   onToggle: () => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-block rounded-2xl bg-card p-block shadow-soft">
+    <ToggleRow
+      rowClassName="flex items-start justify-between gap-block rounded-2xl bg-card p-block shadow-soft"
+      checked={on}
+      onCheckedChange={() => onToggle()}
+      disabled={disabled}
+      aria-label={on ? `Turn off ${name}` : `Turn on ${name}`}
+    >
       <div className="min-w-0">
         <div className="font-semibold">{name}</div>
         <p className="mt-inset text-sm text-muted-foreground">{description}</p>
       </div>
-      <Switch
-        checked={on}
-        onCheckedChange={() => onToggle()}
-        disabled={disabled}
-        aria-label={on ? `Turn off ${name}` : `Turn on ${name}`}
-      />
-    </div>
+    </ToggleRow>
   );
 }
 

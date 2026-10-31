@@ -5,7 +5,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { autoPreampDb, clampBand, EQ_BANDS, EQ_MAX_DB, EQ_PRESETS, presetFor } from '@/lib/playback/eq';
 import { eqForDevice, phoneWebAudio } from '@/lib/playback/eqDevice';
 import { Slider } from '@/components/ui/slider';
-import { Switch } from '@/components/ui/switch';
+import { ToggleRow } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 const BAND_LABELS = EQ_BANDS.map((f) => (f >= 1000 ? `${f / 1000} kHz` : `${f} Hz`));
@@ -41,7 +41,12 @@ export function EqualizerPanel({ className }: Props) {
 
   return (
     <div className={cn('flex flex-col', className)} data-testid="equalizer">
-      <div className="flex items-start justify-between gap-block">
+      <ToggleRow
+        rowClassName="flex items-start justify-between gap-block"
+        checked={eq.enabled}
+        onCheckedChange={(enabled) => setEqualizer({ ...eq, enabled })}
+        aria-label={eq.enabled ? 'Turn off Equalizer' : 'Turn on Equalizer'}
+      >
         <div className="min-w-0">
           <div className="font-semibold">Equalizer</div>
           <p className="mt-inset text-sm text-muted-foreground">
@@ -56,12 +61,7 @@ export function EqualizerPanel({ className }: Props) {
             </p>
           )}
         </div>
-        <Switch
-          checked={eq.enabled}
-          onCheckedChange={(enabled) => setEqualizer({ ...eq, enabled })}
-          aria-label={eq.enabled ? 'Turn off Equalizer' : 'Turn on Equalizer'}
-        />
-      </div>
+      </ToggleRow>
 
       <div
         aria-hidden={!eq.enabled}

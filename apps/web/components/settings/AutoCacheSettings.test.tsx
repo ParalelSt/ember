@@ -22,6 +22,20 @@ beforeEach(() => {
 });
 
 describe('AutoCacheSettings', () => {
+  it('tapping the row flips the setting once, and so does tapping the switch', () => {
+    render(<AutoCacheSettings />);
+    fireEvent.click(screen.getByTestId('toggle-row-tap'));
+    expect(useSettingsStore.getState().autoCacheEnabled).toBe(false);
+    fireEvent.click(screen.getByRole('switch'));
+    expect(useSettingsStore.getState().autoCacheEnabled).toBe(true);
+  });
+
+  it('a row that cannot be switched has no tap area', () => {
+    useAutoCacheStore.setState({ supported: false });
+    render(<AutoCacheSettings />);
+    expect(screen.queryByTestId('toggle-row-tap')).toBeNull();
+  });
+
   it('shows the switch with its default and the storage line', () => {
     render(<AutoCacheSettings />);
     expect(screen.getByRole('switch', { name: 'Turn off Cache upcoming songs' })).toHaveAttribute('aria-checked', 'true');
