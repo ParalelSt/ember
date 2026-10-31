@@ -31,6 +31,11 @@ export const WIDE_TILE_CLASS = 'w-[180px] shrink-0';
  *  it holds, uses WIDE_TILE_CLASS tiles and this one gap. */
 export const WIDE_SCROLL_CLASS = 'flex gap-block overflow-x-auto overscroll-x-contain scrollbar-none';
 
+/** The phone grid layout: two columns that fill the page's gutters and
+ *  scroll down the page with it, no sideways scroll. Each tile fills its
+ *  column (min-w-0 so a long name wraps inside it). */
+export const ROW_GRID_CLASS = 'grid grid-cols-2 gap-row';
+
 export interface RowHeaderProps {
   title: string;
   /** Where "Show all" points; pass it only when the row holds more than it
@@ -214,15 +219,33 @@ export interface RowShelfProps {
   phoneTileClassName?: string;
   /** Something of the row's own in its header, beside the title. */
   action?: ReactNode;
+  /** 'row' (default): the sideways shelf. 'grid' (phone only): every tile
+   *  in a two-column grid that scrolls down the page, no cut and no Show
+   *  all, the title kept. Ignored by the desktop variant. */
+  layout?: 'row' | 'grid';
 }
 
 /** Presentational only: the phone Home's sideways shelf, Spotify style. A
  *  RowHeader, then a row of tiles that scrolls by touch (snapping to a
  *  tile, no bar showing) and runs from screen edge to screen edge while
  *  lining up with the page's gutter at rest. */
-export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, className, variant = 'phone', phoneTileClassName, action }: RowShelfProps) {
+export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, className, variant = 'phone', phoneTileClassName, action, layout = 'row' }: RowShelfProps) {
   const all = Children.toArray(children);
   if (all.length === 0) return null;
+  if (layout === 'grid' && variant !== 'desktop') {
+    return (
+      <section className={cn('mb-section', className)} aria-label={title}>
+        <RowHeader title={title} action={action} />
+        <div role="list" data-row-grid className={ROW_GRID_CLASS}>
+          {all.map((tile, i) => (
+            <div key={isValidElement(tile) && tile.key != null ? tile.key : i} role="listitem" className="min-w-0">
+              {tile}
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
   const tiles = all.slice(0, limit);
   const more = all.length > tiles.length ? showAllHref : undefined;
   if (variant === 'desktop') return <WideRowShelf title={title} showAllHref={more} action={action} tiles={tiles} className={className} />;

@@ -263,3 +263,29 @@ describe('RowShelf header action', () => {
     expect(screen.queryByText('Show all')).toBeNull();
   });
 });
+
+describe('RowShelf layout="grid" (a phone filter on Home)', () => {
+  const tiles = (n: number) => Array.from({ length: n }, (_, i) => <div key={i}>T{i}</div>);
+
+  it('wraps every tile in two columns with no sideways scroll, no cut and no Show all', () => {
+    render(<RowShelf title="Popular now" layout="grid" showAllHref="/x">{tiles(ROW_MAX + 5)}</RowShelf>);
+    const list = screen.getByRole('list');
+    expect(list).toHaveClass('grid', 'grid-cols-2', 'gap-row');
+    for (const cls of ['flex', 'overflow-x-auto', 'snap-x', '-mx-page']) expect(list).not.toHaveClass(cls);
+    const items = within(list).getAllByRole('listitem');
+    expect(items).toHaveLength(ROW_MAX + 5);
+    for (const item of items) expect(item).toHaveClass('min-w-0');
+    expect(item0(items)).not.toHaveClass('w-[140px]');
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Popular now' })).toBeInTheDocument();
+  });
+
+  it('is ignored by the desktop variant', () => {
+    render(<RowShelf title="Popular now" layout="grid" variant="desktop">{tiles(3)}</RowShelf>);
+    expect(screen.getByRole('list')).toHaveClass('flex', 'overflow-x-auto');
+  });
+});
+
+function item0(items: HTMLElement[]) {
+  return items[0];
+}

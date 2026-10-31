@@ -171,12 +171,15 @@ export default function HomePage() {
   };
   const quickPlaying = (item: QuickPick) => !!item.ref && collection.isPlaying(item.ref);
 
+  // A phone filter chip other than All turns a tile row into a grid that
+  // scrolls down the page. All keeps the sideways rows; desktop is untouched.
+  const gridLayout = !isDesktop && view.filter !== 'all' ? 'grid' : 'row';
   const renderRow = (key: HomeRowKey) => {
     if (key === 'playlists') {
       return (
         // Every playlist gets a tile: Home's rows have no Show all (the
         // owner's pick), so the row is the way to them all.
-        <RowShelf key={key} title="Your playlists" variant={isDesktop ? 'desktop' : 'phone'} limit={Infinity}>
+        <RowShelf key={key} title="Your playlists" variant={isDesktop ? 'desktop' : 'phone'} limit={Infinity} layout={gridLayout}>
           {recentFirst(playlists, playingPlaylistId).map((p) => (
             <CollectionCard
               key={p.href}
@@ -198,7 +201,7 @@ export default function HomePage() {
     }
     if (key === 'mixes') {
       return (
-        <RowShelf key={key} title="Your mixes" variant={isDesktop ? 'desktop' : 'phone'} phoneTileClassName="w-[172px]">
+        <RowShelf key={key} title="Your mixes" variant={isDesktop ? 'desktop' : 'phone'} phoneTileClassName="w-[172px]" layout={gridLayout}>
           {mixes.map((m) => {
             const look = mixLook(m.key);
             return (
@@ -221,7 +224,7 @@ export default function HomePage() {
       const wide = isDesktop ? 'desktop' : 'phone';
       return (
         // Every chart gets a tile: no ROW_MAX cut and no Show all.
-        <RowShelf key={key} title="Popular now" variant={wide} limit={Infinity}>
+        <RowShelf key={key} title="Popular now" variant={wide} limit={Infinity} layout={gridLayout}>
           {trending.length > 0 ? (
             <ChartTile
               title="Top songs"

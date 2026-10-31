@@ -688,3 +688,53 @@ describe('Because you played: the seed', () => {
     expect(screen.queryByText(/Because you played/)).toBeNull();
   });
 });
+
+describe('Home filters lay tile rows out as a grid on a phone only', () => {
+  const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name });
+  const rowList = (name: string) => within(screen.getByRole('region', { name })).getByRole('list');
+
+  it('Charts chip: a two-column grid holding every tile, no sideways class, title kept', () => {
+    state.charts = { popular: {}, genres: Array.from({ length: ROW_MAX + 3 }, (_, i) => genre(`g${i}`, `G${i}`)) };
+    render(<HomePage />);
+    fireEvent.click(chip('Charts'));
+    const list = rowList('Popular now');
+    expect(list).toHaveClass('grid', 'grid-cols-2');
+    expect(list).not.toHaveClass('overflow-x-auto');
+    expect(list).not.toHaveClass('flex');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(ROW_MAX + 4);
+    expect(headings()).toEqual(['Popular now']);
+  });
+
+  it('Playlists chip and Mixes chip use the grid too', () => {
+    state.mixes = someMixes();
+    render(<HomePage />);
+    fireEvent.click(chip('Playlists'));
+    expect(rowList('Your playlists')).toHaveClass('grid', 'grid-cols-2');
+    expect(within(rowList('Your playlists')).getAllByRole('listitem')).toHaveLength(2);
+    fireEvent.click(chip('Mixes'));
+    expect(rowList('Your mixes')).toHaveClass('grid', 'grid-cols-2');
+    expect(within(rowList('Your mixes')).getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  it('All keeps the sideways rows', () => {
+    state.charts = someCharts();
+    state.mixes = someMixes();
+    render(<HomePage />);
+    for (const name of ['Popular now', 'Your playlists', 'Your mixes']) {
+      expect(rowList(name)).toHaveClass('flex', 'overflow-x-auto');
+      expect(rowList(name)).not.toHaveClass('grid');
+    }
+    fireEvent.click(chip('Charts'));
+    fireEvent.click(chip('All'));
+    expect(rowList('Popular now')).toHaveClass('flex', 'overflow-x-auto');
+  });
+
+  it('desktop stays sideways even with a chip active', () => {
+    state.desktop = true;
+    state.charts = someCharts();
+    render(<HomePage />);
+    fireEvent.click(chip('Charts'));
+    expect(rowList('Popular now')).toHaveClass('flex', 'overflow-x-auto');
+    expect(rowList('Popular now')).not.toHaveClass('grid');
+  });
+});
