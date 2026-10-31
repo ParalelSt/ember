@@ -144,8 +144,8 @@ export function RadioRow({
       onClick={onClick}
       {...data}
       className={cn(
-        'flex w-full min-w-0 items-center gap-row rounded-2xl border p-row text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-        on ? 'border-ember bg-ember/10' : 'border-border bg-card hover:border-foreground/20',
+        'flex w-full min-w-0 items-center gap-row rounded-2xl p-row text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ember disabled:cursor-not-allowed disabled:opacity-50',
+        on ? 'bg-ember/15' : 'bg-muted hover:bg-accent',
       )}
     >
       {lead}
@@ -155,13 +155,10 @@ export function RadioRow({
         </span>
         <span className="block text-xs text-muted-foreground">{sub}</span>
       </span>
-      <span
-        aria-hidden="true"
-        className={cn(
-          'size-5 shrink-0 rounded-full border-2',
-          on ? 'border-ember bg-[radial-gradient(var(--ember)_40%,transparent_46%)]' : 'border-muted-foreground/50',
-        )}
-      />
+      {/* Always there, so picking a row never re-wraps its words. */}
+      <span aria-hidden="true" className="size-5 shrink-0 text-ember">
+        {on && <CheckIcon data-testid="radio-check" className="size-5" />}
+      </span>
     </button>
   );
 }
