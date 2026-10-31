@@ -31,7 +31,7 @@ function Content({ children, className, ...rest }: ContentProps) {
 
 const Title = ({ children, className }: { children?: ReactNode; className?: string }) => <h2 className={className}>{children}</h2>;
 const Description = ({ children, className }: { children?: ReactNode; className?: string }) => <p className={className}>{children}</p>;
-const Pass = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
+const Pass = ({ children, className }: { children?: ReactNode; className?: string }) => <div className={className}>{children}</div>;
 
 export {
   Root as Dialog,

@@ -87,6 +87,82 @@ describe('Popup', () => {
     expect(screen.getByRole('button', { name: 'Go' })).toHaveAttribute('type', 'button');
   });
 
+  describe('risky', () => {
+    const box = (risky: boolean) =>
+      render(
+        <Popup open onOpenChange={() => {}} title="Delete it?" description="Gone for good." actionLabel="Delete" risky={risky} data-testid="box" className="sm:max-w-sm" />,
+      );
+
+    it('shows a warning icon only below md, hidden from screen readers', () => {
+      box(true);
+      const icon = screen.getByTestId('popup-risky-icon');
+      expect(icon.className).toContain('md:hidden');
+      expect(icon.className).toContain('rounded-full');
+      expect(icon.className).toContain('bg-destructive/15');
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+      expect(icon.querySelector('svg')).not.toBeNull();
+    });
+
+    it('centres the title and sentence on phones', () => {
+      box(true);
+      const header = screen.getByText('Delete it?').parentElement!;
+      expect(header.className).toContain('max-md:text-center');
+      expect(header.className).toContain('max-md:items-center');
+      expect(header).toContainElement(screen.getByText('Gone for good.'));
+    });
+
+    it('Cancel and the action share the row as equal pills on phones', () => {
+      box(true);
+      const cancel = screen.getByRole('button', { name: 'Cancel' });
+      const action = screen.getByRole('button', { name: 'Delete' });
+      expect(cancel.parentElement).toBe(action.parentElement);
+      expect(cancel.parentElement!.className).toContain('max-md:flex-row');
+      for (const b of [cancel, action]) {
+        expect(b.className).toContain('max-md:flex-1');
+        expect(b.className).toContain('max-md:rounded-full');
+      }
+      // Ghost has no fill; here it has to read as a pill next to the red one.
+      expect(cancel.className).toContain('max-md:bg-secondary');
+    });
+
+    it('still closes and acts the same way', () => {
+      const onOpenChange = vi.fn();
+      const onAction = vi.fn();
+      render(<Popup open risky onOpenChange={onOpenChange} title="T" actionLabel="Go" onAction={onAction} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(onOpenChange).toHaveBeenCalledTimes(1);
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+      expect(onAction).toHaveBeenCalledTimes(1);
+    });
+
+    it('adds only classes scoped below md: desktop is the plain popup', () => {
+      const scoped = (el: HTMLElement) => el.className.split(' ').filter((c) => !c.startsWith('max-md:')).sort().join(' ');
+      const shapes = (risky: boolean) => {
+        const { unmount } = box(risky);
+        const out = {
+          box: scoped(screen.getByTestId('box')),
+          header: scoped(screen.getByText('Delete it?').parentElement!),
+          title: scoped(screen.getByText('Delete it?')),
+          cancel: scoped(screen.getByRole('button', { name: 'Cancel' })),
+          action: scoped(screen.getByRole('button', { name: 'Delete' })),
+          footer: scoped(screen.getByRole('button', { name: 'Cancel' }).parentElement!),
+        };
+        unmount();
+        return out;
+      };
+      expect(shapes(true)).toEqual(shapes(false));
+    });
+
+    it('a plain popup has no icon and no risky classes', () => {
+      box(false);
+      expect(screen.queryByTestId('popup-risky-icon')).toBeNull();
+      expect(screen.getByText('Delete it?').parentElement!.className).not.toContain('max-md:');
+      expect(screen.getByRole('button', { name: 'Cancel' }).className).not.toContain('max-md:flex-1');
+      expect(screen.getByTestId('box').className).not.toContain('dialog-close');
+    });
+  });
+
   // No visual change: the form must not become a box of its own between the
   // popup's grid and the header, content and footer. The mock drops the grid,
   // so this reads the source.

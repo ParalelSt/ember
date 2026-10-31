@@ -11,7 +11,8 @@ interface Props {
   description?: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  /** "destructive" turns the confirm button red, for deletes etc. */
+  /** "destructive" turns the confirm button red, for deletes etc., and gives
+   *  the popup Popup's `risky` look on phones. */
   variant?: 'default' | 'destructive';
   /** Called when the user confirms. The dialog awaits the promise and closes
    *  on resolve. Throw to keep it open (after saying why: the dialog shows
@@ -53,6 +54,7 @@ export function ConfirmDialog({
       open={open}
       onOpenChange={onOpenChange}
       className="sm:max-w-sm"
+      risky={variant === 'destructive'}
       title={title}
       description={description}
       cancelLabel={cancelLabel}

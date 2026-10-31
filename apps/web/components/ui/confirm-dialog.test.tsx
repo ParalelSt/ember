@@ -36,6 +36,19 @@ describe('ConfirmDialog', () => {
     expect(unhandled).toEqual([]);
   });
 
+  it('a destructive confirm gets the risky phone look and a red button', () => {
+    render(<ConfirmDialog open onOpenChange={() => {}} variant="destructive" title="Delete it?" confirmLabel="Delete" onConfirm={() => {}} />);
+    expect(screen.getByTestId('popup-risky-icon')).toBeInTheDocument();
+    const action = screen.getByRole('button', { name: 'Delete' });
+    expect(action.className).toContain('bg-destructive');
+    expect(action.className).toContain('max-md:flex-1');
+  });
+
+  it('a plain confirm stays plain: no warning icon for something safe', () => {
+    render(<ConfirmDialog open onOpenChange={() => {}} title="Back up now?" confirmLabel="Back up" onConfirm={() => {}} />);
+    expect(screen.queryByTestId('popup-risky-icon')).toBeNull();
+  });
+
   it('closes once onConfirm resolves', async () => {
     const onOpenChange = vi.fn();
     render(<ConfirmDialog open onOpenChange={onOpenChange} title="Delete it?" confirmLabel="Delete" onConfirm={async () => {}} />);
