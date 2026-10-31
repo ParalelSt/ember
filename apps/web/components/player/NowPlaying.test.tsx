@@ -15,6 +15,7 @@ import { useOutputStore } from '@/stores/useOutputStore';
 // nothing but the seek bar and the transport.
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock('@/components/ui/slider', () => import('@/test-utils/sliderMock'));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: nav.push }), usePathname: () => '/' }));
 
 const TRACK: Track = {

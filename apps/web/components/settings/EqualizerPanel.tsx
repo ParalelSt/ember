@@ -4,6 +4,7 @@ import { useSyncExternalStore } from 'react';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { autoPreampDb, clampBand, EQ_BANDS, EQ_MAX_DB, EQ_PRESETS, presetFor } from '@/lib/playback/eq';
 import { eqForDevice, phoneWebAudio } from '@/lib/playback/eqDevice';
+import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
@@ -97,21 +98,19 @@ export function EqualizerPanel({ className }: Props) {
               {BAND_LABELS.map((label, i) => {
                 const db = eq.bands[i] ?? 0;
                 return (
-                  <label key={label} className="grid grid-cols-[4.5rem_1fr_3.75rem] items-center gap-row text-sm">
+                  <div key={label} className="grid grid-cols-[4.5rem_1fr_3.75rem] items-center gap-row text-sm">
                     <span className="text-muted-foreground tabular-nums">{label}</span>
-                    <input
-                      type="range"
+                    <Slider
                       min={-EQ_MAX_DB}
                       max={EQ_MAX_DB}
                       step={0.5}
-                      value={db}
-                      aria-label={label}
-                      aria-valuetext={formatDb(db)}
-                      onChange={(e) => setBand(i, Number(e.target.value))}
-                      className="w-full accent-ember"
+                      value={[db]}
+                      thumbLabel={label}
+                      getAriaValueText={() => formatDb(db)}
+                      onValueChange={(v) => setBand(i, Number(Array.isArray(v) ? v[0] : v))}
                     />
                     <span className="text-right tabular-nums">{formatDb(db)}</span>
-                  </label>
+                  </div>
                 );
               })}
             </div>

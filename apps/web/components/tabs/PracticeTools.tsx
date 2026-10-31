@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { ClockIcon, GaugeIcon, RepeatIcon, TimerIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { chip, chipOff, chipOn } from '@/components/tabs/chips';
 import { cn } from '@/lib/utils';
 import {
@@ -530,15 +531,14 @@ export function DelayEditor({
     <div data-testid="tab-sync" className="flex flex-col gap-cluster text-xs text-muted-foreground">
       <Head title="Delay" note={`${formatOffset(offsetMs, unit, clock)}, ${how}`} />
       <div className="flex flex-wrap items-center gap-row">
-        <input
-          type="range"
+        <Slider
           min={-span}
           max={span}
           step={0.01}
-          value={offsetMs / 1000}
-          onChange={(e) => onChange(Number(e.target.value) * 1000)}
-          className="min-w-40 flex-1 accent-ember"
-          aria-label="Tab timing offset in seconds"
+          value={[offsetMs / 1000]}
+          onValueChange={(v) => onChange(Number(Array.isArray(v) ? v[0] : v) * 1000)}
+          className="min-w-40 flex-1"
+          thumbLabel="Tab timing offset in seconds"
         />
         <div className="flex shrink-0 items-center gap-inset">
           <input

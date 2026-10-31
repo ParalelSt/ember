@@ -9,6 +9,7 @@ import SettingsPlugins from './page';
 // Party mode's toggle is desktop-only: hidden entirely on a phone, tablet or
 // the Android app. See lib/playback/partyDevice and hooks/usePartyEligible.
 const partyEligible = vi.hoisted(() => ({ value: true }));
+vi.mock('@/components/ui/slider', () => import('@/test-utils/sliderMock'));
 vi.mock('@/hooks/usePartyEligible', () => ({ usePartyEligible: () => partyEligible.value }));
 
 const initial = useSettingsStore.getState();

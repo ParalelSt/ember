@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { autoPreampDb } from '@/lib/playback/eq';
 
 const shell = vi.hoisted(() => ({ kind: 'web' as 'web' | 'capacitor' | 'tauri', plugin: false }));
+vi.mock('@/components/ui/slider', () => import('@/test-utils/sliderMock'));
 vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => shell.kind }));
 // eqDevice asks androidBackend whether the native player is there.
 vi.mock('@/lib/playback/androidBackend', () => ({ androidPluginPresent: () => shell.plugin }));
@@ -98,6 +99,8 @@ describe('EqualizerPanel', () => {
     const sliders = screen.getAllByRole('slider');
     expect(sliders.map((s) => s.getAttribute('aria-label'))).toEqual(['60 Hz', '230 Hz', '910 Hz', '3.6 kHz', '14 kHz']);
     for (const s of sliders) {
+      // The app's thick slider, not a native range of its own.
+      expect(s).toHaveAttribute('data-slot', 'slider');
       expect(s).toHaveAttribute('min', '-12');
       expect(s).toHaveAttribute('max', '12');
     }

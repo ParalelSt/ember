@@ -15,6 +15,8 @@ import { buildTimeline } from '@/lib/tabTimeline';
 // itself is a stub that shows the props it was handed (LiveTabScore has its
 // own test with a fake AlphaTab).
 
+vi.mock('@/components/ui/slider', () => import('@/test-utils/sliderMock'));
+
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/' }));
 
@@ -236,6 +238,8 @@ describe('TabsPage source selection', () => {
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
     wrap(<TabsPage trackId="upload:song1" />);
     fireEvent.click(await screen.findByTestId('tab-tool-delay'));
+    // The app's thick slider, not a native range of its own.
+    expect(screen.getByLabelText('Tab timing offset in seconds')).toHaveAttribute('data-slot', 'slider');
     fireEvent.change(screen.getByLabelText('Tab timing offset in seconds'), { target: { value: '2.5' } });
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
     expect(window.localStorage.getItem('ember.tab.offset.f1')).toBe('2.5');
