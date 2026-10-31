@@ -45,7 +45,9 @@ public class EmberActivity extends BridgeActivity {
         registerPlugin(EmberThemePlugin.class);
         registerPlugin(EmberAppPlugin.class);
         registerPlugin(EmberUpdatePlugin.class);
+        registerPlugin(EmberDiscordPlugin.class);
         super.onCreate(savedInstanceState);
+        DiscordSharing.activityCreated(this);
         WebSecurity.INSTANCE.lockDown(getBridge() == null ? null : getBridge().getWebView());
         CarScreen.INSTANCE.apply(this, getBridge() == null ? null : getBridge().getWebView());
         injectBridgeIntoErrorPage();
