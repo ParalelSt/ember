@@ -720,7 +720,7 @@ describe('Because you played: the seed', () => {
   });
 });
 
-describe('Home filters lay tile rows out as a grid on a phone only', () => {
+describe('Home filters lay tile rows out as a grid on a phone, and Charts on desktop', () => {
   const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name });
   const rowList = (name: string) => within(screen.getByRole('region', { name })).getByRole('list');
 
@@ -760,12 +760,40 @@ describe('Home filters lay tile rows out as a grid on a phone only', () => {
     expect(rowList('Popular now')).toHaveClass('flex', 'overflow-x-auto');
   });
 
-  it('desktop stays sideways even with a chip active', () => {
+  it('desktop Charts chip: auto-fill grid of every tile, no sideways class, no fades', () => {
+    state.desktop = true;
+    state.charts = { popular: {}, genres: Array.from({ length: ROW_MAX + 3 }, (_, i) => genre(`g${i}`, `G${i}`)) };
+    render(<HomePage />);
+    fireEvent.click(chip('Charts'));
+    const list = rowList('Popular now');
+    expect(list).toHaveClass('grid', 'gap-block');
+    expect(list).not.toHaveClass('overflow-x-auto');
+    expect(list).not.toHaveClass('flex');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(ROW_MAX + 4);
+    expect(document.querySelector('[data-row-fade]')).toBeNull();
+    expect(headings()).toEqual(['Popular now']);
+  });
+
+  it('desktop All stays a sideways row', () => {
     state.desktop = true;
     state.charts = someCharts();
     render(<HomePage />);
+    expect(rowList('Popular now')).toHaveClass('flex', 'overflow-x-auto');
     fireEvent.click(chip('Charts'));
+    fireEvent.click(chip('All'));
     expect(rowList('Popular now')).toHaveClass('flex', 'overflow-x-auto');
     expect(rowList('Popular now')).not.toHaveClass('grid');
+  });
+
+  it('desktop Playlists and Mixes chips stay sideways rows', () => {
+    state.desktop = true;
+    state.mixes = someMixes();
+    render(<HomePage />);
+    fireEvent.click(chip('Playlists'));
+    expect(rowList('Your playlists')).toHaveClass('flex', 'overflow-x-auto');
+    expect(rowList('Your playlists')).not.toHaveClass('grid');
+    fireEvent.click(chip('Mixes'));
+    expect(rowList('Your mixes')).toHaveClass('flex', 'overflow-x-auto');
+    expect(rowList('Your mixes')).not.toHaveClass('grid');
   });
 });

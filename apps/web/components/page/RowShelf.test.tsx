@@ -280,9 +280,16 @@ describe('RowShelf layout="grid" (a phone filter on Home)', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Popular now' })).toBeInTheDocument();
   });
 
-  it('is ignored by the desktop variant', () => {
-    render(<RowShelf title="Popular now" layout="grid" variant="desktop">{tiles(3)}</RowShelf>);
-    expect(screen.getByRole('list')).toHaveClass('flex', 'overflow-x-auto');
+  it('on desktop is an auto-fill grid of every tile: no sideways scroll, no fades, no Show all', () => {
+    render(<RowShelf title="Popular now" layout="grid" variant="desktop" showAllHref="/x">{tiles(ROW_MAX + 5)}</RowShelf>);
+    const list = screen.getByRole('list');
+    expect(list).toHaveClass('grid', 'gap-block');
+    expect(list.className).toContain('minmax(180px,1fr)');
+    for (const cls of ['flex', 'overflow-x-auto']) expect(list).not.toHaveClass(cls);
+    expect(within(list).getAllByRole('listitem')).toHaveLength(ROW_MAX + 5);
+    expect(document.querySelector('[data-row-fade]')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Popular now' })).toBeInTheDocument();
   });
 });
 

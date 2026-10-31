@@ -177,8 +177,9 @@ export default function HomePage() {
   const quickPlaying = (item: QuickPick) => !!item.ref && collection.isPlaying(item.ref);
 
   // A phone filter chip other than All turns a tile row into a grid that
-  // scrolls down the page. All keeps the sideways rows; desktop is untouched.
-  const gridLayout = !isDesktop && view.filter !== 'all' ? 'grid' : 'row';
+  // scrolls down the page. All keeps the sideways rows. On desktop only the
+  // Charts chip wraps (auto-fill grid); Playlists and Mixes stay sideways.
+  const gridLayout = isDesktop ? (view.filter === 'charts' ? 'grid' : 'row') : view.filter !== 'all' ? 'grid' : 'row';
   const renderRow = (key: HomeRowKey) => {
     if (key === 'playlists') {
       return (

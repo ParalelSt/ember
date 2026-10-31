@@ -36,6 +36,11 @@ export const WIDE_SCROLL_CLASS = 'flex gap-block overflow-x-auto overscroll-x-co
  *  column (min-w-0 so a long name wraps inside it). */
 export const ROW_GRID_CLASS = 'grid grid-cols-2 gap-row';
 
+/** The desktop grid layout (the Charts chip): equal columns that stretch to
+ *  fill the width at any window size, so every row reaches edge to edge. Tiles
+ *  fill their cell (min-w-0 so a long name wraps inside it). */
+export const WIDE_GRID_CLASS = 'grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-block';
+
 export interface RowHeaderProps {
   title: string;
   /** Where "Show all" points; pass it only when the row holds more than it
@@ -219,9 +224,9 @@ export interface RowShelfProps {
   phoneTileClassName?: string;
   /** Something of the row's own in its header, beside the title. */
   action?: ReactNode;
-  /** 'row' (default): the sideways shelf. 'grid' (phone only): every tile
-   *  in a two-column grid that scrolls down the page, no cut and no Show
-   *  all, the title kept. Ignored by the desktop variant. */
+  /** 'row' (default): the sideways shelf. 'grid': every tile in a grid
+   *  that scrolls down the page, no cut and no Show all, the title kept
+   *  (two columns on a phone, auto-fill columns on desktop). */
   layout?: 'row' | 'grid';
 }
 
@@ -232,7 +237,21 @@ export interface RowShelfProps {
 export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, className, variant = 'phone', phoneTileClassName, action, layout = 'row' }: RowShelfProps) {
   const all = Children.toArray(children);
   if (all.length === 0) return null;
-  if (layout === 'grid' && variant !== 'desktop') {
+  if (layout === 'grid' && variant === 'desktop') {
+    return (
+      <section className={cn('mb-section', className)} aria-label={title}>
+        <WideRowHeader title={title} action={action} />
+        <div role="list" data-row-grid="wide" className={WIDE_GRID_CLASS}>
+          {all.map((tile, i) => (
+            <div key={isValidElement(tile) && tile.key != null ? tile.key : i} role="listitem" className="min-w-0">
+              {tile}
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+  if (layout === 'grid') {
     return (
       <section className={cn('mb-section', className)} aria-label={title}>
         <RowHeader title={title} action={action} />
