@@ -16,6 +16,7 @@ vi.mock('@/components/ui/button', () => ({
   Button: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
 }));
 vi.mock('@/components/ui/input', () => ({ Input: (props: ComponentProps<'input'>) => <input {...props} /> }));
+vi.mock('@/components/ui/tabs', () => import('@/test-utils/tabsMock'));
 vi.mock('@/components/track/menus/TrackSearchPicker', () => ({
   TrackSearchPicker: ({ onAdd, onRemove }: { onAdd: (t: unknown) => void; onRemove: (t: unknown) => void }) => (
     <div data-testid="picker">
@@ -61,6 +62,8 @@ describe('CreatePlaylistDialog tabs', () => {
     const tabs = screen.getAllByRole('tab');
     expect(tabs.map((t) => t.textContent)).toEqual(['Start new', 'Import a link']);
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+    // The Request box's underline tabs, not a boxed switch.
+    expect(screen.getByRole('tablist')).toHaveAttribute('data-variant', 'line');
     expect(screen.getByLabelText('Playlist name')).toBeInTheDocument();
     expect(screen.getByTestId('picker')).toBeInTheDocument();
     expect(screen.queryByLabelText('Playlist link')).toBeNull();
@@ -85,7 +88,9 @@ describe('CreatePlaylistDialog tabs', () => {
     expect(api.importInspect).toHaveBeenCalledWith(LINK);
     expect(screen.getByText('Late night drive')).toBeInTheDocument();
     expect(screen.getByText('42 songs')).toBeInTheDocument();
-    expect(screen.getByTestId('source-badge')).toHaveTextContent('Spotify');
+    expect(screen.getByText('Fills in over a few minutes')).toBeInTheDocument();
+    // The long grey note it replaced is gone.
+    expect(screen.queryByText(/shows up in your sidebar/)).toBeNull();
     expect(screen.queryByTestId('first-100-note')).toBeNull();
     expect(screen.getByRole('button', { name: 'Create, import 42 songs' })).toBeEnabled();
   });

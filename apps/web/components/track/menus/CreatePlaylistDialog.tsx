@@ -11,11 +11,11 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
 import { ImportLinkForm } from '@/components/track/menus/ImportLinkForm';
 import { CollectionCover } from '@/components/primitives/CollectionCover';
 import { formatCount } from '@/lib/format';
-import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
 
 type Mode = 'empty' | 'import';
@@ -101,23 +101,15 @@ export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTrac
         <DialogHeader>
           <DialogTitle>New playlist</DialogTitle>
         </DialogHeader>
-        <div role="tablist" aria-label="New playlist" className="grid grid-cols-2 rounded-full bg-background p-inset">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={mode === t.id}
-              onClick={() => setMode(t.id)}
-              className={cn(
-                'h-9 rounded-full text-sm font-semibold transition-colors',
-                mode === t.id ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
+          <TabsList variant="line" aria-label="New playlist">
+            {TABS.map((t) => (
+              <TabsTrigger key={t.id} value={t.id}>
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
         {mode === 'import' ? (
           <ImportLinkForm onCancel={() => onOpenChange(false)} onCreated={imported} />
