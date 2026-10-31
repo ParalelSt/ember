@@ -76,6 +76,48 @@ Without it the feature is silently off (playback is unaffected). Users also
 need the Discord desktop app running; if it's closed, Ember reconnects on the
 next track change.
 
+## Discord status (Android app)
+
+The Android app sets **each user's own** Discord status too, through Discord's
+official [Social SDK](https://docs.discord.com/developers/discord-social-sdk/development-guides/setting-rich-presence):
+no sign-in, it reaches the Discord app on the phone, which must be installed and
+signed in (Android 7+). The player service publishes the card itself
+(`DiscordPresence.kt`), so it follows a song change or a pause from the lock
+screen, a headset or a car with the page frozen or gone. The page only sends the
+Settings switch (`lib/androidDiscord.ts`), which is kept on the phone. It never
+uses the server route, which sets the host's status.
+
+**Getting the SDK into a build.** Discord's terms forbid redistributing the SDK
+and this repo is public, so it is never committed or copied into the tree (a
+`.gitignore` guards against it). A build looks outside the repo:
+
+```
+EMBER_DISCORD_SDK_DIR   default: ~/.ember-tools/discord-sdk
+  sdk/discord_social_sdk/lib/release/discord_partner_sdk.aar
+```
+
+Unpack Discord's `DiscordSocialSdk-*.zip` as `sdk/` there (a download from the
+Discord developer portal), and install the NDK and CMake the build names
+(`ndk;27.0.12077973`, `cmake;3.22.1`). As on desktop the id is baked in:
+
+```bash
+DISCORD_APP_ID=your-app-id npm run test-apk
+```
+
+The Gradle log says what it found (`Discord presence: SDK, app id set`).
+
+**Without the SDK** the app builds and runs as always, needs no NDK and has no
+native code: Gradle compiles `src/discordStub` instead of `src/discordSdk`, and
+the switch does nothing. Without `DISCORD_APP_ID` the card is off too, one line
+in the log. **CI has neither yet**, so a release APK has no card until CI gets a
+private way to fetch the SDK (a private store, not this repo, and not a public
+artifact) and the Android build step gets `DISCORD_APP_ID`.
+
+**What it adds.** About 36 MB to the APK with all four CPU types, of which the
+SDK is 33 MB: Android keeps native libraries uncompressed. `RECORD_AUDIO` comes
+from Ember's own voice search; everything else the SDK asks for, for voice and
+sign-in, is removed in `AndroidManifest.xml`.
+
 ## Building the macOS app
 
 ```bash
