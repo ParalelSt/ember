@@ -237,8 +237,8 @@ const LOOKAHEAD_SEC = 0.2;
  *  line can never seek somewhere else. */
 const PILL_GUARD_MS = 600;
 
-/** Karaoke-style lyric scroller: big bold lines, the active one solid and the
- *  rest dimmed, and the active line is smooth-scrolled into the center of the lyrics scroller as the song
+/** Karaoke-style lyric scroller: big bold lines, the active one solid, the
+ *  ones to come dimmed and the sung ones dimmer still, and the active line is smooth-scrolled into the center of the lyrics scroller as the song
  *  plays, unless the user has scrolled away to read (see useLyricsFollow).
  *  Clicking a line seeks playback to that timestamp. */
 function SyncedLyrics({
@@ -397,7 +397,14 @@ function SyncedLyrics({
                 'focus-visible:bg-sidebar-foreground/10',
                 // One weight and size in every state, so the current line
                 // never re-wraps and shoves the lines below it out of view.
-                isActive ? 'text-foreground' : 'text-foreground/45 hover:text-foreground',
+                isActive
+                  ? 'text-foreground'
+                  : i < activeIdx
+                    ? // Already sung, dimmer than what is coming. A touch more on
+                      // a light theme, where the same alpha reads fainter (about
+                      // 2.4:1 either way).
+                      'text-foreground/36 hover:text-foreground dark:text-foreground/28'
+                    : 'text-foreground/45 hover:text-foreground',
               )}
             >
               {text}

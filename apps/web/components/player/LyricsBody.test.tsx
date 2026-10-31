@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LyricsBody } from './LyricsBody';
 import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
+import { contrast } from '@/lib/theme/oklch';
 
 // Synced lyrics, one line every 10 s: line N (1-based) is active from (N-1)*10.
 const linesA = Array.from({ length: 10 }, (_, i) => ({ time: i * 10, text: `Line ${i + 1}` }));
@@ -206,6 +207,38 @@ describe('LyricsBody: follow mode', () => {
   });
 });
 
+describe('LyricsBody: line states', () => {
+  it('sung lines are dimmer than upcoming ones, and the current line stays bright', () => {
+    renderBody(); // Position 25: line 3 is current.
+    const sung = screen.getByText('Line 1').className;
+    const current = screen.getByText('Line 3').className;
+    const upcoming = screen.getByText('Line 4').className;
+    expect(sung).toContain('dark:text-foreground/28');
+    expect(sung).toContain('text-foreground/36');
+    expect(sung).not.toContain('text-foreground/45');
+    expect(upcoming).toContain('text-foreground/45');
+    expect(upcoming).not.toContain('/28');
+    expect(current.split(' ')).toContain('text-foreground');
+    expect(current).not.toMatch(/text-foreground\/\d/);
+  });
+
+  it('before the first line nothing counts as sung', () => {
+    const { at } = renderBody();
+    at(-5);
+    expect(screen.getByText('Line 1').className).toContain('text-foreground/45');
+  });
+
+  it('sung lines stay about as readable on a light theme as on a dark one', () => {
+    const dark = contrast([0.98, 0, 0], [0.16, 0.005, 260], 0.28);
+    const light = contrast([0.2, 0, 0], [0.97, 0, 0], 0.36);
+    const lightUpcoming = contrast([0.2, 0, 0], [0.97, 0, 0], 0.45);
+    expect(dark).toBeGreaterThan(2);
+    expect(light).toBeGreaterThan(2);
+    expect(Math.abs(light - dark)).toBeLessThan(0.5);
+    expect(lightUpcoming).toBeGreaterThan(light);
+  });
+});
+
 describe('LyricsBody: the report form', () => {
   it('reports the song it was opened on, even when the next song starts while it is open', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
@@ -291,7 +324,7 @@ describe('LyricsBody: colour backdrop', () => {
     for (const name of ['Line 1', 'Line 3', 'Line 4']) expect(line(name)).toHaveClass('text-xl', 'font-bold');
     expect(line('Line 3')).toHaveClass('text-foreground');
     expect(line('Line 4')).toHaveClass('text-foreground/45');
-    expect(line('Line 1')).toHaveClass('text-foreground/45');
+    expect(line('Line 1')).toHaveClass('dark:text-foreground/28');
   });
 
   it('tapping a line still seeks to it', () => {
