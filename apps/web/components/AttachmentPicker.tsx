@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { AttachIcon, CloseIcon, VideoIcon } from '@/components/icons';
-import { Button } from '@/components/ui/button';
+import { CloseIcon, PlusIcon, VideoIcon } from '@/components/icons';
 import {
   ATTACHMENT_ACCEPT,
   attachmentProblem,
@@ -95,9 +94,10 @@ interface AttachmentPickerProps {
   disabled?: boolean;
 }
 
-/** "Attach screenshot or video" plus a row of thumbnails, each with a remove
- *  button, and the running total (or what is wrong) underneath. Controlled:
- *  the dialog owns the files, and checks attachmentProblem() before Send. */
+/** A row of square tiles: the thumbnails, each with a remove button, then a
+ *  same-size plus that opens the file picker (gone at the maximum). The
+ *  running total, or what is wrong, sits underneath. Controlled: the dialog
+ *  owns the files, and checks attachmentProblem() before Send. */
 export function AttachmentPicker({ files, onChange, disabled }: AttachmentPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const problem = attachmentProblem(files);
@@ -112,24 +112,35 @@ export function AttachmentPicker({ files, onChange, disabled }: AttachmentPicker
 
   return (
     <div data-testid="attachment-picker" className="flex flex-col gap-cluster">
-      {files.length > 0 && (
-        <div className="flex flex-wrap gap-cluster">
-          {files.map((f, i) => (
-            <div key={fileKey(f)} className="relative">
-              <Thumb file={f} />
-              <button
-                type="button"
-                aria-label={`Remove ${f.name}`}
-                disabled={disabled}
-                onClick={() => onChange(files.filter((_, j) => j !== i))}
-                className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-foreground text-background"
-              >
-                <CloseIcon className="size-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-cluster">
+        {files.map((f, i) => (
+          <div key={fileKey(f)} className="relative">
+            <Thumb file={f} />
+            <button
+              type="button"
+              aria-label={`Remove ${f.name}`}
+              disabled={disabled}
+              onClick={() => onChange(files.filter((_, j) => j !== i))}
+              className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-foreground text-background"
+            >
+              <CloseIcon className="size-3" />
+            </button>
+          </div>
+        ))}
+        {files.length < MAX_ATTACHMENTS && (
+          <button
+            type="button"
+            data-testid="attach-add"
+            aria-label="Attach screenshot or video"
+            title="Attach screenshot or video"
+            disabled={disabled}
+            onClick={() => inputRef.current?.click()}
+            className="flex size-14 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ember disabled:pointer-events-none disabled:opacity-50"
+          >
+            <PlusIcon className="size-5" />
+          </button>
+        )}
+      </div>
       <input
         ref={inputRef}
         type="file"
@@ -139,17 +150,6 @@ export function AttachmentPicker({ files, onChange, disabled }: AttachmentPicker
         hidden
         data-testid="attachment-input"
       />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="self-start"
-        disabled={disabled || files.length >= MAX_ATTACHMENTS}
-        onClick={() => inputRef.current?.click()}
-      >
-        <AttachIcon />
-        Attach screenshot or video
-      </Button>
       {files.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Optional. Up to {MAX_ATTACHMENTS} images or clips, {formatBytes(MAX_ATTACHMENT_BYTES)} in total.
@@ -160,8 +160,7 @@ export function AttachmentPicker({ files, onChange, disabled }: AttachmentPicker
         </p>
       ) : (
         <p data-testid="attach-summary" className="text-xs text-muted-foreground">
-          {files.length} of {MAX_ATTACHMENTS} files, {formatBytes(totalBytes(files))} of{' '}
-          {formatBytes(MAX_ATTACHMENT_BYTES)}
+          {files.length} of {MAX_ATTACHMENTS} · {formatBytes(totalBytes(files))} of {formatBytes(MAX_ATTACHMENT_BYTES)}
         </p>
       )}
     </div>

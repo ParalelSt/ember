@@ -167,7 +167,7 @@ async function attachAndCheck(page, dialog, label) {
   check(`${label}: two 56px square thumbnails, image then video`, JSON.stringify(m.sizes) === '[[56,56],[56,56]]' && JSON.stringify(m.kinds) === '["image","video"]', JSON.stringify(m));
   check(`${label}: the image preview loaded`, m.imgLoaded);
   check(`${label}: the clip's first frame loaded, with its length`, m.videoReady && m.duration === '0:02', `${m.videoReady} ${m.duration}`);
-  check(`${label}: the total`, m.summary === `2 of 4 files, ${formatBytes(expectedTotal)} of 10 MB`, m.summary);
+  check(`${label}: the total`, m.summary === `2 of 4 · ${formatBytes(expectedTotal)} of 10 MB`, m.summary);
   check(`${label}: a remove button per file`, JSON.stringify(m.removes) === '["Remove player screenshot.png","Remove skip-bug.webm"]', JSON.stringify(m.removes));
 }
 

@@ -1,14 +1,8 @@
-import { useState, type ComponentProps } from 'react';
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AttachmentPicker } from './AttachmentPicker';
-
-// base-ui's Button reaches the repo root's hoisted React 18 (see
-// BugReportDialog.test.tsx), so a plain button stands in.
-vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
-}));
 
 const MB = 1024 * 1024;
 
@@ -60,13 +54,28 @@ afterEach(() => {
 });
 
 describe('AttachmentPicker', () => {
-  it('shows the hint and the attach button with nothing attached', () => {
+  it('shows the plus tile and the hint with nothing attached', () => {
     render(<Harness />);
-    expect(screen.getByRole('button', { name: /Attach screenshot or video/ })).toBeEnabled();
+    const plus = screen.getByRole('button', { name: 'Attach screenshot or video' });
+    expect(plus).toBeEnabled();
+    expect(plus).toHaveTextContent('');
+    expect(plus.className).toContain('bg-muted');
+    expect(plus.className.split(' ')).not.toContain('border');
     expect(screen.getByText('Optional. Up to 4 images or clips, 10 MB in total.')).toBeInTheDocument();
     expect(input()).toHaveAttribute('accept', 'image/*,video/*');
     expect(input()).toHaveAttribute('multiple');
     expect(thumbs()).toHaveLength(0);
+  });
+
+  it('the plus tile opens the file picker, and is the size of a thumbnail, after them', async () => {
+    render(<Harness initial={[fakeFile('a.png', 'image/png')]} />);
+    const click = vi.spyOn(input(), 'click');
+    const plus = screen.getByTestId('attach-add');
+    fireEvent.click(plus);
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(plus.className).toContain('size-14');
+    expect(thumbs()[0].className).toContain('size-14');
+    expect(thumbs()[0].compareDocumentPosition(plus) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('adds picked files as thumbnails and shows the total', async () => {
@@ -75,7 +84,7 @@ describe('AttachmentPicker', () => {
     expect(thumbs().map((t) => t.dataset.kind)).toEqual(['image', 'video']);
     expect(screen.getByRole('img', { name: 'shot.png' })).toHaveAttribute('src', 'blob:test/0');
     expect(screen.getByLabelText('clip.mp4').tagName).toBe('VIDEO');
-    expect(screen.getByTestId('attach-summary')).toHaveTextContent('2 of 4 files, 3 MB of 10 MB');
+    expect(screen.getByTestId('attach-summary')).toHaveTextContent('2 of 4 · 3 MB of 10 MB');
   });
 
   it('appends to what is already attached', async () => {
@@ -94,7 +103,7 @@ describe('AttachmentPicker', () => {
     expect(screen.getByTestId('attach-duration')).toHaveTextContent('1:15');
   });
 
-  it('caps at 4 files and disables the button there', async () => {
+  it('caps at 4 files and the plus tile goes away there', async () => {
     const onFiles = vi.fn();
     render(<Harness onFiles={onFiles} />);
     await userEvent.upload(
@@ -103,7 +112,10 @@ describe('AttachmentPicker', () => {
     );
     expect(thumbs()).toHaveLength(4);
     expect(onFiles.mock.calls.at(-1)?.[0].map((f: File) => f.name)).toEqual(['1.png', '2.png', '3.png', '4.png']);
-    expect(screen.getByRole('button', { name: /Attach screenshot or video/ })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Attach screenshot or video/ })).toBeNull();
+    // Removing one brings it back.
+    await userEvent.click(screen.getByRole('button', { name: 'Remove 1.png' }));
+    expect(screen.getByRole('button', { name: /Attach screenshot or video/ })).toBeEnabled();
   });
 
   it('removes a file and revokes its preview URL', async () => {
