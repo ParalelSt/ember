@@ -12,9 +12,6 @@ object UpdateRules {
     const val PERIOD_MS = 6 * 60 * 60 * 1000L
     /** A page reload restarts the plugin; that is not a new app start. */
     const val START_CHECK_MIN_MS = 15 * 60 * 1000L
-    /** Paused or sent to the background this long before an update installs
-     *  by itself: a pause to answer a message is not the end of listening. */
-    const val IDLE_GRACE_MS = 2 * 60 * 1000L
     const val PACKAGE = "app.ember.music"
 
     /** The separate "Ember Test" app (applicationIdSuffix ".test"). */
@@ -174,12 +171,8 @@ object UpdateRules {
         INSTALL,
         /** In the car (Android Auto): wait until the car has gone. */
         WAIT_CAR,
-        /** Music is playing: wait until it stops. */
-        WAIT_PLAYING,
-        /** Stopped, but only just: wait out [IDLE_GRACE_MS]. */
-        WAIT_IDLE,
-        /** Show "Update ready, tap to install": Android will ask anyway, or
-         *  the app is open in front of the person and should not vanish. */
+        /** Show "Update ready, tap to install": an install starts only from
+         *  the person's tap, never by itself. */
         ASK_USER,
         /** "Install unknown apps" is off for Ember: the page offers the
          *  Settings switch. */
@@ -187,18 +180,10 @@ object UpdateRules {
     }
 
     data class InstallFacts(
-        /** The phone's player (or the TV it casts to) is playing. */
-        val playing: Boolean,
         /** Android Auto is projecting, or a car is connected to the player. */
         val carSession: Boolean,
-        /** Ember's window is on screen. */
-        val foreground: Boolean,
-        /** Since the music stopped or the app left the screen, whichever was
-         *  later. */
-        val idleMs: Long,
-        /** The person tapped Install. */
+        /** The person tapped Install (or the launch gate's Update now). */
         val userRequested: Boolean,
-        val silentLikely: Boolean,
         /** "Install unknown apps" is allowed for Ember. */
         val canInstall: Boolean,
     )
@@ -207,17 +192,15 @@ object UpdateRules {
      *  app, which stops the player service, so:
      *  - never during a car session, not even on a tap: the car loses its
      *    music, and the driver should not be looking at a dialog;
-     *  - never on its own while music plays (a tap is the person's choice);
-     *  - on its own only when Android will not ask, the app is not on
-     *    screen, and nothing has played for [IDLE_GRACE_MS]. */
+     *  - never without a tap: Play Protect's scan prompt appears right
+     *    after an install starts, so it must only follow the person's own
+     *    action. A tap installs even while music plays (the person's
+     *    choice). */
     fun decide(f: InstallFacts): Decision = when {
         f.carSession -> Decision.WAIT_CAR
         !f.canInstall -> Decision.NEED_PERMISSION
         f.userRequested -> Decision.INSTALL
-        f.playing -> Decision.WAIT_PLAYING
-        !f.silentLikely || f.foreground -> Decision.ASK_USER
-        f.idleMs < IDLE_GRACE_MS -> Decision.WAIT_IDLE
-        else -> Decision.INSTALL
+        else -> Decision.ASK_USER
     }
 
     /** Whether the player counts as playing for the updater: it is meant to
@@ -244,13 +227,10 @@ object UpdateRules {
 
     /** The line the car's Library shows while an update waits, or null. Only
      *  for a downloaded, verified update: nothing to read about a check.
-     *  Where Android will ask before installing ([silent] false), the
-     *  person finishes it on the phone once parked. */
-    fun carNotice(ready: Boolean, silent: Boolean = true): Pair<String, String>? = when {
-        !ready -> null
-        silent -> "Ember update ready" to "Installs when you're parked and the music is stopped"
-        else -> "Ember update ready" to "Once you're parked, open Ember on your phone to install"
-    }
+     *  An install starts only from a tap, so the person finishes it on the
+     *  phone once parked. */
+    fun carNotice(ready: Boolean): Pair<String, String>? =
+        if (ready) "Ember update ready" to "Once you're parked, open Ember on your phone to install" else null
 
     /** Whether an install with no answer from Android ends now, back to
      *  "tap to install". [force]: the 60 s limit. Otherwise only after a

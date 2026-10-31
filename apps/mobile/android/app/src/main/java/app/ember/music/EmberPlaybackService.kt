@@ -311,7 +311,7 @@ class EmberPlaybackService : MediaLibraryService() {
             downloadedArt = { offline.artFileFor(it).exists() },
             online = ::online,
             onLiked = { ids -> handler.post { liked.replace(ids); refreshButtons() } },
-            notice = { UpdateRules.carNotice(AppUpdater.isReady(), AppUpdater.installsSilently()) },
+            notice = { UpdateRules.carNotice(AppUpdater.isReady()) },
             location = { RadioPlaces.lastKnown(this) },
         )
         // Streams go through the same OkHttp client, so they carry the cookie

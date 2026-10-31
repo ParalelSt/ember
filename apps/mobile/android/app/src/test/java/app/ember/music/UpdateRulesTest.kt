@@ -9,6 +9,7 @@ import app.ember.music.UpdateRules.Verdict
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -149,38 +150,28 @@ class UpdateRulesTest {
         assertFalse(UpdateRules.silentLikely(34, null))
     }
 
-    private fun facts(
-        playing: Boolean = false, car: Boolean = false, foreground: Boolean = false, idleMs: Long = Long.MAX_VALUE,
-        tapped: Boolean = false, silent: Boolean = true, canInstall: Boolean = true,
-    ) = InstallFacts(playing, car, foreground, idleMs, tapped, silent, canInstall)
+    private fun facts(car: Boolean = false, tapped: Boolean = false, canInstall: Boolean = true) =
+        InstallFacts(car, tapped, canInstall)
 
-    @Test fun `installs by itself when idle, off screen, and Android will not ask`() {
-        assertEquals(Decision.INSTALL, UpdateRules.decide(facts()))
-        assertEquals(Decision.INSTALL, UpdateRules.decide(facts(idleMs = UpdateRules.IDLE_GRACE_MS)))
+    @Test fun `never installs without a tap, in any combination of facts`() {
+        val bools = listOf(false, true)
+        for (car in bools) for (canInstall in bools) {
+            val d = UpdateRules.decide(facts(car = car, tapped = false, canInstall = canInstall))
+            assertNotEquals("car=$car canInstall=$canInstall", Decision.INSTALL, d)
+        }
+    }
+
+    @Test fun `without a tap an update that can install just waits for one`() {
+        assertEquals(Decision.ASK_USER, UpdateRules.decide(facts()))
+    }
+
+    @Test fun `a tap installs`() {
+        assertEquals(Decision.INSTALL, UpdateRules.decide(facts(tapped = true)))
     }
 
     @Test fun `never during a car session, not even on a tap`() {
         assertEquals(Decision.WAIT_CAR, UpdateRules.decide(facts(car = true)))
-        assertEquals(Decision.WAIT_CAR, UpdateRules.decide(facts(car = true, playing = true, tapped = true)))
-        assertEquals(Decision.WAIT_CAR, UpdateRules.decide(facts(car = true, playing = false, tapped = true)))
-    }
-
-    @Test fun `defers while music plays, unless the person taps`() {
-        assertEquals(Decision.WAIT_PLAYING, UpdateRules.decide(facts(playing = true, idleMs = 0)))
-        assertEquals(Decision.WAIT_PLAYING, UpdateRules.decide(facts(playing = true, foreground = true, idleMs = 0)))
-        assertEquals(Decision.INSTALL, UpdateRules.decide(facts(playing = true, idleMs = 0, tapped = true)))
-    }
-
-    @Test fun `waits out the grace after the music stops`() {
-        assertEquals(Decision.WAIT_IDLE, UpdateRules.decide(facts(idleMs = 5_000)))
-        assertEquals(Decision.WAIT_IDLE, UpdateRules.decide(facts(idleMs = UpdateRules.IDLE_GRACE_MS - 1)))
-    }
-
-    @Test fun `asks for a tap on screen, or when Android will ask anyway`() {
-        assertEquals(Decision.ASK_USER, UpdateRules.decide(facts(foreground = true, idleMs = 0)))
-        assertEquals(Decision.ASK_USER, UpdateRules.decide(facts(silent = false)))
-        assertEquals(Decision.INSTALL, UpdateRules.decide(facts(silent = false, tapped = true)))
-        assertEquals(Decision.INSTALL, UpdateRules.decide(facts(foreground = true, tapped = true)))
+        assertEquals(Decision.WAIT_CAR, UpdateRules.decide(facts(car = true, tapped = true)))
     }
 
     @Test fun `without the install permission the page offers the setting`() {
@@ -202,8 +193,8 @@ class UpdateRulesTest {
         val (title, subtitle) = UpdateRules.carNotice(true)!!
         assertEquals("Ember update ready", title)
         assertTrue(subtitle.contains("parked"))
-        val (_, ask) = UpdateRules.carNotice(true, silent = false)!!
-        assertTrue(ask.contains("open Ember on your phone"))
+        assertTrue(subtitle.contains("open Ember on your phone"))
+        assertFalse(subtitle.contains("Installs when"))
     }
 
     @Test fun `before Android 10 the updated app opens itself again, from 10 on Android forbids it`() {

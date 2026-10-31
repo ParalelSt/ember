@@ -77,10 +77,10 @@ describe('updatePill', () => {
     );
   });
 
-  it('says it installs when the music stops, and still allows a tap', () => {
+  it('reads an older app\'s playback and idle waits as a plain tap, never a by-itself install', () => {
     for (const waiting of ['playback', 'idle'] as const) {
       const pill = updatePill(s({ status: 'ready', waiting }))!;
-      expect(pill.detail).toMatch(/music stops/);
+      expect(pill.detail).toBe('Tap to install');
       expect(pill.action).toBe('install');
     }
   });

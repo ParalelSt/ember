@@ -153,7 +153,6 @@ object AppUpdater {
     @Volatile private var gateInstall = false
     private var activity: WeakReference<Activity>? = null
     private var lastDecision: UpdateRules.Decision? = null
-    private val idleCheck = Runnable { evaluate(false) }
 
     @Synchronized
     fun init(context: Context) {
@@ -451,43 +450,31 @@ object AppUpdater {
     /** Main thread. Whether the ready update installs now, and if not, what
      *  it waits for (shown on the page as `waiting`). */
     fun evaluate(userRequested: Boolean) {
-        main.removeCallbacks(idleCheck)
         val r = ready ?: return
         if (status == Status.INSTALLING || busy.get()) return
         if (!r.file.exists()) { clearReady(); set(Status.IDLE); return }
         val facts = UpdateRules.InstallFacts(
-            playing = UpdatePresence.playing,
             carSession = carSession(),
-            foreground = UpdatePresence.foreground,
-            idleMs = UpdatePresence.idleMs(),
             userRequested = userRequested,
-            silentLikely = silentLikely(),
             canInstall = canInstall(),
         )
-        var decision = UpdateRules.decide(facts)
-        if (decision == UpdateRules.Decision.INSTALL && autoBlocked && !userRequested) decision = UpdateRules.Decision.ASK_USER
+        val decision = UpdateRules.decide(facts)
         if (decision != lastDecision || userRequested) {
             lastDecision = decision
             val data = JSONObject().put("version", r.version).put("decision", decision.name)
-                .put("playing", facts.playing).put("car", facts.carSession).put("foreground", facts.foreground).put("silent", facts.silentLikely)
+                .put("playing", UpdatePresence.playing).put("car", facts.carSession).put("foreground", UpdatePresence.foreground).put("silent", silentLikely())
             if (decision == UpdateRules.Decision.INSTALL) log.info("update.install", "installing ${r.version}${if (userRequested) " (tapped)" else ""}", data)
             else log.info("update.deferred", "update ${r.version} waits: ${decision.name.lowercase()}", data)
         }
         when (decision) {
-            UpdateRules.Decision.INSTALL -> install(r, userRequested)
+            UpdateRules.Decision.INSTALL -> install(r)
             UpdateRules.Decision.WAIT_CAR -> set(Status.READY, latest = r.version, waiting = "car")
-            UpdateRules.Decision.WAIT_PLAYING -> set(Status.READY, latest = r.version, waiting = "playback")
-            UpdateRules.Decision.WAIT_IDLE -> {
-                set(Status.READY, latest = r.version, waiting = "idle")
-                val left = (UpdateRules.IDLE_GRACE_MS - facts.idleMs).coerceIn(1_000L, UpdateRules.IDLE_GRACE_MS)
-                main.postDelayed(idleCheck, left + 500)
-            }
             UpdateRules.Decision.ASK_USER -> set(Status.READY, latest = r.version, waiting = "tap", error = error.takeIf { autoBlocked })
             UpdateRules.Decision.NEED_PERMISSION -> set(Status.READY, latest = r.version, waiting = "permission")
         }
     }
 
-    private fun install(r: Ready, userRequested: Boolean) {
+    private fun install(r: Ready) {
         if (!busy.compareAndSet(false, true)) return
         installStartedAt = System.currentTimeMillis()
         set(Status.INSTALLING, latest = r.version)
@@ -503,7 +490,7 @@ object AppUpdater {
                 // Copying the APK takes a moment: music started (a headset's
                 // play key) or a car connected in the meantime still wins.
                 val committed = UpdateInstaller.commit(app, r.file, silent = Build.VERSION.SDK_INT >= 31) {
-                    !carSession() && (userRequested || !UpdatePresence.playing)
+                    !carSession()
                 }
                 if (!committed) busy.set(false)
                 if (!committed) main.post {
@@ -637,8 +624,6 @@ object AppUpdater {
     }.getOrNull()
 
     /** For the car's notice: whether the waiting update will go in by itself. */
-    fun installsSilently(): Boolean = ::app.isInitialized && silentLikely()
-
     private fun silentLikely(): Boolean = UpdateRules.silentLikely(Build.VERSION.SDK_INT, installerOfRecord(), app.packageName)
 
     private fun netFacts(): UpdateRules.NetFacts? {
