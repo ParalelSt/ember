@@ -161,6 +161,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- Discord's Social SDK brings these for sign-in and voice; presence
+             without sign-in uses neither. The sign-in activity is exported, so
+             it must not sit in Ember unused. Nothing to remove in a build
+             without the SDK. -->
+        <activity
+            android:name="com.discord.socialsdk.AuthenticationActivity"
+            tools:node="remove" />
+        <service
+            android:name="com.discord.socialsdk.ForegroundService"
+            tools:node="remove" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -173,6 +184,17 @@
     </application>
 
     <!-- Permissions -->
+
+    <!-- Discord's Social SDK (a build that has it, see app/build.gradle) asks
+         for what voice chat needs. Ember only sets rich presence, and the
+         SDK's docs say everything but INTERNET can go without voice, so none
+         of this comes with it. RECORD_AUDIO is not in this list on purpose:
+         voice search declares it below for itself, and a remove here would
+         take that away too. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" tools:node="remove" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" tools:node="remove" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- The auto cache and the offline skip watch for a validated network

@@ -1,8 +1,37 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
+// Discord Rich Presence (DiscordPresence.kt, docs/APPS.md). The Social SDK's
+// licence forbids redistributing it, so it stays out of this public repository
+// and comes from this machine: EMBER_DISCORD_SDK_DIR (environment or -P), by
+// default ~/.ember-tools/discord-sdk. Without it the app builds and runs with
+// presence compiled out (src/discordStub): no native code, no NDK.
+def discordSdkDir = file(System.getenv('EMBER_DISCORD_SDK_DIR')
+    ?: findProperty('EMBER_DISCORD_SDK_DIR')
+    ?: "${System.getProperty('user.home')}/.ember-tools/discord-sdk")
+def discordAar = new File(discordSdkDir, 'sdk/discord_social_sdk/lib/release/discord_partner_sdk.aar')
+def hasDiscordSdk = discordAar.isFile()
+// Like the desktop build: the id is baked in at build time; none, no card.
+def discordAppId = (System.getenv('DISCORD_APP_ID') ?: findProperty('DISCORD_APP_ID') ?: '').toString().trim()
+if (!discordAppId.matches('[0-9]*')) throw new GradleException('DISCORD_APP_ID must be digits')
+logger.lifecycle("Discord presence: ${hasDiscordSdk ? 'SDK' : 'no SDK, compiled out'}, ${discordAppId ? 'app id set' : 'no app id'}")
+
 android {
     namespace "app.ember.music"
+    buildFeatures { buildConfig true }
+    // Exactly one of these two holds DiscordSdkBridge.
+    sourceSets.main.java.srcDirs += hasDiscordSdk ? 'src/discordSdk/java' : 'src/discordStub/java'
+    if (hasDiscordSdk) {
+        // The version the SDK's prefab was built with (and AGP 8.7's default).
+        ndkVersion '27.0.12077973'
+        buildFeatures { prefab true }
+        externalNativeBuild {
+            cmake {
+                path 'src/discordSdk/cpp/CMakeLists.txt'
+                version '3.22.1'
+            }
+        }
+    }
     // Capacitor compiles Java at 21 (capacitor.build.gradle); Kotlin must match.
     kotlinOptions { jvmTarget = '21' }
     // Robolectric: real Bundle/Uri/org.json in JVM tests instead of stubs, and
@@ -27,6 +56,12 @@ android {
         versionCode 39
         versionName "0.4.34"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField 'String', 'DISCORD_APP_ID', "\"${discordAppId}\""
+        if (hasDiscordSdk) {
+            externalNativeBuild {
+                cmake { arguments '-DANDROID_STL=c++_static' }
+            }
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -111,6 +146,7 @@ dependencies {
     // "Scan QR code" (QrScan.kt): Google's code scanner, its own camera
     // screen from Play services, no camera permission.
     implementation "com.google.android.gms:play-services-code-scanner:$codeScannerVersion"
+    if (hasDiscordSdk) implementation files(discordAar)
 }
 
 apply from: 'capacitor.build.gradle'
