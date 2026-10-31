@@ -145,7 +145,7 @@ export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTrac
               <Button type="button" variant="ghost" className="rounded-full" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={busy || !name.trim()} variant="ember" className="rounded-full px-stack">
+              <Button type="submit" disabled={busy || !name.trim()} variant="ember" className="rounded-full px-stack max-md:px-stack">
                 {busy
                   ? 'Creating…'
                   : selected.length

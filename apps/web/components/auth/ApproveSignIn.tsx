@@ -201,7 +201,7 @@ export function ApproveSignIn({
       )}
       <Button
         variant="ember"
-        className="mt-stack h-12 w-full rounded-full text-base font-semibold"
+        className="mt-stack h-12 max-md:h-12 w-full rounded-full text-base font-semibold"
         disabled={!armed || busy}
         onClick={() => void act('approve')}
       >

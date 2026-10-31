@@ -48,7 +48,7 @@ export function LibraryEmptyCard({ onCreate, importHref }: LibraryEmptyCardProps
       <p className="max-w-[260px] text-[13.5px] leading-[1.45] text-muted-foreground">
         Collect songs you love in one place. Add from search, your likes or the player.
       </p>
-      <Button variant="ember" onClick={onCreate} className="mt-cluster h-auto rounded-full px-[22px] py-[11px] text-sm font-bold">
+      <Button variant="ember" onClick={onCreate} className="mt-cluster h-auto rounded-full px-[22px] py-[11px] max-md:h-auto max-md:px-[22px] text-sm font-bold">
         Create playlist
       </Button>
       <Link href={importHref} className="p-cluster text-[13px] font-semibold text-muted-foreground underline">
