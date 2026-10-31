@@ -6,6 +6,7 @@ import { BaseAuthStore, type RecordModel } from 'pocketbase';
 import { createClient } from '@/lib/pocketbase/client';
 import { onSessionExpired } from '@/lib/sessionExpired';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
+import { setAndroidDiscordSharing } from '@/lib/androidDiscord';
 import { useChangelogStore } from '@/stores/useChangelogStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { registerThemeCookieWriter, useThemeStore } from '@/stores/useThemeStore';
@@ -279,6 +280,9 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
         // The saved queue and what was playing are this account's too, in
         // this tab and in every other open one.
         clearAccountPlayback();
+        // The Android app's Discord switch lives on the phone and acts with no
+        // page open: the signed-out account's yes must not stay behind.
+        setAndroidDiscordSharing(false);
         try {
           localStorage.setItem(SIGNED_OUT_KEY, String(Date.now()));
         } catch {

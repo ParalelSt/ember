@@ -1,10 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { useDiscordPresence } from './useDiscordPresence';
 import { makeTrack } from '@/test-utils/fakeBackend';
+import { usePrivacyStore } from '@/stores/usePrivacyStore';
 
 const presence = vi.hoisted(() => ({ publishDiscordPresence: vi.fn() }));
 vi.mock('@/lib/discordPresence', () => presence);
+const android = vi.hoisted(() => ({ setAndroidDiscordSharing: vi.fn() }));
+vi.mock('@/lib/androidDiscord', () => android);
 
 const a = makeTrack();
 const b = makeTrack({ id: 'youtube:b2', sourceId: 'b2', title: 'Second Song' });
@@ -208,3 +211,35 @@ describe('useDiscordPresence: skipping at 2:45', () => {
   });
 });
 
+describe('the switch on its way to the Android app', () => {
+  beforeEach(() => {
+    usePrivacyStore.setState({ shareDiscord: false, shareListening: false, loaded: false, failed: false });
+  });
+
+  it('waits for the account: before the load the store says off whatever the account says', () => {
+    setup();
+    expect(android.setAndroidDiscordSharing).not.toHaveBeenCalled();
+    act(() => usePrivacyStore.setState({ shareDiscord: true, loaded: true }));
+    expect(android.setAndroidDiscordSharing).toHaveBeenCalledTimes(1);
+    expect(android.setAndroidDiscordSharing).toHaveBeenCalledWith(true);
+  });
+
+  it('says off when the account says off, though the store never changed its mind', () => {
+    setup();
+    act(() => usePrivacyStore.setState({ loaded: true }));
+    expect(android.setAndroidDiscordSharing).toHaveBeenCalledWith(false);
+  });
+
+  it('follows the member flipping it', () => {
+    usePrivacyStore.setState({ shareDiscord: true, loaded: true });
+    setup();
+    act(() => usePrivacyStore.setState({ shareDiscord: false }));
+    expect(android.setAndroidDiscordSharing).toHaveBeenLastCalledWith(false);
+  });
+
+  it('leaves it alone after a failed load: no connection is not a no', () => {
+    setup();
+    act(() => usePrivacyStore.setState({ failed: true }));
+    expect(android.setAndroidDiscordSharing).not.toHaveBeenCalled();
+  });
+});
