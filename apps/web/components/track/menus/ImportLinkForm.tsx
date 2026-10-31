@@ -13,14 +13,12 @@ import { QK } from '@/hooks/useLibrary';
 import { IMPORT_QK } from '@/hooks/useImports';
 import { logger } from '@/lib/logger/client';
 import { parseImportUrl } from '@/lib/import/url';
-import type { ImportSourceKind } from '@/lib/import/types';
 
 /** Wait this long after typing stops before looking a pasted link up. */
 const LOOKUP_DELAY_MS = 350;
 
 interface Preview {
   url: string;
-  kind: ImportSourceKind;
   name: string;
   coverUrl: string | null;
   count: number;
@@ -59,10 +57,9 @@ export function ImportLinkForm({ onCancel, onCreated }: ImportLinkFormProps) {
         step: 'preview',
         preview:
           r.source === 'spotify'
-            ? { url: link, kind: 'spotify', name: r.name, coverUrl: r.coverUrl, count: r.items.length, truncated: r.truncated }
+            ? { url: link, name: r.name, coverUrl: r.coverUrl, count: r.items.length, truncated: r.truncated }
             : {
                 url: link,
-                kind: /music\.youtube\.com/i.test(link) ? 'ytmusic' : 'youtube',
                 name: r.name,
                 coverUrl: r.tracks[0]?.artworkUrl ?? null,
                 count: r.tracks.length,
@@ -127,13 +124,7 @@ export function ImportLinkForm({ onCancel, onCreated }: ImportLinkFormProps) {
         />
       </div>
       {preview ? (
-        <>
-          <LinkPreview kind={preview.kind} name={preview.name} coverUrl={preview.coverUrl} count={preview.count} truncated={preview.truncated} />
-          <p className="text-xs text-muted-foreground">
-            The playlist shows up in your sidebar right away and fills in while songs are matched on YouTube. Anything
-            unsure waits for you to check.
-          </p>
-        </>
+        <LinkPreview name={preview.name} coverUrl={preview.coverUrl} count={preview.count} truncated={preview.truncated} />
       ) : state.step === 'looking' ? (
         <p className="text-xs text-muted-foreground">Looking up the playlist…</p>
       ) : state.step === 'error' ? (
