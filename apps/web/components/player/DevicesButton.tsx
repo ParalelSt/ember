@@ -16,6 +16,7 @@ import {
   BluetoothIcon,
   CarIcon,
   CastIcon,
+  CheckIcon,
   DevicesIcon,
   HeadphonesIcon,
   LaptopIcon,
@@ -113,11 +114,22 @@ function RowBody({ row }: { row: DeviceRow }) {
   const Icon = ICONS[row.icon];
   return (
     <>
-      <Icon className={cn('h-4 w-4 shrink-0', row.current ? 'text-ember' : 'text-muted-foreground')} />
-      <span className="flex min-w-0 flex-col text-left">
-        <span className={cn('truncate', row.current && 'text-ember font-semibold')}>{row.label}</span>
+      <span
+        data-testid="device-icon"
+        className={cn(
+          'grid size-9 shrink-0 place-items-center rounded-full',
+          // The menu turns a highlighted row's text its accent colour with a
+          // stronger selector; the current device stays ember through that.
+          row.current ? 'bg-ember/15 text-ember!' : 'bg-muted text-muted-foreground',
+        )}
+      >
+        <Icon className="size-4.5" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col text-left">
+        <span className={cn('truncate', row.current && 'text-ember! font-semibold')}>{row.label}</span>
         {row.detail && <span className="truncate text-xs text-muted-foreground">{row.detail}</span>}
       </span>
+      {row.current && <CheckIcon data-testid="device-check" aria-hidden="true" className="size-4 shrink-0 text-ember!" />}
     </>
   );
 }
@@ -172,7 +184,7 @@ export function DevicesButton({ className, iconClassName }: Props) {
                 onClick={() => pick(row)}
                 aria-current={row.current || undefined}
                 data-current={row.current || undefined}
-                className="gap-row py-cluster"
+                className="min-h-12 gap-row rounded-lg px-cluster py-inset"
               >
                 <RowBody row={row} />
               </DropdownMenuItem>
@@ -233,7 +245,7 @@ export function DevicesSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                     onClick={() => pick(row)}
                     aria-current={row.current || undefined}
                     data-current={row.current || undefined}
-                    className="flex min-h-12 items-center gap-row rounded-lg px-row py-cluster text-sm hover:bg-accent focus-visible:bg-accent outline-none"
+                    className="flex min-h-14 items-center gap-row rounded-lg px-row py-cluster text-sm hover:bg-accent focus-visible:bg-accent outline-none"
                   >
                     <RowBody row={row} />
                   </button>

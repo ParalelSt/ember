@@ -104,6 +104,50 @@ describe('DevicesButton', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('desktop rows are roomy: a round icon on each, the current one ember with a check at the end', () => {
+    useOutputStore.setState(DESKTOP);
+    render(<DevicesButton variant="bar" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Devices' }));
+    const rows = within(screen.getByRole('menu')).getAllByRole('menuitem');
+    for (const row of rows) {
+      expect(row.className).toContain('min-h-12');
+      expect(within(row).getByTestId('device-icon').className).toContain('rounded-full');
+    }
+    expect(within(rows[0]).getByTestId('device-icon').className).toContain('text-ember');
+    expect(within(rows[0]).getByText('System default').className).toContain('text-ember');
+    expect(within(rows[0]).getByTestId('device-check')).toBeInTheDocument();
+    // The check is the row's last thing.
+    expect(rows[0].lastElementChild).toBe(within(rows[0]).getByTestId('device-check'));
+    expect(within(rows[2]).getByTestId('device-icon').className).not.toContain('text-ember');
+    expect(within(rows[2]).getByText('Scarlett 2i2').className).not.toContain('text-ember');
+    expect(within(rows[2]).queryByTestId('device-check')).toBeNull();
+  });
+
+  it('phone rows are tap-size, with the same round icon and check', () => {
+    useOutputStore.setState({
+      platform: 'android',
+      devices: [
+        { id: '2', name: 'This phone', kind: 'phone' },
+        { id: '9', name: 'Pixel Buds', kind: 'bluetooth' },
+      ],
+      currentId: '9',
+      currentName: 'Pixel Buds',
+      currentKind: 'bluetooth',
+      systemPicker: null,
+      castDevices: null,
+    });
+    render(<PhoneDevices />);
+    fireEvent.click(screen.getByTestId('devices-button'));
+    const list = screen.getByTestId('devices-list');
+    const buds = within(list).getByText('Pixel Buds').closest('button')!;
+    const phone = within(list).getByText('This phone', { selector: 'span' }).closest('button')!;
+    expect(buds.className).toContain('min-h-14');
+    expect(phone.className).toContain('min-h-14');
+    expect(within(buds).getByTestId('device-icon').className).toContain('rounded-full');
+    expect(within(buds).getByTestId('device-check')).toBeInTheDocument();
+    expect(within(phone).queryByTestId('device-check')).toBeNull();
+  });
+
   it('desktop bar: lit, and named, when the music plays on another device', () => {
     useOutputStore.setState({ ...DESKTOP, currentId: 'Scarlett 2i2', currentName: 'Scarlett 2i2', currentKind: 'usb' });
     render(<DevicesButton variant="bar" />);
