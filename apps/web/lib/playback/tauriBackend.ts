@@ -3,6 +3,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { logger } from '@/lib/logger/client';
+import { isStationStreamUrl } from '@/lib/radio/station';
 import type { Track } from '@/types/track';
 import type { AudioBackend, CreateAudioBackend, RemoteCommands } from './types';
 import { createGainRamp } from './gainRamp';
@@ -140,7 +141,9 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
       sendLoad({ ...lastLoad, startAt: curTime, autoplay: true });
       return;
     }
-    logger.error('audio', message || 'native audio error');
+    // A dead radio station is an outside failure (see isStationStreamUrl).
+    if (isStationStreamUrl(lastLoad?.url)) logger.warn('audio', message || 'native audio error');
+    else logger.error('audio', message || 'native audio error');
     curTime = 0;
     // Nothing is playing now. Left at "playing", the provider's toggle sent
     // pause for every press of play; the engine answers play after a failed
