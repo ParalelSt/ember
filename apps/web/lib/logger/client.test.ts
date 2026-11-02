@@ -220,3 +220,40 @@ describe('ClientLogger: benign browser errors', () => {
     vi.doUnmock('@/lib/autoReport');
   });
 });
+
+describe('ClientLogger: stale chunk load failure', () => {
+  const msg = 'Loading chunk 5897 failed. (error: /_next/static/chunks/app/(app)/settings/help/page-abc.js)';
+
+  async function setup() {
+    vi.resetModules();
+    window.sessionStorage.clear();
+    const auto = vi.fn();
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, pathname: '/settings', search: '', hash: '', origin: window.location.origin, reload, assign: vi.fn() });
+    vi.doMock('@/lib/autoReport', () => ({ maybeAutoReport: auto }));
+    const { logger: fresh } = await import('./client');
+    fresh.boot();
+    return { fresh, auto, reload };
+  }
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.doUnmock('@/lib/autoReport');
+  });
+
+  it('reloads once, logs a warn, and does not auto-report', async () => {
+    const { fresh, auto, reload } = await setup();
+    fresh.error('react', msg, undefined, new Error(msg));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(auto).not.toHaveBeenCalled();
+    expect(fresh.snapshot().current.at(-1)).toMatchObject({ kind: 'breadcrumb', level: 'warn', category: 'chunk' });
+  });
+
+  it('a repeat inside the window is a normal error again (reported, no second reload)', async () => {
+    const { fresh, auto, reload } = await setup();
+    fresh.error('react', msg, undefined, new Error(msg));
+    fresh.error('react', msg, undefined, new Error(msg));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(auto).toHaveBeenCalledTimes(1);
+    expect(fresh.snapshot().current.at(-1)).toMatchObject({ kind: 'error' });
+  });
+});

@@ -6,6 +6,7 @@ import { detectShell } from '@/lib/playback/detectShell';
 import type { ClientSnapshot, LogEntry, LogKind, LogLevel, ReportContext } from './types';
 import { scrub } from './sanitize';
 import { maybeAutoReport } from '@/lib/autoReport';
+import { installNavigationIntent, isChunkLoadError, reloadForChunkFailure } from '@/lib/chunkReload';
 
 // lib/ stays framework-free (no React/Next imports: see eslint.config.mjs),
 // but the zustand stores are plain JS modules with a getState() escape hatch,
@@ -80,6 +81,7 @@ class ClientLogger {
       if (document.visibilityState === 'hidden') this.flush();
     });
 
+    installNavigationIntent();
     this.installConsoleBreadcrumbs();
     this.installClickBreadcrumbs();
     this.installRouteBreadcrumbs();
@@ -164,6 +166,13 @@ class ClientLogger {
 
   error(category: string, message: string, data?: unknown, err?: Error | unknown): void {
     try {
+      // A stale build asking for chunks the server no longer has: one guarded
+      // full reload fixes it, so it is a warning, never an automatic report.
+      if (isChunkLoadError(err, message) && reloadForChunkFailure()) {
+        this.warn('chunk', `reloading after: ${message}`, data);
+        this.flush();
+        return;
+      }
       const entry = this.push('error', 'error', category, message, data, err);
       // Fire-and-forget: autoReport.ts owns every gate (signed in, the
       // Settings toggle, the manual dialog, dedupe, the session cap) and
