@@ -377,4 +377,59 @@ class UpdateInstallFlowTest {
         assertNull(rejected())
         assertEquals("failed", status())
     }
+
+    // ── After the process died ──────────────────────────────────────────
+
+    @Test fun `a restart during a live install comes back on Installing`() {
+        readyApk()
+        val sid = tapInstall()
+        now += 2 * 60_000
+        restart()
+        assertEquals("installing", status())
+        assertEquals(sid, events("update.resumed").single().getJSONObject("data").getInt("sid"))
+        // The gate's install request waits on that session too.
+        UpdatePresence.setForeground(true)
+        AppUpdater.installNow()
+        idle()
+        assertEquals(listOf(sid), installer.mySessions.map { it.sessionId })
+        // Its answer is still matched after the restart.
+        answer(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED: User rejected permissions", sid)
+        assertEquals("ready", status())
+    }
+
+    @Test fun `a restored install whose session then goes is ended by the watch`() {
+        readyApk()
+        val sid = tapInstall()
+        restart()
+        assertEquals("installing", status())
+        installer.abandonSession(sid)
+        idleFor(UpdateRules.INSTALL_WATCH_MS)
+        idleFor(UpdateRules.SESSION_GONE_GRACE_MS)
+        assertEquals("ready", status())
+    }
+
+    @Test fun `a restart after the session is gone or stuck comes back on ready`() {
+        readyApk()
+        val sid = tapInstall()
+        installer.abandonSession(sid)
+        restart()
+        assertEquals("ready", status())
+        // Stuck past the backstop: ready too.
+        AppUpdater.installNow()
+        idle()
+        assertEquals("installing", status())
+        now += UpdateRules.INSTALL_BACKSTOP_MS
+        restart()
+        assertEquals("ready", status())
+    }
+
+    @Test fun `an update that went in clears the session it came from`() {
+        readyApk()
+        tapInstall()
+        // The new version starts: the waiting APK is not newer any more.
+        prefs().edit().putLong("readyCode", 1L).commit()
+        restart()
+        assertFalse(prefs().contains("installSession"))
+        assertFalse(prefs().contains("installActivityAt"))
+    }
 }

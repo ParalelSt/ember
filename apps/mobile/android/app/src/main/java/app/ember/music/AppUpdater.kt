@@ -286,7 +286,10 @@ object AppUpdater {
     private fun prefs() = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /** A verified APK from an earlier run still waits; an update that went
-     *  in since is cleaned up and logged. */
+     *  in since is cleaned up and logged. When the process died during an
+     *  install (Xiaomi kills it readily behind the installer) and Android
+     *  still has the session, the updater is back on INSTALLING: a tap
+     *  then waits for that session instead of staging a new one. */
     private fun restore() {
         val p = prefs()
         val installing = p.getString(KEY_INSTALLING, null)
@@ -305,6 +308,13 @@ object AppUpdater {
             ready = Ready(version, code, file)
             latest = version
             status = Status.READY
+            val alive = sessionAlive()
+            if (installing == version && UpdateRules.sessionInProgress(alive, clock() - activityAt)) {
+                status = Status.INSTALLING
+                log.info("update.resumed", "install of $version still in progress after a restart",
+                    JSONObject().put("version", version).put("sid", sessionId ?: -1).put("idleMs", clock() - activityAt))
+                armWatch()
+            }
         } else {
             clearReady()
         }
@@ -312,7 +322,9 @@ object AppUpdater {
 
     private fun clearReady() {
         ready = null
-        prefs().edit().remove(KEY_READY_VERSION).remove(KEY_READY_CODE).remove(KEY_READY_PATH).remove(KEY_INSTALLING).apply()
+        sessionId = null
+        prefs().edit().remove(KEY_READY_VERSION).remove(KEY_READY_CODE).remove(KEY_READY_PATH).remove(KEY_INSTALLING)
+            .remove(KEY_SESSION).remove(KEY_ACTIVITY_AT).remove(KEY_INSTALL_AT).apply()
         runCatching { File(app.cacheDir, "updates").listFiles()?.forEach { it.delete() } }
     }
 
