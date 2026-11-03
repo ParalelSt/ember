@@ -86,7 +86,7 @@ class UpdateInstallFlowTest {
         val sid = tapInstall()
         now += 42_000
         answer(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_VERIFICATION_FAILURE", sid, legacy = -22)
-        val e = events("update.declined").single()
+        val e = events("update.blocked").single()
         assertEquals("warn", e.getString("level"))
         assertTrue(e.getString("message"), e.getString("message").contains("aborted (3): INSTALL_FAILED_VERIFICATION_FAILURE"))
         val d = e.getJSONObject("data")
@@ -313,5 +313,68 @@ class UpdateInstallFlowTest {
         idle()
         idleFor(2 * 60_000)
         assertEquals("installing", status())
+    }
+
+    // ── What each answer does to the waiting APK ────────────────────────
+
+    private fun rejected() = AppUpdater.rejectedVersion()
+
+    @Test fun `Play Protect's block keeps the APK and says how to get past it`() {
+        val apk = readyApk()
+        val sid = tapInstall()
+        answer(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_VERIFICATION_FAILURE", sid, legacy = -22)
+        val st = AppUpdater.stateJson()
+        assertEquals("ready", st.getString("status"))
+        assertEquals("tap", st.getString("waiting"))
+        assertTrue(st.getString("error").contains("More details, then Install anyway"))
+        assertTrue(apk.exists())
+        assertNull(rejected())
+        assertEquals("play_protect", events("update.blocked").single().getJSONObject("data").getString("outcome"))
+    }
+
+    @Test fun `Xiaomi's USER_RESTRICTED never refuses the version or deletes the APK`() {
+        val apk = readyApk()
+        val sid = tapInstall()
+        answer(PackageInstaller.STATUS_FAILURE_INCOMPATIBLE, "INSTALL_FAILED_USER_RESTRICTED: Install canceled by user", sid, legacy = -111)
+        assertTrue(apk.exists())
+        assertNull(rejected())
+        assertNull(app.getSharedPreferences("ember.update", 0).getString("rejectedVersion", null))
+        val st = AppUpdater.stateJson()
+        assertEquals("ready", st.getString("status"))
+        assertEquals(AppUpdater.PHONE_BLOCKED_ERROR, st.getString("error"))
+        assertEquals("warn", events("update.blocked").single().getString("level"))
+        // And a tap tries again with the same APK.
+        AppUpdater.installNow()
+        idle()
+        assertEquals("installing", status())
+    }
+
+    @Test fun `INCOMPATIBLE with no real incompatibility behind it keeps the APK`() {
+        val apk = readyApk()
+        val sid = tapInstall()
+        answer(PackageInstaller.STATUS_FAILURE_INCOMPATIBLE, "", sid)
+        assertTrue(apk.exists())
+        assertNull(rejected())
+        assertEquals("ready", status())
+    }
+
+    @Test fun `another signing key refuses the version for good and drops the APK`() {
+        val apk = readyApk()
+        val sid = tapInstall()
+        answer(PackageInstaller.STATUS_FAILURE_CONFLICT,
+            "INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package app.ember.music signatures do not match previously installed version; ignoring!", sid)
+        assertFalse(apk.exists())
+        assertEquals("9.9.9", rejected())
+        assertEquals("failed", status())
+        assertEquals("error", events("update.failed").single().getString("level"))
+    }
+
+    @Test fun `an unreadable APK is dropped to download again, without refusing the version`() {
+        val apk = readyApk()
+        val sid = tapInstall()
+        answer(PackageInstaller.STATUS_FAILURE_INVALID, "INSTALL_PARSE_FAILED_NOT_APK: Failed to parse", sid)
+        assertFalse(apk.exists())
+        assertNull(rejected())
+        assertEquals("failed", status())
     }
 }

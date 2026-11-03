@@ -307,4 +307,56 @@ class UpdateRulesTest {
         assertEquals(UpdateRules.Tap.NEW_SESSION, tap(alive = false))
         assertEquals(UpdateRules.Tap.NEW_SESSION, tap(alive = false, held = true))
     }
+
+    // ── What an answer means ────────────────────────────────────────────
+
+    @Test fun `answers are classified by their INSTALL_FAILED code first, their status only otherwise`() {
+        fun c(status: Int, message: String, legacy: Int? = null) = UpdateRules.classify(UpdateRules.Answer(status, message, 1, legacy))
+        val table: List<Pair<Triple<Int, String, Int?>, UpdateRules.Outcome>> = listOf(
+            // status, message, legacy -> outcome
+            Triple(-1, "", null) to UpdateRules.Outcome.NEEDS_USER,
+            Triple(0, "INSTALL_SUCCEEDED", null) to UpdateRules.Outcome.INSTALLED,
+            // A plain no, or an abort with nothing more to say.
+            Triple(3, "INSTALL_FAILED_ABORTED: User rejected permissions", null) to UpdateRules.Outcome.DECLINED,
+            Triple(3, "", null) to UpdateRules.Outcome.DECLINED,
+            Triple(3, "Session was abandoned", null) to UpdateRules.Outcome.DECLINED,
+            // Play Protect: the verifier's codes arrive as ABORTED.
+            Triple(3, "INSTALL_FAILED_VERIFICATION_FAILURE", null) to UpdateRules.Outcome.PLAY_PROTECT,
+            Triple(3, "INSTALL_FAILED_VERIFICATION_TIMEOUT: Verification timed out", null) to UpdateRules.Outcome.PLAY_PROTECT,
+            Triple(3, "", -22) to UpdateRules.Outcome.PLAY_PROTECT,
+            Triple(3, "", -21) to UpdateRules.Outcome.PLAY_PROTECT,
+            // Xiaomi: USER_RESTRICTED arrives as INCOMPATIBLE.
+            Triple(7, "INSTALL_FAILED_USER_RESTRICTED: Install canceled by user", null) to UpdateRules.Outcome.PHONE_BLOCKED,
+            Triple(7, "", -111) to UpdateRules.Outcome.PHONE_BLOCKED,
+            // Permanent: signature, versionCode, ABI.
+            Triple(5, "INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match", null) to UpdateRules.Outcome.PERMANENT,
+            Triple(5, "", -7) to UpdateRules.Outcome.PERMANENT,
+            Triple(4, "INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES: x", null) to UpdateRules.Outcome.PERMANENT,
+            Triple(4, "INSTALL_FAILED_VERSION_DOWNGRADE: older", null) to UpdateRules.Outcome.PERMANENT,
+            Triple(7, "INSTALL_FAILED_NO_MATCHING_ABIS: arm64", null) to UpdateRules.Outcome.PERMANENT,
+            Triple(7, "", -16) to UpdateRules.Outcome.PERMANENT,
+            // A broken file is downloaded again, not refused.
+            Triple(4, "INSTALL_FAILED_INVALID_APK: bad zip", null) to UpdateRules.Outcome.BROKEN_FILE,
+            Triple(4, "INSTALL_PARSE_FAILED_NOT_APK: x", null) to UpdateRules.Outcome.BROKEN_FILE,
+            // Not a real incompatibility: kept, tried again.
+            Triple(7, "", null) to UpdateRules.Outcome.FAILED,
+            Triple(7, "INSTALL_FAILED_OLDER_SDK: needs 24", null) to UpdateRules.Outcome.FAILED,
+            Triple(5, "INSTALL_FAILED_REPLACE_COULDNT_DELETE", null) to UpdateRules.Outcome.FAILED,
+            Triple(4, "INSTALL_FAILED_DEXOPT: low storage", null) to UpdateRules.Outcome.FAILED,
+            Triple(6, "INSTALL_FAILED_INSUFFICIENT_STORAGE", null) to UpdateRules.Outcome.FAILED,
+            Triple(1, "INSTALL_FAILED_INTERNAL_ERROR", null) to UpdateRules.Outcome.FAILED,
+            Triple(2, "", null) to UpdateRules.Outcome.FAILED,
+            Triple(8, "", null) to UpdateRules.Outcome.FAILED,
+        )
+        for ((input, expected) in table) {
+            val (status, message, legacy) = input
+            assertEquals("$status '$message' $legacy", expected, c(status, message, legacy))
+        }
+    }
+
+    @Test fun `the failure code comes from the message, or else the legacy status`() {
+        assertEquals("INSTALL_FAILED_USER_RESTRICTED", UpdateRules.failureCode(UpdateRules.Answer(7, "INSTALL_FAILED_USER_RESTRICTED: Install canceled by user", 1)))
+        assertEquals("INSTALL_FAILED_VERIFICATION_FAILURE", UpdateRules.failureCode(UpdateRules.Answer(3, "", 1, -22)))
+        assertNull(UpdateRules.failureCode(UpdateRules.Answer(3, "nothing here", 1, -9999)))
+    }
 }

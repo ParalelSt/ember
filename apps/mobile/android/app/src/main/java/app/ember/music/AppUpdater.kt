@@ -108,6 +108,9 @@ object AppUpdater {
     private const val KEY_ACTIVITY_AT = "installActivityAt"
     /** Larger than any Ember APK will be; a server answering more is wrong. */
     private const val MAX_APK_BYTES = 300L * 1024 * 1024
+    /** The page adds "Tap to try again" after an error (apps/web/lib/appUpdate.ts). */
+    internal const val PLAY_PROTECT_ERROR = "Play Protect stopped the update. If it warns again, tap More details, then Install anyway"
+    internal const val PHONE_BLOCKED_ERROR = "Your phone's security check stopped the update"
 
     enum class Status(val wire: String) {
         IDLE("idle"), CHECKING("checking"), UP_TO_DATE("up-to-date"), DOWNLOADING("downloading"),
@@ -639,14 +642,10 @@ object AppUpdater {
         }
         // Anything but "the person has to confirm" is the session's end.
         if (a.status != PackageInstaller.STATUS_PENDING_USER_ACTION) forgetSession() else touch()
-        when (a.status) {
-            PackageInstaller.STATUS_PENDING_USER_ACTION -> onNeedsConfirm(a, confirm)
-            PackageInstaller.STATUS_SUCCESS -> onInstalled(a)
-            PackageInstaller.STATUS_FAILURE_ABORTED -> onInstallFailed(a, keep = true, aborted = true)
-            // A different key or a broken file: the same APK can never go in.
-            PackageInstaller.STATUS_FAILURE_CONFLICT, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE, PackageInstaller.STATUS_FAILURE_INVALID ->
-                onInstallFailed(a, keep = false)
-            else -> onInstallFailed(a, keep = true)
+        when (val outcome = UpdateRules.classify(a)) {
+            UpdateRules.Outcome.NEEDS_USER -> onNeedsConfirm(a, confirm)
+            UpdateRules.Outcome.INSTALLED -> onInstalled(a)
+            else -> onInstallFailed(a, outcome)
         }
     }
 
@@ -706,34 +705,53 @@ object AppUpdater {
         log.flush()
     }
 
-    /** Declined, or failed. [keep] leaves the APK for a tap to try again.
-     *  A plain "no" on Android's screen is info; ABORTED for any other
-     *  reason (Play Protect, a verifier) is a warning, so the daily digest
-     *  counts it. */
-    private fun onInstallFailed(a: UpdateRules.Answer, keep: Boolean, aborted: Boolean = false) {
+    /** Declined, blocked or failed (UpdateRules.classify). Only a
+     *  PERMANENT outcome refuses the version, and only it and BROKEN_FILE
+     *  drop the APK; everything else keeps it for a tap to try again. A plain
+     *  "no" on Android's screen is info; Play Protect, the phone's own check
+     *  and any other abort are warnings and real failures errors, so the
+     *  daily digest counts them. */
+    private fun onInstallFailed(a: UpdateRules.Answer, outcome: UpdateRules.Outcome) {
         main.post {
             val r = ready
-            val data = answerData(a, r?.version)
+            val data = answerData(a, r?.version).put("outcome", outcome.name.lowercase())
             val what = UpdateRules.describeStatus(a.status, a.message)
             prefs().edit().remove(KEY_INSTALLING).apply()
             main.removeCallbacks(watch)
             autoBlocked = true
             pendingConfirm = null
-            when {
-                aborted && UpdateRules.isPlainCancel(a.status, a.message) -> log.info("update.declined", "install of ${r?.version} not confirmed: $what", data)
-                aborted -> log.warn("update.declined", "install of ${r?.version} stopped: $what", data)
-                keep -> log.error("update.failed", "install failed: $what", data)
-                else -> log.error("update.failed", "install refused: $what", data)
+            when (outcome) {
+                UpdateRules.Outcome.DECLINED ->
+                    if (UpdateRules.isPlainCancel(a.status, a.message)) log.info("update.declined", "install of ${r?.version} not confirmed: $what", data)
+                    else log.warn("update.declined", "install of ${r?.version} stopped: $what", data)
+                UpdateRules.Outcome.PLAY_PROTECT -> log.warn("update.blocked", "Play Protect stopped the install of ${r?.version}: $what", data)
+                UpdateRules.Outcome.PHONE_BLOCKED -> log.warn("update.blocked", "the phone stopped the install of ${r?.version}: $what", data)
+                UpdateRules.Outcome.PERMANENT -> log.error("update.failed", "install refused: $what", data)
+                else -> log.error("update.failed", "install failed: $what", data)
             }
             log.flush()
-            if (r != null && keep) {
-                lastDecision = UpdateRules.Decision.ASK_USER
-                set(Status.READY, latest = r.version, waiting = "tap", error = if (aborted) null else "The update didn't install")
-            } else {
-                // The same APK can never go in: not again every 6 hours.
-                r?.let { prefs().edit().putString(KEY_REJECTED, it.version).apply() }
-                clearReady()
-                set(Status.FAILED, error = "The update didn't install")
+            val error = when (outcome) {
+                UpdateRules.Outcome.DECLINED -> null
+                UpdateRules.Outcome.PLAY_PROTECT -> PLAY_PROTECT_ERROR
+                UpdateRules.Outcome.PHONE_BLOCKED -> PHONE_BLOCKED_ERROR
+                else -> "The update didn't install"
+            }
+            when {
+                outcome == UpdateRules.Outcome.PERMANENT -> {
+                    // The same APK can never go in: not again every 6 hours.
+                    r?.let { prefs().edit().putString(KEY_REJECTED, it.version).apply() }
+                    clearReady()
+                    set(Status.FAILED, error = error)
+                }
+                outcome == UpdateRules.Outcome.BROKEN_FILE || r == null -> {
+                    // Downloaded again at the next check; not refused.
+                    clearReady()
+                    set(Status.FAILED, error = error)
+                }
+                else -> {
+                    lastDecision = UpdateRules.Decision.ASK_USER
+                    set(Status.READY, latest = r.version, waiting = "tap", error = error)
+                }
             }
         }
     }

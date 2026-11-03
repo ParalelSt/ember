@@ -327,6 +327,82 @@ object UpdateRules {
      *  the new version) before the install counts as ended. */
     const val SESSION_GONE_GRACE_MS = 5_000L
 
+    /** What an answer means for the waiting APK. */
+    enum class Outcome {
+        /** Android's confirm screen is needed. */
+        NEEDS_USER,
+        INSTALLED,
+        /** The person said no (or an abort with no other reason): keep the
+         *  APK, no error. */
+        DECLINED,
+        /** Play Protect (the package verifier) blocked it or ran out of
+         *  time: keep the APK and say how to get past it. */
+        PLAY_PROTECT,
+        /** The phone's own security check refused or was cancelled
+         *  (INSTALL_FAILED_USER_RESTRICTED, typical of Xiaomi's installer):
+         *  keep the APK, try again on a tap. */
+        PHONE_BLOCKED,
+        /** Can never go in: another signing key, not newer, or no ABI the
+         *  phone runs. The version is refused and the APK dropped. */
+        PERMANENT,
+        /** The APK itself could not be read: dropped so the next check
+         *  downloads it again, but the version is not refused. */
+        BROKEN_FILE,
+        /** Anything else (storage, a passing conflict): keep the APK. */
+        FAILED,
+    }
+
+    /** INSTALL_FAILED_* codes (Android's legacy status) by name. */
+    private val LEGACY_NAMES = mapOf(
+        -2 to "INSTALL_FAILED_INVALID_APK",
+        -7 to "INSTALL_FAILED_UPDATE_INCOMPATIBLE",
+        -16 to "INSTALL_FAILED_CPU_ABI_INCOMPATIBLE",
+        -21 to "INSTALL_FAILED_VERIFICATION_TIMEOUT",
+        -22 to "INSTALL_FAILED_VERIFICATION_FAILURE",
+        -25 to "INSTALL_FAILED_VERSION_DOWNGRADE",
+        -100 to "INSTALL_PARSE_FAILED_NOT_APK",
+        -103 to "INSTALL_PARSE_FAILED_NO_CERTIFICATES",
+        -104 to "INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES",
+        -111 to "INSTALL_FAILED_USER_RESTRICTED",
+        -113 to "INSTALL_FAILED_NO_MATCHING_ABIS",
+        -115 to "INSTALL_FAILED_ABORTED",
+    )
+
+    /** Only a signature, versionCode or ABI mismatch is permanent. */
+    private val PERMANENT_CODES = setOf(
+        "INSTALL_FAILED_UPDATE_INCOMPATIBLE",
+        "INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES",
+        "INSTALL_FAILED_VERSION_DOWNGRADE",
+        "INSTALL_FAILED_NO_MATCHING_ABIS",
+        "INSTALL_FAILED_CPU_ABI_INCOMPATIBLE",
+    )
+
+    private val CODE = Regex("INSTALL_(?:PARSE_)?FAILED_[A-Z_]+")
+
+    /** The INSTALL_FAILED_* behind an answer: from its message ("CODE: why")
+     *  or, failing that, its legacy status; null when neither says. */
+    fun failureCode(a: Answer): String? = CODE.find(a.message)?.value ?: a.legacy?.let { LEGACY_NAMES[it] }
+
+    /** What [a] means. Android folds many causes into a few public statuses
+     *  (Play Protect's block comes as ABORTED, Xiaomi's USER_RESTRICTED as
+     *  INCOMPATIBLE), so the INSTALL_FAILED_* code decides where there is
+     *  one, and the status only otherwise. */
+    fun classify(a: Answer): Outcome {
+        when (a.status) {
+            android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION -> return Outcome.NEEDS_USER
+            android.content.pm.PackageInstaller.STATUS_SUCCESS -> return Outcome.INSTALLED
+        }
+        val code = failureCode(a)
+        return when {
+            code == "INSTALL_FAILED_VERIFICATION_FAILURE" || code == "INSTALL_FAILED_VERIFICATION_TIMEOUT" -> Outcome.PLAY_PROTECT
+            code == "INSTALL_FAILED_USER_RESTRICTED" -> Outcome.PHONE_BLOCKED
+            code in PERMANENT_CODES -> Outcome.PERMANENT
+            code == "INSTALL_FAILED_INVALID_APK" || code?.startsWith("INSTALL_PARSE_FAILED_") == true -> Outcome.BROKEN_FILE
+            a.status == android.content.pm.PackageInstaller.STATUS_FAILURE_ABORTED -> Outcome.DECLINED
+            else -> Outcome.FAILED
+        }
+    }
+
     /** Whether an install with no answer from Android ends now, back to
      *  "tap to install". Not while the APK is still being staged, and not
      *  while Android still has the session: its confirm screen, a vendor's
