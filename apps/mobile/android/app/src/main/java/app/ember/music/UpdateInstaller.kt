@@ -61,23 +61,30 @@ object UpdateInstaller {
 /** The session's answer. Not exported: only the system, through the
  *  PendingIntent above, sends it. */
 class UpdateInstallReceiver : BroadcastReceiver() {
+    companion object {
+        /** The internal INSTALL_FAILED_* code Android puts next to the
+         *  public status (PackageInstaller.EXTRA_LEGACY_STATUS, hidden). */
+        const val EXTRA_LEGACY_STATUS = "android.content.pm.extra.LEGACY_STATUS"
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != UpdateInstaller.ACTION_STATUS) return
         AppUpdater.init(context)
-        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
-        val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()
-        when (status) {
-            PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                val confirm = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
-                    else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_INTENT)
-                AppUpdater.onNeedsConfirm(confirm)
-            }
-            PackageInstaller.STATUS_SUCCESS -> AppUpdater.onInstalled()
-            PackageInstaller.STATUS_FAILURE_ABORTED -> AppUpdater.onInstallFailed("install aborted: $message", keep = true, aborted = true)
-            // A different key or a broken file: the same APK can never go in.
-            PackageInstaller.STATUS_FAILURE_CONFLICT, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE, PackageInstaller.STATUS_FAILURE_INVALID ->
-                AppUpdater.onInstallFailed("install refused ($status): $message", keep = false)
-            else -> AppUpdater.onInstallFailed("install failed ($status): $message", keep = true)
+        // Android always says how it went; a broadcast without a status is
+        // not an answer (Robolectric's session sends one on commit).
+        if (!intent.hasExtra(PackageInstaller.EXTRA_STATUS)) {
+            AppUpdater.onEmptyAnswer(intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1))
+            return
         }
+        val answer = UpdateRules.Answer(
+            status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE),
+            message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty(),
+            sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1),
+            legacy = intent.getIntExtra(EXTRA_LEGACY_STATUS, 0).takeIf { it != 0 },
+        )
+        val confirm = if (answer.status != PackageInstaller.STATUS_PENDING_USER_ACTION) null
+            else if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+            else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_INTENT)
+        AppUpdater.onAnswer(answer, confirm)
     }
 }

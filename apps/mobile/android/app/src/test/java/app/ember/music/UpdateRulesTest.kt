@@ -225,4 +225,33 @@ class UpdateRulesTest {
         assertTrue(UpdateRules.unstickNow(force = true, confirmShown = false, gateInstall = true))
         assertTrue(UpdateRules.unstickNow(force = true, confirmShown = false, gateInstall = false))
     }
+
+    // ── Android's answers ───────────────────────────────────────────────
+
+    @Test fun `an answer is described with its status name, number and message`() {
+        assertEquals("aborted (3): INSTALL_FAILED_VERIFICATION_FAILURE", UpdateRules.describeStatus(3, "INSTALL_FAILED_VERIFICATION_FAILURE"))
+        assertEquals("incompatible (7): INSTALL_FAILED_USER_RESTRICTED: Install canceled by user",
+            UpdateRules.describeStatus(7, " INSTALL_FAILED_USER_RESTRICTED: Install canceled by user "))
+        assertEquals("pending-user-action (-1)", UpdateRules.describeStatus(-1, ""))
+        assertEquals("success (0)", UpdateRules.describeStatus(0, null))
+        assertEquals("failure (1)", UpdateRules.describeStatus(1, null))
+        assertEquals("blocked (2)", UpdateRules.describeStatus(2, null))
+        assertEquals("invalid (4)", UpdateRules.describeStatus(4, null))
+        assertEquals("conflict (5)", UpdateRules.describeStatus(5, null))
+        assertEquals("storage (6)", UpdateRules.describeStatus(6, null))
+        assertEquals("timeout (8)", UpdateRules.describeStatus(8, null))
+        assertEquals("status 42 (42): x", UpdateRules.describeStatus(42, "x"))
+    }
+
+    @Test fun `only a no on Android's own screen counts as a plain cancel`() {
+        assertTrue(UpdateRules.isPlainCancel(3, "INSTALL_FAILED_ABORTED: User rejected permissions"))
+        assertTrue(UpdateRules.isPlainCancel(3, ""))
+        assertTrue(UpdateRules.isPlainCancel(3, "INSTALL_FAILED_ABORTED"))
+        // Play Protect or a verifier stopping it is not the person's no.
+        assertFalse(UpdateRules.isPlainCancel(3, "INSTALL_FAILED_VERIFICATION_FAILURE"))
+        assertFalse(UpdateRules.isPlainCancel(3, "INSTALL_FAILED_VERIFICATION_TIMEOUT: rejected by verifier"))
+        assertFalse(UpdateRules.isPlainCancel(3, "Session was abandoned"))
+        // Only ABORTED is ever a cancel.
+        assertFalse(UpdateRules.isPlainCancel(7, "INSTALL_FAILED_USER_RESTRICTED: Install canceled by user"))
+    }
 }

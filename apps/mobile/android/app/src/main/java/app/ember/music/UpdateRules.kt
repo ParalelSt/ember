@@ -232,6 +232,47 @@ object UpdateRules {
     fun carNotice(ready: Boolean): Pair<String, String>? =
         if (ready) "Ember update ready" to "Once you're parked, open Ember on your phone to install" else null
 
+    // ── Android's answers ───────────────────────────────────────────────
+
+    /** One answer from the install session (UpdateInstallReceiver):
+     *  PackageInstaller's EXTRA_STATUS, EXTRA_STATUS_MESSAGE (on most
+     *  versions "INSTALL_FAILED_<CODE>: why"), EXTRA_SESSION_ID (-1 when
+     *  missing) and the internal INSTALL_FAILED_* code Android also sends
+     *  (EXTRA_LEGACY_STATUS), when it does. */
+    data class Answer(val status: Int, val message: String, val sessionId: Int, val legacy: Int? = null)
+
+    fun statusName(status: Int): String = when (status) {
+        android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION -> "pending-user-action"
+        android.content.pm.PackageInstaller.STATUS_SUCCESS -> "success"
+        android.content.pm.PackageInstaller.STATUS_FAILURE -> "failure"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_BLOCKED -> "blocked"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_ABORTED -> "aborted"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_INVALID -> "invalid"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_CONFLICT -> "conflict"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_STORAGE -> "storage"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "incompatible"
+        8 -> "timeout" // STATUS_FAILURE_TIMEOUT, Android 14
+        else -> "status $status"
+    }
+
+    /** "aborted (3): INSTALL_FAILED_VERIFICATION_FAILURE", for the log. */
+    fun describeStatus(status: Int, message: String?): String {
+        val m = message?.trim().orEmpty()
+        val base = "${statusName(status)} ($status)"
+        return if (m.isEmpty()) base else "$base: $m"
+    }
+
+    /** ABORTED because the person said no on Android's confirm screen ("User
+     *  rejected permissions"), as opposed to Play Protect or a verifier
+     *  stopping it, which also arrive as ABORTED. Only a plain cancel stays
+     *  out of the daily digest. */
+    fun isPlainCancel(status: Int, message: String?): Boolean {
+        if (status != android.content.pm.PackageInstaller.STATUS_FAILURE_ABORTED) return false
+        val m = message?.trim().orEmpty()
+        if (m.contains("VERIFICATION", ignoreCase = true)) return false
+        return m.isEmpty() || m.contains("rejected", ignoreCase = true) || m.equals("INSTALL_FAILED_ABORTED", ignoreCase = true)
+    }
+
     /** Whether an install with no answer from Android ends now, back to
      *  "tap to install". [force]: the 60 s limit. Otherwise only after a
      *  confirm screen this run opened, and not for the launch gate

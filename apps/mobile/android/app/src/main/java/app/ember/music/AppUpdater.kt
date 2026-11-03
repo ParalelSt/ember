@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -99,6 +100,7 @@ object AppUpdater {
     private const val KEY_READY_PATH = "readyPath"
     private const val KEY_REJECTED = "rejectedVersion"
     private const val KEY_INSTALLING = "installingVersion"
+    private const val KEY_INSTALL_AT = "installStartedAt"
     /** Larger than any Ember APK will be; a server answering more is wrong. */
     private const val MAX_APK_BYTES = 300L * 1024 * 1024
     private const val STUCK_INSTALL_MS = 60_000L
@@ -112,7 +114,13 @@ object AppUpdater {
 
     private lateinit var app: Context
     private var baseUrl = ""
-    private val work = Executors.newSingleThreadExecutor()
+    /** Downloads and staging, one at a time. Tests run it in place. */
+    internal var work: java.util.concurrent.Executor = Executors.newSingleThreadExecutor()
+    /** Tests set the time. */
+    internal var clock: () -> Long = System::currentTimeMillis
+    /** Tests: the log to use in place of the server's. */
+    private var testLog: PlaybackLog? = null
+    @Volatile private var initialized = false
     private val logIo = Executors.newSingleThreadExecutor()
     private val logTimer = Executors.newSingleThreadScheduledExecutor()
     private val main by lazy { Handler(Looper.getMainLooper()) }
@@ -156,14 +164,33 @@ object AppUpdater {
 
     @Synchronized
     fun init(context: Context) {
-        if (::app.isInitialized) return
+        if (initialized) return
+        initialized = true
         app = context.applicationContext
         baseUrl = ServerConfig.baseUrl(app)
-        log = buildLog()
+        log = testLog ?: buildLog()
         restore()
         UpdatePresence.onChange = { main.post { evaluate(false) } }
         if (UpdateRules.isTestBuild(app.packageName)) runCatching { UpdateCheckJob.cancel(app) }
         else runCatching { UpdateCheckJob.schedule(app) }.onFailure { log.warn("update.schedule", "periodic check not scheduled: ${it.message}") }
+    }
+
+    /** Tests: forget everything, so the next init() starts like a new
+     *  process on the test's Application, with [log] and [work]. */
+    @Synchronized
+    internal fun resetForTest(log: PlaybackLog?, work: java.util.concurrent.Executor, clock: () -> Long = System::currentTimeMillis) {
+        initialized = false
+        testLog = log
+        this.work = work
+        this.clock = clock
+        status = Status.IDLE
+        latest = null; progress = null; error = null; waiting = null; ready = null
+        busy.set(false)
+        confirmShown = false; pendingConfirm = null; autoBlocked = false
+        installStartedAt = 0L; gatePending = false; gateInstall = false
+        activity = null; lastDecision = null
+        listeners.clear()
+        main.removeCallbacksAndMessages(null)
     }
 
     fun isReady(): Boolean = ready != null && status != Status.INSTALLING
@@ -206,8 +233,10 @@ object AppUpdater {
 
     /** The launch gate's telemetry ("update.gate.*"), through the same log
      *  as the updater's own. */
-    fun gateEvent(event: String, message: String, data: JSONObject? = null) {
-        if (::log.isInitialized) log.info(event, message, data)
+    fun gateEvent(event: String, message: String, data: JSONObject? = null, level: String = "info") {
+        if (!::log.isInitialized) return
+        log.log(level, event, message, data)
+        if (level != "info") log.flush()
     }
 
     fun addListener(l: (JSONObject) -> Unit) { listeners.add(l) }
@@ -476,9 +505,9 @@ object AppUpdater {
 
     private fun install(r: Ready) {
         if (!busy.compareAndSet(false, true)) return
-        installStartedAt = System.currentTimeMillis()
+        installStartedAt = clock()
         set(Status.INSTALLING, latest = r.version)
-        prefs().edit().putString(KEY_INSTALLING, r.version).apply()
+        prefs().edit().putString(KEY_INSTALLING, r.version).putLong(KEY_INSTALL_AT, installStartedAt).apply()
         pendingConfirm = null
         // A session that never got an answer is cleaned up after a while.
         main.removeCallbacks(stuckCheck)
@@ -502,7 +531,7 @@ object AppUpdater {
                     evaluate(false)
                 }
             } catch (e: Exception) {
-                main.post { onInstallFailed("install could not start: ${e.message}", keep = true) }
+                onInstallNotStarted(e.message.orEmpty())
             } finally {
                 busy.set(false)
             }
@@ -522,16 +551,53 @@ object AppUpdater {
         main.removeCallbacks(stuckCheck)
         autoBlocked = true
         lastDecision = UpdateRules.Decision.ASK_USER
-        log.info("update.unanswered", "no answer to the install of ${r.version}", JSONObject().put("timeout", force))
+        log.warn("update.unanswered", "no answer to the install of ${r.version}",
+            JSONObject().put("timeout", force).put("version", r.version).apply { if (installStartedAt > 0) put("ms", clock() - installStartedAt) })
+        log.flush()
         set(Status.READY, latest = r.version, waiting = "tap")
     }
 
-    /** UpdateInstallReceiver: the system needs the person to confirm. On
-     *  screen, the confirm screen opens now; otherwise it waits for a tap. */
-    fun onNeedsConfirm(confirm: Intent?) {
+    /** UpdateInstallReceiver: Android's answer for an install session. Every
+     *  answer is logged with its status, message, session and how long the
+     *  install has run, and sent at once: the process may be replaced or
+     *  killed right after. */
+    fun onAnswer(a: UpdateRules.Answer, confirm: Intent?) {
+        when (a.status) {
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> onNeedsConfirm(a, confirm)
+            PackageInstaller.STATUS_SUCCESS -> onInstalled(a)
+            PackageInstaller.STATUS_FAILURE_ABORTED -> onInstallFailed(a, keep = true, aborted = true)
+            // A different key or a broken file: the same APK can never go in.
+            PackageInstaller.STATUS_FAILURE_CONFLICT, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE, PackageInstaller.STATUS_FAILURE_INVALID ->
+                onInstallFailed(a, keep = false)
+            else -> onInstallFailed(a, keep = true)
+        }
+    }
+
+    fun onEmptyAnswer(sessionId: Int) {
+        log.info("update.answer", "install answer without a status, ignored", JSONObject().put("sid", sessionId))
+    }
+
+    /** What the log says about [a]: status, message, session id ("sid": a
+     *  key with "session" in it is dropped by LogRedact), and the ms since
+     *  the install began (kept across a restart). */
+    private fun answerData(a: UpdateRules.Answer, version: String?): JSONObject {
+        val o = JSONObject().put("status", a.status).put("message", a.message).put("sid", a.sessionId)
+        version?.let { o.put("version", it) }
+        a.legacy?.let { o.put("legacy", it) }
+        val started = installStartedAt.takeIf { it > 0 } ?: prefs().getLong(KEY_INSTALL_AT, 0L)
+        if (started > 0) o.put("ms", clock() - started)
+        return o
+    }
+
+    /** The system needs the person to confirm. On screen, the confirm
+     *  screen opens now; otherwise it waits for a tap. */
+    private fun onNeedsConfirm(a: UpdateRules.Answer, confirm: Intent?) {
         main.post {
-            val r = ready ?: return@post
-            log.info("update.confirm", "Android asks to confirm ${r.version}", JSONObject().put("foreground", UpdatePresence.foreground))
+            val r = ready
+            log.info("update.confirm", "Android asks to confirm ${r?.version}",
+                answerData(a, r?.version).put("foreground", UpdatePresence.foreground).put("intent", confirm != null))
+            log.flush()
+            r ?: return@post
             pendingConfirm = confirm
             if (confirm != null && UpdatePresence.foreground && !carSession() && launch(confirm)) {
                 confirmShown = true
@@ -547,23 +613,33 @@ object AppUpdater {
         }
     }
 
-    fun onInstalled() {
-        log.info("update.installed", "update installed")
+    private fun onInstalled(a: UpdateRules.Answer) {
+        log.info("update.installed", "update installed", answerData(a, ready?.version))
         log.flush()
     }
 
-    /** Declined, or failed. [keep] leaves the APK for a tap to try again. */
-    fun onInstallFailed(message: String, keep: Boolean, aborted: Boolean = false) {
+    /** Declined, or failed. [keep] leaves the APK for a tap to try again.
+     *  A plain "no" on Android's screen is info; ABORTED for any other
+     *  reason (Play Protect, a verifier) is a warning, so the daily digest
+     *  counts it. */
+    private fun onInstallFailed(a: UpdateRules.Answer, keep: Boolean, aborted: Boolean = false) {
         main.post {
             val r = ready
+            val data = answerData(a, r?.version)
+            val what = UpdateRules.describeStatus(a.status, a.message)
             prefs().edit().remove(KEY_INSTALLING).apply()
             main.removeCallbacks(stuckCheck)
             confirmShown = false
             gateInstall = false
             autoBlocked = true
             pendingConfirm = null
-            if (aborted) log.info("update.declined", "install of ${r?.version} not confirmed")
-            else log.error("update.failed", message, JSONObject().put("version", r?.version))
+            when {
+                aborted && UpdateRules.isPlainCancel(a.status, a.message) -> log.info("update.declined", "install of ${r?.version} not confirmed: $what", data)
+                aborted -> log.warn("update.declined", "install of ${r?.version} stopped: $what", data)
+                keep -> log.error("update.failed", "install failed: $what", data)
+                else -> log.error("update.failed", "install refused: $what", data)
+            }
+            log.flush()
             if (r != null && keep) {
                 lastDecision = UpdateRules.Decision.ASK_USER
                 set(Status.READY, latest = r.version, waiting = "tap", error = if (aborted) null else "The update didn't install")
@@ -573,6 +649,24 @@ object AppUpdater {
                 clearReady()
                 set(Status.FAILED, error = "The update didn't install")
             }
+        }
+    }
+
+    /** Staging or committing threw: no session answer will come. */
+    private fun onInstallNotStarted(message: String) {
+        main.post {
+            val r = ready
+            prefs().edit().remove(KEY_INSTALLING).apply()
+            main.removeCallbacks(stuckCheck)
+            confirmShown = false
+            gateInstall = false
+            autoBlocked = true
+            pendingConfirm = null
+            log.error("update.failed", "install could not start: $message", JSONObject().put("version", r?.version))
+            log.flush()
+            r ?: return@post
+            lastDecision = UpdateRules.Decision.ASK_USER
+            set(Status.READY, latest = r.version, waiting = "tap", error = "The update didn't install")
         }
     }
 

@@ -402,4 +402,13 @@ class GateRulesTest {
         assertTrue(Effect.EnterApp in m.handle(Input.FailedTimeout))
         assertEquals(Phase.Done, m.phase)
     }
+
+    @Test fun `a failed install is a warning for the digest, every other gate event is info`() {
+        assertEquals("warn", GateRules.eventLevel("update.gate.failed", mapOf("stage" to "install", "version" to "0.4.23")))
+        assertEquals("info", GateRules.eventLevel("update.gate.failed", mapOf("stage" to "download")))
+        assertEquals("info", GateRules.eventLevel("update.gate.install", mapOf("version" to "0.4.23")))
+        val m = installing()
+        val failed = m.handle(Input.InstallFailed).filterIsInstance<Effect.Event>().single()
+        assertEquals("warn", GateRules.eventLevel(failed.name, failed.data))
+    }
 }

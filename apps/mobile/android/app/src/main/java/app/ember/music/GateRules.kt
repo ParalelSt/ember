@@ -269,6 +269,11 @@ object GateRules {
         }
     }
 
+    /** The log level of a gate event: an install that failed is a warning,
+     *  so the daily digest counts it; everything else is info. */
+    fun eventLevel(name: String, data: Map<String, Any?>): String =
+        if (name == "update.gate.failed" && data["stage"] == "install") "warn" else "info"
+
     /** AppUpdater's published state (stateJson) as the gate's input, for the
      *  phase the gate is in; null when it changes nothing. [latest] is the
      *  version the updater is on and [offered] the gate's: an APK of another

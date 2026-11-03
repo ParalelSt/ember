@@ -218,7 +218,8 @@ class LaunchGateActivity : ComponentActivity() {
             }
             is Effect.OpenPermissionSettings -> AppUpdater.openInstallSettings(this)
             is Effect.Linger -> main.postDelayed({ feed(Input.FailedTimeout) }, GateRules.FAILED_LINGER_MS)
-            is Effect.Event -> AppUpdater.gateEvent(effect.name, effect.name.removePrefix("update.gate."), JSONObject(effect.data))
+            is Effect.Event -> AppUpdater.gateEvent(effect.name, effect.name.removePrefix("update.gate."), JSONObject(effect.data),
+                GateRules.eventLevel(effect.name, effect.data))
         }
     }
 
