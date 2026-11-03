@@ -305,7 +305,13 @@ object AppUpdater {
         activityAt = p.getLong(KEY_ACTIVITY_AT, 0L)
         installStartedAt = p.getLong(KEY_INSTALL_AT, 0L)
         if (installing != null && version == installing && code in 1..current) {
-            log.info("update.installed", "now on ${AppVersion.name(app)}", JSONObject().put("version", AppVersion.name(app)).put("versionCode", current))
+            // The one update.installed for an update that went in: the
+            // session's SUCCESS reaches this new process too, and is not
+            // logged again (onAnswer).
+            val data = JSONObject().put("version", AppVersion.name(app)).put("versionCode", current).put("sid", sessionId ?: -1)
+            if (installStartedAt > 0) data.put("ms", clock() - installStartedAt)
+            log.info("update.installed", "now on ${AppVersion.name(app)}", data)
+            log.flush()
         }
         if (version != null && file != null && file.exists() && code > current) {
             ready = Ready(version, code, tidyUpdates(file))
@@ -700,10 +706,11 @@ object AppUpdater {
      *  install has run, and sent at once: the process may be replaced or
      *  killed right after. */
     fun onAnswer(a: UpdateRules.Answer, confirm: Intent?) {
-        // Success reaches the new version's process, which has already
-        // cleaned up the session it came from (restore): still log it.
+        // Success reaches the new version's process, whose restore() has
+        // already logged update.installed and cleaned up the session it came
+        // from: neither stale nor worth a second event.
         if (a.status == PackageInstaller.STATUS_SUCCESS && !UpdateRules.isCurrentSession(sessionId, a.sessionId)) {
-            onInstalled(a)
+            log.flush()
             return
         }
         if (!UpdateRules.isCurrentSession(sessionId, a.sessionId)) {
@@ -773,8 +780,11 @@ object AppUpdater {
         }
     }
 
+    /** SUCCESS while this process still runs (it is replaced next). Logged
+     *  here, so the new version's restore() must not log it again. */
     private fun onInstalled(a: UpdateRules.Answer) {
         main.removeCallbacks(watch)
+        prefs().edit().remove(KEY_INSTALLING).commit()
         log.info("update.installed", "update installed", answerData(a, ready?.version))
         log.flush()
     }

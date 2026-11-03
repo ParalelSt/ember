@@ -127,14 +127,26 @@ class UpdateInstallFlowTest {
         readyApk()
         val sid = tapInstall()
         assertEquals(now, app.getSharedPreferences("ember.update", 0).getLong("installStartedAt", 0))
-        // A new process gets the answer.
+        // The new version starts (the waiting APK is not newer any more) and
+        // gets the answer.
+        app.getSharedPreferences("ember.update", 0).edit().putLong("readyCode", 1L).commit()
+        now += 90_000
         AppUpdater.resetForTest(log, Executor { it.run() }) { now }
         AppUpdater.init(app)
-        now += 90_000
         answer(PackageInstaller.STATUS_SUCCESS, "INSTALL_SUCCEEDED", sid)
-        val ok = events("update.installed").last().getJSONObject("data")
+        val ok = events("update.installed").single().getJSONObject("data")
         assertEquals(90_000L, ok.getLong("ms"))
-        assertFalse(ok.has("legacy"))
+        assertEquals(sid, ok.getInt("sid"))
+    }
+
+    @Test fun `success while the old process still runs is logged once, not again by the new version`() {
+        readyApk()
+        val sid = tapInstall()
+        answer(PackageInstaller.STATUS_SUCCESS, "INSTALL_SUCCEEDED", sid)
+        app.getSharedPreferences("ember.update", 0).edit().putLong("readyCode", 1L).commit()
+        AppUpdater.resetForTest(log, Executor { it.run() }) { now }
+        AppUpdater.init(app)
+        assertEquals(1, events("update.installed").size)
     }
 
     // ── Which session an answer is for ──────────────────────────────────
@@ -500,7 +512,8 @@ class UpdateInstallFlowTest {
         restart()
         answer(PackageInstaller.STATUS_SUCCESS, "INSTALL_SUCCEEDED", sid)
         assertTrue(events("update.stale").isEmpty())
-        assertEquals(sid, events("update.installed").last().getJSONObject("data").getInt("sid"))
+        // Logged once, by the new version's start.
+        assertEquals(sid, events("update.installed").single().getJSONObject("data").getInt("sid"))
     }
 
     @Test fun `the abandoned session's answer during the next staging is stale, not the new install's end`() {
