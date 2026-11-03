@@ -20,6 +20,11 @@ export interface LyricsResult {
   synced?: LyricsLine[];
 }
 
+/** How long a song stays current before its lyrics are looked up on their
+ *  own (no one is waiting on them); the lyrics view fetches immediately. */
+export const LYRICS_BUSY_MESSAGE = 'Lyrics unavailable for now';
+export const LYRICS_PREFETCH_DELAY_MS = 4000;
+
 async function fetchLyrics(title: string, artist: string, durationSec: number): Promise<LyricsResult> {
   const qs = new URLSearchParams({ title, artist });
   // Lets the server pick the synced lyrics of this version, not a live cut.
@@ -29,6 +34,8 @@ async function fetchLyrics(title: string, artist: string, durationSec: number): 
   // 502 while it restarts): the sheet says so, not "Unexpected token '<'".
   if (!res.ok) {
     if (res.status === 401) sessionExpired();
+    // The server's per-member limit: say so plainly; no retry follows.
+    if (res.status === 429) throw new Error(LYRICS_BUSY_MESSAGE);
     const err = (await res.json().catch(() => null)) as { error?: string } | null;
     if (!err && GATEWAY_STATUSES.includes(res.status)) throw new Error(NO_ANSWER_MESSAGE);
     throw new Error(err?.error || res.statusText || `Request failed: ${res.status}`);

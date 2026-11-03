@@ -112,6 +112,10 @@ const PlayerContext = createContext<PlayerControls | null>(null);
  *  second, and a desktop decoder's duration is a second opinion at best). */
 const ENDED_SLACK_SEC = 5;
 
+/** A song must stay current this long before its lyrics are looked up
+ *  unprompted (skipping through songs would trip the server limit). */
+const LYRICS_PREFETCH_DELAY_MS = 4000;
+
 /** Whether radio will look for more songs at the end of the queue (the same
  *  rules as useRadioExtend): not while loop-all wraps the queue, not while
  *  hosting a group session whose queue is exactly what the group added. */
@@ -287,7 +291,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Ambient lyrics prefetch, fires the moment a track becomes current, so the
   // panel has data ready when opened (React Query caches it). The lookup
   // needs a session: signed out it only collected 401s (bughunt V5).
-  useQueryLyrics(current, !!user);
+  // Only once the song has stayed current for LYRICS_PREFETCH_DELAY_MS:
+  // skipping quickly through songs would otherwise start a Genius lookup per
+  // song and trip the server's per-member limit. Opening the lyrics view
+  // fetches at once (same query key, so this prefetch is just a warm cache).
+  const [lyricsPrefetchId, setLyricsPrefetchId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!current) return;
+    const id = current.id;
+    const t = setTimeout(() => setLyricsPrefetchId(id), LYRICS_PREFETCH_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useQueryLyrics(current && current.id === lyricsPrefetchId ? current : null, !!user);
 
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   // Party mode is desktop-only (Tauri, or a mouse-driven web browser): see
