@@ -195,7 +195,7 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
     });
     let stdout = '';
     let stderr = '';
-    const reject_ = (e: PythonError) => {
+    const reject_ = (e: PythonError, logMessage?: string) => {
       // A video YouTube has taken down (removed, private, geo, members only,
       // age-restricted, "This video is not available") is an answer, not a fault: the host
       // did its job, and nothing on it needs fixing. Logged below 'error' so
@@ -204,7 +204,7 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
       if (e.unavailableReason) {
         serverLogger.info('python', 'video unavailable on YouTube', { args, reason: e.unavailableReason, detail: e.message });
       } else {
-        serverLogger.error('python', e.message, { args, stderr: stderr.slice(-200) }, e);
+        serverLogger.error('python', logMessage ?? e.message, { args, helper: args[0], timeoutMs, stderr: stderr.slice(-200) }, e);
       }
       reject(e);
     };
@@ -217,7 +217,10 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
       child.kill('SIGKILL');
       const e: PythonError = new Error('python timed out');
       e.status = 504;
-      reject_(e);
+      // The browser-facing message stays generic; the log line names the
+      // helper (search, info, download, ...) and its limit so the daily
+      // digest groups timeouts per helper instead of as one lump.
+      reject_(e, `python timed out: ${args[0] ?? 'unknown'} helper after ${Math.round(timeoutMs / 1000)}s`);
     }, timeoutMs);
     child.stdout.on('data', (d) => { stdout += d.toString(); });
     // Buffer stderr for error reporting AND forward live to Node's stderr so
