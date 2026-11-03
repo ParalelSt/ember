@@ -389,6 +389,26 @@ describe('POST /api/bug-report: Evidence timeline', () => {
   });
 });
 
+describe('POST /api/bug-report: triage stays in Discord', () => {
+  it('posts the triage to Discord but never returns it to the reporter', async () => {
+    vi.mocked(triageBugReport).mockResolvedValueOnce({
+      summary: 'Stream 502s',
+      likelyCause: 'Upstream timeout',
+      area: 'streaming',
+      severity: 'medium',
+      confidence: 'medium',
+      nextSteps: ['Check yt-dlp'],
+      reproduction: 'Play any song',
+    });
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true });
+    expect(JSON.stringify(body)).not.toContain('Stream 502s');
+    expect(postedEmbed(fetchMock).fields.some((f) => f.name === 'Reproduce')).toBe(true);
+  });
+});
+
 describe('POST /api/bug-report: Seen before', () => {
   it('reports "first time" for an error fingerprint with no history', async () => {
     vi.mocked(serverLogger.recentSince).mockResolvedValue([serverError()]);
@@ -690,7 +710,7 @@ describe('POST /api/bug-report: attachments too big for Discord', () => {
       undefined as never,
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, triage: null, attachmentsDropped: true });
+    expect(await res.json()).toEqual({ ok: true, attachmentsDropped: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const first = (fetchMock.mock.calls[0] as [string, { body: FormData }])[1].body;
     expect((first.get('files[2]') as File).name).toBe('clip.webm');

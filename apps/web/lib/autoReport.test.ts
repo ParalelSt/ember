@@ -25,7 +25,7 @@ function errorEntry(over: Partial<LogEntry> = {}): LogEntry {
 }
 
 function mockFetch() {
-  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, triage: null }) });
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
@@ -242,7 +242,7 @@ describe('maybeAutoReport [discord-2026-10-04 #6]: one report per connection bli
       await vi.advanceTimersByTimeAsync(5_000);
     }
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true, triage: null }) });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
     connectionOk();
     await vi.advanceTimersByTimeAsync(3000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -261,7 +261,7 @@ describe('maybeAutoReport [discord-2026-10-04 #6]: one report per connection bli
   ])('an outage report %s answered for also waits for the server', async (_name, answer) => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(answer())
-      .mockResolvedValue(new Response(JSON.stringify({ ok: true, triage: null }), { status: 200 }));
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     for (let t = 0; t <= 40_000; t += 5_000) {
       maybeAutoReport(netError('/listening'));

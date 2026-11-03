@@ -40,7 +40,7 @@ function sentSnapshot(fetchMock: ReturnType<typeof vi.fn>): ClientSnapshot {
 function mockFetch() {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
-    json: async () => ({ ok: true, triage: null }),
+    json: async () => ({ ok: true }),
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
@@ -94,6 +94,19 @@ describe('BugReportDialog: desktop log', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(sentSnapshot(fetchMock).desktopLog).toBeUndefined();
     vi.useRealTimers();
+  });
+});
+
+describe('BugReportDialog: after sending', () => {
+  it('confirms with a toast and closes, never showing a diagnosis', async () => {
+    const { toast } = await import('sonner');
+    tauri.invoke.mockResolvedValue('');
+    vi.mocked(toast.success).mockClear();
+    mockFetch();
+    await submitReport();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Report sent'));
+    expect(useUiStore.getState().bugReportOpen).toBe(false);
+    expect(screen.queryByText(/what the logs look like/i)).toBeNull();
   });
 });
 
@@ -170,7 +183,7 @@ describe('BugReportDialog: attachments Discord would not take', () => {
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ ok: true, triage: null, attachmentsDropped: true }),
+      json: async () => ({ ok: true, attachmentsDropped: true }),
     }));
     render(<BugReportDialog />);
     await userEvent.upload(screen.getByTestId('attachment-input'), new File(['x'], 'shot.png', { type: 'image/png' }));
@@ -199,7 +212,6 @@ describe('BugReportDialog: closed while sending', () => {
       ok: true,
       json: async () => ({
         ok: true,
-        triage: { summary: 'old', likelyCause: 'x', area: 'player', severity: 'low', confidence: 'low', nextSteps: [], reproduction: 'y' },
       }),
     });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Sending…' })).toBeNull());

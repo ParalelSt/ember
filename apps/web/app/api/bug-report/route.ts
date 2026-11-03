@@ -375,9 +375,8 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       ));
     }
 
-    // The reporter sees the diagnosis too, it tells them their report was
-    // understood, and sometimes it's something they can fix themselves.
-    return Response.json(attachmentsDropped ? { ok: true, triage, attachmentsDropped } : { ok: true, triage });
+    // The triage is for the Discord channel only: the reporter never sees it.
+    return Response.json(attachmentsDropped ? { ok: true, attachmentsDropped } : { ok: true });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
