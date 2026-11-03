@@ -24,6 +24,7 @@ const { MAX_COVER_BYTES, coverExtFor, coverFilename, deleteUploadCover, extractC
   '@/lib/uploads/cover'
 );
 const { UPLOAD_DIR } = await import('@/lib/uploads');
+const { serverLogger } = await import('@/lib/logger/server');
 
 beforeEach(() => {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -124,6 +125,22 @@ describe('saveUploadCover', () => {
   it('returns null instead of throwing when the write fails', async () => {
     vi.spyOn(fs.promises, 'writeFile').mockRejectedValue(new Error('disk full'));
     expect(await saveUploadCover(makeMp3WithApic(), 'rec789')).toBeNull();
+  });
+
+  it('creates the uploads folder when it is missing', async () => {
+    fs.rmSync(UPLOAD_DIR, { recursive: true, force: true });
+    expect(await saveUploadCover(makeMp3WithApic(), 'rec-mkdir')).toBe('jpg');
+    expect(fs.existsSync(path.join(UPLOAD_DIR, 'rec-mkdir.jpg'))).toBe(true);
+  });
+
+  it('logs a warning with the step and error code when the write fails', async () => {
+    const err = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    vi.spyOn(fs.promises, 'writeFile').mockRejectedValue(err);
+    const warn = vi.spyOn(serverLogger, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(serverLogger, 'error').mockImplementation(() => {});
+    expect(await saveUploadCover(makeMp3WithApic(), 'rec-eacces')).toBeNull();
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith('api', 'upload cover extraction failed', expect.objectContaining({ id: 'rec-eacces', step: 'write', code: 'EACCES' }));
   });
 
   it('refuses an id that would escape the uploads directory', async () => {
