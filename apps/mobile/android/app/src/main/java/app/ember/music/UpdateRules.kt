@@ -273,10 +273,21 @@ object UpdateRules {
     /** What a tap on Install (or the gate's Update now) does while Ember may
      *  already have a session. Reusing the live one is always better than a
      *  new one: abandoning a session in Play Protect's check ends that
-     *  install, and its late answer used to end the new one too. */
-    fun onTap(staging: Boolean, alive: Boolean, sinceActivityMs: Long, confirmHeld: Boolean, canShowConfirm: Boolean): Tap = when {
+     *  install, and its late answer used to end the new one too. The one
+     *  exception is [confirmLost]: Android asked for its confirm screen while
+     *  Ember was not on screen and the process has died since, so nobody can
+     *  show it any more and the session would only sit there. */
+    fun onTap(
+        staging: Boolean,
+        alive: Boolean,
+        sinceActivityMs: Long,
+        confirmHeld: Boolean,
+        canShowConfirm: Boolean,
+        confirmLost: Boolean = false,
+    ): Tap = when {
         staging -> Tap.WAIT
         alive && confirmHeld && canShowConfirm -> Tap.RELAUNCH_CONFIRM
+        confirmLost && !confirmHeld -> Tap.NEW_SESSION
         sessionInProgress(alive, sinceActivityMs) -> Tap.WAIT
         else -> Tap.NEW_SESSION
     }

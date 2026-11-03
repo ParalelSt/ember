@@ -106,6 +106,9 @@ object AppUpdater {
     private const val KEY_SESSION = "installSession"
     /** The session's last sign of life (UpdateRules.INSTALL_BACKSTOP_MS). */
     private const val KEY_ACTIVITY_AT = "installActivityAt"
+    /** Android asked for its confirm screen and it was not shown (Ember was
+     *  off screen): held in memory only, so lost with the process. */
+    private const val KEY_CONFIRM_UNSHOWN = "installConfirmUnshown"
     /** Larger than any Ember APK will be; a server answering more is wrong. */
     private const val MAX_APK_BYTES = 300L * 1024 * 1024
     /** The page adds "Tap to try again" after an error (apps/web/lib/appUpdate.ts). */
@@ -308,7 +311,8 @@ object AppUpdater {
             ready = Ready(version, code, tidyUpdates(file))
             latest = version
             status = Status.READY
-            val alive = sessionAlive()
+            // A confirm screen nobody showed died with the old process.
+            val alive = sessionAlive() && !confirmLost()
             if (installing == version && UpdateRules.sessionInProgress(alive, clock() - activityAt)) {
                 status = Status.INSTALLING
                 log.info("update.resumed", "install of $version still in progress after a restart",
@@ -351,7 +355,7 @@ object AppUpdater {
         ready = null
         sessionId = null
         prefs().edit().remove(KEY_READY_VERSION).remove(KEY_READY_CODE).remove(KEY_READY_PATH).remove(KEY_INSTALLING)
-            .remove(KEY_SESSION).remove(KEY_ACTIVITY_AT).remove(KEY_INSTALL_AT).apply()
+            .remove(KEY_SESSION).remove(KEY_ACTIVITY_AT).remove(KEY_INSTALL_AT).remove(KEY_CONFIRM_UNSHOWN).apply()
         runCatching { updatesDir(app).listFiles()?.forEach { it.delete() } }
         runCatching { legacyDir(app).deleteRecursively() }
     }
@@ -518,23 +522,31 @@ object AppUpdater {
         autoBlocked = false
         val confirm = pendingConfirm
         val alive = sessionAlive()
-        val decision = UpdateRules.onTap(
+        fun decide(held: Boolean) = UpdateRules.onTap(
             staging = busy.get() && status == Status.INSTALLING,
             alive = alive,
             sinceActivityMs = clock() - activityAt,
-            confirmHeld = confirm != null,
+            confirmHeld = held,
             canShowConfirm = UpdatePresence.foreground && !carSession(),
+            confirmLost = confirmLost(),
         )
+        var decision = decide(confirm != null)
         val version = ready?.version ?: latest
-        when (decision) {
-            UpdateRules.Tap.RELAUNCH_CONFIRM -> if (confirm != null && launch(confirm)) {
+        if (decision == UpdateRules.Tap.RELAUNCH_CONFIRM) {
+            if (confirm != null && launch(confirm)) {
                 // Kept: a Back out of the screen can be followed by another tap.
                 touch()
+                confirmShownNow()
                 log.info("update.reuse", "showing the confirm screen of session $sessionId again", JSONObject().put("sid", sessionId ?: -1).put("version", version))
                 set(Status.INSTALLING, latest = version)
                 armWatch()
                 return
             }
+            // It would not open: decide as if there were none.
+            decision = decide(false)
+        }
+        when (decision) {
+            UpdateRules.Tap.RELAUNCH_CONFIRM -> Unit
             UpdateRules.Tap.WAIT -> {
                 log.info("update.waiting", "install of $version still in progress, not starting another",
                     JSONObject().put("sid", sessionId ?: -1).put("version", version).put("alive", alive))
@@ -553,6 +565,15 @@ object AppUpdater {
     private fun sessionAlive(): Boolean {
         val id = sessionId ?: return false
         return runCatching { app.packageManager.packageInstaller.getSessionInfo(id) != null }.getOrDefault(false)
+    }
+
+    /** Android asked for a confirm screen that is not held in memory: it
+     *  was never shown, and the process that held it is gone. */
+    private fun confirmLost(): Boolean =
+        pendingConfirm == null && prefs().getBoolean(KEY_CONFIRM_UNSHOWN, false)
+
+    private fun confirmShownNow() {
+        prefs().edit().remove(KEY_CONFIRM_UNSHOWN).apply()
     }
 
     /** The session showed a sign of life. */
@@ -592,7 +613,7 @@ object AppUpdater {
         if (!busy.compareAndSet(false, true)) return
         // Decided before this attempt counts as a sign of life: the session
         // a new one must not abandon, if any (tap() normally waits for it).
-        val keepId = sessionId?.takeIf { UpdateRules.sessionInProgress(sessionAlive(), clock() - activityAt) }
+        val keepId = sessionId?.takeIf { !confirmLost() && UpdateRules.sessionInProgress(sessionAlive(), clock() - activityAt) }
         installStartedAt = clock()
         touch()
         set(Status.INSTALLING, latest = r.version)
@@ -675,6 +696,12 @@ object AppUpdater {
      *  install has run, and sent at once: the process may be replaced or
      *  killed right after. */
     fun onAnswer(a: UpdateRules.Answer, confirm: Intent?) {
+        // Success reaches the new version's process, which has already
+        // cleaned up the session it came from (restore): still log it.
+        if (a.status == PackageInstaller.STATUS_SUCCESS && !UpdateRules.isCurrentSession(sessionId, a.sessionId)) {
+            onInstalled(a)
+            return
+        }
         if (!UpdateRules.isCurrentSession(sessionId, a.sessionId)) {
             log.info("update.stale", "answer for another install session ignored: ${UpdateRules.describeStatus(a.status, a.message)}",
                 answerData(a, ready?.version).put("current", sessionId ?: -1))
@@ -691,13 +718,13 @@ object AppUpdater {
 
     private fun rememberSession(id: Int) {
         sessionId = id
-        prefs().edit().putInt(KEY_SESSION, id).apply()
+        prefs().edit().putInt(KEY_SESSION, id).remove(KEY_CONFIRM_UNSHOWN).apply()
         touch()
     }
 
     private fun forgetSession() {
         sessionId = null
-        prefs().edit().remove(KEY_SESSION).apply()
+        prefs().edit().remove(KEY_SESSION).remove(KEY_CONFIRM_UNSHOWN).apply()
     }
 
     fun onEmptyAnswer(sessionId: Int) {
@@ -727,10 +754,12 @@ object AppUpdater {
             r ?: return@post
             pendingConfirm = confirm
             if (confirm != null && UpdatePresence.foreground && !carSession() && launch(confirm)) {
+                confirmShownNow()
                 set(Status.INSTALLING, latest = r.version)
                 armWatch()
                 return@post
             }
+            prefs().edit().putBoolean(KEY_CONFIRM_UNSHOWN, true).apply()
             // Android asked where a silent install was expected: no more
             // tries by itself (each would stage the whole APK again).
             autoBlocked = true
@@ -741,6 +770,7 @@ object AppUpdater {
     }
 
     private fun onInstalled(a: UpdateRules.Answer) {
+        main.removeCallbacks(watch)
         log.info("update.installed", "update installed", answerData(a, ready?.version))
         log.flush()
     }

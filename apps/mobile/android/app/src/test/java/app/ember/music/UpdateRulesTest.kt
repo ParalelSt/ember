@@ -308,6 +308,13 @@ class UpdateRulesTest {
         assertEquals(UpdateRules.Tap.NEW_SESSION, tap(alive = false, held = true))
     }
 
+    @Test fun `a session whose confirm screen nobody can show any more is replaced`() {
+        assertEquals(UpdateRules.Tap.NEW_SESSION, UpdateRules.onTap(false, alive = true, sinceActivityMs = 1_000, confirmHeld = false, canShowConfirm = true, confirmLost = true))
+        // Still staging, or the screen is held after all: as before.
+        assertEquals(UpdateRules.Tap.WAIT, UpdateRules.onTap(true, alive = true, sinceActivityMs = 1_000, confirmHeld = false, canShowConfirm = true, confirmLost = true))
+        assertEquals(UpdateRules.Tap.RELAUNCH_CONFIRM, UpdateRules.onTap(false, alive = true, sinceActivityMs = 1_000, confirmHeld = true, canShowConfirm = true, confirmLost = true))
+    }
+
     // ── What an answer means ────────────────────────────────────────────
 
     @Test fun `answers are classified by their INSTALL_FAILED code first, their status only otherwise`() {

@@ -472,4 +472,34 @@ class UpdateInstallFlowTest {
         assertFalse(part.exists())
         assertFalse(legacyOld.exists())
     }
+
+    // ── Edges ───────────────────────────────────────────────────────────
+
+    @Test fun `a confirm screen asked for off screen and lost with the process does not pin Installing`() {
+        readyApk()
+        val sid = tapInstall()
+        // Ember is off screen: the confirm is held for a tap...
+        answerConfirm(sid, Intent("android.content.pm.action.CONFIRM_INSTALL"))
+        assertEquals("ready", status())
+        // ...and the process dies with it.
+        restart()
+        assertEquals("ready", status())
+        UpdatePresence.setForeground(true)
+        AppUpdater.installNow()
+        idle()
+        val fresh = installer.mySessions.single().sessionId
+        assertTrue(fresh != sid)
+        assertEquals("installing", status())
+    }
+
+    @Test fun `success reaching the new version's process is logged as installed`() {
+        readyApk()
+        val sid = tapInstall()
+        // The new version starts: its restore() already cleaned up.
+        prefs().edit().putLong("readyCode", 1L).commit()
+        restart()
+        answer(PackageInstaller.STATUS_SUCCESS, "INSTALL_SUCCEEDED", sid)
+        assertTrue(events("update.stale").isEmpty())
+        assertEquals(sid, events("update.installed").last().getJSONObject("data").getInt("sid"))
+    }
 }
