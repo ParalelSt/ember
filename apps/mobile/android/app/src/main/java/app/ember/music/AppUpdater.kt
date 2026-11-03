@@ -81,7 +81,7 @@ object UpdatePresence {
  *  desktop app does (apps/desktop/src-tauri/src/update.rs).
  *
  *  Asks GET /api/android/update on app start and every 6 hours
- *  (UpdateCheckJob), downloads the APK into the app's cache over a working
+ *  (UpdateCheckJob), downloads the APK into app storage over a working
  *  network (Wi-Fi or mobile data), checks that it is the next Ember signed
  *  with the same key, and installs it with a PackageInstaller session
  *  (UpdateInstaller) only when that interrupts nobody: never in the car,
@@ -305,7 +305,7 @@ object AppUpdater {
             log.info("update.installed", "now on ${AppVersion.name(app)}", JSONObject().put("version", AppVersion.name(app)).put("versionCode", current))
         }
         if (version != null && file != null && file.exists() && code > current) {
-            ready = Ready(version, code, file)
+            ready = Ready(version, code, tidyUpdates(file))
             latest = version
             status = Status.READY
             val alive = sessionAlive()
@@ -320,12 +320,40 @@ object AppUpdater {
         }
     }
 
+    /** Where the downloaded APK waits for its tap: app storage Android and
+     *  cleaner apps (Xiaomi's Cleaner) do not wipe the way they wipe the
+     *  cache, and that is not backed up. */
+    internal fun updatesDir(context: Context): File = File(context.noBackupFilesDir, "updates")
+
+    /** Where it waited up to Android 0.4.30: the cache. */
+    private fun legacyDir(context: Context): File = File(context.cacheDir, "updates")
+
+    /** A ready APK still in the old cache folder moves to [updatesDir], and
+     *  anything else there (an older version, a broken .part) goes. The
+     *  ready file itself, possibly moved. */
+    private fun tidyUpdates(file: File): File {
+        var ready = file
+        if (file.parentFile == legacyDir(app)) {
+            val moved = File(updatesDir(app).apply { mkdirs() }, file.name)
+            if (runCatching { file.renameTo(moved) }.getOrDefault(false)) {
+                ready = moved
+                prefs().edit().putString(KEY_READY_PATH, moved.path).apply()
+            }
+        }
+        for (dir in listOf(updatesDir(app), legacyDir(app))) {
+            runCatching { dir.listFiles()?.filter { it != ready }?.forEach { it.delete() } }
+        }
+        if (ready.parentFile != legacyDir(app)) runCatching { legacyDir(app).delete() }
+        return ready
+    }
+
     private fun clearReady() {
         ready = null
         sessionId = null
         prefs().edit().remove(KEY_READY_VERSION).remove(KEY_READY_CODE).remove(KEY_READY_PATH).remove(KEY_INSTALLING)
             .remove(KEY_SESSION).remove(KEY_ACTIVITY_AT).remove(KEY_INSTALL_AT).apply()
-        runCatching { File(app.cacheDir, "updates").listFiles()?.forEach { it.delete() } }
+        runCatching { updatesDir(app).listFiles()?.forEach { it.delete() } }
+        runCatching { legacyDir(app).deleteRecursively() }
     }
 
     // ── Checking and downloading ────────────────────────────────────────
@@ -402,7 +430,7 @@ object AppUpdater {
         val target = baseUrl.toHttpUrlOrNull()?.resolve(feed.url)
             ?: throw IOException("bad download url")
         if (target.scheme != "https" && target.scheme != "http") throw IOException("bad download scheme")
-        val dir = File(app.cacheDir, "updates").apply { mkdirs() }
+        val dir = updatesDir(app).apply { mkdirs() }
         clearReady()
         dir.mkdirs()
         val part = File(dir, "ember-${feed.version}.apk.part")

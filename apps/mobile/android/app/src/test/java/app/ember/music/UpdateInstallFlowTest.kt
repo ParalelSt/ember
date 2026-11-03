@@ -51,8 +51,8 @@ class UpdateInstallFlowTest {
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
 
     /** A verified 9.9.9 waiting from an earlier run, then a fresh updater. */
-    private fun readyApk(version: String = "9.9.9"): File {
-        val dir = File(app.cacheDir, "updates").apply { mkdirs() }
+    private fun readyApk(version: String = "9.9.9", dir: File = AppUpdater.updatesDir(app)): File {
+        dir.mkdirs()
         val apk = File(dir, "ember-$version.apk").apply { writeBytes(ByteArray(4096) { it.toByte() }) }
         app.getSharedPreferences("ember.update", 0).edit()
             .putString("readyVersion", version).putLong("readyCode", Int.MAX_VALUE.toLong()).putString("readyPath", apk.path)
@@ -431,5 +431,45 @@ class UpdateInstallFlowTest {
         restart()
         assertFalse(prefs().contains("installSession"))
         assertFalse(prefs().contains("installActivityAt"))
+    }
+
+    // ── Where the APK waits ─────────────────────────────────────────────
+
+    @Test fun `the ready APK waits outside the cache, in storage that is not backed up`() {
+        val dir = AppUpdater.updatesDir(app)
+        assertEquals(File(app.noBackupFilesDir, "updates"), dir)
+        assertFalse(dir.path.startsWith(app.cacheDir.path))
+    }
+
+    @Test fun `a wiped cache does not lose the ready update`() {
+        readyApk()
+        app.cacheDir.deleteRecursively()
+        restart()
+        assertEquals("9.9.9", AppUpdater.readyVersion())
+        assertEquals("ready", status())
+    }
+
+    @Test fun `an APK waiting in the old cache folder moves out of it`() {
+        val legacy = File(app.cacheDir, "updates")
+        val old = readyApk(dir = legacy)
+        assertEquals("9.9.9", AppUpdater.readyVersion())
+        val moved = File(AppUpdater.updatesDir(app), old.name)
+        assertTrue(moved.exists())
+        assertFalse(legacy.exists())
+        assertEquals(moved.path, prefs().getString("readyPath", null))
+        // And it still installs from there.
+        tapInstall()
+    }
+
+    @Test fun `older downloads and broken parts are cleaned, the ready one stays`() {
+        val dir = AppUpdater.updatesDir(app).apply { mkdirs() }
+        val older = File(dir, "ember-9.9.8.apk").apply { writeText("x") }
+        val part = File(dir, "ember-9.9.9.apk.part").apply { writeText("x") }
+        val legacyOld = File(File(app.cacheDir, "updates").apply { mkdirs() }, "ember-9.9.7.apk").apply { writeText("x") }
+        val apk = readyApk()
+        assertTrue(apk.exists())
+        assertFalse(older.exists())
+        assertFalse(part.exists())
+        assertFalse(legacyOld.exists())
     }
 }
