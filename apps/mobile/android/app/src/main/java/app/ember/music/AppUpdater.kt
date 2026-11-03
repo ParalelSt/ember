@@ -614,6 +614,10 @@ object AppUpdater {
         // Decided before this attempt counts as a sign of life: the session
         // a new one must not abandon, if any (tap() normally waits for it).
         val keepId = sessionId?.takeIf { !confirmLost() && UpdateRules.sessionInProgress(sessionAlive(), clock() - activityAt) }
+        // A session this attempt will abandon is no longer the current one:
+        // Android answers an abandoned session with ABORTED ("Session was
+        // abandoned"), which must read as stale, not as this install's end.
+        if (keepId == null) forgetSession()
         installStartedAt = clock()
         touch()
         set(Status.INSTALLING, latest = r.version)

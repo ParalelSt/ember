@@ -502,4 +502,38 @@ class UpdateInstallFlowTest {
         assertTrue(events("update.stale").isEmpty())
         assertEquals(sid, events("update.installed").last().getJSONObject("data").getInt("sid"))
     }
+
+    @Test fun `the abandoned session's answer during the next staging is stale, not the new install's end`() {
+        val apk = readyApk()
+        val stuck = tapInstall()
+        now += UpdateRules.INSTALL_BACKSTOP_MS + 1
+        restart()
+        // Staging runs later: hold it to answer in between.
+        val queued = mutableListOf<Runnable>()
+        AppUpdater.work = Executor { queued.add(it) }
+        AppUpdater.installNow()
+        idle()
+        assertEquals("installing", status())
+        assertEquals(1, queued.size)
+        // Android answers the abandoned session while the new one stages.
+        answer(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED: Session was abandoned", stuck, legacy = -115)
+        assertEquals("installing", status())
+        assertEquals(1, events("update.stale").size)
+        assertTrue(events("update.declined").isEmpty())
+        assertTrue(events("update.blocked").isEmpty())
+        assertTrue(events("update.failed").isEmpty())
+        assertNull(rejected())
+        assertTrue(apk.exists())
+        assertEquals("9.9.9", prefs().getString("installingVersion", null))
+        // The staging finishes: the new session is the current one.
+        queued.removeAt(0).run()
+        idle()
+        val fresh = installer.mySessions.single().sessionId
+        assertTrue(fresh != stuck)
+        assertEquals(fresh, prefs().getInt("installSession", -1))
+        assertEquals("installing", status())
+        // And a restart after that comes back on Installing for it.
+        restart()
+        assertEquals("installing", status())
+    }
 }
