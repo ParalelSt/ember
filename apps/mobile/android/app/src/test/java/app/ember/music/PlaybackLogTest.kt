@@ -351,6 +351,21 @@ class PlaybackLogTest {
         assertEquals("error", ExitReasons.level(ApplicationExitInfo.REASON_CRASH_NATIVE))
         assertEquals("warn", ExitReasons.level(ApplicationExitInfo.REASON_LOW_MEMORY))
         assertEquals("info", ExitReasons.level(ApplicationExitInfo.REASON_USER_REQUESTED))
+    }
+
+    @Test fun `low memory and other warn only when the killed process was playing`() {
+        val fg = ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+        val fgs = ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE
+        val cached = ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED
+        val service = ActivityManager.RunningAppProcessInfo.IMPORTANCE_SERVICE
+        for (reason in listOf(ApplicationExitInfo.REASON_LOW_MEMORY, ApplicationExitInfo.REASON_OTHER)) {
+            assertEquals("warn", ExitReasons.level(reason, fg))
+            assertEquals("warn", ExitReasons.level(reason, fgs))
+            assertEquals("info", ExitReasons.level(reason, service))
+            assertEquals("info", ExitReasons.level(reason, cached))
+        }
+        // A crash is an error whatever the importance.
+        assertEquals("error", ExitReasons.level(ApplicationExitInfo.REASON_CRASH, cached))
         assertEquals("anr", ExitReasons.name(ApplicationExitInfo.REASON_ANR))
     }
 }

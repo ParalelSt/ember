@@ -3,6 +3,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { logger } from '@/lib/logger/client';
+import { isStationStreamUrl } from '@/lib/radio/station';
 import type { Track } from '@/types/track';
 import type { AudioBackend, CreateAudioBackend, RemoteCommands } from './types';
 import { createGainRamp } from './gainRamp';
@@ -140,7 +141,15 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
       sendLoad({ ...lastLoad, startAt: curTime, autoplay: true });
       return;
     }
-    logger.error('audio', message || 'native audio error');
+    // A dead radio station is an outside failure (see isStationStreamUrl).
+    // The engine's "the host refused the song" (retry 'none') is the host
+    // answering with an error status, i.e. its clean 502 after the retries:
+    // the server already logged that at error, so this side is a warning and
+    // no automatic bug report. "Sent nothing" and unexplained failures stay
+    // errors.
+    const hostExplained = retry === 'none' && /^the host refused the song/.test(message ?? '');
+    if (isStationStreamUrl(lastLoad?.url) || hostExplained) logger.warn('audio', message || 'native audio error');
+    else logger.error('audio', message || 'native audio error');
     curTime = 0;
     // Nothing is playing now. Left at "playing", the provider's toggle sent
     // pause for every press of play; the engine answers play after a failed

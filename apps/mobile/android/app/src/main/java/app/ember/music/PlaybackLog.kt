@@ -420,9 +420,15 @@ object ExitReasons {
         else -> "unknown"
     }
 
-    fun level(reason: Int): String = when (reason) {
+    /** Low memory and "other" are normal Android housekeeping for a cached or
+     *  background process (info), and only a defect when the killed process
+     *  was in the foreground or a foreground service, i.e. it was playing
+     *  (warn). [importance] is ApplicationExitInfo.importance; unknown counts
+     *  as foreground so a kill is never hidden by a missing value. */
+    fun level(reason: Int, importance: Int = ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND): String = when (reason) {
         4, 5, 6, 7 -> "error"
-        2, 3, 9, 12, 13, 14 -> "warn"
+        3, 13 -> if (importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE) "warn" else "info"
+        2, 9, 12, 14 -> "warn"
         else -> "info"
     }
 
@@ -443,7 +449,7 @@ object ExitReasons {
                 .put("at", info.timestamp)
                 .put("importance", info.importance)
             info.description?.takeIf { it.isNotBlank() }?.let { data.put("description", it) }
-            log.log(level(info.reason), "exit", "last run ended: $reason", data)
+            log.log(level(info.reason, info.importance), "exit", "last run ended: $reason", data)
         }
         val newest = infos.maxOfOrNull { it.timestamp } ?: return
         if (newest > seen) prefs.edit().putLong(KEY_SEEN, newest).apply()

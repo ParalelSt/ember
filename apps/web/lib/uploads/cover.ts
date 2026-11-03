@@ -1,5 +1,6 @@
 import 'server-only';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { UPLOAD_DIR, resolveUploadPath } from '@/lib/uploads';
 import { serverLogger } from '@/lib/logger/server';
 
@@ -83,17 +84,29 @@ export async function extractCover(audio: Buffer): Promise<ExtractedCover | null
  *  usable cover. Never throws: the upload has already succeeded by the time
  *  this runs, and a missing cover is not a failed upload. */
 export async function saveUploadCover(audio: Buffer, id: string): Promise<string | null> {
+  // Which step was running, so a failure log says where it broke (extractCover
+  // swallows parse errors itself, so in practice this is the write).
+  let step: 'extract' | 'resolve' | 'mkdir' | 'write' = 'extract';
   try {
     const cover = await extractCover(audio);
     if (!cover) return null;
     // The id comes from PocketBase and is alphanumeric, but resolve it the
     // same defensive way the audio path is resolved rather than trusting that.
+    step = 'resolve';
     const full = resolveUploadPath(coverFilename(id, cover.ext));
     if (!full) return null;
+    // The uploads folder may not exist yet on a fresh host (the audio write
+    // creates it, but a cover can land first); a missing folder was the usual
+    // reason this write failed.
+    step = 'mkdir';
+    await fs.mkdir(path.dirname(full), { recursive: true });
+    step = 'write';
     await fs.writeFile(full, cover.data);
     return cover.ext;
   } catch (e) {
-    serverLogger.error('api', 'upload cover extraction failed', { id, dir: UPLOAD_DIR }, e);
+    const code = (e as NodeJS.ErrnoException | undefined)?.code;
+    // The song itself uploaded fine by now, so this is a warning, not an error.
+    serverLogger.warn('api', 'upload cover extraction failed', { id, dir: UPLOAD_DIR, step, code: code ?? null, error: e instanceof Error ? e.message : String(e) });
     return null;
   }
 }

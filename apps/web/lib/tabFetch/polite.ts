@@ -21,6 +21,12 @@ export const DEFAULT_GAP_MS = 2000;
 export const DEFAULT_BACKOFF_MS = 60 * 60 * 1000;
 const BACKOFF_STATUS = new Set([403, 429, 503]);
 
+export interface PageMeta {
+  status: number;
+  contentType: string | null;
+  length: number;
+}
+
 export class SiteBackoffError extends Error {
   constructor(
     readonly site: string,
@@ -63,6 +69,10 @@ export class PoliteFetcher {
   private readonly last = new Map<string, number>();
   private readonly tail = new Map<string, Promise<unknown>>();
   private readonly blocked = new Map<string, { until: number; status: number | null }>();
+  /** What the last page from each site looked like on the wire (status,
+   *  content type, body length), kept so a caller that cannot read the page
+   *  can say what it was given. */
+  private readonly lastMeta = new Map<string, PageMeta>();
   /** Requests actually sent, per site (for the logs and the tests). */
   readonly sent = new Map<string, number>();
 
@@ -73,6 +83,11 @@ export class PoliteFetcher {
     this.fetchFn = opts.fetch ?? ((...args) => fetch(...args));
     this.now = opts.now ?? Date.now;
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  }
+
+  /** Wire facts about the last page fetched from the site, or null. */
+  lastPage(site: string): PageMeta | null {
+    return this.lastMeta.get(site) ?? null;
   }
 
   /** Until when the site is left alone, or null. */
@@ -118,7 +133,9 @@ export class PoliteFetcher {
         throw new SiteBackoffError(site, this.now() + this.backoffMs, res.status);
       }
       if (!res.ok && !opts.accept?.includes(res.status)) throw new FetchStatusError(res.status, url);
-      return res.text();
+      const text = await res.text();
+      this.lastMeta.set(site, { status: res.status, contentType: res.headers.get('content-type'), length: text.length });
+      return text;
     };
     const prev = this.tail.get(site) ?? Promise.resolve();
     const next = prev.then(run, run);

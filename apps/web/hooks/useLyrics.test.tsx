@@ -47,10 +47,18 @@ describe('useQueryLyrics', () => {
     expect((result.current.error as Error).message).toBe(NO_ANSWER_MESSAGE);
   });
 
-  it("the server's own refusal keeps its sentence", async () => {
+  it("the server's limit (429) reads as unavailable for now, with no retry", async () => {
     fetchSpy.mockResolvedValue(new Response(JSON.stringify({ error: 'Slow down' }), { status: 429 }));
     const { result } = renderHook(() => useQueryLyrics(makeTrack(), true), { wrapper });
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect((result.current.error as Error).message).toBe('Slow down');
+    expect((result.current.error as Error).message).toBe('Lyrics unavailable for now');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("the server's other refusals keep their sentence", async () => {
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify({ error: 'Nope' }), { status: 400 }));
+    const { result } = renderHook(() => useQueryLyrics(makeTrack(), true), { wrapper });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect((result.current.error as Error).message).toBe('Nope');
   });
 });

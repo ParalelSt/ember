@@ -39,6 +39,14 @@ export function stationStreamPath(id: string): string {
   return `/api/radio/stream/${id}`;
 }
 
+/** Whether a media src is a live station's proxy stream. A station that
+ *  will not play is the station's (or Radio Browser's) outage, not an Ember
+ *  fault, so the players log it as a warning, which the automatic bug
+ *  reports skip. Works on relative and absolute urls. */
+export function isStationStreamUrl(src: string | null | undefined): boolean {
+  return typeof src === 'string' && /\/api\/radio\/stream\/[^/?#]+/.test(src);
+}
+
 /** ~0.1 degree (about 10 km): enough for "near me", too coarse to say where
  *  someone lives, and it lets everyone in a town share one cached list. The
  *  app rounds before it asks; the server rounds again whatever it is sent. */

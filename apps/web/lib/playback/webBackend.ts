@@ -1,6 +1,7 @@
 'use client';
 
 import { logger } from '@/lib/logger/client';
+import { isStationStreamUrl } from '@/lib/radio/station';
 import { autoPreampDb, DEFAULT_EQ, EQ_BANDS, EQ_PEAK_Q, eqActive, type EqSettings } from './eq';
 import { createGainRamp } from './gainRamp';
 import type { AudioBackend, CreateAudioBackend, RemoteCommands } from './types';
@@ -197,7 +198,9 @@ export const createWebBackend: CreateAudioBackend = (events) => {
   const onError = () => {
     const code = a.error?.code;
     const message = a.error?.message ?? 'audio element error';
-    logger.error('audio', message, { code, src: a.src });
+    // A dead radio station is an outside failure (see isStationStreamUrl).
+    if (isStationStreamUrl(a.src)) logger.warn('audio', message, { code, src: a.src });
+    else logger.error('audio', message, { code, src: a.src });
     // Drop the dead src so the prior position doesn't stick on screen.
     a.removeAttribute('src');
     events.onError();

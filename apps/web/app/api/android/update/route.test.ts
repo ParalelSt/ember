@@ -109,6 +109,16 @@ describe('GET /api/android/update', () => {
     expect((await get('?version=0.4.18')).status).toBe(204);
   });
 
+  it('logs a release with no apk yet as a warning, never an error (CI has not attached it)', async () => {
+    const { serverLogger } = await import('@/lib/logger/server');
+    vi.mocked(serverLogger.error).mockClear();
+    vi.mocked(serverLogger.warn).mockClear();
+    feed.releases = [release('v0.4.19', { assets: [] })];
+    await get('?version=0.4.18');
+    expect(serverLogger.error).not.toHaveBeenCalled();
+    expect(serverLogger.warn).toHaveBeenCalledWith('update', 'latest release has no android apk', expect.anything());
+  });
+
   it('reports no sha256 when GitHub gave no digest', async () => {
     feed.releases = [release('v0.4.19', { assets: [{ id: 701, name: 'Ember-v0.4.19-android.apk', size: 5 }] })];
     expect((await (await get('?version=0.4.18')).json()).sha256).toBeNull();

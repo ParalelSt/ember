@@ -30,6 +30,7 @@ import {
   type SongsterrPart,
   type SongsterrTrack,
 } from '@/lib/songsterrPart';
+import { diagnosePage, unreadableLog } from '@/lib/tabFetch/pageInfo';
 import { DEFAULT_GAP_MS, FetchStatusError, PoliteFetcher, SiteBackoffError } from '@/lib/tabFetch/polite';
 
 /** Ember looks for a song's tab online, once per song,
@@ -314,7 +315,9 @@ async function searchUg(c: SiteContext): Promise<SiteResult> {
       // A page without the data: a block or captcha page served as a 200.
       // Treat it like a "slow down" and remember nothing.
       fetcher.backOff(UG_SITE, null);
-      serverLogger.error('tabs', 'ultimate guitar search page unreadable, backing off', { query });
+      const diag = diagnosePage(html, fetcher.lastPage(UG_SITE));
+      const { level, message } = unreadableLog('ultimate guitar search page', diag);
+      serverLogger[level]('tabs', message, { query, ...diag });
       return { status: 'failed', searchedAt: null, added };
     }
     const picks = chooseUg(results, song);
@@ -493,10 +496,13 @@ async function searchSongsterr(c: SiteContext): Promise<SiteResult> {
       .collection('tabs')
       .getFullList({ filter: c.pb.filter('song_key = {:k} && kind = "fetched" && source_site = {:s}', { k: key, s: SONGSTERR_SITE }) });
 
-    const hits = parseSongsterrSearch(jsonOf(await fetcher.getText(SONGSTERR_SITE, `${base}/api/songs?pattern=${encodeURIComponent(query)}`)));
+    const answer = await fetcher.getText(SONGSTERR_SITE, `${base}/api/songs?pattern=${encodeURIComponent(query)}`);
+    const hits = parseSongsterrSearch(jsonOf(answer));
     if (!hits) {
       fetcher.backOff(SONGSTERR_SITE, null);
-      serverLogger.error('tabs', 'songsterr search answer unreadable, backing off', { query });
+      const diag = diagnosePage(answer, fetcher.lastPage(SONGSTERR_SITE));
+      const { level, message } = unreadableLog('songsterr search answer', diag);
+      serverLogger[level]('tabs', message, { query, ...diag });
       return { status: 'failed', searchedAt: null, added };
     }
     const picks = chooseSongsterrSongs(hits, song);

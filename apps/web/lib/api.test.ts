@@ -170,3 +170,30 @@ describe('addTabText: a pasted text tab', () => {
     await expect(api.pranks.inbox()).rejects.toMatchObject({ status: 429, retryAfterMs: 17_000 });
   });
 });
+
+describe('radio browse: Radio Browser being down', () => {
+  const down = () =>
+    vi.fn().mockResolvedValue({ ok: false, status: 502, headers: new Headers(), json: async () => ({ error: 'radio stations unavailable' }) });
+
+  beforeEach(() => {
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(logger.warn).mockClear();
+  });
+
+  it.each([
+    ['nearby', () => api.radioNearby(1, 2)],
+    ['country', () => api.radioCountry('NO')],
+    ['search', () => api.radioSearch('jazz')],
+  ])('a 502 on %s is a warning, never an error (no automatic bug report)', async (_name, call) => {
+    vi.stubGlobal('fetch', down());
+    await expect(call()).rejects.toMatchObject({ status: 502 });
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 500 on radio search is still an error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, headers: new Headers(), json: async () => ({ error: 'boom' }) }));
+    await expect(api.radioSearch('jazz')).rejects.toMatchObject({ status: 500 });
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+});

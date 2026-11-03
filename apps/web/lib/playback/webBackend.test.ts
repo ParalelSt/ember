@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWebBackend } from './webBackend';
 import { makeFakeEvents } from '@/test-utils/fakeBackend';
+import { logger } from '@/lib/logger/client';
 
 vi.mock('@/lib/logger/client', () => ({
-  logger: { breadcrumb: vi.fn(), error: vi.fn() },
+  logger: { breadcrumb: vi.fn(), error: vi.fn(), warn: vi.fn() },
 }));
 
 /** Make the element's play() reject the way a browser does. */
@@ -447,5 +448,34 @@ describe('webBackend repeat one (the loop gap)', () => {
     expect(srcSet).not.toHaveBeenCalled();
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
     b.destroy();
+  });
+});
+
+describe('webBackend error level', () => {
+  function failWith(src: string) {
+    const events = makeFakeEvents();
+    const b = createWebBackend(events);
+    const a = document.querySelector('audio') as HTMLAudioElement;
+    a.src = src;
+    a.dispatchEvent(new Event('error'));
+    b.destroy();
+    return events;
+  }
+
+  it('logs a dead live station as a warning, so it is not auto-reported', () => {
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(logger.warn).mockClear();
+    const events = failWith('http://localhost/api/radio/stream/0a1b2c3d-0000-4000-8000-000000000000');
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(events.onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('still logs any other audio failure as an error', () => {
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(logger.warn).mockClear();
+    failWith('http://localhost/api/youtube/stream/abc');
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

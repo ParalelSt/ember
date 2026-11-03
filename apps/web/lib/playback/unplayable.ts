@@ -70,6 +70,10 @@ function quoted(title: string): string {
  *  only flagged ahead of time). */
 export function unplayableMessage(n: UnplayableNotice): string | null {
   if (n.outcome === 'flagged') return null;
+  // A live station is never "gone"; it is down right now (its own outage).
+  if (n.trackId.startsWith('station:') && n.outcome === 'stopped') {
+    return `${quoted(n.title)} is not answering right now. Press play to try again.`;
+  }
   const head = n.kind === 'unavailable'
     ? `Couldn't play ${quoted(n.title)}: ${reasonPhrase(n.reason)}.`
     : `Couldn't load ${quoted(n.title)} right now.`;
