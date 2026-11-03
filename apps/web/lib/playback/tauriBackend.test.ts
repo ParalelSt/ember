@@ -456,7 +456,18 @@ describe('audio:error log level', () => {
     expect(logger.error).not.toHaveBeenCalled();
 
     backend.load('/api/youtube/stream/abc', { autoplay: true });
-    await emit('audio:error', { message: 'the host refused the song', retry: 'none' });
+    await emit('audio:error', { message: 'this engine could not decode the song', retry: 'web-audio' });
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs a song the host explained (refused, 502) as a warning, an unexplained failure as an error', async () => {
+    const backend = createTauriBackend(makeFakeEvents());
+    backend.load('/api/youtube/stream/abc', { autoplay: true });
+    await emit('audio:error', { message: 'the host refused the song: HTTP status 502', retry: 'none' });
+    expect(logger.warn).toHaveBeenCalledWith('audio', 'the host refused the song: HTTP status 502');
+    expect(logger.error).not.toHaveBeenCalled();
+
+    await emit('audio:error', { message: 'the host sent nothing for 8s', retry: 'none' });
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
 });
