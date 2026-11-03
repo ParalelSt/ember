@@ -2,7 +2,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { serverLogger } from '@/lib/logger/server';
 import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 import { findTabs, mapTab, songKeyOf } from '@/lib/tabStore';
 import { ratingLabel, sourceChipLabel } from '@/lib/tabSources';
