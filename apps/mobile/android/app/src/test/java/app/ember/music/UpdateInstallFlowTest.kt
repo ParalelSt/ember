@@ -7,6 +7,7 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -189,5 +190,59 @@ class UpdateInstallFlowTest {
             .putExtra(PackageInstaller.EXTRA_SESSION_ID, sid)
             .putExtra(Intent.EXTRA_INTENT, confirm))
         idle()
+    }
+
+    // ── Never abandoning a session in progress ──────────────────────────
+
+    private fun restart() {
+        AppUpdater.resetForTest(log, Executor { it.run() }) { now }
+        AppUpdater.init(app)
+    }
+
+    @Test fun `a tap while the committed session is still being checked starts nothing new`() {
+        readyApk()
+        val sid = tapInstall()
+        now += 3 * 60_000 // Play Protect is scanning; meanwhile the process went.
+        restart()
+        AppUpdater.installNow()
+        idle()
+        assertEquals("installing", AppUpdater.stateJson().getString("status"))
+        assertEquals(listOf(sid), installer.mySessions.map { it.sessionId })
+        assertEquals(1, events("update.waiting").size)
+    }
+
+    @Test fun `a tap shows the held confirm screen again instead of staging a new session`() {
+        readyApk()
+        UpdatePresence.setForeground(true)
+        val sid = tapInstall()
+        val confirm = Intent("android.content.pm.action.CONFIRM_INSTALL")
+        answerConfirm(sid, confirm)
+        shadowOf(app).nextStartedActivity
+        AppUpdater.installNow()
+        idle()
+        assertEquals(confirm.action, shadowOf(app).nextStartedActivity.action)
+        assertEquals(listOf(sid), installer.mySessions.map { it.sessionId })
+        assertEquals(1, events("update.reuse").size)
+    }
+
+    @Test fun `a leftover session nobody committed is cleaned up by the next install`() {
+        val leftover = installer.createSession(PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL))
+        readyApk()
+        val sid = tapInstall()
+        assertTrue(sid != leftover)
+        assertNull(installer.getSessionInfo(leftover))
+    }
+
+    @Test fun `a committed session stuck past the backstop is replaced on the next tap`() {
+        readyApk()
+        val stuck = tapInstall()
+        now += UpdateRules.INSTALL_BACKSTOP_MS + 1
+        restart()
+        AppUpdater.installNow()
+        idle()
+        val fresh = installer.mySessions.single().sessionId
+        assertTrue(fresh != stuck)
+        assertNull(installer.getSessionInfo(stuck))
+        assertEquals(fresh, prefs().getInt("installSession", -1))
     }
 }

@@ -241,6 +241,46 @@ object UpdateRules {
      *  (EXTRA_LEGACY_STATUS), when it does. */
     data class Answer(val status: Int, val message: String, val sessionId: Int, val legacy: Int? = null)
 
+    /** An install session that showed no sign of life (committed, a confirm
+     *  screen asked for or opened, an answer) for this long counts as stuck.
+     *  Long on purpose: Android's confirm, a vendor's security scan and Play
+     *  Protect's "Install anyway" can each take minutes. */
+    const val INSTALL_BACKSTOP_MS = 10 * 60 * 1000L
+
+    /** Whether the session Ember committed is still worth waiting for:
+     *  Android still has it ([alive]) and it showed a sign of life within
+     *  [INSTALL_BACKSTOP_MS]. A clock that went back counts as recent. */
+    fun sessionInProgress(alive: Boolean, sinceActivityMs: Long): Boolean =
+        alive && sinceActivityMs < INSTALL_BACKSTOP_MS
+
+    /** Whether a new install may abandon Ember's session [id]: any session
+     *  but the committed one ([current]) while it is in progress. A
+     *  session nobody committed is a leftover (staging died), and a stuck
+     *  one would block the update for good. */
+    fun mayAbandon(id: Int, current: Int?, currentInProgress: Boolean): Boolean =
+        !(id == current && currentInProgress)
+
+    enum class Tap {
+        /** Show the held confirm screen of the live session again. */
+        RELAUNCH_CONFIRM,
+        /** The session is still being staged, confirmed or verified (Play
+         *  Protect): stay on "installing" and let it finish. */
+        WAIT,
+        /** Nothing worth keeping: stage a new session. */
+        NEW_SESSION,
+    }
+
+    /** What a tap on Install (or the gate's Update now) does while Ember may
+     *  already have a session. Reusing the live one is always better than a
+     *  new one: abandoning a session in Play Protect's check ends that
+     *  install, and its late answer used to end the new one too. */
+    fun onTap(staging: Boolean, alive: Boolean, sinceActivityMs: Long, confirmHeld: Boolean, canShowConfirm: Boolean): Tap = when {
+        staging -> Tap.WAIT
+        alive && confirmHeld && canShowConfirm -> Tap.RELAUNCH_CONFIRM
+        sessionInProgress(alive, sinceActivityMs) -> Tap.WAIT
+        else -> Tap.NEW_SESSION
+    }
+
     /** Whether an answer is for the session this install committed. One
      *  for another session (an earlier attempt that was abandoned, answering
      *  late) must not end this one; no known session, or an answer without

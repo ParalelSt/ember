@@ -22,12 +22,19 @@ object UpdateInstaller {
     /** Stages [apk] and commits it, unless [stillOk] says no at the last
      *  moment (the session is then abandoned and false returned).
      *  [committing] hears the session id right before the commit, so an
-     *  answer can be matched to it. Sessions an earlier attempt left open (a
-     *  confirm never answered) are dropped first, so no staged copies pile
-     *  up. */
-    fun commit(context: Context, apk: File, silent: Boolean, stillOk: () -> Boolean = { true }, committing: (Int) -> Unit = {}): Boolean {
+     *  answer can be matched to it. Sessions an earlier attempt left behind
+     *  are dropped first, so no staged copies pile up, except those [keep]
+     *  names (one still in progress: abandoning it ends that install). */
+    fun commit(
+        context: Context,
+        apk: File,
+        silent: Boolean,
+        stillOk: () -> Boolean = { true },
+        committing: (Int) -> Unit = {},
+        keep: (Int) -> Boolean = { false },
+    ): Boolean {
         val installer = context.packageManager.packageInstaller
-        runCatching { installer.mySessions.forEach { old -> runCatching { installer.abandonSession(old.sessionId) } } }
+        abandonLeftovers(context, keep)
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(context.packageName)
             setSize(apk.length())
@@ -59,6 +66,13 @@ object UpdateInstaller {
             throw e
         }
     }
+}
+
+/** Abandons each of the app's own sessions [keep] does not name; their ids. */
+internal fun abandonLeftovers(context: Context, keep: (Int) -> Boolean): List<Int> {
+    val installer = context.packageManager.packageInstaller
+    val mine = runCatching { installer.mySessions.map { it.sessionId } }.getOrDefault(emptyList())
+    return mine.filter { id -> !keep(id) && runCatching { installer.abandonSession(id) }.isSuccess }
 }
 
 /** The session's answer. Not exported: only the system, through the

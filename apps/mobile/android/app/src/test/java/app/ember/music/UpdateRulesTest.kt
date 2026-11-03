@@ -262,4 +262,38 @@ class UpdateRulesTest {
         assertFalse(UpdateRules.isCurrentSession(current = null, incoming = 7))
         assertFalse(UpdateRules.isCurrentSession(current = null, incoming = -1))
     }
+
+    // ── Reusing a session ───────────────────────────────────────────────
+
+    private val backstop = UpdateRules.INSTALL_BACKSTOP_MS
+
+    @Test fun `a session is in progress while Android has it and it showed life within the backstop`() {
+        assertTrue(UpdateRules.sessionInProgress(alive = true, sinceActivityMs = 0))
+        assertTrue(UpdateRules.sessionInProgress(alive = true, sinceActivityMs = backstop - 1))
+        assertTrue(UpdateRules.sessionInProgress(alive = true, sinceActivityMs = -5_000)) // clock went back
+        assertFalse(UpdateRules.sessionInProgress(alive = true, sinceActivityMs = backstop))
+        assertFalse(UpdateRules.sessionInProgress(alive = false, sinceActivityMs = 0))
+    }
+
+    @Test fun `a new install abandons leftovers and stuck sessions, never the one in progress`() {
+        assertFalse(UpdateRules.mayAbandon(id = 7, current = 7, currentInProgress = true))
+        assertTrue(UpdateRules.mayAbandon(id = 7, current = 7, currentInProgress = false))
+        assertTrue(UpdateRules.mayAbandon(id = 6, current = 7, currentInProgress = true))
+        assertTrue(UpdateRules.mayAbandon(id = 6, current = null, currentInProgress = false))
+    }
+
+    @Test fun `a tap reuses a live session and only starts a new one when nothing is worth keeping`() {
+        fun tap(staging: Boolean = false, alive: Boolean = true, since: Long = 1_000, held: Boolean = false, canShow: Boolean = true) =
+            UpdateRules.onTap(staging, alive, since, held, canShow)
+        assertEquals(UpdateRules.Tap.WAIT, tap(staging = true, alive = false))
+        assertEquals(UpdateRules.Tap.RELAUNCH_CONFIRM, tap(held = true))
+        // A held confirm of a live session is better than a new session, stuck or not.
+        assertEquals(UpdateRules.Tap.RELAUNCH_CONFIRM, tap(held = true, since = backstop + 1))
+        // Play Protect still checking: nothing to show, nothing to restart.
+        assertEquals(UpdateRules.Tap.WAIT, tap())
+        assertEquals(UpdateRules.Tap.WAIT, tap(held = true, canShow = false))
+        assertEquals(UpdateRules.Tap.NEW_SESSION, tap(since = backstop))
+        assertEquals(UpdateRules.Tap.NEW_SESSION, tap(alive = false))
+        assertEquals(UpdateRules.Tap.NEW_SESSION, tap(alive = false, held = true))
+    }
 }

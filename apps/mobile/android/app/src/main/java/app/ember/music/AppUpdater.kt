@@ -104,6 +104,8 @@ object AppUpdater {
     /** The install session this app committed last and has no final
      *  answer for yet. */
     private const val KEY_SESSION = "installSession"
+    /** The session's last sign of life (UpdateRules.INSTALL_BACKSTOP_MS). */
+    private const val KEY_ACTIVITY_AT = "installActivityAt"
     /** Larger than any Ember APK will be; a server answering more is wrong. */
     private const val MAX_APK_BYTES = 300L * 1024 * 1024
     private const val STUCK_INSTALL_MS = 60_000L
@@ -156,6 +158,8 @@ object AppUpdater {
     @Volatile private var installStartedAt = 0L
     /** KEY_SESSION, in memory. */
     @Volatile private var sessionId: Int? = null
+    /** KEY_ACTIVITY_AT, in memory. */
+    @Volatile private var activityAt = 0L
     /** The launch gate asked for the install and evaluate(true) has not run
      *  for it yet. States published meanwhile (onStart's and refresh()'s
      *  re-evaluation, still "ready") say so, so the gate does not read them
@@ -192,7 +196,7 @@ object AppUpdater {
         latest = null; progress = null; error = null; waiting = null; ready = null
         busy.set(false)
         confirmShown = false; pendingConfirm = null; autoBlocked = false
-        installStartedAt = 0L; sessionId = null; gatePending = false; gateInstall = false
+        installStartedAt = 0L; sessionId = null; activityAt = 0L; gatePending = false; gateInstall = false
         activity = null; lastDecision = null
         listeners.clear()
         main.removeCallbacksAndMessages(null)
@@ -228,9 +232,8 @@ object AppUpdater {
             override fun run() {
                 // The check that downloaded it may still be finishing.
                 if (busy.get() && tries++ < 50) { main.postDelayed(this, 200); return }
-                autoBlocked = false
                 gatePending = false
-                evaluate(true)
+                tap()
             }
         })
         return true
@@ -296,6 +299,8 @@ object AppUpdater {
         val file = path?.let(::File)
         val current = installedCode()
         sessionId = p.getInt(KEY_SESSION, -1).takeIf { it >= 0 }
+        activityAt = p.getLong(KEY_ACTIVITY_AT, 0L)
+        installStartedAt = p.getLong(KEY_INSTALL_AT, 0L)
         if (installing != null && version == installing && code in 1..current) {
             log.info("update.installed", "now on ${AppVersion.name(app)}", JSONObject().put("version", AppVersion.name(app)).put("versionCode", current))
         }
@@ -467,19 +472,60 @@ object AppUpdater {
     fun installNow() {
         GateHistory.installStarted(app)
         main.post {
-            autoBlocked = false
             gateInstall = false
-            val confirm = pendingConfirm
-            if (confirm != null && UpdatePresence.foreground && !carSession() && launch(confirm)) {
+            tap()
+        }
+    }
+
+    /** Main thread. A person asked for the install (Install, or the gate's
+     *  Update now). A session that is still alive is reused, never
+     *  abandoned (UpdateRules.onTap). */
+    private fun tap() {
+        autoBlocked = false
+        val confirm = pendingConfirm
+        val alive = sessionAlive()
+        val decision = UpdateRules.onTap(
+            staging = busy.get() && status == Status.INSTALLING,
+            alive = alive,
+            sinceActivityMs = clock() - activityAt,
+            confirmHeld = confirm != null,
+            canShowConfirm = UpdatePresence.foreground && !carSession(),
+        )
+        val version = ready?.version ?: latest
+        when (decision) {
+            UpdateRules.Tap.RELAUNCH_CONFIRM -> if (confirm != null && launch(confirm)) {
                 // Kept: a Back out of the screen can be followed by another tap.
                 confirmShown = true
-                set(Status.INSTALLING, latest = ready?.version ?: latest)
+                touch()
+                log.info("update.reuse", "showing the confirm screen of session $sessionId again", JSONObject().put("sid", sessionId ?: -1).put("version", version))
+                set(Status.INSTALLING, latest = version)
                 main.removeCallbacks(stuckCheck)
                 main.postDelayed(stuckCheck, STUCK_INSTALL_MS)
-                return@post
+                return
             }
-            evaluate(true)
+            UpdateRules.Tap.WAIT -> {
+                log.info("update.waiting", "install of $version still in progress, not starting another",
+                    JSONObject().put("sid", sessionId ?: -1).put("version", version).put("alive", alive))
+                if (status != Status.INSTALLING) set(Status.INSTALLING, latest = version)
+                return
+            }
+            UpdateRules.Tap.NEW_SESSION -> Unit
         }
+        // Nothing to keep: back to "ready" so evaluate() may install again.
+        if (status == Status.INSTALLING && !busy.get()) status = Status.READY
+        evaluate(true)
+    }
+
+    /** Whether Android still has the session this app committed. */
+    private fun sessionAlive(): Boolean {
+        val id = sessionId ?: return false
+        return runCatching { app.packageManager.packageInstaller.getSessionInfo(id) != null }.getOrDefault(false)
+    }
+
+    /** The session showed a sign of life. */
+    private fun touch() {
+        activityAt = clock()
+        prefs().edit().putLong(KEY_ACTIVITY_AT, activityAt).apply()
     }
 
     /** Main thread. Whether the ready update installs now, and if not, what
@@ -511,7 +557,11 @@ object AppUpdater {
 
     private fun install(r: Ready) {
         if (!busy.compareAndSet(false, true)) return
+        // Decided before this attempt counts as a sign of life: the session
+        // a new one must not abandon, if any (tap() normally waits for it).
+        val keepId = sessionId?.takeIf { UpdateRules.sessionInProgress(sessionAlive(), clock() - activityAt) }
         installStartedAt = clock()
+        touch()
         set(Status.INSTALLING, latest = r.version)
         prefs().edit().putString(KEY_INSTALLING, r.version).putLong(KEY_INSTALL_AT, installStartedAt).apply()
         pendingConfirm = null
@@ -525,7 +575,8 @@ object AppUpdater {
                 // Copying the APK takes a moment: music started (a headset's
                 // play key) or a car connected in the meantime still wins.
                 val committed = UpdateInstaller.commit(app, r.file, silent = Build.VERSION.SDK_INT >= 31,
-                    stillOk = { !carSession() }, committing = ::rememberSession)
+                    stillOk = { !carSession() }, committing = ::rememberSession,
+                    keep = { id -> !UpdateRules.mayAbandon(id, keepId, keepId != null) })
                 if (!committed) busy.set(false)
                 if (!committed) main.post {
                     log.info("update.deferred", "install of ${r.version} called off: music or the car started")
@@ -573,7 +624,7 @@ object AppUpdater {
             return
         }
         // Anything but "the person has to confirm" is the session's end.
-        if (a.status != PackageInstaller.STATUS_PENDING_USER_ACTION) forgetSession()
+        if (a.status != PackageInstaller.STATUS_PENDING_USER_ACTION) forgetSession() else touch()
         when (a.status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> onNeedsConfirm(a, confirm)
             PackageInstaller.STATUS_SUCCESS -> onInstalled(a)
@@ -588,6 +639,7 @@ object AppUpdater {
     private fun rememberSession(id: Int) {
         sessionId = id
         prefs().edit().putInt(KEY_SESSION, id).apply()
+        touch()
     }
 
     private fun forgetSession() {
