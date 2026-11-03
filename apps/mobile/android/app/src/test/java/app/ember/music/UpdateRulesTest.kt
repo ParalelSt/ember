@@ -211,19 +211,30 @@ class UpdateRulesTest {
         assertFalse(UpdateRules.askNotificationsFirst(sdk = 32, granted = false))
     }
 
-    @Test fun `Settings drops back to tap to install as soon as the confirm screen is left`() {
-        assertTrue(UpdateRules.unstickNow(force = false, confirmShown = true, gateInstall = false))
-        assertFalse(UpdateRules.unstickNow(force = false, confirmShown = false, gateInstall = false))
+    @Test fun `leaving the confirm screen is not an answer, for Settings and the gate alike`() {
+        // Session alive (confirm, a vendor scan, Play Protect): keep waiting,
+        // however long it has been short of the backstop.
+        assertFalse(UpdateRules.unstickNow(staging = false, sessionAlive = true, sinceActivityMs = 0, goneForMs = 0))
+        assertFalse(UpdateRules.unstickNow(staging = false, sessionAlive = true, sinceActivityMs = 5 * 60_000, goneForMs = 0))
+        // The old 60 s limit is gone.
+        assertFalse(UpdateRules.unstickNow(staging = false, sessionAlive = true, sinceActivityMs = 61_000, goneForMs = 0))
     }
 
-    @Test fun `the launch gate waits for Android's answer after the confirm screen`() {
-        assertFalse(UpdateRules.unstickNow(force = false, confirmShown = true, gateInstall = true))
+    @Test fun `the APK still being staged is never stuck short of the backstop`() {
+        assertFalse(UpdateRules.unstickNow(staging = true, sessionAlive = false, sinceActivityMs = 90_000, goneForMs = 0))
     }
 
-    @Test fun `past the 60 s limit the wait ends for the gate and for Settings`() {
-        assertTrue(UpdateRules.unstickNow(force = true, confirmShown = true, gateInstall = true))
-        assertTrue(UpdateRules.unstickNow(force = true, confirmShown = false, gateInstall = true))
-        assertTrue(UpdateRules.unstickNow(force = true, confirmShown = false, gateInstall = false))
+    @Test fun `a session gone with no answer ends the install after a short grace`() {
+        assertFalse(UpdateRules.unstickNow(staging = false, sessionAlive = false, sinceActivityMs = 1_000, goneForMs = 0))
+        assertFalse(UpdateRules.unstickNow(staging = false, sessionAlive = false, sinceActivityMs = 1_000, goneForMs = UpdateRules.SESSION_GONE_GRACE_MS - 1))
+        assertTrue(UpdateRules.unstickNow(staging = false, sessionAlive = false, sinceActivityMs = 1_000, goneForMs = UpdateRules.SESSION_GONE_GRACE_MS))
+    }
+
+    @Test fun `no sign of life for the backstop ends the wait whatever the session says`() {
+        val b = UpdateRules.INSTALL_BACKSTOP_MS
+        assertTrue(UpdateRules.unstickNow(staging = false, sessionAlive = true, sinceActivityMs = b, goneForMs = 0))
+        assertTrue(UpdateRules.unstickNow(staging = true, sessionAlive = false, sinceActivityMs = b, goneForMs = 0))
+        assertTrue(b >= 10 * 60_000L)
     }
 
     // ── Android's answers ───────────────────────────────────────────────

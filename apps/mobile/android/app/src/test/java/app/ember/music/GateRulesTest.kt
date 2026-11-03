@@ -395,8 +395,21 @@ class GateRulesTest {
         assertTrue(Effect.EnterApp in m.handle(Input.FailedTimeout))
     }
 
-    @Test fun `the 60 s limit ends the wait and the gate opens the app`() {
-        // unstick(force) publishes READY with waiting "tap".
+    @Test fun `a slow Play Protect scan keeps Installing`() {
+        // The updater stays "installing" while Android has the session,
+        // however many times the gate is covered and uncovered.
+        val m = installing()
+        repeat(20) {
+            m.handle(Input.Resumed(false))
+            m.handle(Input.Resumed(true))
+            GateRules.fromUpdater(m.phase, "installing", null, null)?.let { m.handle(it) }
+        }
+        assertEquals(Phase.Installing, m.phase)
+        assertEquals("Installing update", GateRules.copy(m, silent = false)!!.title)
+    }
+
+    @Test fun `the backstop or a session gone with no answer ends the wait and the gate opens the app`() {
+        // AppUpdater.unstick publishes READY with waiting "tap".
         val m = installing()
         m.handle(GateRules.fromUpdater(m.phase, "ready", "tap", null)!!)
         assertTrue(Effect.EnterApp in m.handle(Input.FailedTimeout))

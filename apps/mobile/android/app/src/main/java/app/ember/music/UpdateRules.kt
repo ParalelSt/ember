@@ -320,12 +320,24 @@ object UpdateRules {
         return m.isEmpty() || m.contains("rejected", ignoreCase = true) || m.equals("INSTALL_FAILED_ABORTED", ignoreCase = true)
     }
 
+    /** How often the updater looks at its session while installing. */
+    const val INSTALL_WATCH_MS = 15_000L
+    /** A session gone with no answer is given this long for the answer to
+     *  arrive (it is on its way, or the process is about to be replaced by
+     *  the new version) before the install counts as ended. */
+    const val SESSION_GONE_GRACE_MS = 5_000L
+
     /** Whether an install with no answer from Android ends now, back to
-     *  "tap to install". [force]: the 60 s limit. Otherwise only after a
-     *  confirm screen this run opened, and not for the launch gate
-     *  ([gateInstall]): there, leaving that screen is not a failure and the
-     *  real answer (UpdateInstallReceiver) or the limit decides. Settings
-     *  has no such wait, so it shows the Install button again at once. */
-    fun unstickNow(force: Boolean, confirmShown: Boolean, gateInstall: Boolean): Boolean =
-        force || (confirmShown && !gateInstall)
+     *  "tap to install". Not while the APK is still being staged, and not
+     *  while Android still has the session: its confirm screen, a vendor's
+     *  security scan and Play Protect's "Install anyway" all keep it, however
+     *  long they take, and leaving one of those screens is not an answer.
+     *  Only a session gone for [SESSION_GONE_GRACE_MS] with no answer, or no
+     *  sign of life for [INSTALL_BACKSTOP_MS], ends it. The launch gate, the
+     *  pill and Settings follow the same rule. */
+    fun unstickNow(staging: Boolean, sessionAlive: Boolean, sinceActivityMs: Long, goneForMs: Long): Boolean = when {
+        sinceActivityMs >= INSTALL_BACKSTOP_MS -> true
+        staging || sessionAlive -> false
+        else -> goneForMs >= SESSION_GONE_GRACE_MS
+    }
 }

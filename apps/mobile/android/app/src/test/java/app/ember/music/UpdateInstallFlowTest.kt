@@ -245,4 +245,73 @@ class UpdateInstallFlowTest {
         assertNull(installer.getSessionInfo(stuck))
         assertEquals(fresh, prefs().getInt("installSession", -1))
     }
+
+    // ── Waiting for as long as the session lives ────────────────────────
+
+    private fun idleFor(ms: Long) {
+        now += ms
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(ms))
+    }
+
+    private fun status() = AppUpdater.stateJson().getString("status")
+
+    @Test fun `a live session keeps Installing well past a minute, through resumes and the watch`() {
+        readyApk()
+        tapInstall()
+        idleFor(5 * 60_000)
+        AppUpdater.refresh()
+        idle()
+        assertEquals("installing", status())
+        assertTrue(events("update.unanswered").isEmpty())
+    }
+
+    @Test fun `Settings no longer drops back to tap to install on the resume after the confirm screen`() {
+        readyApk()
+        UpdatePresence.setForeground(true)
+        val sid = tapInstall()
+        answerConfirm(sid, Intent("android.content.pm.action.CONFIRM_INSTALL"))
+        // Back from the confirm screen into Play Protect's check: a resume.
+        AppUpdater.refresh()
+        idle()
+        assertEquals("installing", status())
+    }
+
+    @Test fun `a session gone with no answer ends the install after the grace, as a warning`() {
+        readyApk()
+        val sid = tapInstall()
+        installer.abandonSession(sid)
+        AppUpdater.refresh()
+        idle()
+        assertEquals("installing", status())
+        idleFor(UpdateRules.SESSION_GONE_GRACE_MS)
+        assertEquals("ready", status())
+        assertEquals("tap", AppUpdater.stateJson().getString("waiting"))
+        val e = events("update.unanswered").single()
+        assertEquals("warn", e.getString("level"))
+        assertFalse(e.getJSONObject("data").getBoolean("timeout"))
+        assertFalse(e.getJSONObject("data").getBoolean("alive"))
+    }
+
+    @Test fun `the backstop ends a session with no sign of life`() {
+        readyApk()
+        tapInstall()
+        idleFor(UpdateRules.INSTALL_BACKSTOP_MS)
+        assertEquals("ready", status())
+        val d = events("update.unanswered").single().getJSONObject("data")
+        assertTrue(d.getBoolean("timeout"))
+        assertTrue(d.getBoolean("alive"))
+    }
+
+    @Test fun `a confirm request counts as a sign of life for the backstop`() {
+        readyApk()
+        val sid = tapInstall()
+        idleFor(UpdateRules.INSTALL_BACKSTOP_MS - 60_000)
+        answer(PackageInstaller.STATUS_PENDING_USER_ACTION, "", sid)
+        // Not on screen, so it waits for a tap; a tap shows nothing new
+        // (no confirm intent) and keeps waiting on the live session.
+        AppUpdater.installNow()
+        idle()
+        idleFor(2 * 60_000)
+        assertEquals("installing", status())
+    }
 }
