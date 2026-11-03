@@ -498,9 +498,9 @@ export const api = {
   //, Live radio (lib/radio): Radio Browser's stations through the host.
   /** Stations near a point; the caller rounds it first (radioCoords). */
   radioNearby: (lat: number, lng: number) =>
-    req<{ stations: RadioStation[] }>(`/radio/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`),
-  radioCountry: (code: string) => req<{ stations: RadioStation[] }>(`/radio/country?code=${encodeURIComponent(code)}`),
-  radioSearch: (q: string) => req<{ stations: RadioStation[] }>(`/radio/search?q=${encodeURIComponent(q)}`),
+    req<{ stations: RadioStation[] }>(`/radio/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`, { expected: [502] }),
+  radioCountry: (code: string) => req<{ stations: RadioStation[] }>(`/radio/country?code=${encodeURIComponent(code)}`, { expected: [502] }),
+  radioSearch: (q: string) => req<{ stations: RadioStation[] }>(`/radio/search?q=${encodeURIComponent(q)}`, { expected: [502] }),
   radioFavorites: () => req<{ stations: RadioStation[] }>('/radio/favorites'),
   addRadioFavorite: (id: string) =>
     req<{ station: RadioStation }>('/radio/favorites', { method: 'POST', body: { id } }),
