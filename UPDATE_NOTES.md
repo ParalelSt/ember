@@ -1,3 +1,10 @@
+# 0.7.38: Fixes from your bug reports (android 0.4.31, ios 0.4.25)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** New apps: Android 0.4.31 (versionCode 36), iOS 0.4.25.
+Unchanged: Windows 0.4.26, macOS 0.4.26, Linux 0.4.26. Tags:
+`android-v0.4.31`, `ios-v0.4.25`.
+
 # 0.7.37: No more surprise scans (android 0.4.30)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

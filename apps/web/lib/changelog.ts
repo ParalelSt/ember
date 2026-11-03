@@ -26,6 +26,21 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'report-fixes',
+    version: '0.7.38',
+    date: '2026-11-03',
+    title: 'Fixes from your bug reports',
+    summary: 'Fewer false bug reports, quieter lyrics, and tabs that survive an update.',
+    bullets: [
+      'A radio station that\'s down now says it isn\'t answering, instead of a generic error.',
+      'Heads up, may change how things behave: after an Ember update, an open tab now reloads by itself when you change page instead of breaking. That reload stops the music that was playing.',
+      'Heads up, may change how things behave: lyrics for a new song are now looked up after it has played for 4 seconds, so skipping quickly no longer runs into "lyrics unavailable". Opening the lyrics view still loads them at once.',
+      'Sending a bug report now just says "Report sent" and closes.',
+      'Fewer false automatic bug reports when an outside service like a radio directory or YouTube is down.',
+      'Clearer error logs for cover pictures, tab sites and background helpers, so problems can be found faster.',
+    ],
+  },
+  {
     id: 'update-tap-only',
     version: '0.7.37',
     date: '2026-10-31',
