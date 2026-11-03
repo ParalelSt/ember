@@ -20,10 +20,12 @@ object UpdateInstaller {
     const val ACTION_STATUS = "app.ember.music.UPDATE_STATUS"
 
     /** Stages [apk] and commits it, unless [stillOk] says no at the last
-     *  moment (the session is then abandoned and false returned). Sessions
-     *  an earlier attempt left open (a confirm never answered) are dropped
-     *  first, so no staged copies pile up. */
-    fun commit(context: Context, apk: File, silent: Boolean, stillOk: () -> Boolean = { true }): Boolean {
+     *  moment (the session is then abandoned and false returned).
+     *  [committing] hears the session id right before the commit, so an
+     *  answer can be matched to it. Sessions an earlier attempt left open (a
+     *  confirm never answered) are dropped first, so no staged copies pile
+     *  up. */
+    fun commit(context: Context, apk: File, silent: Boolean, stillOk: () -> Boolean = { true }, committing: (Int) -> Unit = {}): Boolean {
         val installer = context.packageManager.packageInstaller
         runCatching { installer.mySessions.forEach { old -> runCatching { installer.abandonSession(old.sessionId) } } }
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
@@ -48,6 +50,7 @@ object UpdateInstaller {
                     session.abandon()
                     return false
                 }
+                committing(id)
                 session.commit(pending.intentSender)
             }
             return true

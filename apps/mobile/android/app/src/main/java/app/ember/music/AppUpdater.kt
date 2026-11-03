@@ -101,6 +101,9 @@ object AppUpdater {
     private const val KEY_REJECTED = "rejectedVersion"
     private const val KEY_INSTALLING = "installingVersion"
     private const val KEY_INSTALL_AT = "installStartedAt"
+    /** The install session this app committed last and has no final
+     *  answer for yet. */
+    private const val KEY_SESSION = "installSession"
     /** Larger than any Ember APK will be; a server answering more is wrong. */
     private const val MAX_APK_BYTES = 300L * 1024 * 1024
     private const val STUCK_INSTALL_MS = 60_000L
@@ -151,6 +154,8 @@ object AppUpdater {
     /** When the current install began; a confirm screen left without an
      *  answer must not leave the page on "Installing" for ever. */
     @Volatile private var installStartedAt = 0L
+    /** KEY_SESSION, in memory. */
+    @Volatile private var sessionId: Int? = null
     /** The launch gate asked for the install and evaluate(true) has not run
      *  for it yet. States published meanwhile (onStart's and refresh()'s
      *  re-evaluation, still "ready") say so, so the gate does not read them
@@ -187,7 +192,7 @@ object AppUpdater {
         latest = null; progress = null; error = null; waiting = null; ready = null
         busy.set(false)
         confirmShown = false; pendingConfirm = null; autoBlocked = false
-        installStartedAt = 0L; gatePending = false; gateInstall = false
+        installStartedAt = 0L; sessionId = null; gatePending = false; gateInstall = false
         activity = null; lastDecision = null
         listeners.clear()
         main.removeCallbacksAndMessages(null)
@@ -290,6 +295,7 @@ object AppUpdater {
         val path = p.getString(KEY_READY_PATH, null)
         val file = path?.let(::File)
         val current = installedCode()
+        sessionId = p.getInt(KEY_SESSION, -1).takeIf { it >= 0 }
         if (installing != null && version == installing && code in 1..current) {
             log.info("update.installed", "now on ${AppVersion.name(app)}", JSONObject().put("version", AppVersion.name(app)).put("versionCode", current))
         }
@@ -518,9 +524,8 @@ object AppUpdater {
             try {
                 // Copying the APK takes a moment: music started (a headset's
                 // play key) or a car connected in the meantime still wins.
-                val committed = UpdateInstaller.commit(app, r.file, silent = Build.VERSION.SDK_INT >= 31) {
-                    !carSession()
-                }
+                val committed = UpdateInstaller.commit(app, r.file, silent = Build.VERSION.SDK_INT >= 31,
+                    stillOk = { !carSession() }, committing = ::rememberSession)
                 if (!committed) busy.set(false)
                 if (!committed) main.post {
                     log.info("update.deferred", "install of ${r.version} called off: music or the car started")
@@ -562,6 +567,13 @@ object AppUpdater {
      *  install has run, and sent at once: the process may be replaced or
      *  killed right after. */
     fun onAnswer(a: UpdateRules.Answer, confirm: Intent?) {
+        if (!UpdateRules.isCurrentSession(sessionId, a.sessionId)) {
+            log.info("update.stale", "answer for another install session ignored: ${UpdateRules.describeStatus(a.status, a.message)}",
+                answerData(a, ready?.version).put("current", sessionId ?: -1))
+            return
+        }
+        // Anything but "the person has to confirm" is the session's end.
+        if (a.status != PackageInstaller.STATUS_PENDING_USER_ACTION) forgetSession()
         when (a.status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> onNeedsConfirm(a, confirm)
             PackageInstaller.STATUS_SUCCESS -> onInstalled(a)
@@ -571,6 +583,16 @@ object AppUpdater {
                 onInstallFailed(a, keep = false)
             else -> onInstallFailed(a, keep = true)
         }
+    }
+
+    private fun rememberSession(id: Int) {
+        sessionId = id
+        prefs().edit().putInt(KEY_SESSION, id).apply()
+    }
+
+    private fun forgetSession() {
+        sessionId = null
+        prefs().edit().remove(KEY_SESSION).apply()
     }
 
     fun onEmptyAnswer(sessionId: Int) {
@@ -654,6 +676,7 @@ object AppUpdater {
 
     /** Staging or committing threw: no session answer will come. */
     private fun onInstallNotStarted(message: String) {
+        forgetSession()
         main.post {
             val r = ready
             prefs().edit().remove(KEY_INSTALLING).apply()

@@ -241,6 +241,13 @@ object UpdateRules {
      *  (EXTRA_LEGACY_STATUS), when it does. */
     data class Answer(val status: Int, val message: String, val sessionId: Int, val legacy: Int? = null)
 
+    /** Whether an answer is for the session this install committed. One
+     *  for another session (an earlier attempt that was abandoned, answering
+     *  late) must not end this one; no known session, or an answer without
+     *  an id, is never a match. */
+    fun isCurrentSession(current: Int?, incoming: Int): Boolean =
+        current != null && incoming >= 0 && incoming == current
+
     fun statusName(status: Int): String = when (status) {
         android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION -> "pending-user-action"
         android.content.pm.PackageInstaller.STATUS_SUCCESS -> "success"

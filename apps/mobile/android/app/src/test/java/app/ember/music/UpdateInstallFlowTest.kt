@@ -135,4 +135,59 @@ class UpdateInstallFlowTest {
         assertEquals(90_000L, ok.getLong("ms"))
         assertFalse(ok.has("legacy"))
     }
+
+    // ── Which session an answer is for ──────────────────────────────────
+
+    private fun prefs() = app.getSharedPreferences("ember.update", 0)
+
+    @Test fun `the committed session is remembered, across a restart too`() {
+        readyApk()
+        val sid = tapInstall()
+        assertEquals(sid, prefs().getInt("installSession", -1))
+        answer(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED: User rejected permissions", sid)
+        // A final answer ends it.
+        assertFalse(prefs().contains("installSession"))
+    }
+
+    @Test fun `an answer for another session is ignored, and the held confirm screen stays`() {
+        readyApk()
+        UpdatePresence.setForeground(true)
+        val sid = tapInstall()
+        val confirm = Intent("android.content.pm.action.CONFIRM_INSTALL")
+        answerConfirm(sid, confirm)
+        assertEquals("installing", AppUpdater.stateJson().getString("status"))
+        assertEquals(confirm.action, shadowOf(app).nextStartedActivity.action)
+        answer(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED: Session was abandoned", sid + 100)
+        assertEquals("installing", AppUpdater.stateJson().getString("status"))
+        assertEquals(1, events("update.stale").size)
+        assertTrue(events("update.declined").isEmpty())
+        // Still held: a tap opens the same confirm screen again.
+        AppUpdater.installNow()
+        idle()
+        assertEquals(confirm.action, shadowOf(app).nextStartedActivity.action)
+        assertEquals(sid, prefs().getInt("installSession", -1))
+    }
+
+    @Test fun `an abandoned attempt answering late does not end the next one`() {
+        readyApk()
+        val first = tapInstall()
+        answer(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED: User rejected permissions", first)
+        assertEquals("ready", AppUpdater.stateJson().getString("status"))
+        AppUpdater.installNow()
+        idle()
+        val second = installer.mySessions.single().sessionId
+        assertTrue(second != first)
+        answer(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED: Session was abandoned", first)
+        assertEquals("installing", AppUpdater.stateJson().getString("status"))
+        answer(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED: User rejected permissions", second)
+        assertEquals("ready", AppUpdater.stateJson().getString("status"))
+    }
+
+    private fun answerConfirm(sid: Int, confirm: Intent) {
+        UpdateInstallReceiver().onReceive(app, Intent(UpdateInstaller.ACTION_STATUS)
+            .putExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_PENDING_USER_ACTION)
+            .putExtra(PackageInstaller.EXTRA_SESSION_ID, sid)
+            .putExtra(Intent.EXTRA_INTENT, confirm))
+        idle()
+    }
 }

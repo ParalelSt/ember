@@ -254,4 +254,12 @@ class UpdateRulesTest {
         // Only ABORTED is ever a cancel.
         assertFalse(UpdateRules.isPlainCancel(7, "INSTALL_FAILED_USER_RESTRICTED: Install canceled by user"))
     }
+
+    @Test fun `only an answer for the session this install committed counts`() {
+        assertTrue(UpdateRules.isCurrentSession(current = 7, incoming = 7))
+        assertFalse(UpdateRules.isCurrentSession(current = 7, incoming = 6))
+        assertFalse(UpdateRules.isCurrentSession(current = 7, incoming = -1))
+        assertFalse(UpdateRules.isCurrentSession(current = null, incoming = 7))
+        assertFalse(UpdateRules.isCurrentSession(current = null, incoming = -1))
+    }
 }
