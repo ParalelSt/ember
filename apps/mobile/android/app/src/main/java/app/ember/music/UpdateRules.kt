@@ -232,12 +232,199 @@ object UpdateRules {
     fun carNotice(ready: Boolean): Pair<String, String>? =
         if (ready) "Ember update ready" to "Once you're parked, open Ember on your phone to install" else null
 
+    // ── Android's answers ───────────────────────────────────────────────
+
+    /** One answer from the install session (UpdateInstallReceiver):
+     *  PackageInstaller's EXTRA_STATUS, EXTRA_STATUS_MESSAGE (on most
+     *  versions "INSTALL_FAILED_<CODE>: why"), EXTRA_SESSION_ID (-1 when
+     *  missing) and the internal INSTALL_FAILED_* code Android also sends
+     *  (EXTRA_LEGACY_STATUS), when it does. */
+    data class Answer(val status: Int, val message: String, val sessionId: Int, val legacy: Int? = null)
+
+    /** An install session that showed no sign of life (committed, a confirm
+     *  screen asked for or opened, an answer) for this long counts as stuck.
+     *  Long on purpose: Android's confirm, a vendor's security scan and Play
+     *  Protect's "Install anyway" can each take minutes. */
+    const val INSTALL_BACKSTOP_MS = 10 * 60 * 1000L
+
+    /** Whether the session Ember committed is still worth waiting for:
+     *  Android still has it ([alive]) and it showed a sign of life within
+     *  [INSTALL_BACKSTOP_MS]. A clock that went back counts as recent. */
+    fun sessionInProgress(alive: Boolean, sinceActivityMs: Long): Boolean =
+        alive && sinceActivityMs < INSTALL_BACKSTOP_MS
+
+    /** Whether a new install may abandon Ember's session [id]: any session
+     *  but the committed one ([current]) while it is in progress. A
+     *  session nobody committed is a leftover (staging died), and a stuck
+     *  one would block the update for good. */
+    fun mayAbandon(id: Int, current: Int?, currentInProgress: Boolean): Boolean =
+        !(id == current && currentInProgress)
+
+    enum class Tap {
+        /** Show the held confirm screen of the live session again. */
+        RELAUNCH_CONFIRM,
+        /** The session is still being staged, confirmed or verified (Play
+         *  Protect): stay on "installing" and let it finish. */
+        WAIT,
+        /** Nothing worth keeping: stage a new session. */
+        NEW_SESSION,
+    }
+
+    /** What a tap on Install (or the gate's Update now) does while Ember may
+     *  already have a session. Reusing the live one is always better than a
+     *  new one: abandoning a session in Play Protect's check ends that
+     *  install, and its late answer used to end the new one too. The one
+     *  exception is [confirmLost]: Android asked for its confirm screen while
+     *  Ember was not on screen and the process has died since, so nobody can
+     *  show it any more and the session would only sit there. */
+    fun onTap(
+        staging: Boolean,
+        alive: Boolean,
+        sinceActivityMs: Long,
+        confirmHeld: Boolean,
+        canShowConfirm: Boolean,
+        confirmLost: Boolean = false,
+    ): Tap = when {
+        staging -> Tap.WAIT
+        alive && confirmHeld && canShowConfirm -> Tap.RELAUNCH_CONFIRM
+        confirmLost && !confirmHeld -> Tap.NEW_SESSION
+        sessionInProgress(alive, sinceActivityMs) -> Tap.WAIT
+        else -> Tap.NEW_SESSION
+    }
+
+    /** Whether an answer is for the session this install committed. One
+     *  for another session (an earlier attempt that was abandoned, answering
+     *  late) must not end this one; no known session, or an answer without
+     *  an id, is never a match. */
+    fun isCurrentSession(current: Int?, incoming: Int): Boolean =
+        current != null && incoming >= 0 && incoming == current
+
+    fun statusName(status: Int): String = when (status) {
+        android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION -> "pending-user-action"
+        android.content.pm.PackageInstaller.STATUS_SUCCESS -> "success"
+        android.content.pm.PackageInstaller.STATUS_FAILURE -> "failure"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_BLOCKED -> "blocked"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_ABORTED -> "aborted"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_INVALID -> "invalid"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_CONFLICT -> "conflict"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_STORAGE -> "storage"
+        android.content.pm.PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "incompatible"
+        8 -> "timeout" // STATUS_FAILURE_TIMEOUT, Android 14
+        else -> "status $status"
+    }
+
+    /** "aborted (3): INSTALL_FAILED_VERIFICATION_FAILURE", for the log. */
+    fun describeStatus(status: Int, message: String?): String {
+        val m = message?.trim().orEmpty()
+        val base = "${statusName(status)} ($status)"
+        return if (m.isEmpty()) base else "$base: $m"
+    }
+
+    /** ABORTED because the person said no on Android's confirm screen ("User
+     *  rejected permissions"), as opposed to Play Protect or a verifier
+     *  stopping it, which also arrive as ABORTED. Only a plain cancel stays
+     *  out of the daily digest. */
+    fun isPlainCancel(status: Int, message: String?): Boolean {
+        if (status != android.content.pm.PackageInstaller.STATUS_FAILURE_ABORTED) return false
+        val m = message?.trim().orEmpty()
+        if (m.contains("VERIFICATION", ignoreCase = true)) return false
+        return m.isEmpty() || m.contains("rejected", ignoreCase = true) || m.equals("INSTALL_FAILED_ABORTED", ignoreCase = true)
+    }
+
+    /** How often the updater looks at its session while installing. */
+    const val INSTALL_WATCH_MS = 15_000L
+    /** A session gone with no answer is given this long for the answer to
+     *  arrive (it is on its way, or the process is about to be replaced by
+     *  the new version) before the install counts as ended. */
+    const val SESSION_GONE_GRACE_MS = 5_000L
+
+    /** What an answer means for the waiting APK. */
+    enum class Outcome {
+        /** Android's confirm screen is needed. */
+        NEEDS_USER,
+        INSTALLED,
+        /** The person said no (or an abort with no other reason): keep the
+         *  APK, no error. */
+        DECLINED,
+        /** Play Protect (the package verifier) blocked it or ran out of
+         *  time: keep the APK and say how to get past it. */
+        PLAY_PROTECT,
+        /** The phone's own security check refused or was cancelled
+         *  (INSTALL_FAILED_USER_RESTRICTED, typical of Xiaomi's installer):
+         *  keep the APK, try again on a tap. */
+        PHONE_BLOCKED,
+        /** Can never go in: another signing key, not newer, or no ABI the
+         *  phone runs. The version is refused and the APK dropped. */
+        PERMANENT,
+        /** The APK itself could not be read: dropped so the next check
+         *  downloads it again, but the version is not refused. */
+        BROKEN_FILE,
+        /** Anything else (storage, a passing conflict): keep the APK. */
+        FAILED,
+    }
+
+    /** INSTALL_FAILED_* codes (Android's legacy status) by name. */
+    private val LEGACY_NAMES = mapOf(
+        -2 to "INSTALL_FAILED_INVALID_APK",
+        -7 to "INSTALL_FAILED_UPDATE_INCOMPATIBLE",
+        -16 to "INSTALL_FAILED_CPU_ABI_INCOMPATIBLE",
+        -21 to "INSTALL_FAILED_VERIFICATION_TIMEOUT",
+        -22 to "INSTALL_FAILED_VERIFICATION_FAILURE",
+        -25 to "INSTALL_FAILED_VERSION_DOWNGRADE",
+        -100 to "INSTALL_PARSE_FAILED_NOT_APK",
+        -103 to "INSTALL_PARSE_FAILED_NO_CERTIFICATES",
+        -104 to "INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES",
+        -111 to "INSTALL_FAILED_USER_RESTRICTED",
+        -113 to "INSTALL_FAILED_NO_MATCHING_ABIS",
+        -115 to "INSTALL_FAILED_ABORTED",
+    )
+
+    /** Only a signature, versionCode or ABI mismatch is permanent. */
+    private val PERMANENT_CODES = setOf(
+        "INSTALL_FAILED_UPDATE_INCOMPATIBLE",
+        "INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES",
+        "INSTALL_FAILED_VERSION_DOWNGRADE",
+        "INSTALL_FAILED_NO_MATCHING_ABIS",
+        "INSTALL_FAILED_CPU_ABI_INCOMPATIBLE",
+    )
+
+    private val CODE = Regex("INSTALL_(?:PARSE_)?FAILED_[A-Z_]+")
+
+    /** The INSTALL_FAILED_* behind an answer: from its message ("CODE: why")
+     *  or, failing that, its legacy status; null when neither says. */
+    fun failureCode(a: Answer): String? = CODE.find(a.message)?.value ?: a.legacy?.let { LEGACY_NAMES[it] }
+
+    /** What [a] means. Android folds many causes into a few public statuses
+     *  (Play Protect's block comes as ABORTED, Xiaomi's USER_RESTRICTED as
+     *  INCOMPATIBLE), so the INSTALL_FAILED_* code decides where there is
+     *  one, and the status only otherwise. */
+    fun classify(a: Answer): Outcome {
+        when (a.status) {
+            android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION -> return Outcome.NEEDS_USER
+            android.content.pm.PackageInstaller.STATUS_SUCCESS -> return Outcome.INSTALLED
+        }
+        val code = failureCode(a)
+        return when {
+            code == "INSTALL_FAILED_VERIFICATION_FAILURE" || code == "INSTALL_FAILED_VERIFICATION_TIMEOUT" -> Outcome.PLAY_PROTECT
+            code == "INSTALL_FAILED_USER_RESTRICTED" -> Outcome.PHONE_BLOCKED
+            code in PERMANENT_CODES -> Outcome.PERMANENT
+            code == "INSTALL_FAILED_INVALID_APK" || code?.startsWith("INSTALL_PARSE_FAILED_") == true -> Outcome.BROKEN_FILE
+            a.status == android.content.pm.PackageInstaller.STATUS_FAILURE_ABORTED -> Outcome.DECLINED
+            else -> Outcome.FAILED
+        }
+    }
+
     /** Whether an install with no answer from Android ends now, back to
-     *  "tap to install". [force]: the 60 s limit. Otherwise only after a
-     *  confirm screen this run opened, and not for the launch gate
-     *  ([gateInstall]): there, leaving that screen is not a failure and the
-     *  real answer (UpdateInstallReceiver) or the limit decides. Settings
-     *  has no such wait, so it shows the Install button again at once. */
-    fun unstickNow(force: Boolean, confirmShown: Boolean, gateInstall: Boolean): Boolean =
-        force || (confirmShown && !gateInstall)
+     *  "tap to install". Not while the APK is still being staged, and not
+     *  while Android still has the session: its confirm screen, a vendor's
+     *  security scan and Play Protect's "Install anyway" all keep it, however
+     *  long they take, and leaving one of those screens is not an answer.
+     *  Only a session gone for [SESSION_GONE_GRACE_MS] with no answer, or no
+     *  sign of life for [INSTALL_BACKSTOP_MS], ends it. The launch gate, the
+     *  pill and Settings follow the same rule. */
+    fun unstickNow(staging: Boolean, sessionAlive: Boolean, sinceActivityMs: Long, goneForMs: Long): Boolean = when {
+        sinceActivityMs >= INSTALL_BACKSTOP_MS -> true
+        staging || sessionAlive -> false
+        else -> goneForMs >= SESSION_GONE_GRACE_MS
+    }
 }

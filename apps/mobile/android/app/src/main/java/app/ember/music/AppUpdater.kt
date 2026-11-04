@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -80,7 +81,7 @@ object UpdatePresence {
  *  desktop app does (apps/desktop/src-tauri/src/update.rs).
  *
  *  Asks GET /api/android/update on app start and every 6 hours
- *  (UpdateCheckJob), downloads the APK into the app's cache over a working
+ *  (UpdateCheckJob), downloads the APK into app storage over a working
  *  network (Wi-Fi or mobile data), checks that it is the next Ember signed
  *  with the same key, and installs it with a PackageInstaller session
  *  (UpdateInstaller) only when that interrupts nobody: never in the car,
@@ -99,9 +100,20 @@ object AppUpdater {
     private const val KEY_READY_PATH = "readyPath"
     private const val KEY_REJECTED = "rejectedVersion"
     private const val KEY_INSTALLING = "installingVersion"
+    private const val KEY_INSTALL_AT = "installStartedAt"
+    /** The install session this app committed last and has no final
+     *  answer for yet. */
+    private const val KEY_SESSION = "installSession"
+    /** The session's last sign of life (UpdateRules.INSTALL_BACKSTOP_MS). */
+    private const val KEY_ACTIVITY_AT = "installActivityAt"
+    /** Android asked for its confirm screen and it was not shown (Ember was
+     *  off screen): held in memory only, so lost with the process. */
+    private const val KEY_CONFIRM_UNSHOWN = "installConfirmUnshown"
     /** Larger than any Ember APK will be; a server answering more is wrong. */
     private const val MAX_APK_BYTES = 300L * 1024 * 1024
-    private const val STUCK_INSTALL_MS = 60_000L
+    /** The page adds "Tap to try again" after an error (apps/web/lib/appUpdate.ts). */
+    internal const val PLAY_PROTECT_ERROR = "Play Protect stopped the update. If it warns again, tap More details, then Install anyway"
+    internal const val PHONE_BLOCKED_ERROR = "Your phone's security check stopped the update"
 
     enum class Status(val wire: String) {
         IDLE("idle"), CHECKING("checking"), UP_TO_DATE("up-to-date"), DOWNLOADING("downloading"),
@@ -112,7 +124,13 @@ object AppUpdater {
 
     private lateinit var app: Context
     private var baseUrl = ""
-    private val work = Executors.newSingleThreadExecutor()
+    /** Downloads and staging, one at a time. Tests run it in place. */
+    internal var work: java.util.concurrent.Executor = Executors.newSingleThreadExecutor()
+    /** Tests set the time. */
+    internal var clock: () -> Long = System::currentTimeMillis
+    /** Tests: the log to use in place of the server's. */
+    private var testLog: PlaybackLog? = null
+    @Volatile private var initialized = false
     private val logIo = Executors.newSingleThreadExecutor()
     private val logTimer = Executors.newSingleThreadScheduledExecutor()
     private val main by lazy { Handler(Looper.getMainLooper()) }
@@ -131,39 +149,58 @@ object AppUpdater {
     @Volatile private var ready: Ready? = null
     /** A check or an install commit is under way (one at a time). */
     private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
-    /** Whether this run opened Android's confirm screen; coming back from
-     *  it without an answer arrives as a plain resume. */
-    @Volatile private var confirmShown = false
-    private val stuckCheck = Runnable { unstick(force = true) }
+    /** Looks at the session while INSTALLING (checkInstall). */
+    private val watch = Runnable { checkInstall() }
+    /** When the session was first seen gone with no answer; 0 = it is not. */
+    @Volatile private var goneSince = 0L
     /** The system's confirm screen for a session that needs the person. */
     @Volatile private var pendingConfirm: Intent? = null
     /** The person said no (or the install failed) this run: no more tries
      *  by itself until they tap. */
     @Volatile private var autoBlocked = false
-    /** When the current install began; a confirm screen left without an
-     *  answer must not leave the page on "Installing" for ever. */
+    /** When the current install began (KEY_INSTALL_AT), for the log. */
     @Volatile private var installStartedAt = 0L
+    /** KEY_SESSION, in memory. */
+    @Volatile private var sessionId: Int? = null
+    /** KEY_ACTIVITY_AT, in memory. */
+    @Volatile private var activityAt = 0L
     /** The launch gate asked for the install and evaluate(true) has not run
      *  for it yet. States published meanwhile (onStart's and refresh()'s
      *  re-evaluation, still "ready") say so, so the gate does not read them
      *  as the install having failed. */
     @Volatile private var gatePending = false
-    /** The current install was asked for by the launch gate, which waits for
-     *  the real answer instead of reading a left confirm screen as failure. */
-    @Volatile private var gateInstall = false
     private var activity: WeakReference<Activity>? = null
     private var lastDecision: UpdateRules.Decision? = null
 
     @Synchronized
     fun init(context: Context) {
-        if (::app.isInitialized) return
+        if (initialized) return
+        initialized = true
         app = context.applicationContext
         baseUrl = ServerConfig.baseUrl(app)
-        log = buildLog()
+        log = testLog ?: buildLog()
         restore()
         UpdatePresence.onChange = { main.post { evaluate(false) } }
         if (UpdateRules.isTestBuild(app.packageName)) runCatching { UpdateCheckJob.cancel(app) }
         else runCatching { UpdateCheckJob.schedule(app) }.onFailure { log.warn("update.schedule", "periodic check not scheduled: ${it.message}") }
+    }
+
+    /** Tests: forget everything, so the next init() starts like a new
+     *  process on the test's Application, with [log] and [work]. */
+    @Synchronized
+    internal fun resetForTest(log: PlaybackLog?, work: java.util.concurrent.Executor, clock: () -> Long = System::currentTimeMillis) {
+        initialized = false
+        testLog = log
+        this.work = work
+        this.clock = clock
+        status = Status.IDLE
+        latest = null; progress = null; error = null; waiting = null; ready = null
+        busy.set(false)
+        pendingConfirm = null; autoBlocked = false; goneSince = 0L
+        installStartedAt = 0L; sessionId = null; activityAt = 0L; gatePending = false
+        activity = null; lastDecision = null
+        listeners.clear()
+        main.removeCallbacksAndMessages(null)
     }
 
     fun isReady(): Boolean = ready != null && status != Status.INSTALLING
@@ -175,7 +212,7 @@ object AppUpdater {
      *  installFromGate: states published meanwhile are from before the
      *  install too. Released when the gate goes away without installing. */
     fun holdForGate() { gatePending = true }
-    fun releaseGateHold() { gatePending = false; gateInstall = false }
+    fun releaseGateHold() { gatePending = false }
 
     /** A version refused for good (UpdateRules.isPermanent), if any. */
     fun rejectedVersion(): String? = prefs().getString(KEY_REJECTED, null)
@@ -188,7 +225,6 @@ object AppUpdater {
     fun installFromGate(a: Activity): Boolean {
         if (readyVersion() == null) return false
         gatePending = true
-        gateInstall = true
         attachActivity(a)
         UpdatePresence.setForeground(true)
         var tries = 0
@@ -196,9 +232,8 @@ object AppUpdater {
             override fun run() {
                 // The check that downloaded it may still be finishing.
                 if (busy.get() && tries++ < 50) { main.postDelayed(this, 200); return }
-                autoBlocked = false
                 gatePending = false
-                evaluate(true)
+                tap()
             }
         })
         return true
@@ -206,8 +241,10 @@ object AppUpdater {
 
     /** The launch gate's telemetry ("update.gate.*"), through the same log
      *  as the updater's own. */
-    fun gateEvent(event: String, message: String, data: JSONObject? = null) {
-        if (::log.isInitialized) log.info(event, message, data)
+    fun gateEvent(event: String, message: String, data: JSONObject? = null, level: String = "info") {
+        if (!::log.isInitialized) return
+        log.log(level, event, message, data)
+        if (level != "info") log.flush()
     }
 
     fun addListener(l: (JSONObject) -> Unit) { listeners.add(l) }
@@ -252,7 +289,10 @@ object AppUpdater {
     private fun prefs() = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /** A verified APK from an earlier run still waits; an update that went
-     *  in since is cleaned up and logged. */
+     *  in since is cleaned up and logged. When the process died during an
+     *  install (Xiaomi kills it readily behind the installer) and Android
+     *  still has the session, the updater is back on INSTALLING: a tap
+     *  then waits for that session instead of staging a new one. */
     private fun restore() {
         val p = prefs()
         val installing = p.getString(KEY_INSTALLING, null)
@@ -261,22 +301,69 @@ object AppUpdater {
         val path = p.getString(KEY_READY_PATH, null)
         val file = path?.let(::File)
         val current = installedCode()
+        sessionId = p.getInt(KEY_SESSION, -1).takeIf { it >= 0 }
+        activityAt = p.getLong(KEY_ACTIVITY_AT, 0L)
+        installStartedAt = p.getLong(KEY_INSTALL_AT, 0L)
         if (installing != null && version == installing && code in 1..current) {
-            log.info("update.installed", "now on ${AppVersion.name(app)}", JSONObject().put("version", AppVersion.name(app)).put("versionCode", current))
+            // The one update.installed for an update that went in: the
+            // session's SUCCESS reaches this new process too, and is not
+            // logged again (onAnswer).
+            val data = JSONObject().put("version", AppVersion.name(app)).put("versionCode", current).put("sid", sessionId ?: -1)
+            if (installStartedAt > 0) data.put("ms", clock() - installStartedAt)
+            log.info("update.installed", "now on ${AppVersion.name(app)}", data)
+            log.flush()
         }
         if (version != null && file != null && file.exists() && code > current) {
-            ready = Ready(version, code, file)
+            ready = Ready(version, code, tidyUpdates(file))
             latest = version
             status = Status.READY
+            // A confirm screen nobody showed died with the old process.
+            val alive = sessionAlive() && !confirmLost()
+            if (installing == version && UpdateRules.sessionInProgress(alive, clock() - activityAt)) {
+                status = Status.INSTALLING
+                log.info("update.resumed", "install of $version still in progress after a restart",
+                    JSONObject().put("version", version).put("sid", sessionId ?: -1).put("idleMs", clock() - activityAt))
+                armWatch()
+            }
         } else {
             clearReady()
         }
     }
 
+    /** Where the downloaded APK waits for its tap: app storage Android and
+     *  cleaner apps (Xiaomi's Cleaner) do not wipe the way they wipe the
+     *  cache, and that is not backed up. */
+    internal fun updatesDir(context: Context): File = File(context.noBackupFilesDir, "updates")
+
+    /** Where it waited up to Android 0.4.30: the cache. */
+    private fun legacyDir(context: Context): File = File(context.cacheDir, "updates")
+
+    /** A ready APK still in the old cache folder moves to [updatesDir], and
+     *  anything else there (an older version, a broken .part) goes. The
+     *  ready file itself, possibly moved. */
+    private fun tidyUpdates(file: File): File {
+        var ready = file
+        if (file.parentFile == legacyDir(app)) {
+            val moved = File(updatesDir(app).apply { mkdirs() }, file.name)
+            if (runCatching { file.renameTo(moved) }.getOrDefault(false)) {
+                ready = moved
+                prefs().edit().putString(KEY_READY_PATH, moved.path).apply()
+            }
+        }
+        for (dir in listOf(updatesDir(app), legacyDir(app))) {
+            runCatching { dir.listFiles()?.filter { it != ready }?.forEach { it.delete() } }
+        }
+        if (ready.parentFile != legacyDir(app)) runCatching { legacyDir(app).delete() }
+        return ready
+    }
+
     private fun clearReady() {
         ready = null
-        prefs().edit().remove(KEY_READY_VERSION).remove(KEY_READY_CODE).remove(KEY_READY_PATH).remove(KEY_INSTALLING).apply()
-        runCatching { File(app.cacheDir, "updates").listFiles()?.forEach { it.delete() } }
+        sessionId = null
+        prefs().edit().remove(KEY_READY_VERSION).remove(KEY_READY_CODE).remove(KEY_READY_PATH).remove(KEY_INSTALLING)
+            .remove(KEY_SESSION).remove(KEY_ACTIVITY_AT).remove(KEY_INSTALL_AT).remove(KEY_CONFIRM_UNSHOWN).apply()
+        runCatching { updatesDir(app).listFiles()?.forEach { it.delete() } }
+        runCatching { legacyDir(app).deleteRecursively() }
     }
 
     // ── Checking and downloading ────────────────────────────────────────
@@ -353,7 +440,7 @@ object AppUpdater {
         val target = baseUrl.toHttpUrlOrNull()?.resolve(feed.url)
             ?: throw IOException("bad download url")
         if (target.scheme != "https" && target.scheme != "http") throw IOException("bad download scheme")
-        val dir = File(app.cacheDir, "updates").apply { mkdirs() }
+        val dir = updatesDir(app).apply { mkdirs() }
         clearReady()
         dir.mkdirs()
         val part = File(dir, "ember-${feed.version}.apk.part")
@@ -431,20 +518,74 @@ object AppUpdater {
      *  (UpdatedReceiver's "Ember updated" notice). */
     fun installNow() {
         GateHistory.installStarted(app)
-        main.post {
-            autoBlocked = false
-            gateInstall = false
-            val confirm = pendingConfirm
-            if (confirm != null && UpdatePresence.foreground && !carSession() && launch(confirm)) {
+        main.post { tap() }
+    }
+
+    /** Main thread. A person asked for the install (Install, or the gate's
+     *  Update now). A session that is still alive is reused, never
+     *  abandoned (UpdateRules.onTap). */
+    private fun tap() {
+        autoBlocked = false
+        val confirm = pendingConfirm
+        val alive = sessionAlive()
+        fun decide(held: Boolean) = UpdateRules.onTap(
+            staging = busy.get() && status == Status.INSTALLING,
+            alive = alive,
+            sinceActivityMs = clock() - activityAt,
+            confirmHeld = held,
+            canShowConfirm = UpdatePresence.foreground && !carSession(),
+            confirmLost = confirmLost(),
+        )
+        var decision = decide(confirm != null)
+        val version = ready?.version ?: latest
+        if (decision == UpdateRules.Tap.RELAUNCH_CONFIRM) {
+            if (confirm != null && launch(confirm)) {
                 // Kept: a Back out of the screen can be followed by another tap.
-                confirmShown = true
-                set(Status.INSTALLING, latest = ready?.version ?: latest)
-                main.removeCallbacks(stuckCheck)
-                main.postDelayed(stuckCheck, STUCK_INSTALL_MS)
-                return@post
+                touch()
+                confirmShownNow()
+                log.info("update.reuse", "showing the confirm screen of session $sessionId again", JSONObject().put("sid", sessionId ?: -1).put("version", version))
+                set(Status.INSTALLING, latest = version)
+                armWatch()
+                return
             }
-            evaluate(true)
+            // It would not open: decide as if there were none.
+            decision = decide(false)
         }
+        when (decision) {
+            UpdateRules.Tap.RELAUNCH_CONFIRM -> Unit
+            UpdateRules.Tap.WAIT -> {
+                log.info("update.waiting", "install of $version still in progress, not starting another",
+                    JSONObject().put("sid", sessionId ?: -1).put("version", version).put("alive", alive))
+                if (status != Status.INSTALLING) set(Status.INSTALLING, latest = version)
+                armWatch()
+                return
+            }
+            UpdateRules.Tap.NEW_SESSION -> Unit
+        }
+        // Nothing to keep: back to "ready" so evaluate() may install again.
+        if (status == Status.INSTALLING && !busy.get()) status = Status.READY
+        evaluate(true)
+    }
+
+    /** Whether Android still has the session this app committed. */
+    private fun sessionAlive(): Boolean {
+        val id = sessionId ?: return false
+        return runCatching { app.packageManager.packageInstaller.getSessionInfo(id) != null }.getOrDefault(false)
+    }
+
+    /** Android asked for a confirm screen that is not held in memory: it
+     *  was never shown, and the process that held it is gone. */
+    private fun confirmLost(): Boolean =
+        pendingConfirm == null && prefs().getBoolean(KEY_CONFIRM_UNSHOWN, false)
+
+    private fun confirmShownNow() {
+        prefs().edit().remove(KEY_CONFIRM_UNSHOWN).apply()
+    }
+
+    /** The session showed a sign of life. */
+    private fun touch() {
+        activityAt = clock()
+        prefs().edit().putLong(KEY_ACTIVITY_AT, activityAt).apply()
     }
 
     /** Main thread. Whether the ready update installs now, and if not, what
@@ -476,103 +617,243 @@ object AppUpdater {
 
     private fun install(r: Ready) {
         if (!busy.compareAndSet(false, true)) return
-        installStartedAt = System.currentTimeMillis()
+        // Decided before this attempt counts as a sign of life: the session
+        // a new one must not abandon, if any (tap() normally waits for it).
+        val keepId = sessionId?.takeIf { !confirmLost() && UpdateRules.sessionInProgress(sessionAlive(), clock() - activityAt) }
+        // A session this attempt will abandon is no longer the current one:
+        // Android answers an abandoned session with ABORTED ("Session was
+        // abandoned"), which must read as stale, not as this install's end.
+        if (keepId == null) forgetSession()
+        installStartedAt = clock()
+        touch()
         set(Status.INSTALLING, latest = r.version)
-        prefs().edit().putString(KEY_INSTALLING, r.version).apply()
+        prefs().edit().putString(KEY_INSTALLING, r.version).putLong(KEY_INSTALL_AT, installStartedAt).apply()
         pendingConfirm = null
-        // A session that never got an answer is cleaned up after a while.
-        main.removeCallbacks(stuckCheck)
-        main.postDelayed(stuckCheck, STUCK_INSTALL_MS)
+        goneSince = 0L
+        // Watched until Android answers (checkInstall).
+        armWatch()
         // Installing replaces this process: send what is buffered first.
         log.flush()
         work.execute {
             try {
                 // Copying the APK takes a moment: music started (a headset's
                 // play key) or a car connected in the meantime still wins.
-                val committed = UpdateInstaller.commit(app, r.file, silent = Build.VERSION.SDK_INT >= 31) {
-                    !carSession()
-                }
+                val committed = UpdateInstaller.commit(app, r.file, silent = Build.VERSION.SDK_INT >= 31,
+                    stillOk = { !carSession() }, committing = ::rememberSession,
+                    keep = { id -> !UpdateRules.mayAbandon(id, keepId, keepId != null) })
                 if (!committed) busy.set(false)
                 if (!committed) main.post {
                     log.info("update.deferred", "install of ${r.version} called off: music or the car started")
-                    main.removeCallbacks(stuckCheck)
+                    main.removeCallbacks(watch)
                     prefs().edit().remove(KEY_INSTALLING).apply()
                     lastDecision = null
                     set(Status.READY, latest = r.version)
                     evaluate(false)
                 }
             } catch (e: Exception) {
-                main.post { onInstallFailed("install could not start: ${e.message}", keep = true) }
+                onInstallNotStarted(e.message.orEmpty())
             } finally {
                 busy.set(false)
             }
         }
     }
 
-    /** INSTALLING with no answer from Android: the confirm screen was left
-     *  without a choice, or the session died quietly. Back to "tap to
-     *  install" ([force]: the timeout; otherwise only after a confirm screen
-     *  this run opened). */
-    private fun unstick(force: Boolean) {
-        val r = ready ?: return
+    private fun armWatch(ms: Long = UpdateRules.INSTALL_WATCH_MS) {
+        main.removeCallbacks(watch)
+        main.postDelayed(watch, ms)
+    }
+
+    /** Main thread. While INSTALLING: is the session still there? Android
+     *  keeps it through its confirm screen, a vendor's security scan and Play
+     *  Protect's check, however long the person takes; only when it is gone
+     *  with no answer, or showed no sign of life for
+     *  UpdateRules.INSTALL_BACKSTOP_MS, does the install end
+     *  (UpdateRules.unstickNow). The same for the gate, the pill and
+     *  Settings. */
+    private fun checkInstall() {
+        main.removeCallbacks(watch)
         if (status != Status.INSTALLING) return
-        if (!UpdateRules.unstickNow(force, confirmShown, gateInstall)) return
-        confirmShown = false
-        gateInstall = false
-        main.removeCallbacks(stuckCheck)
+        val now = clock()
+        val staging = busy.get()
+        val alive = sessionAlive()
+        if (alive || staging) goneSince = 0L else if (goneSince == 0L) goneSince = now
+        val goneFor = if (goneSince == 0L) 0L else now - goneSince
+        val sinceActivity = now - activityAt
+        if (UpdateRules.unstickNow(staging, alive, sinceActivity, goneFor)) unstick(alive, sinceActivity)
+        else armWatch(if (goneSince != 0L) UpdateRules.SESSION_GONE_GRACE_MS else UpdateRules.INSTALL_WATCH_MS)
+    }
+
+    /** INSTALLING with no answer from Android: the session died quietly, or
+     *  sat with no sign of life past the backstop. Back to "tap to install".
+     *  The session id stays: a late answer still counts, and the next tap
+     *  reuses a live session or replaces a stuck one (UpdateRules.onTap). */
+    private fun unstick(alive: Boolean, sinceActivityMs: Long) {
+        val r = ready ?: return
+        main.removeCallbacks(watch)
+        goneSince = 0L
         autoBlocked = true
         lastDecision = UpdateRules.Decision.ASK_USER
-        log.info("update.unanswered", "no answer to the install of ${r.version}", JSONObject().put("timeout", force))
+        val data = JSONObject().put("timeout", sinceActivityMs >= UpdateRules.INSTALL_BACKSTOP_MS).put("alive", alive)
+            .put("sid", sessionId ?: -1).put("version", r.version).put("idleMs", sinceActivityMs)
+        if (installStartedAt > 0) data.put("ms", clock() - installStartedAt)
+        log.warn("update.unanswered", "no answer to the install of ${r.version}", data)
+        log.flush()
         set(Status.READY, latest = r.version, waiting = "tap")
     }
 
-    /** UpdateInstallReceiver: the system needs the person to confirm. On
-     *  screen, the confirm screen opens now; otherwise it waits for a tap. */
-    fun onNeedsConfirm(confirm: Intent?) {
+    /** UpdateInstallReceiver: Android's answer for an install session. Every
+     *  answer is logged with its status, message, session and how long the
+     *  install has run, and sent at once: the process may be replaced or
+     *  killed right after. */
+    fun onAnswer(a: UpdateRules.Answer, confirm: Intent?) {
+        // Success reaches the new version's process, whose restore() has
+        // already logged update.installed and cleaned up the session it came
+        // from: neither stale nor worth a second event.
+        if (a.status == PackageInstaller.STATUS_SUCCESS && !UpdateRules.isCurrentSession(sessionId, a.sessionId)) {
+            log.flush()
+            return
+        }
+        if (!UpdateRules.isCurrentSession(sessionId, a.sessionId)) {
+            log.info("update.stale", "answer for another install session ignored: ${UpdateRules.describeStatus(a.status, a.message)}",
+                answerData(a, ready?.version).put("current", sessionId ?: -1))
+            return
+        }
+        // Anything but "the person has to confirm" is the session's end.
+        if (a.status != PackageInstaller.STATUS_PENDING_USER_ACTION) forgetSession() else touch()
+        when (val outcome = UpdateRules.classify(a)) {
+            UpdateRules.Outcome.NEEDS_USER -> onNeedsConfirm(a, confirm)
+            UpdateRules.Outcome.INSTALLED -> onInstalled(a)
+            else -> onInstallFailed(a, outcome)
+        }
+    }
+
+    private fun rememberSession(id: Int) {
+        sessionId = id
+        prefs().edit().putInt(KEY_SESSION, id).remove(KEY_CONFIRM_UNSHOWN).apply()
+        touch()
+    }
+
+    private fun forgetSession() {
+        sessionId = null
+        prefs().edit().remove(KEY_SESSION).remove(KEY_CONFIRM_UNSHOWN).apply()
+    }
+
+    fun onEmptyAnswer(sessionId: Int) {
+        log.info("update.answer", "install answer without a status, ignored", JSONObject().put("sid", sessionId))
+    }
+
+    /** What the log says about [a]: status, message, session id ("sid": a
+     *  key with "session" in it is dropped by LogRedact), and the ms since
+     *  the install began (kept across a restart). */
+    private fun answerData(a: UpdateRules.Answer, version: String?): JSONObject {
+        val o = JSONObject().put("status", a.status).put("message", a.message).put("sid", a.sessionId)
+        version?.let { o.put("version", it) }
+        a.legacy?.let { o.put("legacy", it) }
+        val started = installStartedAt.takeIf { it > 0 } ?: prefs().getLong(KEY_INSTALL_AT, 0L)
+        if (started > 0) o.put("ms", clock() - started)
+        return o
+    }
+
+    /** The system needs the person to confirm. On screen, the confirm
+     *  screen opens now; otherwise it waits for a tap. */
+    private fun onNeedsConfirm(a: UpdateRules.Answer, confirm: Intent?) {
         main.post {
-            val r = ready ?: return@post
-            log.info("update.confirm", "Android asks to confirm ${r.version}", JSONObject().put("foreground", UpdatePresence.foreground))
+            val r = ready
+            log.info("update.confirm", "Android asks to confirm ${r?.version}",
+                answerData(a, r?.version).put("foreground", UpdatePresence.foreground).put("intent", confirm != null))
+            log.flush()
+            r ?: return@post
             pendingConfirm = confirm
             if (confirm != null && UpdatePresence.foreground && !carSession() && launch(confirm)) {
-                confirmShown = true
+                confirmShownNow()
                 set(Status.INSTALLING, latest = r.version)
+                armWatch()
                 return@post
             }
+            prefs().edit().putBoolean(KEY_CONFIRM_UNSHOWN, true).apply()
             // Android asked where a silent install was expected: no more
             // tries by itself (each would stage the whole APK again).
             autoBlocked = true
-            main.removeCallbacks(stuckCheck)
+            main.removeCallbacks(watch)
             lastDecision = UpdateRules.Decision.ASK_USER
             set(Status.READY, latest = r.version, waiting = "tap")
         }
     }
 
-    fun onInstalled() {
-        log.info("update.installed", "update installed")
+    /** SUCCESS while this process still runs (it is replaced next). Logged
+     *  here, so the new version's restore() must not log it again. */
+    private fun onInstalled(a: UpdateRules.Answer) {
+        main.removeCallbacks(watch)
+        prefs().edit().remove(KEY_INSTALLING).commit()
+        log.info("update.installed", "update installed", answerData(a, ready?.version))
         log.flush()
     }
 
-    /** Declined, or failed. [keep] leaves the APK for a tap to try again. */
-    fun onInstallFailed(message: String, keep: Boolean, aborted: Boolean = false) {
+    /** Declined, blocked or failed (UpdateRules.classify). Only a
+     *  PERMANENT outcome refuses the version, and only it and BROKEN_FILE
+     *  drop the APK; everything else keeps it for a tap to try again. A plain
+     *  "no" on Android's screen is info; Play Protect, the phone's own check
+     *  and any other abort are warnings and real failures errors, so the
+     *  daily digest counts them. */
+    private fun onInstallFailed(a: UpdateRules.Answer, outcome: UpdateRules.Outcome) {
+        main.post {
+            val r = ready
+            val data = answerData(a, r?.version).put("outcome", outcome.name.lowercase())
+            val what = UpdateRules.describeStatus(a.status, a.message)
+            prefs().edit().remove(KEY_INSTALLING).apply()
+            main.removeCallbacks(watch)
+            autoBlocked = true
+            pendingConfirm = null
+            when (outcome) {
+                UpdateRules.Outcome.DECLINED ->
+                    if (UpdateRules.isPlainCancel(a.status, a.message)) log.info("update.declined", "install of ${r?.version} not confirmed: $what", data)
+                    else log.warn("update.declined", "install of ${r?.version} stopped: $what", data)
+                UpdateRules.Outcome.PLAY_PROTECT -> log.warn("update.blocked", "Play Protect stopped the install of ${r?.version}: $what", data)
+                UpdateRules.Outcome.PHONE_BLOCKED -> log.warn("update.blocked", "the phone stopped the install of ${r?.version}: $what", data)
+                UpdateRules.Outcome.PERMANENT -> log.error("update.failed", "install refused: $what", data)
+                else -> log.error("update.failed", "install failed: $what", data)
+            }
+            log.flush()
+            val error = when (outcome) {
+                UpdateRules.Outcome.DECLINED -> null
+                UpdateRules.Outcome.PLAY_PROTECT -> PLAY_PROTECT_ERROR
+                UpdateRules.Outcome.PHONE_BLOCKED -> PHONE_BLOCKED_ERROR
+                else -> "The update didn't install"
+            }
+            when {
+                outcome == UpdateRules.Outcome.PERMANENT -> {
+                    // The same APK can never go in: not again every 6 hours.
+                    r?.let { prefs().edit().putString(KEY_REJECTED, it.version).apply() }
+                    clearReady()
+                    set(Status.FAILED, error = error)
+                }
+                outcome == UpdateRules.Outcome.BROKEN_FILE || r == null -> {
+                    // Downloaded again at the next check; not refused.
+                    clearReady()
+                    set(Status.FAILED, error = error)
+                }
+                else -> {
+                    lastDecision = UpdateRules.Decision.ASK_USER
+                    set(Status.READY, latest = r.version, waiting = "tap", error = error)
+                }
+            }
+        }
+    }
+
+    /** Staging or committing threw: no session answer will come. */
+    private fun onInstallNotStarted(message: String) {
+        forgetSession()
         main.post {
             val r = ready
             prefs().edit().remove(KEY_INSTALLING).apply()
-            main.removeCallbacks(stuckCheck)
-            confirmShown = false
-            gateInstall = false
+            main.removeCallbacks(watch)
             autoBlocked = true
             pendingConfirm = null
-            if (aborted) log.info("update.declined", "install of ${r?.version} not confirmed")
-            else log.error("update.failed", message, JSONObject().put("version", r?.version))
-            if (r != null && keep) {
-                lastDecision = UpdateRules.Decision.ASK_USER
-                set(Status.READY, latest = r.version, waiting = "tap", error = if (aborted) null else "The update didn't install")
-            } else {
-                // The same APK can never go in: not again every 6 hours.
-                r?.let { prefs().edit().putString(KEY_REJECTED, it.version).apply() }
-                clearReady()
-                set(Status.FAILED, error = "The update didn't install")
-            }
+            log.error("update.failed", "install could not start: $message", JSONObject().put("version", r?.version))
+            log.flush()
+            r ?: return@post
+            lastDecision = UpdateRules.Decision.ASK_USER
+            set(Status.READY, latest = r.version, waiting = "tap", error = "The update didn't install")
         }
     }
 
@@ -594,11 +875,12 @@ object AppUpdater {
         }.isSuccess
     }
 
-    /** Back on screen: the permission may have changed in Settings, and a
-     *  confirm screen may have been left with Back (no answer arrives then). */
+    /** Back on screen: the permission may have changed in Settings, and the
+     *  install session may have ended without an answer. Leaving Android's
+     *  confirm screen is not an answer: Play Protect may still be checking. */
     fun refresh() {
         main.post {
-            unstick(force = status == Status.INSTALLING && System.currentTimeMillis() - installStartedAt > STUCK_INSTALL_MS)
+            checkInstall()
             evaluate(false)
             publish()
         }
