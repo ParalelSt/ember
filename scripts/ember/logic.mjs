@@ -160,3 +160,20 @@ export function messageHeadline(m) {
 export function isDigest(m) {
   return /Daily error digest/i.test(m.embeds?.[0]?.title ?? '');
 }
+
+/** Where Ember's bot token lives. Ember has its own file so another bot set
+ *  up with /discord:configure (which owns ~/.claude/channels/discord/.env)
+ *  can no longer replace it. EMBER_DISCORD_BOT_TOKEN in the environment wins. */
+export const EMBER_TOKEN_FILE = '~/.ember-tools/discord.env';
+
+/** The Ember bot's token from the environment or Ember's own file, or null.
+ *  Never falls back to the shared Claude channel file: that one may hold a
+ *  different bot's token, which reads as a 403 on every Ember channel. */
+export function pickBotToken(processEnv, emberEnv) {
+  return (
+    processEnv.EMBER_DISCORD_BOT_TOKEN ||
+    emberEnv.EMBER_DISCORD_BOT_TOKEN ||
+    emberEnv.DISCORD_BOT_TOKEN ||
+    null
+  );
+}

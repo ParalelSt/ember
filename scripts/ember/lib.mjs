@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
+import { EMBER_TOKEN_FILE, pickBotToken } from './logic.mjs';
 
 /** This checkout (a worktree or the main one). */
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -105,9 +106,8 @@ export const EMBER_CHANNELS = {
 
 /** The Ember bot's token, never printed. */
 export function botToken() {
-  const env = readEnvFile(path.join(os.homedir(), '.claude/channels/discord/.env'));
-  const token = env.DISCORD_BOT_TOKEN ?? env.DISCORD_TOKEN;
-  if (!token) fail('No Discord bot token in ~/.claude/channels/discord/.env');
+  const token = pickBotToken(process.env, readEnvFile(path.join(TOOLS_DIR, 'discord.env')));
+  if (!token) fail(`No Ember bot token: put DISCORD_BOT_TOKEN=<token> in ${EMBER_TOKEN_FILE} (chmod 600)`);
   return token;
 }
 
