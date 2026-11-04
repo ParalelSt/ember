@@ -26,6 +26,19 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'android-update-install',
+    version: '0.7.39',
+    date: '2026-11-04',
+    title: 'Steadier Android updates',
+    summary: 'Updates on Android no longer give up at the install or security check screen.',
+    bullets: [
+      'Heads up, may change how things behave: Android updates now wait for Play Protect\'s and Xiaomi\'s security checks instead of giving up after a minute.',
+      'If Play Protect blocks the update, Ember keeps the download and tells you to tap More details, then Install anyway.',
+      'If Android closes Ember while it installs, Ember picks up where it left off instead of starting over.',
+      'The downloaded update is no longer wiped by phone cleaner apps before it installs.',
+    ],
+  },
+  {
     id: 'report-fixes',
     version: '0.7.38',
     date: '2026-11-03',

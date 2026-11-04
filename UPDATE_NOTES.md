@@ -1,3 +1,10 @@
+# 0.7.39: Steadier Android updates (android 0.4.32)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Nothing to do on the host. Android only. New apps: Android
+0.4.32 (versionCode 37). Unchanged: iOS 0.4.25, Windows 0.4.26, macOS 0.4.26,
+Linux 0.4.26. Tags: `android-v0.4.32`.
+
 # 0.7.38: Fixes from your bug reports (android 0.4.31, ios 0.4.25)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
