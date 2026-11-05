@@ -478,4 +478,36 @@ describe('webBackend error level', () => {
     expect(logger.error).toHaveBeenCalledTimes(1);
     expect(logger.warn).not.toHaveBeenCalled();
   });
+
+  it('says what kind of src failed, so a bare "Format error" is diagnosable', () => {
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(logger.warn).mockClear();
+    failWith('http://localhost/api/youtube/stream/abc');
+    expect(vi.mocked(logger.error).mock.calls[0][2]).toMatchObject({ kind: 'youtube', online: true });
+    failWith('http://localhost/api/radio/stream/0a1b2c3d-0000-4000-8000-000000000000');
+    expect(vi.mocked(logger.warn).mock.calls[0][2]).toMatchObject({ kind: 'station' });
+  });
+
+  it('a network failure while offline is a warning; a format error offline is not', () => {
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(logger.warn).mockClear();
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    try {
+      const fail = (code: number) => {
+        const b = createWebBackend(makeFakeEvents());
+        const a = document.querySelector('audio') as HTMLAudioElement;
+        a.src = 'http://localhost/api/youtube/stream/abc';
+        Object.defineProperty(a, 'error', { configurable: true, get: () => ({ code, message: 'x' }) });
+        a.dispatchEvent(new Event('error'));
+        b.destroy();
+      };
+      fail(2);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.error).not.toHaveBeenCalled();
+      fail(4);
+      expect(logger.error).toHaveBeenCalledTimes(1);
+    } finally {
+      onLine.mockRestore();
+    }
+  });
 });
