@@ -441,7 +441,7 @@ class EmberPlaybackService : MediaLibraryService() {
         )
         playWatch = PlayWatch(playbackLog, delay, caller = {
             if (::session.isInitialized) session.controllerForCurrentRequest?.packageName else null
-        })
+        }, online = ::online)
         player.addListener(playWatch)
         levelPlayer.watch = playWatch
         playbackLog.info("service.start", "player service started", org.json.JSONObject().put("automotive", automotive))

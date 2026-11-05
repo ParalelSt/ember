@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
+import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.HttpDataSource
@@ -244,6 +245,9 @@ class PlayWatch(
     /** Who asked (the car, the app, a headset): a package name, or null. */
     private val caller: () -> String? = { null },
     val timeoutMs: Long = TIMEOUT_MS,
+    /** Whether the phone has a working connection: a load that fails
+     *  offline is not a bug (PlayerErrors). */
+    private val online: () -> Boolean = { true },
 ) : Player.Listener {
     companion object {
         const val TIMEOUT_MS = 8_000L
@@ -284,6 +288,8 @@ class PlayWatch(
     @Volatile private var armedAt = 0L
     @Volatile private var armedBy: String? = null
     @Volatile private var generation = 0
+    /** The song the player is on, for the error log. */
+    @Volatile private var mediaId: String? = null
     private var cancel: (() -> Unit)? = null
     private var measuring = false
 
@@ -377,17 +383,26 @@ class PlayWatch(
         }
     }
 
+    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        mediaId = mediaItem?.mediaId
+    }
+
+    /** At error level only when it may be Ember's own fault: a phone that
+     *  lost its connection, a song the host refused and a dead station are
+     *  warnings (PlayerErrors.outside), so the daily digest counts real
+     *  problems. */
     override fun onPlayerError(error: PlaybackException) {
         disarm()
-        val data = JSONObject().put("errorCodeName", error.errorCodeName).put("code", error.errorCode)
+        val offline = !runCatching { online() }.getOrDefault(true)
+        val data = PlayerErrors.detail(error, mediaId, offline)
         var cause: Throwable? = error.cause
         while (cause != null) {
-            if (cause is HttpDataSource.InvalidResponseCodeException) data.put("httpStatus", cause.responseCode)
             if (cause is HttpDataSource.HttpDataSourceException) LogRedact.host(cause.dataSpec.uri.toString())?.let { data.put("host", it) }
             if (!data.has("cause")) data.put("cause", cause.javaClass.simpleName)
             cause = cause.cause
         }
-        log.error("player.error", "${error.errorCodeName}: ${error.message.orEmpty()}", data)
+        val level = if (data.optBoolean("expected")) "warn" else "error"
+        log.log(level, "player.error", "${error.errorCodeName}: ${error.message.orEmpty()}", data)
     }
 }
 
