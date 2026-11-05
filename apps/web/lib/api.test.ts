@@ -197,3 +197,26 @@ describe('radio browse: Radio Browser being down', () => {
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('getRecommended: the Python helper failing', () => {
+  const answer = (status: number) =>
+    vi.fn().mockResolvedValue({ ok: false, status, headers: new Headers(), json: async () => ({ error: 'the media helper failed (exit 1)' }) });
+
+  beforeEach(() => {
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(logger.warn).mockClear();
+  });
+
+  it.each([502, 503, 504])('a %i is a warning, never an error (no automatic bug report)', async (status) => {
+    vi.stubGlobal('fetch', answer(status));
+    await expect(api.getRecommended('NxvzO45X8I8')).rejects.toMatchObject({ status });
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 500 is still an error', async () => {
+    vi.stubGlobal('fetch', answer(500));
+    await expect(api.getRecommended('NxvzO45X8I8')).rejects.toMatchObject({ status: 500 });
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+});

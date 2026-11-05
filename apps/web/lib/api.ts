@@ -286,8 +286,11 @@ export const api = {
     req<{ tracks: Track[] }>(`/search?q=${encodeURIComponent(clipSearchQuery(q ?? ''))}`),
   getTrending: () =>
     req<{ tracks: Track[]; title: string | null; country: string; fetchedAt: string | null; stale: boolean }>('/youtube/trending'),
+  // 502/503/504: the Python helper failing (the server logs why at error).
+  // Newer hosts answer the chart instead; an older one, or a failure of the
+  // chart too, is an outside failure radio gets past, not a bug report.
   getRecommended: (seedSourceId?: string) =>
-    req<{ tracks: Track[] }>(`/youtube/recommended${seedSourceId ? `?seed=${encodeURIComponent(seedSourceId)}` : ''}`),
+    req<{ tracks: Track[] }>(`/youtube/recommended${seedSourceId ? `?seed=${encodeURIComponent(seedSourceId)}` : ''}`, { expected: [502, 503, 504] }),
   // 404 (and 400, an id that is not one) is an answer: the page says
   // "not found" (BrowseError, the shared track page), not a fault.
   getArtist: (channelId: string) =>
