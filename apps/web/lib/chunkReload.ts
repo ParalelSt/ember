@@ -44,6 +44,15 @@ export function installNavigationIntent(): void {
   );
 }
 
+/** The link just pressed does not go anywhere: its click handler prevented
+ *  the navigation and opened something in place (the Search links open the
+ *  search sheet). Call it from that handler, which runs after the capture
+ *  listener above, or a chunk failure in the next few seconds reloads onto
+ *  the link's page (the phone landed on the /search page that way). */
+export function forgetNavigationIntent(): void {
+  intent = null;
+}
+
 function targetUrl(now: number): string {
   if (intent && now - intent.at <= INTENT_MS) return intent.href;
   return window.location.pathname + window.location.search + window.location.hash;

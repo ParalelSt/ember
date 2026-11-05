@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { HomeIcon, SearchIcon, LibraryIcon, RadioIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
 import { isNavActive, type NavIcon, type NavItem } from '@/lib/nav';
 import { cn } from '@/lib/utils';
+import { forgetNavigationIntent } from '@/lib/chunkReload';
 
 export interface NavLinksProps {
   items: NavItem[];
@@ -43,6 +44,7 @@ export function NavLinks({ items, activePath, onNavigate, onSearchClick, size = 
             onClick={(e) => {
               if (isSearch && onSearchClick && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) {
                 e.preventDefault();
+                forgetNavigationIntent();
                 onSearchClick();
               }
               onNavigate?.();
