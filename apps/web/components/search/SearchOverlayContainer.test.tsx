@@ -522,6 +522,8 @@ describe('SearchOverlayContainer, phone sheet', () => {
   it('still closes on the Android back gesture', () => {
     renderOverlay();
 
+    // Back lands on the page's entry under the sheet, then says so.
+    window.history.replaceState(null, '');
     fireEvent(window, new PopStateEvent('popstate'));
     expect(useUiStore.getState().searchOpen).toBe(false);
   });
