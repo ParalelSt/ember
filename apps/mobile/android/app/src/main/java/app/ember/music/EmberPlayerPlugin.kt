@@ -61,9 +61,9 @@ internal fun cacheState(extras: Bundle): Triple<List<String>, Boolean, Boolean> 
  *
  *  The event carries what the failure was (PlayerErrors.detail), so the
  *  page can log it by what it means and a report says what broke. */
-internal fun errorEvent(error: PlaybackException?, mediaId: String?, offline: Boolean): JSObject? {
+internal fun errorEvent(error: PlaybackException?, mediaId: String?, offline: Boolean, local: Boolean = false): JSObject? {
     if (error == null) return null
-    val detail = PlayerErrors.detail(error, mediaId, offline)
+    val detail = PlayerErrors.detail(error, mediaId, offline, local)
     return JSObject().apply {
         put("message", error.message ?: "playback error")
         val keys = detail.keys()
@@ -72,6 +72,16 @@ internal fun errorEvent(error: PlaybackException?, mediaId: String?, offline: Bo
             put(k, detail.get(k))
         }
     }
+}
+
+/** [errorEvent] for [player] (the page's MediaController): the song it is
+ *  on, and from the service's session [extras] (cacheState) whether the
+ *  phone is offline and whether that song is on the phone. An older service
+ *  without the extras reads as online with nothing on the phone. */
+internal fun errorEventFor(player: Player, extras: Bundle): JSObject? {
+    val mediaId = player.currentMediaItem?.mediaId
+    val (onPhone, _, offline) = cacheState(extras)
+    return errorEvent(player.playerError, mediaId, offline, local = mediaId != null && mediaId in onPhone)
 }
 
 /** The play history the queue sheet shows ("Played": song ids, oldest
@@ -371,8 +381,7 @@ class EmberPlayerPlugin : Plugin() {
                 notifyListeners("ended", JSObject())
             }
             if (events.contains(Player.EVENT_PLAYER_ERROR)) {
-                val offline = controller?.let { cacheState(it.sessionExtras).third } ?: false
-                errorEvent(player.playerError, player.currentMediaItem?.mediaId, offline)?.let { notifyListeners("error", it) }
+                errorEventFor(player, controller?.sessionExtras ?: Bundle.EMPTY)?.let { notifyListeners("error", it) }
             }
         }
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {

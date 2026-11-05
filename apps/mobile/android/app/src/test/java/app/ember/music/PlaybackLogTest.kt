@@ -330,6 +330,18 @@ class PlaybackLogTest {
         assertEquals("error", events(sent.single()).single().getString("level"))
     }
 
+    @Test fun `a downloaded song that will not load offline stays an error`() {
+        val log = logger()
+        val watch = PlayWatch(log, delay, clock = { now }, online = { false }, local = { it == "youtube:onphone" })
+        watch.onMediaItemTransition(MediaItem.Builder().setMediaId("youtube:onphone").build(), Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+        watch.onPlayerError(PlaybackException("Source error", null, PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND))
+        watch.onPlayerError(PlaybackException("Source error", null, PlaybackException.ERROR_CODE_IO_UNSPECIFIED))
+        log.flush()
+        val logged = sent.flatMap { events(it) }
+        assertEquals(listOf("error", "error"), logged.map { it.getString("level") })
+        assertEquals(true, logged[1].getJSONObject("data").getBoolean("local"))
+    }
+
     @Test fun `a dead station and a load that fails offline are warnings`() {
         var phoneOnline = true
         val log = logger()

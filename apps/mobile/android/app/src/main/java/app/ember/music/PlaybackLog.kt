@@ -248,6 +248,9 @@ class PlayWatch(
     /** Whether the phone has a working connection: a load that fails
      *  offline is not a bug (PlayerErrors). */
     private val online: () -> Boolean = { true },
+    /** Whether a song is on the phone (downloaded, or whole in the auto
+     *  cache): offline, a failure to load one of those is a bug. */
+    private val local: (String) -> Boolean = { false },
 ) : Player.Listener {
     companion object {
         const val TIMEOUT_MS = 8_000L
@@ -394,7 +397,9 @@ class PlayWatch(
     override fun onPlayerError(error: PlaybackException) {
         disarm()
         val offline = !runCatching { online() }.getOrDefault(true)
-        val data = PlayerErrors.detail(error, mediaId, offline)
+        val id = mediaId
+        val onPhone = id != null && runCatching { local(id) }.getOrDefault(false)
+        val data = PlayerErrors.detail(error, id, offline, onPhone)
         var cause: Throwable? = error.cause
         while (cause != null) {
             if (cause is HttpDataSource.HttpDataSourceException) LogRedact.host(cause.dataSpec.uri.toString())?.let { data.put("host", it) }

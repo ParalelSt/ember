@@ -57,7 +57,7 @@ class PlayerErrorsTest {
         assertEquals("warn", level(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED))
         assertEquals("warn", level(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT))
         // The host answered: gone (410), refused (403), its own 502, signed out.
-        for (status in listOf(401, 403, 404, 410, 429, 502, 503, null)) {
+        for (status in listOf(401, 403, 410, 429, 502, 503, 504)) {
             assertEquals("status $status", "warn", level(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, status))
         }
         // A request Ember built wrong.
@@ -75,6 +75,61 @@ class PlayerErrorsTest {
         assertEquals("error", level(PlaybackException.ERROR_CODE_DECODING_FAILED, offline = true))
         assertEquals("error", level(PlaybackException.ERROR_CODE_DECODING_FAILED, station = true))
         assertEquals("error", level(PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED))
+    }
+
+    @Test fun `offline, only a failed network load is outside, a song on the phone that will not play is ours`() {
+        fun level(code: Int, status: Int? = null, local: Boolean = false) =
+            PlayerErrors.level(code, status, station = false, offline = true, local = local)
+        // A stream that could not load without a network.
+        assertEquals("warn", level(PlaybackException.ERROR_CODE_IO_UNSPECIFIED))
+        assertEquals("warn", level(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED))
+        assertEquals("warn", level(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, 404))
+        // A downloaded file that is gone, unreadable or cut short: a real bug.
+        assertEquals("error", level(PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND))
+        assertEquals("error", level(PlaybackException.ERROR_CODE_IO_NO_PERMISSION))
+        assertEquals("error", level(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE))
+        // The song is on the phone (downloaded, or whole in the cache), so a
+        // load failure is the copy's, not the missing network's.
+        assertEquals("error", level(PlaybackException.ERROR_CODE_IO_UNSPECIFIED, local = true))
+    }
+
+    @Test fun `a 404 or 500 from Ember's own stream routes is an error, a station's is not`() {
+        fun level(status: Int, station: Boolean = false) =
+            PlayerErrors.level(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, status, station, offline = false)
+        // An upload whose file is gone from the host, a route that crashed.
+        assertEquals("error", level(404))
+        assertEquals("error", level(500))
+        assertEquals("warn", level(404, station = true))
+        assertEquals("warn", level(500, station = true))
+    }
+
+    @Test fun `the plugin's wiring reads the song from the player and offline and local from the session extras`() {
+        val seen = mutableListOf<org.json.JSONObject?>()
+        val extras = android.os.Bundle().apply {
+            putBoolean(EmberPlaybackService.EXTRA_OFFLINE, true)
+            putStringArrayList(EmberPlaybackService.EXTRA_CACHED_IDS, arrayListOf("youtube:onphone"))
+        }
+        player.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (events.contains(Player.EVENT_PLAYER_ERROR)) seen += errorEventFor(player, extras)
+            }
+        })
+        player.setMediaItem(MediaItem.Builder().setMediaId("youtube:onphone").setUri("file:///nonexistent/song.m4a").build())
+        player.prepare()
+        runUntil { seen.isNotEmpty() }
+        val e = seen.single()!!
+        assertEquals("youtube:onphone", e.getString("trackId"))
+        assertTrue(e.getBoolean("offline"))
+        assertTrue(e.getBoolean("local"))
+        assertFalse("a downloaded song that will not play is a bug, offline or not", e.getBoolean("expected"))
+        // An older service (no extras): online, nothing on the phone.
+        val bare = errorEventFor(player, android.os.Bundle())!!
+        assertFalse(bare.getBoolean("offline"))
+        assertFalse(bare.getBoolean("local"))
+        // No error: no event.
+        player.prepare()
+        runUntil { seen.size >= 2 }
+        assertNull(seen[1])
     }
 
     @Test fun `the page's error event carries the detail and the verdict`() {

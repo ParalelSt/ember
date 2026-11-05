@@ -55,6 +55,21 @@ describe('nativeErrorLog', () => {
     expect(nativeErrorLog({ message: 'Source error' }, { trackId: 'youtube:abc', online: false })?.level).toBe('warn');
   });
 
+  it('an old build offline: a failed load is a warning, a decoder failure stays an error', () => {
+    const offline = { trackId: 'youtube:abc', online: false };
+    expect(nativeErrorLog({ message: 'Source error' }, offline)?.level).toBe('warn');
+    expect(nativeErrorLog({ message: 'MediaCodecAudioRenderer error, index=1, format=Format(1, null, null, audio/mp4a-latm), format_supported=YES' }, offline)?.level).toBe('error');
+    expect(nativeErrorLog({ message: 'Unexpected runtime error' }, offline)?.level).toBe('error');
+  });
+
+  it('a new build decides offline itself: a downloaded song that will not play offline is an error', () => {
+    const log = nativeErrorLog({
+      message: 'Source error', errorCodeName: 'ERROR_CODE_IO_FILE_NOT_FOUND', code: 2005, offline: true, local: true, expected: false,
+    }, { trackId: 'youtube:abc', online: false });
+    expect(log?.level).toBe('error');
+    expect(log?.data).toMatchObject({ offline: true, local: true });
+  });
+
   it('an old build announcing a cleared error is no error at all', () => {
     expect(nativeErrorLog({ message: 'playback error' }, online)).toBeNull();
   });

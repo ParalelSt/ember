@@ -113,6 +113,8 @@ export interface NativeErrorEvent {
   trackId?: string;
   station?: boolean;
   offline?: boolean;
+  /** The song is on the phone (downloaded, or whole in the auto cache). */
+  local?: boolean;
   /** Native's verdict: an outside failure (no connection, the host refusing
    *  the song, a dead station), not Ember's bug. */
   expected?: boolean;
@@ -123,11 +125,17 @@ export interface NativeErrorEvent {
  *  for an error that is not there. A real error always has a message. */
 const CLEARED_ERROR_MESSAGE = 'playback error';
 
+/** ExoPlayer's message for every load failure (a source error); a decoder or
+ *  renderer failure says "... error, index=..." or "Unexpected runtime
+ *  error". Only a load failure is the missing network's fault. */
+const LOAD_FAILURE_MESSAGE = 'Source error';
+
 /** How the page logs a native player error, or null when it is no error at
  *  all. `level` decides whether it becomes an automatic bug report (error)
- *  or not (warn). Old app builds say nothing but the message: a station or
- *  a phone that is offline is still known here, anything else stays an
- *  error. */
+ *  or not (warn). New app builds decide (`expected`, PlayerErrors.kt). Old
+ *  ones say nothing but the message: a station is still known here, and a
+ *  load failure while the phone is offline; anything else, a decoder
+ *  failure offline included, stays an error. */
 export function nativeErrorLog(
   d: NativeErrorEvent | null | undefined,
   ctx: { trackId: string | null; online: boolean },
@@ -143,8 +151,9 @@ export function nativeErrorLog(
     data.errorCodeName = d!.errorCodeName ?? null;
     data.code = d!.code;
     if (typeof d!.httpStatus === 'number') data.httpStatus = d!.httpStatus;
+    if (typeof d!.local === 'boolean') data.local = d!.local;
   }
-  const outside = detailed ? d!.expected === true : station || offline;
+  const outside = detailed ? d!.expected === true : station || (offline && message === LOAD_FAILURE_MESSAGE);
   return { level: outside ? 'warn' : 'error', message, data };
 }
 
