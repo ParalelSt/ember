@@ -212,6 +212,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** Track id whose loaded src is an auto-cached copy (a blob: URL from the
    *  cache adapter). A copy that will not play is dropped from the cache. */
   const cacheSrcTrackRef = useRef<string | null>(null);
+  /** Where the loaded song plays from (the load breadcrumb's `source`), for
+   *  the log line of a song the engine ended early. */
+  const loadedSourceRef = useRef<{ trackId: string; source: 'local' | 'cache' | 'stream' } | null>(null);
   /** The offline stall toast is shown once per offline spell, not per skip. */
   const offlineToastShownRef = useRef(false);
   const eventsRef = useRef<AudioBackendEvents | null>(null);
@@ -473,11 +476,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const engineDur = kind === 'web' || kind === 'capacitor' ? backendRef.current?.getDuration() ?? 0 : 0;
         const endedAtEngineEnd = Number.isFinite(engineDur) && engineDur > 0 && pos >= engineDur - ENDED_SLACK_SEC;
         if (dur > 0 && pos < dur - ENDED_SLACK_SEC && !endedAtEngineEnd) {
+          // Enough to tell the causes apart from the report alone: a source
+          // that gave out (stream vs a cached or local file), or a length
+          // that was never this audio's (catalog vs what the engine read
+          // from the file; the desktop engine's own is in its app log).
+          const loaded = loadedSourceRef.current;
           logger.error('playback', 'the engine ended a track early', {
             trackId: cur?.id ?? null,
             position: Math.round(pos),
             duration: Math.round(dur),
             backend: backendKindRef.current,
+            trackSource: cur?.source ?? null,
+            source: loaded && loaded.trackId === cur?.id ? loaded.source : null,
+            catalogDuration: Math.round(cur?.durationSec ?? 0),
+            engineDuration: Math.round(backendRef.current?.getDuration() ?? 0),
           });
           handleError();
           return;
@@ -888,10 +900,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Only a fresh LOCAL load re-arms the one-shot stream fallback; the
     // fallback's own load is not local, so it cannot re-arm itself.
     if (local || cachedSrc) streamFallbackRef.current = null;
+    const source = local ? 'local' : cachedSrc || cacheKey ? 'cache' : 'stream';
+    loadedSourceRef.current = { trackId: track.id, source };
     logger.breadcrumb('playback', 'load', {
       trackId: track.id,
       backend: backendKindRef.current,
-      source: local ? 'local' : cachedSrc || cacheKey ? 'cache' : 'stream',
+      source,
     });
     // The new song's gain, when it is already known, goes to the engine
     // BEFORE the load: the render that would set it comes after the audio may

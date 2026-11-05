@@ -130,6 +130,28 @@ describe('a premature "ended" from the engine', () => {
     );
   });
 
+  it('says enough to tell the causes apart: where the song played from and both lengths', () => {
+    renderPlayer();
+    fake.currentTime = 30;
+    act(() => {
+      capturedEvents?.onEnded();
+    });
+    expect(logger.error).toHaveBeenCalledWith(
+      'playback',
+      'the engine ended a track early',
+      {
+        trackId: FIRST.id,
+        position: 30,
+        duration: 200,
+        backend: 'web',
+        trackSource: 'youtube',
+        source: 'stream',
+        catalogDuration: 200,
+        engineDuration: 200,
+      },
+    );
+  });
+
   it('tells a failure from a finished track by the playhead', () => {
     renderPlayer();
     // A track that really finished: the queue advances exactly as before.
