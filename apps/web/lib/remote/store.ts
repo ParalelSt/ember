@@ -24,6 +24,7 @@ interface Entry {
   label: string;
   platform: RemoteDevice['platform'];
   shell: RemoteDevice['shell'];
+  browser: RemoteDevice['browser'];
   lastBeat: number;
   snapshot: Snapshot | null;
   pending: RemoteCommand[];
@@ -90,7 +91,9 @@ export type CommandResult =
 
 export interface RemoteStore {
   beat(userId: string, body: BeatBody, now: number): BeatAnswer;
-  state(userId: string, deviceId: string, rev: number | null, now: number): StateAnswer;
+  /** `controlling`: the device that asks controls another one, so nothing
+   *  plays on it (its last beat may still say so). */
+  state(userId: string, deviceId: string, rev: number | null, now: number, controlling?: string | null): StateAnswer;
   command(userId: string, target: string, from: string | null, command: CommandBody, now: number): CommandResult;
   clear(): void;
 }
@@ -149,15 +152,17 @@ export function createRemoteStore(): RemoteStore {
       if (!d) {
         d = {
           deviceId: body.deviceId, label: body.label, platform: body.platform, shell: body.shell,
-          lastBeat: now, snapshot: null, pending: [], stale: false,
+          browser: body.browser ?? null, lastBeat: now, snapshot: null, pending: [], stale: false,
         };
         u.devices.set(body.deviceId, d);
         u.rev++;
       }
-      if (d.label !== body.label || d.platform !== body.platform || d.shell !== body.shell) {
+      const browser = body.browser ?? null;
+      if (d.label !== body.label || d.platform !== body.platform || d.shell !== body.shell || d.browser !== browser) {
         d.label = body.label;
         d.platform = body.platform;
         d.shell = body.shell;
+        d.browser = browser;
         u.rev++;
       }
       if (d.stale) {
@@ -186,6 +191,10 @@ export function createRemoteStore(): RemoteStore {
           ? { ...prev, ...light, at: now, changedAt }
           : { ...light, track: null, upNext: [], queueLength: 0, loopMode: 'off', shuffle: false, context: null, at: now, changedAt };
       }
+      // A "took over" pause from before this device last started playing
+      // is old news: it started again since (the music moved back here).
+      const startedAt = d.snapshot.isPlaying ? d.snapshot.changedAt : 0;
+      d.pending = d.pending.filter((c) => !(c.type === 'pause' && c.issuedBy === null && c.issuedAt < startedAt));
 
       const { pause, yieldTo } = decideTakeover(candidates(u), d.deviceId, now);
       for (const id of pause) {
@@ -210,10 +219,15 @@ export function createRemoteStore(): RemoteStore {
       return answer;
     },
 
-    state(userId, deviceId, rev, now) {
+    state(userId, deviceId, rev, now, controlling = null) {
       const u = userOf(userId);
       u.watchers.set(deviceId, now);
       prune(u, now);
+      const own = u.devices.get(deviceId);
+      if (controlling && own?.snapshot?.isPlaying) {
+        own.snapshot = { ...own.snapshot, isPlaying: false };
+        u.rev++;
+      }
       const active = pickActive(candidates(u), now);
       // A device is never listed to itself (a second tab on it included).
       const list = [...u.devices.values()].filter((d) => d.deviceId !== deviceId);
@@ -227,7 +241,7 @@ export function createRemoteStore(): RemoteStore {
         return { now, rev: u.rev, active, devices, light: true };
       }
       const devices: RemoteDevice[] = list.map((d) => ({
-        deviceId: d.deviceId, label: d.label, platform: d.platform, shell: d.shell,
+        deviceId: d.deviceId, label: d.label, platform: d.platform, shell: d.shell, browser: d.browser,
         lastBeat: d.lastBeat, stale: d.stale, snapshot: d.snapshot,
       }));
       return { now, rev: u.rev, active, devices };

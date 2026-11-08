@@ -816,8 +816,8 @@ export const api = {
   /** Controlling playback on your other devices (lib/remote). */
   remote: {
     beat: (body: BeatBody) => remoteCall<BeatAnswer>('/remote/beat', { method: 'POST', body }),
-    state: (device: string, rev: number | null) =>
-      remoteCall<StateAnswer>(`/remote/state?device=${encodeURIComponent(device)}${rev !== null ? `&rev=${rev}` : ''}`),
+    state: (device: string, rev: number | null, controlling: string | null = null) =>
+      remoteCall<StateAnswer>(`/remote/state?device=${encodeURIComponent(device)}${rev !== null ? `&rev=${rev}` : ''}${controlling ? `&controlling=${encodeURIComponent(controlling)}` : ''}`),
     command: (target: string, from: string, command: CommandBody) =>
       remoteCall<{ id: string }>('/remote/command', { method: 'POST', body: { target, from, ...command } }),
   },

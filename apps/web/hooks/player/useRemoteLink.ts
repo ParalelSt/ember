@@ -8,7 +8,7 @@ import { claimSingleton, createBackoff, releaseSingleton, retryAfterOf } from '@
 import { BURST_MAX, BURST_WINDOW_MS, CHANGE_DEBOUNCE_MS, nextBeatDelay } from '@/lib/remote/cadence';
 import { buildSnapshot, lightOf } from '@/lib/remote/snapshot';
 import type { BeatAnswer, BeatBody, RemoteCommand, RemoteShell } from '@/lib/remote/types';
-import type { DevicePlatform } from '@/lib/versions/label';
+import type { BrowserFamily, DevicePlatform } from '@/lib/versions/label';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import type { PlaybackContext, Track } from '@/types/track';
 
@@ -32,6 +32,7 @@ export interface RemoteIdentity {
   label: string;
   platform: DevicePlatform;
   shell: RemoteShell;
+  browser?: BrowserFamily | null;
 }
 
 /** Ids already run, so a command delivered twice runs once. */

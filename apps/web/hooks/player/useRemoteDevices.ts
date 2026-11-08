@@ -24,20 +24,18 @@ export function useRemoteDevices({
   localPlaying,
   onAttach,
   onDetach,
-  pickerOpen = false,
-  fetchState = (device: string, rev: number | null) => api.remote.state(device, rev),
+  fetchState = (device: string, rev: number | null, controlling: string | null) => api.remote.state(device, rev, controlling),
 }: {
   enabled: boolean;
   me: string | null;
   localPlaying: () => boolean;
   onAttach: (deviceId: string) => void;
   onDetach: () => void;
-  pickerOpen?: boolean;
-  fetchState?: (device: string, rev: number | null) => Promise<StateAnswer>;
+  fetchState?: (device: string, rev: number | null, controlling: string | null) => Promise<StateAnswer>;
 }) {
-  const latest = useRef({ localPlaying, onAttach, onDetach, fetchState, pickerOpen });
+  const latest = useRef({ localPlaying, onAttach, onDetach, fetchState });
   useEffect(() => {
-    latest.current = { localPlaying, onAttach, onDetach, fetchState, pickerOpen };
+    latest.current = { localPlaying, onAttach, onDetach, fetchState };
   });
 
   useEffect(() => {
@@ -56,7 +54,7 @@ export function useRemoteDevices({
       timer = null;
       if (disposed) return;
       const st = useRemoteStore.getState();
-      const delay = controllerPollDelay({ controlling: st.mode === 'controlling', pickerOpen: latest.current.pickerOpen, hidden: hidden() });
+      const delay = controllerPollDelay({ controlling: st.mode === 'controlling', pickerOpen: st.pickerOpen, hidden: hidden() });
       if (delay === null) return;
       timer = setTimeout(() => void poll(), Math.max(delay, backoff.remaining()));
     };
@@ -99,7 +97,8 @@ export function useRemoteDevices({
       inFlight = true;
       const sentAt = Date.now();
       try {
-        const answer = await latest.current.fetchState(me!, useRemoteStore.getState().rev);
+        const rs = useRemoteStore.getState();
+        const answer = await latest.current.fetchState(me!, rs.rev, rs.mode === 'controlling' ? rs.target : null);
         if (disposed) return;
         backoff.ok();
         const st = useRemoteStore.getState();
@@ -108,6 +107,7 @@ export function useRemoteDevices({
           active: answer.active,
           rev: answer.rev,
           offset: clockOffset(answer.now, sentAt, Date.now()),
+          heardAt: Date.now(),
         });
         evaluate();
       } catch (e) {
@@ -131,6 +131,11 @@ export function useRemoteDevices({
       if (s.mode !== p.mode) {
         lastFresh = Date.now();
         schedule();
+      }
+      // The picker opening asks at once: its list must be current.
+      if (s.pickerOpen !== p.pickerOpen) {
+        if (s.pickerOpen && !hidden()) void poll();
+        else schedule();
       }
     });
     if (!hidden()) void poll();

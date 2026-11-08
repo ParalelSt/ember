@@ -19,7 +19,8 @@ export const GET = withRequestLog('remote/state', async (req: NextRequest) => {
     if (!isDeviceId(device)) return Response.json({ error: 'Unknown device' }, { status: 400 });
     const revRaw = req.nextUrl.searchParams.get('rev');
     const rev = revRaw && /^\d{1,15}$/.test(revRaw) ? Number(revRaw) : null;
-    return Response.json(remoteStore().state(user.id, device, rev, Date.now()));
+    const controlling = req.nextUrl.searchParams.get('controlling');
+    return Response.json(remoteStore().state(user.id, device, rev, Date.now(), isDeviceId(controlling) ? controlling : null));
   } catch (e) {
     return remoteErrorResponse(e);
   }

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useRemoteDevices } from './useRemoteDevices';
-import { POLL_CONTROLLING_MS } from '@/lib/remote/cadence';
+import { POLL_CONTROLLING_MS, POLL_PICKER_MS } from '@/lib/remote/cadence';
 import { buildSnapshot } from '@/lib/remote/snapshot';
 import { STALE_MS, type RemoteDevice, type StateAnswer } from '@/lib/remote/types';
 import { makeTrack } from '@/test-utils/fakeBackend';
@@ -31,14 +31,14 @@ beforeEach(() => {
   vi.useFakeTimers();
   hidden = false;
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
-  useRemoteStore.setState({ devices: [], active: null, rev: null, offset: 0, mode: 'local', target: null, dismissed: null });
+  useRemoteStore.setState({ devices: [], active: null, rev: null, offset: 0, mode: 'local', target: null, dismissed: null, pickerOpen: false, heardAt: 0 });
 });
 afterEach(() => {
   vi.useRealTimers();
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
 });
 
-function setup(fetchState: (d: string, r: number | null) => Promise<StateAnswer>, localPlaying = false) {
+function setup(fetchState: (d: string, r: number | null, c: string | null) => Promise<StateAnswer>, localPlaying = false) {
   const onAttach = vi.fn((id: string) => useRemoteStore.setState({ mode: 'controlling', target: id }));
   const onDetach = vi.fn(() => useRemoteStore.setState({ mode: 'local', target: null }));
   const hook = renderHook(() => useRemoteDevices({ enabled: true, me: ME, localPlaying: () => localPlaying, onAttach, onDetach, fetchState }));
@@ -50,7 +50,7 @@ describe('useRemoteDevices', () => {
     const fetchState = vi.fn(async () => answer([windows()]));
     const { onAttach } = setup(fetchState);
     await vi.advanceTimersByTimeAsync(0);
-    expect(fetchState).toHaveBeenCalledWith(ME, null);
+    expect(fetchState).toHaveBeenCalledWith(ME, null, null);
     expect(onAttach).toHaveBeenCalledWith(WIN);
     expect(useRemoteStore.getState().devices).toHaveLength(1);
   });
@@ -62,8 +62,9 @@ describe('useRemoteDevices', () => {
     expect(fetchState).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(POLL_CONTROLLING_MS * 2);
     expect(fetchState).toHaveBeenCalledTimes(3);
-    // The second call carries the rev it has.
-    expect(fetchState).toHaveBeenLastCalledWith(ME, 1);
+    // Later calls carry the rev it has, and say which device it controls
+    // (nothing plays here meanwhile).
+    expect(fetchState).toHaveBeenLastCalledWith(ME, 1, WIN);
     hidden = true;
     document.dispatchEvent(new Event('visibilitychange'));
     await vi.advanceTimersByTimeAsync(POLL_CONTROLLING_MS * 5);
@@ -71,6 +72,21 @@ describe('useRemoteDevices', () => {
     hidden = false;
     document.dispatchEvent(new Event('visibilitychange'));
     await vi.advanceTimersByTimeAsync(0);
+    expect(fetchState).toHaveBeenCalledTimes(4);
+  });
+
+  it('asks at once when the picker opens, then every 3 s until it closes', async () => {
+    const fetchState = vi.fn(async () => answer([windows()]));
+    setup(fetchState, true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchState).toHaveBeenCalledTimes(1);
+    useRemoteStore.getState().set({ pickerOpen: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchState).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(POLL_PICKER_MS * 2);
+    expect(fetchState).toHaveBeenCalledTimes(4);
+    useRemoteStore.getState().set({ pickerOpen: false });
+    await vi.advanceTimersByTimeAsync(POLL_PICKER_MS * 3);
     expect(fetchState).toHaveBeenCalledTimes(4);
   });
 

@@ -18,6 +18,10 @@ interface RemoteState {
   /** The device and play state this one left on purpose: not attached to
    *  again until that device's play state changes (lib/remote/attach). */
   dismissed: { deviceId: string; changedAt: number } | null;
+  /** The output picker is open: its "Your devices" list is kept fresh. */
+  pickerOpen: boolean;
+  /** When the last answer came (this device's clock), for "Last seen". */
+  heardAt: number;
   set: (patch: Partial<Omit<RemoteState, 'set'>>) => void;
 }
 
@@ -29,6 +33,8 @@ export const useRemoteStore = create<RemoteState>()((set) => ({
   mode: 'local',
   target: null,
   dismissed: null,
+  pickerOpen: false,
+  heardAt: 0,
   set: (patch) => set(patch),
 }));
 

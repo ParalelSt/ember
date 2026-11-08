@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { cleanShellFields, reportVersionLabel, sanitizePlatform, sanitizeVersion, versionLabel } from './label';
+import { cleanShellFields, reportVersionLabel, sanitizePlatform, sanitizeVersion, versionLabel, browserFamily, deviceName, deviceWord, sanitizeBrowser } from './label';
 
 describe('sanitizeVersion', () => {
   it('takes the number out of a build stamp', () => {
@@ -83,5 +83,32 @@ describe('cleanShellFields', () => {
   it('keeps good values, drops bad ones and leaves the rest alone', () => {
     expect(cleanShellFields({ route: '/x', shellVersion: 'v0.4.28', shellPlatform: 'android' })).toEqual({ route: '/x', shellVersion: '0.4.28', shellPlatform: 'android' });
     expect(cleanShellFields({ route: '/x', shellVersion: '<@1>', shellPlatform: 'toaster' })).toEqual({ route: '/x' });
+  });
+});
+
+describe('device names among the account devices', () => {
+  it('uses the platform word', () => {
+    expect(deviceWord('windows')).toBe('Windows');
+    expect(deviceWord('android')).toBe('Android phone');
+    expect(deviceWord('ios')).toBe('iPhone');
+  });
+
+  it('names the browser only when two browsers are listed', () => {
+    const chrome = { platform: 'browser' as const, browser: 'Chrome' };
+    const firefox = { platform: 'browser' as const, browser: 'Firefox' };
+    expect(deviceName(chrome, [chrome])).toBe('Browser');
+    expect(deviceName(chrome, [chrome, firefox])).toBe('Browser (Chrome)');
+    expect(deviceName({ platform: 'windows' }, [chrome, firefox])).toBe('Windows');
+  });
+
+  it('tells browsers apart by their user agent', () => {
+    const chromeUa = 'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+    expect(browserFamily(chromeUa)).toBe('Chrome');
+    expect(browserFamily(`${chromeUa} Edg/130.0`)).toBe('Edge');
+    expect(browserFamily('Mozilla/5.0 (X11; Linux) Gecko/20100101 Firefox/131.0')).toBe('Firefox');
+    expect(browserFamily('Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15')).toBe('Safari');
+    expect(browserFamily('curl/8')).toBeNull();
+    expect(sanitizeBrowser('Firefox')).toBe('Firefox');
+    expect(sanitizeBrowser('<b>Evil</b>')).toBeNull();
   });
 });

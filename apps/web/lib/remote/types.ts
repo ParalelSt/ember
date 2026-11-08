@@ -1,5 +1,5 @@
 import type { LoopMode } from '@/stores/usePlayerStore';
-import type { DevicePlatform } from '@/lib/versions/label';
+import type { BrowserFamily, DevicePlatform } from '@/lib/versions/label';
 import type { PlaybackContext, Track } from '@/types/track';
 
 /** Controlling playback on your other devices (docs/plans/
@@ -87,6 +87,8 @@ export interface BeatBody {
   label: string;
   platform: DevicePlatform;
   shell: RemoteShell;
+  /** A browser's family ("Firefox"), to tell two browsers apart. */
+  browser?: BrowserFamily | null;
   light?: LightState;
   full?: FullState;
   /** Ids of the commands this device has run since its last beat. */
@@ -110,6 +112,7 @@ export interface RemoteDevice {
   label: string;
   platform: DevicePlatform;
   shell: RemoteShell;
+  browser?: BrowserFamily | null;
   lastBeat: number;
   /** No beat for STALE_MS: shown as "last seen", never commanded. */
   stale: boolean;
@@ -152,13 +155,3 @@ export const LABEL_MAX = 60;
 export const MAX_PENDING_COMMANDS = 50;
 export const DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 export const COMMAND_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-
-/** "Windows", "Android phone": what a device is called in the app. */
-export const PLATFORM_WORDS: Record<DevicePlatform, string> = {
-  windows: 'Windows',
-  macos: 'macOS',
-  linux: 'Linux',
-  android: 'Android phone',
-  ios: 'iPhone',
-  browser: 'Browser',
-};

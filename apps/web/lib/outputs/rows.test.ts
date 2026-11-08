@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceSections, devicesButtonVisible, devicesLabel, playingOn, type CastSummary, type OutputSummary } from './rows';
+import { controlledName, deviceSections, devicesButtonVisible, devicesLabel, freshDevices, lastSeen, playingOn, type CastSummary, type OutputSummary, type RemoteSummary } from './rows';
 
 const NO_CAST: CastSummary = { path: null, availability: 'none', connection: 'idle', deviceName: null };
 const NO_OUT: OutputSummary = {
@@ -154,5 +154,64 @@ describe('playingOn and the button label', () => {
     expect(devicesLabel(NO_OUT, NO_CAST, 'Windows')).toBe('Devices: playing on Windows');
     expect(devicesButtonVisible({ ...NO_OUT, platform: null }, NO_CAST, 'Windows')).toBe(true);
     expect(devicesButtonVisible({ ...NO_OUT, platform: null }, NO_CAST)).toBe(false);
+  });
+});
+
+describe('Your devices', () => {
+  const snap = (isPlaying: boolean) => ({
+    trackId: 'youtube:a', index: 0, queueHash: 'h', position: 10, duration: 200, isPlaying, volume: 1, muted: false,
+    track: { id: 'youtube:a', source: 'youtube' as const, sourceId: 'a', title: 'A', artist: 'X', artistId: null, album: null, albumId: null, durationSec: 200, artworkUrl: null, streamUrl: '/s/a' },
+    upNext: [], queueLength: 1, loopMode: 'off' as const, shuffle: false, context: null, at: 0, changedAt: 0,
+  });
+  const NOW = 1_000_000;
+  const win = { deviceId: 'win-1', label: 'Windows', platform: 'windows' as const, shell: 'tauri' as const, browser: null, lastBeat: NOW - 1000, stale: false, snapshot: snap(true) };
+  const phone = { deviceId: 'phone-1', label: 'Android phone', platform: 'android' as const, shell: 'android' as const, browser: null, lastBeat: NOW - 40_000, stale: true, snapshot: snap(false) };
+  const local: RemoteSummary = { devices: [win, phone], mode: 'local', target: null, thisKind: 'computer', now: NOW };
+  const controlling: RemoteSummary = { ...local, mode: 'controlling', target: 'win-1' };
+  const DESKTOP_OUT: OutputSummary = {
+    ...NO_OUT, platform: 'desktop',
+    devices: [{ id: 'spk', name: 'Speakers', kind: 'computer' }, { id: 'usb', name: 'Scarlett', kind: 'usb' }],
+    currentId: 'spk', currentName: 'Speakers', currentKind: 'computer',
+  };
+  const CAST: CastSummary = { path: 'google', availability: 'available', connection: 'idle', deviceName: null };
+
+  it('sits between this computer and cast, a row per device with what it does', () => {
+    const sections = deviceSections(DESKTOP_OUT, CAST, local);
+    expect(sections.map((s) => s.key)).toEqual(['outputs', 'devices', 'cast']);
+    const yours = sections[1];
+    expect(yours.title).toBe('Your devices');
+    expect(yours.rows.map((r) => [r.label, r.detail, r.icon, r.current])).toEqual([
+      ['Windows', 'Playing', 'computer', false],
+      ['Android phone', 'Last seen 40 s ago', 'phone', false],
+    ]);
+    expect(yours.rows[0].action).toEqual({ type: 'ember-device', id: 'win-1', name: 'Windows' });
+  });
+
+  it('while controlling: the device playing is lit, no local output is, and This computer leads the way back', () => {
+    const sections = deviceSections(DESKTOP_OUT, CAST, controlling);
+    expect(sections[0].rows.some((r) => r.current)).toBe(false);
+    const yours = sections[1];
+    expect(yours.rows[0]).toMatchObject({ key: 'here', label: 'This computer', action: { type: 'here' }, current: false });
+    expect(yours.rows.find((r) => r.current)?.label).toBe('Windows');
+    expect(deviceSections(NO_OUT, NO_CAST, { ...controlling, thisKind: 'phone' })[0].rows[0].label).toBe('This phone');
+    // Not controlling: no row for this device.
+    expect(deviceSections(DESKTOP_OUT, CAST, local)[1].rows.some((r) => r.key === 'here')).toBe(false);
+  });
+
+  it('says minutes for a device seen long ago, and names two browsers apart', () => {
+    expect(lastSeen(NOW - 185_000, NOW)).toBe('Last seen 3 min ago');
+    const chrome = { ...win, deviceId: 'b1', platform: 'browser' as const, browser: 'Chrome' as const };
+    const firefox = { ...win, deviceId: 'b2', platform: 'browser' as const, browser: 'Firefox' as const };
+    const labels = deviceSections(NO_OUT, NO_CAST, { ...local, devices: [chrome, firefox] })[0].rows.map((r) => r.label);
+    expect(labels).toEqual(['Browser (Chrome)', 'Browser (Firefox)']);
+    expect(deviceSections(NO_OUT, NO_CAST, { ...local, devices: [chrome] })[0].rows[0].label).toBe('Browser');
+  });
+
+  it('the button shows when another device could take the music, and names the one controlled', () => {
+    expect(devicesButtonVisible(NO_OUT, NO_CAST, null, freshDevices(local))).toBe(true);
+    expect(devicesButtonVisible(NO_OUT, NO_CAST, null, freshDevices({ ...local, devices: [phone] }))).toBe(false);
+    expect(controlledName(controlling)).toBe('Windows');
+    expect(controlledName(local)).toBeNull();
+    expect(playingOn(DESKTOP_OUT, NO_CAST, controlledName(controlling))).toBe('Windows');
   });
 });

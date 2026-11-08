@@ -1,4 +1,4 @@
-import { sanitizePlatform } from '@/lib/versions/label';
+import { deviceWord, sanitizeBrowser, sanitizePlatform } from '@/lib/versions/label';
 import type { LoopMode } from '@/stores/usePlayerStore';
 import type { PlaybackContext, Track } from '@/types/track';
 import {
@@ -8,7 +8,6 @@ import {
   LABEL_MAX,
   MAX_POSITION_SEC,
   MAX_QUEUE_LENGTH,
-  PLATFORM_WORDS,
   SET_QUEUE_MAX,
   SHELLS,
   UP_NEXT_MAX,
@@ -185,11 +184,16 @@ export function parseBeat(body: unknown): BeatBody | null {
   if (hasLight === hasFull) return null;
   const out: BeatBody = {
     deviceId: body.deviceId,
-    label: cleanLabel(body.label, PLATFORM_WORDS[platform]),
+    label: cleanLabel(body.label, deviceWord(platform)),
     platform,
     shell: body.shell as RemoteShell,
     acked: acked as string[],
   };
+  if (body.browser !== undefined && body.browser !== null) {
+    const browser = sanitizeBrowser(body.browser);
+    if (!browser) return null;
+    out.browser = browser;
+  }
   if (hasLight) {
     const light = parseLight(body.light);
     if (!light) return null;

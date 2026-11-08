@@ -1,4 +1,6 @@
 import type { CastPath } from '@/stores/useCastStore';
+import type { RemoteDevice } from '@/lib/remote/types';
+import { deviceName } from '@/lib/versions/label';
 import type { CastDevice, OutputKind, OutputPlatform, OutputSnapshot, SystemPicker } from './types';
 
 /** The Devices sheet (phone) and menu (desktop bar), as data: which rows,
@@ -10,7 +12,11 @@ export type RowAction =
   | { type: 'system-picker' }
   | { type: 'cast-device'; id: string }
   | { type: 'cast-picker' }
-  | { type: 'cast-stop' };
+  | { type: 'cast-stop' }
+  /** Another device of the account: the music moves there. */
+  | { type: 'ember-device'; id: string; name: string }
+  /** This device, while it controls another: the music comes back here. */
+  | { type: 'here' };
 
 export interface DeviceRow {
   key: string;
@@ -23,7 +29,7 @@ export interface DeviceRow {
 }
 
 export interface DeviceSection {
-  key: 'outputs' | 'cast';
+  key: 'outputs' | 'devices' | 'cast';
   title: string;
   rows: DeviceRow[];
 }
@@ -34,6 +40,18 @@ export interface CastSummary {
   connection: 'idle' | 'connecting' | 'connected';
   deviceName: string | null;
 }
+
+/** The account's other devices, as stores/useRemoteStore holds them. */
+export interface RemoteSummary {
+  devices: RemoteDevice[];
+  mode: 'local' | 'controlling';
+  target: string | null;
+  /** What this device is, for its own row ("This phone"). */
+  thisKind: 'phone' | 'computer';
+  now: number;
+}
+
+export const NO_REMOTE: RemoteSummary = { devices: [], mode: 'local', target: null, thisKind: 'computer', now: 0 };
 
 export interface OutputSummary extends OutputSnapshot {
   platform: OutputPlatform | null;
@@ -100,18 +118,68 @@ function castSection(cast: CastSummary, castDevices: CastDevice[] | null): Devic
   return { key: 'cast', title: cast.path === 'airplay' ? 'AirPlay' : 'Cast', rows };
 }
 
-/** Every section the Devices picker shows, in order. While casting, no local
- *  output is lit: the music is on the TV. */
-export function deviceSections(out: OutputSummary, cast: CastSummary): DeviceSection[] {
+/** "Last seen 40 s ago", "Last seen 3 min ago". */
+export function lastSeen(lastBeat: number, now: number): string {
+  const sec = Math.max(0, Math.round((now - lastBeat) / 1000));
+  return sec < 60 ? `Last seen ${sec} s ago` : `Last seen ${Math.floor(sec / 60)} min ago`;
+}
+
+/** The device this one controls, by name ("Windows"), else null. */
+export function controlledName(remote: RemoteSummary): string | null {
+  if (remote.mode !== 'controlling') return null;
+  const d = remote.devices.find((x) => x.deviceId === remote.target);
+  return d ? deviceName(d, remote.devices) : null;
+}
+
+/** How many of the account's other devices can take the music now. */
+export function freshDevices(remote: RemoteSummary): number {
+  return remote.devices.filter((d) => !d.stale).length;
+}
+
+/** "Your devices": this device's own row while it controls another (the
+ *  way back), then the account's other devices, the one playing lit. */
+function devicesSection(remote: RemoteSummary): DeviceSection | null {
+  const rows: DeviceRow[] = [];
+  const controlling = remote.mode === 'controlling';
+  if (controlling) {
+    rows.push({
+      key: 'here',
+      label: remote.thisKind === 'phone' ? 'This phone' : 'This computer',
+      detail: 'Play here',
+      icon: remote.thisKind,
+      current: false,
+      action: { type: 'here' },
+    });
+  }
+  for (const d of remote.devices) {
+    const name = deviceName(d, remote.devices);
+    const playing = !!d.snapshot?.isPlaying;
+    rows.push({
+      key: `ember:${d.deviceId}`,
+      label: name,
+      detail: d.stale ? lastSeen(d.lastBeat, remote.now) : playing ? 'Playing' : d.snapshot?.track ? 'Paused' : undefined,
+      icon: d.platform === 'android' || d.platform === 'ios' ? 'phone' : 'computer',
+      current: controlling && d.deviceId === remote.target,
+      action: { type: 'ember-device', id: d.deviceId, name },
+    });
+  }
+  if (rows.length === 0) return null;
+  return { key: 'devices', title: 'Your devices', rows };
+}
+
+/** Every section the Devices picker shows, in order. While casting or
+ *  controlling another device, no local output is lit: the music is on the
+ *  TV, or on that device. */
+export function deviceSections(out: OutputSummary, cast: CastSummary, remote: RemoteSummary = NO_REMOTE): DeviceSection[] {
   const sections: DeviceSection[] = [];
-  const casting = cast.connection === 'connected';
+  const elsewhere = cast.connection === 'connected' || remote.mode === 'controlling';
   if (out.platform) {
     const rows: DeviceRow[] = out.devices.map((d) => ({
       key: `out:${d.id}`,
       label: d.name,
       detail: d.detail,
       icon: d.kind,
-      current: !casting && d.id === out.currentId,
+      current: !elsewhere && d.id === out.currentId,
       action: { type: 'output', id: d.id },
     }));
     if (out.systemPicker) {
@@ -122,16 +190,24 @@ export function deviceSections(out: OutputSummary, cast: CastSummary): DeviceSec
       sections.push({ key: 'outputs', title: out.platform === 'desktop' || out.platform === 'web' ? 'This computer' : 'This phone', rows });
     }
   }
+  const yours = devicesSection(remote);
+  if (yours) sections.push(yours);
   const c = castSection(cast, out.castDevices);
   if (c) sections.push(c);
   return sections;
 }
 
 /** Whether the Devices button belongs on screen at all: an output to
- *  switch, a way to cast (the cast button's own rule), or another device of
- *  the account this one controls (`remote`, its name). */
-export function devicesButtonVisible(out: Pick<OutputSummary, 'platform' | 'devices' | 'systemPicker'>, cast: CastSummary, remote: string | null = null): boolean {
-  if (remote) return true;
+ *  switch, a way to cast (the cast button's own rule), another device of
+ *  the account this one controls (`remote`, its name), or one it could
+ *  move the music to (`others`, how many). */
+export function devicesButtonVisible(
+  out: Pick<OutputSummary, 'platform' | 'devices' | 'systemPicker'>,
+  cast: CastSummary,
+  remote: string | null = null,
+  others = 0,
+): boolean {
+  if (remote || others > 0) return true;
   if (out.platform && (out.devices.length > 0 || out.systemPicker)) return true;
   if (!cast.path) return false;
   return cast.connection !== 'idle' || cast.availability !== 'none';

@@ -52,7 +52,8 @@ import { useRemoteLink, type RemoteIdentity, type RemoteLinkActions } from '@/ho
 import { useRemoteDevices } from '@/hooks/player/useRemoteDevices';
 import { createRemoteBackend, isRemoteBackend, type RemoteLink } from '@/lib/playback/remoteBackend';
 import { hereHandover, remoteHandover } from '@/lib/remote/handover';
-import { PLATFORM_WORDS, type CommandBody } from '@/lib/remote/types';
+import type { CommandBody } from '@/lib/remote/types';
+import { browserFamily, deviceWord } from '@/lib/versions/label';
 import { deviceId as localDeviceId, detectDevicePlatform } from '@/lib/versions/device';
 import { remoteDevice, targetSnapshot, useRemoteStore } from '@/stores/useRemoteStore';
 import { useTrackGain } from '@/hooks/player/useTrackGain';
@@ -71,7 +72,7 @@ import { castHandover, gateEvents, isSameSong, localHandover } from '@/lib/playb
 import { setCastSessionListener } from '@/lib/cast/session';
 import { initCast, setCastMediaElement } from '@/lib/cast/controller';
 import { clearCastSignCache, resolveCastMedia } from '@/lib/cast/signer';
-import { _resetOutputs, initOutputs } from '@/lib/outputs/controller';
+import { _resetOutputs, initOutputs, setRemoteMoves } from '@/lib/outputs/controller';
 import type { PlaybackContext, Track } from '@/types/track';
 import { musicLevel } from '@/lib/pranks/mix';
 import { isLiveTrack } from '@/lib/radio/station';
@@ -110,8 +111,8 @@ interface PlayerControls {
    *  tap to retry"). */
   retry: () => void;
   /** Move the music to another device of this account (it plays there,
-   *  from here, and this device controls it). */
-  moveTo: (deviceId: string) => void;
+   *  from here, and this device controls it). True once it has it. */
+  moveTo: (deviceId: string) => Promise<boolean>;
   /** Bring the music from the device this one controls back here. */
   moveHere: () => void;
 }
@@ -143,7 +144,8 @@ function remoteIdentity(): RemoteIdentity | null {
   const shell = detectShell();
   return {
     deviceId: localDeviceId(),
-    label: PLATFORM_WORDS[platform],
+    label: deviceWord(platform),
+    browser: platform === 'browser' && typeof navigator !== 'undefined' ? browserFamily(navigator.userAgent) : null,
     platform,
     shell: shell === 'tauri' ? 'tauri' : shell === 'capacitor' && platform === 'android' ? 'android' : 'web',
   };
@@ -1102,9 +1104,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** Start controlling another device of this account: the local engine
    *  stops and waits, the remote backend takes over, and every control
    *  goes there. The local queue is kept aside, so stopping without a move
-   *  puts it back. `transfer`: the music moves there first (from where it
-   *  is here, playing if it was). */
-  const startControlling = useCallback((deviceId: string, opts: { transfer?: boolean } = {}) => {
+   *  puts it back. (A move sends the music first: moveTo.) */
+  const startControlling = useCallback((deviceId: string) => {
     const local = backendRef.current;
     if (!local || controllingRef.current || castingRef.current || !rawEventsRef.current) return;
     const st = usePlayerStore.getState();
@@ -1113,14 +1114,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queue: st.queue, index: st.index, position, context: st.context, baseCount: st.baseCount,
       loopMode: st.loopMode, shuffle: st.shuffle, orderBackup: st.orderBackup,
     };
-    if (opts.transfer) {
-      const plan = remoteHandover({ queue: st.queue, index: st.index, position, isPlaying: !local.isPaused(), context: st.context });
-      if (plan) {
-        void sendRemote(deviceId, { type: 'setQueue', args: plan }).catch((e: unknown) => {
-          toast((e as Error)?.message || 'Could not move the music');
-        });
-      }
-    }
     controllingRef.current = true;
     local.stop();
     // The native Android player must not play on (or keep a queue for the
@@ -1144,8 +1137,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     remote.adopt();
     setControlling(true);
     logger.setContext({ backendKind: 'remote' });
-    logger.breadcrumb('playback', 'remote control started', { transfer: !!opts.transfer });
-  }, [remoteLink, sendRemote]);
+    logger.breadcrumb('playback', 'remote control started');
+  }, [remoteLink]);
 
   /** Stop controlling. `adopt` (a move here): the other device's song and
    *  what it has up next play here, from where its playhead is, playing if
@@ -1198,24 +1191,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   });
 
   /** The output picker's "move the music there" (W7 lists the devices). */
-  const moveTo = useCallback((deviceId: string) => {
-    if (identity && deviceId === identity.deviceId) return;
-    if (!controllingRef.current) {
-      startControlling(deviceId, { transfer: true });
-      return;
-    }
-    const rs = useRemoteStore.getState();
-    if (rs.target === deviceId) return;
-    // From one remote device to another: what this one knows of the first
-    // (its song, the next 20, its playhead) goes to the second; the first
-    // pauses by the one-at-a-time rule.
+  /** Move the music to another device of the account: what plays here
+   *  (or, while controlling one device, what that one plays) goes there from
+   *  where it is, playing if it was, and this device then controls it. True
+   *  once the device has it; a refusal (it is not reachable) is said in a
+   *  toast and nothing changes here. */
+  const moveTo = useCallback(async (deviceId: string): Promise<boolean> => {
+    if (identity && deviceId === identity.deviceId) return false;
+    if (controllingRef.current && useRemoteStore.getState().target === deviceId) return false;
     const b = backendRef.current;
     const st = usePlayerStore.getState();
-    const plan = remoteHandover({ queue: st.queue, index: st.index, position: b?.getCurrentTime() ?? 0, isPlaying: !(b?.isPaused() ?? true), context: st.context });
-    if (!plan) return;
-    void sendRemote(deviceId, { type: 'setQueue', args: plan })
-      .then(() => rs.set({ target: deviceId }))
-      .catch((e: unknown) => toast((e as Error)?.message || 'Could not move the music'));
+    const plan = remoteHandover({
+      queue: st.queue, index: st.index, position: b?.getCurrentTime() || st.position,
+      isPlaying: !(b?.isPaused() ?? true), context: st.context,
+    });
+    try {
+      if (plan) await sendRemote(deviceId, { type: 'setQueue', args: plan });
+    } catch (e) {
+      toast((e as Error)?.message || 'Could not move the music');
+      return false;
+    }
+    // From one remote device to another: the first pauses by the
+    // one-at-a-time rule once the second plays.
+    if (controllingRef.current) useRemoteStore.getState().set({ target: deviceId });
+    else startControlling(deviceId);
+    return true;
   }, [identity, sendRemote, startControlling]);
 
   const moveHere = useCallback(() => {
@@ -1224,6 +1224,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (target) void sendRemote(target, { type: 'pause' }).catch(() => {});
     stopControlling({ adopt: true });
   }, [sendRemote, stopControlling]);
+
+  // The output picker's "Your devices" rows (lib/outputs/controller).
+  useEffect(() => setRemoteMoves({ moveTo, moveHere }), [moveTo, moveHere]);
 
   // Google Cast sessions (lib/cast/session). Registered once the engine
   // exists, so a session the page joined while starting up is picked up.

@@ -152,4 +152,25 @@ describe('remote store', () => {
     expect(devicesOf('u2').map((d) => d.deviceId)).toEqual([MAC]);
     expect(store.command('u2', WIN, null, { type: 'pause' }, now)).toMatchObject({ ok: false, status: 409 });
   });
+
+  it('a device that controls another plays nothing, whatever its last beat said', () => {
+    store.beat('u1', beat(PHONE, { full: full() }), now);
+    store.beat('u1', beat(WIN, { full: full() }), now + 1000);
+    const before = store.state('u1', MAC, null, now + 1000);
+    const r = before.rev;
+    store.state('u1', PHONE, null, now + 1500, WIN);
+    const after = store.state('u1', MAC, r, now + 1500);
+    expect(after.rev).toBeGreaterThan(r);
+    expect((after.devices as RemoteDevice[]).find((d) => d.deviceId === PHONE)?.snapshot?.isPlaying).toBe(false);
+    expect(after.active).toBe(WIN);
+  });
+
+  it('a took-over pause from before the device started again is dropped', () => {
+    store.beat('u1', beat(WIN, { full: full() }), now);
+    store.beat('u1', beat(PHONE, { full: full() }), now + 1000);
+    // Windows paused by the takeover, then (the music moved back) plays again.
+    store.beat('u1', beat(WIN, { light: light({ isPlaying: false }) }), now + 30_000);
+    const answer = store.beat('u1', beat(WIN, { light: light({ isPlaying: true }), acked: [] }), now + 31_000);
+    expect(answer.commands.filter((c) => c.type === 'pause')).toEqual([]);
+  });
 });

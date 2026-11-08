@@ -38,6 +38,12 @@ describe('parseBeat', () => {
     expect(parseBeat({ ...base, light, acked: ['ok', 'not ok!'] })).toBeNull();
   });
 
+  it('takes a known browser family only', () => {
+    expect(parseBeat({ ...base, light, platform: 'browser', browser: 'Firefox' })?.browser).toBe('Firefox');
+    expect(parseBeat({ ...base, light, platform: 'browser', browser: 'Netscape' })).toBeNull();
+    expect(parseBeat({ ...base, light })?.browser).toBeUndefined();
+  });
+
   it('cleans and cuts the label, falls back to the platform word', () => {
     expect(parseBeat({ ...base, light, label: 'Win\u0007dows '.repeat(20) })?.label).toHaveLength(60);
     expect(parseBeat({ ...base, light, label: '' })?.label).toBe('Windows');

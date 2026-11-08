@@ -202,13 +202,27 @@ describe('PlayerProvider: controlling another device', () => {
     act(() => controls!.playTrack(A, [A, B]));
     web.currentTime = 42;
     web.paused = false;
-    act(() => controls!.moveTo(WIN));
+    let moved = false;
+    await act(async () => { moved = await controls!.moveTo(WIN); });
+    expect(moved).toBe(true);
     const cmd = commands().at(-1) as { type: string; args: { tracks: { id: string }[]; index: number; play: boolean; startSec: number } };
     expect(cmd.type).toBe('setQueue');
     expect(cmd.args.tracks.map((q) => q.id)).toEqual([A.id, B.id]);
     expect(cmd.args).toMatchObject({ index: 0, play: true, startSec: 42 });
     expect(useRemoteStore.getState()).toMatchObject({ mode: 'controlling', target: WIN });
     expect(web.stop).toHaveBeenCalled();
+  });
+
+  it('a move the device refuses (not reachable) leaves the music here', async () => {
+    remote.present = false;
+    await openPhone();
+    act(() => controls!.playTrack(A, [A, B]));
+    remoteApi.command.mockRejectedValueOnce(Object.assign(new Error('Windows is not reachable'), { status: 409 }));
+    let moved = true;
+    await act(async () => { moved = await controls!.moveTo(WIN); });
+    expect(moved).toBe(false);
+    expect(useRemoteStore.getState().mode).toBe('local');
+    expect(web.stop).not.toHaveBeenCalled();
   });
 
   it('moveHere pauses the other device and plays its song here, where its playhead is', async () => {
