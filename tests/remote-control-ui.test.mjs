@@ -1,5 +1,5 @@
-/** Controlling playback on your other devices, slice 1a (docs/plans/
- *  2026-11-08-device-remote-control.md, W8 control part): two browser
+/** Controlling playback on your other devices, slices 1a and 1b
+ *  (docs/plans/2026-11-08-device-remote-control.md, W8): two browser
  *  contexts signed in to one account, so two devices.
  *
  *      PB_URL=http://127.0.0.1:8088 APP_URL=http://127.0.0.1:3074 node tests/remote-control-ui.test.mjs
@@ -9,10 +9,11 @@
  *  with "Playing on Browser" and its seek bar moving; B's pause pauses A's
  *  audio element; B's seek to 90 s moves A; B's Next changes A's song; a
  *  tap on another song in B's library plays it on A while B keeps
- *  controlling; A is closed and B leaves remote mode within 40 s; a second
- *  account never sees A. Timings are printed for the latency target.
- *
- *  The move part (picking a device in the output picker) is slice 1b.
+ *  controlling. The moves, through the output picker: B picks "This
+ *  computer" and plays A's song at A's playhead within 3 s while A pauses;
+ *  B picks A's row and the music is back on A at B's playhead within 3 s.
+ *  A is closed and B leaves remote mode within 40 s; a second account
+ *  never sees A. Timings are printed for the latency target.
  *
  *  Needs a sandbox (`npm run sandbox -- start --port 3074`: PocketBase on
  *  8088, the app built from this tree) and playwright-core. The sandbox
@@ -209,8 +210,8 @@ try {
   const bAudio = await audioState(B.page);
   check('nothing plays on B', !bAudio || bAudio.paused, JSON.stringify(bAudio));
 
-  // A beats every 10 s until it hears it is watched, then every 1.5 s.
-  await sleep(11_000);
+  // No wait here: B's first poll answers A's held beat, so A hears at once
+  // that it is watched (lib/remote/cadence).
 
   // ── pause ───────────────────────────────────────────────────────────────
   await B.page.locator('footer[data-testid="player-bar"]').getByRole('button', { name: 'Pause', exact: true }).first().click();
@@ -256,6 +257,56 @@ try {
   const bAfter = await audioState(B.page);
   check('B stays in remote mode, nothing plays on B', (await devicesLabel(B.page)) === 'Devices: playing on Browser' && (!bAfter || bAfter.paused),
     `${await devicesLabel(B.page)} / ${JSON.stringify(bAfter)}`);
+
+  // ── move: B picks This computer ────────────────────────────────────────
+  const devicesButton = B.page.locator('[data-testid="devices-button"]');
+  const pickRow = async (pattern) => {
+    await devicesButton.click();
+    const row = B.page.getByRole('menuitem').filter({ hasText: pattern }).first();
+    await row.waitFor({ timeout: 5000 });
+    await row.click();
+  };
+  await sleep(1500);
+  const aBeforeHere = await audioState(A.page);
+  const songOnA = (await barText(A.page)) ?? '';
+  const movedTitle = songOnA.includes(second.title) ? second.title : first.title;
+  await pickRow(/^This computer/);
+  const here = timed('pick This computer to B playing', await within(10_000, async () => {
+    const b = await audioState(B.page);
+    return b && !b.paused && b.time > 0;
+  }), 3000);
+  const bHere = await audioState(B.page);
+  const aAfterHere = await audioState(A.page);
+  check('This computer: B plays the song here', here !== null && (await barText(B.page))?.includes(movedTitle), `${here} ms, ${await barText(B.page)}`);
+  check('... within 3 s', here !== null && here <= 3000, `${here} ms`);
+  check("... at A's playhead", !!bHere && !!aBeforeHere && bHere.time >= aBeforeHere.time - 1 && bHere.time <= aBeforeHere.time + 5,
+    `A was at ${aBeforeHere?.time?.toFixed(1)} s, B at ${bHere?.time?.toFixed(1)} s`);
+  const aPaused = await within(5000, async () => (await audioState(A.page))?.paused === true);
+  check('... and A pauses', aPaused !== null, JSON.stringify(aAfterHere));
+  check('B left remote mode', (await devicesLabel(B.page)) !== 'Devices: playing on Browser', `${await devicesLabel(B.page)}`);
+  await sleep(4000);
+  check('B stays local (no going straight back to controlling A)', (await devicesLabel(B.page)) !== 'Devices: playing on Browser'
+    && (await audioState(B.page))?.paused === false);
+
+  // ── move: B picks A's row ──────────────────────────────────────────────
+  const bBeforeThere = await audioState(B.page);
+  await pickRow(/^Browser/);
+  const there = timed("pick A's row to A playing", await within(10_000, async () => {
+    const a = await audioState(A.page);
+    return a && !a.paused && (await barText(A.page))?.includes(movedTitle);
+  }), 3000);
+  const aThere = await audioState(A.page);
+  check("A's row: the music is back on A", there !== null, `${there} ms`);
+  check('... within 3 s', there !== null && there <= 3000, `${there} ms`);
+  check("... at B's playhead", !!aThere && !!bBeforeThere && aThere.time >= bBeforeThere.time - 1 && aThere.time <= bBeforeThere.time + 5,
+    `B was at ${bBeforeThere?.time?.toFixed(1)} s, A at ${aThere?.time?.toFixed(1)} s`);
+  const bStopped = await within(5000, async () => {
+    const b = await audioState(B.page);
+    return !b || b.paused;
+  });
+  check('... B stops and controls A again', bStopped !== null && (await devicesLabel(B.page)) === 'Devices: playing on Browser', `${await devicesLabel(B.page)}`);
+  const moved = await B.page.getByText('Moved to Browser').first().isVisible().catch(() => false);
+  check('B says where the music went', moved);
 
   // ── another account never sees A ───────────────────────────────────────
   const theirs = await app(outsider, '/api/remote/state?device=outsiderdevice1').then((r) => r.json());
