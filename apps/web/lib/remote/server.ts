@@ -15,12 +15,39 @@ export const REMOTE_LIMITS = {
  *  are about 120 KB. */
 export const MAX_BODY_BYTES = 512 * 1024;
 
-/** The JSON body, or a Response refusing it (too big, not JSON). */
+/** The JSON body, or a Response refusing it (too big, not JSON). A body
+ *  that says it is too big is refused unread; one that turns out too big is
+ *  cut off as soon as it passes the limit. */
 export async function readJson(req: Request): Promise<unknown | Response> {
-  const text = await req.text().catch(() => '');
-  if (text.length > MAX_BODY_BYTES) return Response.json({ error: 'Too big' }, { status: 413 });
+  const tooBig = () => Response.json({ error: 'Too big' }, { status: 413 });
+  const declared = Number(req.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return tooBig();
+  if (!req.body) return Response.json({ error: 'Not JSON' }, { status: 400 });
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
   try {
-    return JSON.parse(text) as unknown;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_BODY_BYTES) {
+        await reader.cancel().catch(() => {});
+        return tooBig();
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return Response.json({ error: 'Not JSON' }, { status: 400 });
+  }
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    bytes.set(c, at);
+    at += c.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
   } catch {
     return Response.json({ error: 'Not JSON' }, { status: 400 });
   }

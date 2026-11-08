@@ -5,6 +5,9 @@ import {
   ADD_TO_QUEUE_MAX,
   COMMAND_ID_RE,
   DEVICE_ID_RE,
+  EXCLUDE_MAX,
+  INSTANCE_RE,
+  NO_STORAGE_DEVICE,
   LABEL_MAX,
   MAX_POSITION_SEC,
   MAX_QUEUE_LENGTH,
@@ -33,7 +36,7 @@ const SOURCES: readonly Track['source'][] = ['jamendo', 'youtube', 'upload', 'st
 const LOOP_MODES: readonly LoopMode[] = ['off', 'all', 'one'];
 
 export function isDeviceId(v: unknown): v is string {
-  return typeof v === 'string' && DEVICE_ID_RE.test(v);
+  return typeof v === 'string' && DEVICE_ID_RE.test(v) && v !== NO_STORAGE_DEVICE;
 }
 
 /** A label as a person reads it: no control characters, at most LABEL_MAX
@@ -125,8 +128,12 @@ export function parseContext(v: unknown): PlaybackContext | null | undefined {
       return { type: 'stations', name: v.name as string };
     case 'single': {
       if (v.exclude === undefined) return { type: 'single' };
-      if (!Array.isArray(v.exclude) || v.exclude.length > 500 || !v.exclude.every((x) => isStr(x, 300))) return undefined;
-      return { type: 'single', exclude: v.exclude as string[] };
+      if (!Array.isArray(v.exclude) || v.exclude.length > 2000) return undefined;
+      // Only the first EXCLUDE_MAX travel: the rest would cost memory on
+      // every relay for little use.
+      const exclude = v.exclude.slice(0, EXCLUDE_MAX);
+      if (!exclude.every((x) => isStr(x, 300))) return undefined;
+      return { type: 'single', exclude: exclude as string[] };
     }
     default:
       return undefined;
@@ -189,6 +196,14 @@ export function parseBeat(body: unknown): BeatBody | null {
     shell: body.shell as RemoteShell,
     acked: acked as string[],
   };
+  if (body.instance !== undefined) {
+    if (typeof body.instance !== 'string' || !INSTANCE_RE.test(body.instance)) return null;
+    out.instance = body.instance;
+  }
+  if (body.bye !== undefined) {
+    if (body.bye !== true) return null;
+    out.bye = true;
+  }
   if (body.hold !== undefined) {
     if (typeof body.hold !== 'boolean') return null;
     if (body.hold) out.hold = true;

@@ -93,6 +93,12 @@ export interface BeatBody {
   full?: FullState;
   /** Ids of the commands this device has run since its last beat. */
   acked: string[];
+  /** This page's own id (one per tab): a device id is shared by every tab
+   *  of one browser, and only one of them may be the player. */
+  instance?: string;
+  /** The page is going away (pagehide): nothing plays here any more, and
+   *  this device takes no commands until it beats again. */
+  bye?: true;
   /** Nothing to say back yet? Then the server holds the answer up to
    *  HOLD_MS and answers early when a command comes in or another device
    *  starts watching (a long poll: lib/remote/cadence). */
@@ -151,6 +157,12 @@ export const WATCH_FRESH_MS = 6_000;
 /** The longest a held beat waits for news before it is answered. */
 export const HOLD_MS = 15_000;
 
+/** At most this many devices per account; a new one evicts the one heard
+ *  from longest ago. */
+export const MAX_DEVICES_PER_USER = 16;
+/** How often the whole store is swept for idle accounts. */
+export const SWEEP_MS = 60_000;
+
 /** Payload bounds. */
 export const UP_NEXT_MAX = 20;
 export const SET_QUEUE_MAX = 300;
@@ -160,4 +172,10 @@ export const MAX_QUEUE_LENGTH = 100_000;
 export const LABEL_MAX = 60;
 export const MAX_PENDING_COMMANDS = 50;
 export const DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+/** lib/versions/device's id for a browser without storage: every such
+ *  browser shares it, so it names no one device. */
+export const NO_STORAGE_DEVICE = 'no-storage';
+export const INSTANCE_RE = /^[A-Za-z0-9_-]{8,64}$/;
+/** Songs a single-song context keeps out of radio, as relayed. */
+export const EXCLUDE_MAX = 50;
 export const COMMAND_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;

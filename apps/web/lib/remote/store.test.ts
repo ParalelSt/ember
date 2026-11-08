@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRemoteStore, decideTakeover, pickActive, type ActiveCandidate, type RemoteStore } from './store';
-import { COMMAND_TTL_MS, DROP_MS, HOLD_MS, STALE_MS, TAKEOVER_WINDOW_MS, type BeatBody, type FullState, type LightState, type RemoteDevice } from './types';
+import { COMMAND_TTL_MS, DROP_MS, HOLD_MS, STALE_MS, SWEEP_MS, TAKEOVER_WINDOW_MS, type BeatBody, type FullState, type LightState, type RemoteDevice } from './types';
 import { makeTrack } from '@/test-utils/fakeBackend';
 
 const T = makeTrack({ id: 'youtube:t1', sourceId: 't1', streamUrl: '/s/t1' });
@@ -17,6 +17,13 @@ const beat = (deviceId: string, body: Partial<BeatBody>): BeatBody => ({
   deviceId, label: deviceId.startsWith('win') ? 'Windows' : 'Android phone',
   platform: deviceId.startsWith('win') ? 'windows' : 'android', shell: 'web', acked: [], ...body,
 });
+
+/** A beat that must be taken (no other tab of the device plays). */
+function beatOk(s: RemoteStore, ...args: Parameters<RemoteStore['beat']>) {
+  const answer = s.beat(...args);
+  if (!answer) throw new Error('refused as another tab');
+  return answer;
+}
 
 const WIN = 'win-device-1';
 const PHONE = 'phone-device-1';
@@ -60,12 +67,12 @@ describe('remote store', () => {
   const devicesOf = (user: string, me = 'watcher-device') => store.state(user, me, null, now).devices as RemoteDevice[];
 
   it('takeover queues exactly one pause to the old device, with who took over', () => {
-    store.beat('u1', beat(WIN, { full: full() }), now);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
     now += 3000;
-    store.beat('u1', beat(PHONE, { full: full() }), now);
+    beatOk(store, 'u1', beat(PHONE, { full: full() }), now);
     now += 500;
-    store.beat('u1', beat(PHONE, { light: light() }), now);
-    const answer = store.beat('u1', beat(WIN, { light: light() }), now);
+    beatOk(store, 'u1', beat(PHONE, { light: light() }), now);
+    const answer = beatOk(store, 'u1', beat(WIN, { light: light() }), now);
     const pauses = answer.commands.filter((c) => c.type === 'pause');
     expect(pauses).toHaveLength(1);
     expect(pauses[0]).toMatchObject({ type: 'pause', args: { reason: 'took-over', by: 'Android phone' }, issuedBy: null });
@@ -74,47 +81,47 @@ describe('remote store', () => {
   });
 
   it('removes acked commands and drops expired ones', () => {
-    store.beat('u1', beat(WIN, { full: full() }), now);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
     const a = store.command('u1', WIN, PHONE, { type: 'pause' }, now);
     const b = store.command('u1', WIN, PHONE, { type: 'next' }, now);
     expect(a.ok && b.ok).toBe(true);
-    let answer = store.beat('u1', beat(WIN, { light: light() }), now);
+    let answer = beatOk(store, 'u1', beat(WIN, { light: light() }), now);
     expect(answer.commands.map((c) => c.type)).toEqual(['pause', 'next']);
-    answer = store.beat('u1', beat(WIN, { light: light(), acked: [(a as { id: string }).id] }), now + 100);
+    answer = beatOk(store, 'u1', beat(WIN, { light: light(), acked: [(a as { id: string }).id] }), now + 100);
     expect(answer.commands.map((c) => c.type)).toEqual(['next']);
     now += COMMAND_TTL_MS + 1;
-    answer = store.beat('u1', beat(WIN, { light: light() }), now);
+    answer = beatOk(store, 'u1', beat(WIN, { light: light() }), now);
     expect(answer.commands).toEqual([]);
   });
 
   it('asks for a full snapshot when a light beat brings a new track, or after a restart', () => {
-    expect(store.beat('u1', beat(WIN, { light: light() }), now).want).toBe('full');
-    store.beat('u1', beat(WIN, { full: full() }), now);
-    expect(store.beat('u1', beat(WIN, { light: light() }), now + 1).want).toBeUndefined();
-    expect(store.beat('u1', beat(WIN, { light: light({ trackId: U.id }) }), now + 2).want).toBe('full');
+    expect(beatOk(store, 'u1', beat(WIN, { light: light() }), now).want).toBe('full');
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
+    expect(beatOk(store, 'u1', beat(WIN, { light: light() }), now + 1).want).toBeUndefined();
+    expect(beatOk(store, 'u1', beat(WIN, { light: light({ trackId: U.id }) }), now + 2).want).toBe('full');
   });
 
   it('keeps the rev on position-only beats and bumps it on a pause', () => {
-    store.beat('u1', beat(WIN, { full: full() }), now);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
     const r1 = store.state('u1', PHONE, null, now).rev;
-    store.beat('u1', beat(WIN, { light: light({ position: 30 }) }), now + 1000);
+    beatOk(store, 'u1', beat(WIN, { light: light({ position: 30 }) }), now + 1000);
     const light1 = store.state('u1', PHONE, r1, now + 1000);
     expect(light1.rev).toBe(r1);
     expect(light1.light).toBe(true);
     expect(light1.devices).toEqual([{ deviceId: WIN, position: 30, isPlaying: true, at: now + 1000 }]);
-    store.beat('u1', beat(WIN, { light: light({ position: 31, isPlaying: false }) }), now + 2000);
+    beatOk(store, 'u1', beat(WIN, { light: light({ position: 31, isPlaying: false }) }), now + 2000);
     const after = store.state('u1', PHONE, r1, now + 2000);
     expect(after.rev).toBeGreaterThan(r1);
     expect(after.light).toBeUndefined();
   });
 
   it('a second setQueue replaces the first one not run yet', () => {
-    store.beat('u1', beat(WIN, { full: full() }), now);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
     const args = (tracks = [T]) => ({ tracks, index: 0, play: true, startSec: 0, context: null });
     store.command('u1', WIN, PHONE, { type: 'setQueue', args: args([T]) }, now);
     store.command('u1', WIN, PHONE, { type: 'play' }, now);
     store.command('u1', WIN, PHONE, { type: 'setQueue', args: args([U]) }, now);
-    const answer = store.beat('u1', beat(WIN, { light: light() }), now);
+    const answer = beatOk(store, 'u1', beat(WIN, { light: light() }), now);
     const queues = answer.commands.filter((c) => c.type === 'setQueue');
     expect(queues).toHaveLength(1);
     expect(queues[0].type === 'setQueue' && queues[0].args.tracks[0].id).toBe(U.id);
@@ -123,13 +130,13 @@ describe('remote store', () => {
 
   it('refuses commands to a stale or unknown device with 409', () => {
     expect(store.command('u1', WIN, PHONE, { type: 'play' }, now)).toMatchObject({ ok: false, status: 409 });
-    store.beat('u1', beat(WIN, { full: full() }), now);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
     now += STALE_MS + 1;
     expect(store.command('u1', WIN, PHONE, { type: 'play' }, now)).toEqual({ ok: false, status: 409, error: 'Windows is not reachable' });
   });
 
   it('lists stale devices as stale, drops them after 10 minutes, never lists me to myself', () => {
-    store.beat('u1', beat(WIN, { full: full() }), now);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
     expect(devicesOf('u1', WIN)).toEqual([]);
     now += STALE_MS + 1;
     expect(devicesOf('u1')).toEqual([expect.objectContaining({ deviceId: WIN, stale: true })]);
@@ -138,24 +145,24 @@ describe('remote store', () => {
   });
 
   it('counts watchers other than the player', () => {
-    store.beat('u1', beat(WIN, { full: full() }), now);
-    expect(store.beat('u1', beat(WIN, { light: light() }), now).watchers).toBe(0);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
+    expect(beatOk(store, 'u1', beat(WIN, { light: light() }), now).watchers).toBe(0);
     store.state('u1', PHONE, null, now);
     store.state('u1', WIN, null, now);
-    expect(store.beat('u1', beat(WIN, { light: light() }), now + 1000).watchers).toBe(1);
-    expect(store.beat('u1', beat(WIN, { light: light() }), now + 7000).watchers).toBe(0);
+    expect(beatOk(store, 'u1', beat(WIN, { light: light() }), now + 1000).watchers).toBe(1);
+    expect(beatOk(store, 'u1', beat(WIN, { light: light() }), now + 7000).watchers).toBe(0);
   });
 
   it('keeps accounts apart', () => {
-    store.beat('u1', beat(WIN, { full: full() }), now);
-    store.beat('u2', beat(MAC, { full: full() }), now);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
+    beatOk(store, 'u2', beat(MAC, { full: full() }), now);
     expect(devicesOf('u2').map((d) => d.deviceId)).toEqual([MAC]);
     expect(store.command('u2', WIN, null, { type: 'pause' }, now)).toMatchObject({ ok: false, status: 409 });
   });
 
   it('a device that controls another plays nothing, whatever its last beat said', () => {
-    store.beat('u1', beat(PHONE, { full: full() }), now);
-    store.beat('u1', beat(WIN, { full: full() }), now + 1000);
+    beatOk(store, 'u1', beat(PHONE, { full: full() }), now);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now + 1000);
     const before = store.state('u1', MAC, null, now + 1000);
     const r = before.rev;
     store.state('u1', PHONE, null, now + 1500, WIN);
@@ -166,11 +173,11 @@ describe('remote store', () => {
   });
 
   it('a took-over pause from before the device started again is dropped', () => {
-    store.beat('u1', beat(WIN, { full: full() }), now);
-    store.beat('u1', beat(PHONE, { full: full() }), now + 1000);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
+    beatOk(store, 'u1', beat(PHONE, { full: full() }), now + 1000);
     // Windows paused by the takeover, then (the music moved back) plays again.
-    store.beat('u1', beat(WIN, { light: light({ isPlaying: false }) }), now + 30_000);
-    const answer = store.beat('u1', beat(WIN, { light: light({ isPlaying: true }), acked: [] }), now + 31_000);
+    beatOk(store, 'u1', beat(WIN, { light: light({ isPlaying: false }) }), now + 30_000);
+    const answer = beatOk(store, 'u1', beat(WIN, { light: light({ isPlaying: true }), acked: [] }), now + 31_000);
     expect(answer.commands.filter((c) => c.type === 'pause')).toEqual([]);
   });
 });
@@ -181,7 +188,7 @@ describe('held beats', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     store = createRemoteStore();
-    store.beat('u1', beat(WIN, { full: full() }), now);
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
   });
   afterEach(() => vi.useRealTimers());
 
@@ -223,7 +230,7 @@ describe('held beats', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(aborted()).toBe(true);
     const older = settled(store.hold('u1', WIN, HOLD_MS));
-    store.beat('u1', beat(WIN, { light: light() }), now + 2000);
+    beatOk(store, 'u1', beat(WIN, { light: light() }), now + 2000);
     await vi.advanceTimersByTimeAsync(0);
     expect(older()).toBe(true);
   });
@@ -231,9 +238,59 @@ describe('held beats', () => {
   it('a device of another account never ends it', async () => {
     const done = settled(store.hold('u1', WIN, HOLD_MS));
     store.state('u2', PHONE, null, now);
-    store.beat('u2', beat(MAC, { full: full() }), now);
+    beatOk(store, 'u2', beat(MAC, { full: full() }), now);
     await vi.advanceTimersByTimeAsync(0);
     expect(done()).toBe(false);
+  });
+});
+
+describe('review fixes', () => {
+  let store: RemoteStore;
+  const now = 1_000_000;
+  beforeEach(() => {
+    store = createRemoteStore();
+  });
+
+  it('one player per device: a second tab is refused while the first is alive', () => {
+    expect(store.beat('u1', beat(WIN, { full: full(), instance: 'tab-one-1' }), now)).not.toBeNull();
+    expect(store.beat('u1', beat(WIN, { full: full(), instance: 'tab-two-2' }), now + 1000)).toBeNull();
+    // The first tab goes on.
+    expect(store.beat('u1', beat(WIN, { light: light(), instance: 'tab-one-1' }), now + 2000)).not.toBeNull();
+    // Gone stale: the second may take over.
+    expect(store.beat('u1', beat(WIN, { full: full(), instance: 'tab-two-2' }), now + 2000 + STALE_MS + 1)).not.toBeNull();
+  });
+
+  it('a goodbye: not playing, stale at once, takes no commands, and frees the device for another tab', () => {
+    beatOk(store, 'u1', beat(WIN, { full: full(), instance: 'tab-one-1' }), now);
+    beatOk(store, 'u1', beat(WIN, { light: light({ isPlaying: false }), instance: 'tab-one-1', bye: true }), now + 500);
+    const st = store.state('u1', PHONE, null, now + 600);
+    expect(st.devices).toEqual([expect.objectContaining({ deviceId: WIN, stale: true, snapshot: expect.objectContaining({ isPlaying: false }) })]);
+    expect(st.active).toBeNull();
+    expect(store.command('u1', WIN, PHONE, { type: 'play' }, now + 700)).toMatchObject({ ok: false, status: 409 });
+    expect(store.beat('u1', beat(WIN, { full: full(), instance: 'tab-two-2' }), now + 800)).not.toBeNull();
+  });
+
+  it('an open device with nothing loaded is never the active one', () => {
+    expect(pickActive([{ deviceId: 'idle', lastBeat: now, snapshot: { isPlaying: false, changedAt: now, trackId: null } }], now)).toBeNull();
+    beatOk(store, 'u1', beat(WIN, { full: full({ isPlaying: false }) }), now);
+    beatOk(store, 'u1', beat(PHONE, { full: full({ track: null, trackId: null, isPlaying: false, upNext: [], queueLength: 0 }) }), now + 1000);
+    expect(store.state('u1', MAC, null, now + 1000).active).toBe(WIN);
+  });
+
+  it('keeps at most 16 devices per account, dropping the one heard from longest ago', () => {
+    for (let i = 0; i < 17; i++) beatOk(store, 'u1', beat(`device-${String(i).padStart(4, '0')}`, { full: full({ isPlaying: false }) }), now + i);
+    const ids = (store.state('u1', 'watcher-device', null, now + 20).devices as RemoteDevice[]).map((d) => d.deviceId);
+    expect(ids).toHaveLength(16);
+    expect(ids).not.toContain('device-0000');
+  });
+
+  it('sweeps accounts with nothing left out of memory', () => {
+    beatOk(store, 'u1', beat(WIN, { full: full() }), now);
+    beatOk(store, 'u2', beat(MAC, { full: full() }), now);
+    expect(store._users()).toBe(2);
+    beatOk(store, 'u2', beat(MAC, { light: light() }), now + DROP_MS);
+    beatOk(store, 'u2', beat(MAC, { light: light() }), now + DROP_MS + SWEEP_MS + 1);
+    expect(store._users()).toBe(1);
   });
 });
 

@@ -38,6 +38,22 @@ describe('parseBeat', () => {
     expect(parseBeat({ ...base, light, acked: ['ok', 'not ok!'] })).toBeNull();
   });
 
+  it('refuses the id every browser without storage shares', () => {
+    expect(parseBeat({ ...base, light, deviceId: 'no-storage' })).toBeNull();
+    expect(parseCommand({ target: 'no-storage', type: 'play' })).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it('takes a tab id and a goodbye, nothing else', () => {
+    expect(parseBeat({ ...base, light, instance: 'tab-abc-123', bye: true })).toMatchObject({ instance: 'tab-abc-123', bye: true });
+    expect(parseBeat({ ...base, light, instance: 'x' })).toBeNull();
+    expect(parseBeat({ ...base, light, bye: 'yes' })).toBeNull();
+  });
+
+  it('relays only the first 50 songs a single-song context keeps out of radio', () => {
+    const exclude = Array.from({ length: 400 }, (_, i) => `key-${i}`);
+    expect(parseContext({ type: 'single', exclude })).toEqual({ type: 'single', exclude: exclude.slice(0, 50) });
+  });
+
   it('takes hold as a plain switch', () => {
     expect(parseBeat({ ...base, light, hold: true })?.hold).toBe(true);
     expect(parseBeat({ ...base, light, hold: false })?.hold).toBeUndefined();

@@ -20,9 +20,10 @@ export const POST = withRequestLog('remote/beat', async (req: NextRequest) => {
     if (!beat) return Response.json({ error: 'Not a beat' }, { status: 400 });
     const store = remoteStore();
     let answer = store.beat(user.id, beat, Date.now());
+    if (!answer) return Response.json({ error: 'Another tab of this device is playing' }, { status: 409 });
     // A long poll: nothing to say yet, so wait for news (a command, a new
     // watcher) up to HOLD_MS. One held beat per device at most.
-    if (beat.hold && answer.commands.length === 0 && !answer.want && !answer.yield) {
+    if (beat.hold && !beat.bye && answer.commands.length === 0 && !answer.want && !answer.yield) {
       await store.hold(user.id, beat.deviceId, HOLD_MS, req.signal);
       answer = store.answer(user.id, beat.deviceId, Date.now());
     }

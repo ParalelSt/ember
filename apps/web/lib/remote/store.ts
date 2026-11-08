@@ -1,7 +1,9 @@
 import {
   COMMAND_TTL_MS,
   DROP_MS,
+  MAX_DEVICES_PER_USER,
   MAX_PENDING_COMMANDS,
+  SWEEP_MS,
   STALE_MS,
   TAKEOVER_WINDOW_MS,
   WATCH_FRESH_MS,
@@ -30,6 +32,10 @@ interface Entry {
   pending: RemoteCommand[];
   /** Whether it was stale at the last prune (a flip bumps the rev). */
   stale: boolean;
+  /** The tab that beats for this device (BeatBody.instance). */
+  instance: string | null;
+  /** Said goodbye (its page went away): stale at once. */
+  gone: boolean;
 }
 
 interface UserRemote {
@@ -45,10 +51,11 @@ interface UserRemote {
 export interface ActiveCandidate {
   deviceId: string;
   lastBeat: number;
-  snapshot: Pick<Snapshot, 'isPlaying' | 'changedAt'> | null;
+  gone?: boolean;
+  snapshot: (Pick<Snapshot, 'isPlaying' | 'changedAt'> & { trackId?: string | null }) | null;
 }
 
-const fresh = (d: { lastBeat: number }, now: number) => now - d.lastBeat <= STALE_MS;
+const fresh = (d: { lastBeat: number; gone?: boolean }, now: number) => !d.gone && now - d.lastBeat <= STALE_MS;
 
 /** The device the music is on: among fresh devices, the playing one whose
  *  play state changed last; with none playing, the paused one that changed
@@ -61,7 +68,9 @@ export function pickActive(devices: ActiveCandidate[], now: number): string | nu
   }
   if (best) return best.deviceId;
   for (const d of devices) {
-    if (!d.snapshot || !fresh(d, now) || now - d.snapshot.changedAt > TAKEOVER_WINDOW_MS) continue;
+    // A device with nothing loaded (an open, idle app) is never the one
+    // the music is on.
+    if (!d.snapshot || d.snapshot.trackId === null || !fresh(d, now) || now - d.snapshot.changedAt > TAKEOVER_WINDOW_MS) continue;
     if (!best || d.snapshot.changedAt > best.snapshot!.changedAt) best = d;
   }
   return best?.deviceId ?? null;
@@ -92,7 +101,8 @@ export type CommandResult =
   | { ok: false; status: 409; error: string };
 
 export interface RemoteStore {
-  beat(userId: string, body: BeatBody, now: number): BeatAnswer;
+  /** Null when another tab of the same device is its player (a conflict). */
+  beat(userId: string, body: BeatBody, now: number): BeatAnswer | null;
   /** The answer a device's beat gets now, without a beat (after a hold). */
   answer(userId: string, deviceId: string, now: number): BeatAnswer;
   /** Waits until a command comes in for the device, another device starts
@@ -104,6 +114,8 @@ export interface RemoteStore {
   state(userId: string, deviceId: string, rev: number | null, now: number, controlling?: string | null): StateAnswer;
   command(userId: string, target: string, from: string | null, command: CommandBody, now: number): CommandResult;
   clear(): void;
+  /** Accounts held in memory, for tests of the sweep. */
+  _users(): number;
 }
 
 let seq = 0;
@@ -145,6 +157,18 @@ export function createRemoteStore(): RemoteStore {
 
   const candidates = (u: UserRemote): ActiveCandidate[] => [...u.devices.values()];
 
+  /** Now and then, every account: old devices pruned, idle accounts dropped
+   *  (nothing listed, nobody watching, nothing held). */
+  let lastSweep = 0;
+  const sweep = (now: number) => {
+    if (now - lastSweep < SWEEP_MS) return;
+    lastSweep = now;
+    for (const [id, u] of users) {
+      prune(u, now);
+      if (u.devices.size === 0 && u.watchers.size === 0 && u.holds.size === 0) users.delete(id);
+    }
+  };
+
   /** Answers the device's held beat, if one waits. */
   const wake = (u: UserRemote, deviceId: string) => u.holds.get(deviceId)?.();
 
@@ -171,17 +195,32 @@ export function createRemoteStore(): RemoteStore {
 
   return {
     beat(userId, body, now) {
+      sweep(now);
       const u = userOf(userId);
       prune(u, now);
       let d = u.devices.get(body.deviceId);
+      // One player per device: another tab of it is refused while the one
+      // that beats is alive (it says goodbye when it goes, or goes stale).
+      if (d && body.instance && d.instance && d.instance !== body.instance && fresh(d, now)) return null;
       if (!d) {
+        if (u.devices.size >= MAX_DEVICES_PER_USER) {
+          let oldest: Entry | null = null;
+          for (const e of u.devices.values()) if (!oldest || e.lastBeat < oldest.lastBeat) oldest = e;
+          if (oldest) {
+            wake(u, oldest.deviceId);
+            u.devices.delete(oldest.deviceId);
+          }
+        }
         d = {
           deviceId: body.deviceId, label: body.label, platform: body.platform, shell: body.shell,
           browser: body.browser ?? null, lastBeat: now, snapshot: null, pending: [], stale: false,
+          instance: null, gone: false,
         };
         u.devices.set(body.deviceId, d);
         u.rev++;
       }
+      d.instance = body.bye ? null : body.instance ?? d.instance;
+      d.gone = !!body.bye;
       const browser = body.browser ?? null;
       if (d.label !== body.label || d.platform !== body.platform || d.shell !== body.shell || d.browser !== browser) {
         d.label = body.label;
@@ -190,8 +229,8 @@ export function createRemoteStore(): RemoteStore {
         d.browser = browser;
         u.rev++;
       }
-      if (d.stale) {
-        d.stale = false;
+      if (d.stale !== d.gone) {
+        d.stale = d.gone;
         u.rev++;
       }
       d.lastBeat = now;
@@ -223,6 +262,7 @@ export function createRemoteStore(): RemoteStore {
 
       // A newer beat answers the one still held.
       wake(u, d.deviceId);
+      if (d.gone) return answerFor(u, d, now);
       const { pause } = decideTakeover(candidates(u), d.deviceId, now);
       for (const id of pause) {
         const other = u.devices.get(id)!;
@@ -239,6 +279,7 @@ export function createRemoteStore(): RemoteStore {
     },
 
     answer(userId, deviceId, now) {
+      sweep(now);
       const u = userOf(userId);
       prune(u, now);
       const d = u.devices.get(deviceId);
@@ -269,6 +310,7 @@ export function createRemoteStore(): RemoteStore {
     },
 
     state(userId, deviceId, rev, now, controlling = null) {
+      sweep(now);
       const u = userOf(userId);
       const seen = u.watchers.get(deviceId);
       u.watchers.set(deviceId, now);
@@ -303,6 +345,7 @@ export function createRemoteStore(): RemoteStore {
     },
 
     command(userId, target, from, command, now) {
+      sweep(now);
       const u = userOf(userId);
       prune(u, now);
       const d = u.devices.get(target);
@@ -318,7 +361,10 @@ export function createRemoteStore(): RemoteStore {
     clear() {
       for (const u of users.values()) for (const id of [...u.holds.keys()]) wake(u, id);
       users.clear();
+      lastSweep = 0;
     },
+
+    _users: () => users.size,
   };
 }
 

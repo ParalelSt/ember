@@ -30,9 +30,9 @@ const WIN = 'win-device-1';
 const PHONE = 'phone-device-1';
 const post = (body: unknown) =>
   POST(new NextRequest('http://t/api/remote/command', { method: 'POST', body: JSON.stringify(body) }), undefined as never);
-const seed = (user: string, now = Date.now()) => remoteStore().beat(user, parseBeat(beatBody(WIN)) as BeatBody, now);
+const seed = (user: string, now = Date.now()) => remoteStore().beat(user, parseBeat(beatBody(WIN)) as BeatBody, now)!;
 const lightBeat = (user: string, now = Date.now()) =>
-  remoteStore().beat(user, parseBeat(beatBody(WIN, { full: undefined, light: remoteLight() })) as BeatBody, now);
+  remoteStore().beat(user, parseBeat(beatBody(WIN, { full: undefined, light: remoteLight() })) as BeatBody, now)!;
 const setQueue = (n: number) => ({ target: WIN, from: PHONE, type: 'setQueue', args: { tracks: queueOf(n), index: 0, play: true, startSec: 0, context: null } });
 
 beforeEach(() => {

@@ -80,5 +80,17 @@ describe('POST /api/remote/beat', () => {
     const res = await post(beatBody('win-device-1', { full: undefined, light: remoteLight(), hold: true }));
     expect((await res.json()).commands.map((c: { type: string }) => c.type)).toEqual(['next']);
   });
+
+  it('refuses a second tab of a device while the first plays (409)', async () => {
+    expect((await post(beatBody('win-device-1', { instance: 'tab-one-1' }))).status).toBe(200);
+    expect((await post(beatBody('win-device-1', { instance: 'tab-two-2' }))).status).toBe(409);
+  });
+
+  it('answers a goodbye at once, never holding it', async () => {
+    await post(beatBody('win-device-1', { instance: 'tab-one-1' }));
+    const res = await post(beatBody('win-device-1', { full: undefined, light: remoteLight({ isPlaying: false }), instance: 'tab-one-1', bye: true, hold: true }));
+    expect(res.status).toBe(200);
+    expect(remoteStore().state('u1', 'phone-device-1', null, Date.now()).devices).toEqual([expect.objectContaining({ stale: true })]);
+  });
 });
 
