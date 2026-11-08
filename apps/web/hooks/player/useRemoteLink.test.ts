@@ -262,7 +262,7 @@ describe('useRemoteLink', () => {
 
   it('says goodbye with a beacon when the page goes away', async () => {
     const beat = server();
-    const beacon = vi.fn((_url: string, _body: Blob) => true);
+    const beacon = vi.fn<(url: string, body: Blob) => boolean>(() => true);
     setup(beat, actions(), vi.fn(), { beacon });
     await vi.advanceTimersByTimeAsync(0);
     window.dispatchEvent(new Event('pagehide'));
