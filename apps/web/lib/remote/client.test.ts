@@ -27,8 +27,16 @@ describe('cadence', () => {
     [{ hasTrack: true, isPlaying: true, watchers: 1, pausedForMs: 0 }, { delay: BEAT_WATCHED_MS, hold: false }],
     [{ hasTrack: true, isPlaying: true, watchers: 0, pausedForMs: 0 }, { delay: 0, hold: true }],
     [{ hasTrack: true, isPlaying: false, watchers: 3, pausedForMs: 1000 }, { delay: PAUSED_GAP_MS, hold: true }],
-    [{ hasTrack: true, isPlaying: false, watchers: 0, pausedForMs: TAKEOVER_WINDOW_MS + 1 }, null],
-    [{ hasTrack: false, isPlaying: false, watchers: 0, pausedForMs: 0 }, null],
+    // Watched: never stops, however long it has been paused.
+    [{ hasTrack: true, isPlaying: false, watchers: 1, pausedForMs: TAKEOVER_WINDOW_MS * 5 }, { delay: PAUSED_GAP_MS, hold: true }],
+    // Paused inside the window: on, even hidden (a minimized player).
+    [{ hasTrack: true, isPlaying: false, watchers: 0, pausedForMs: 1000, hidden: true }, { delay: PAUSED_GAP_MS, hold: true }],
+    // Idle and on screen: listed and reachable.
+    [{ hasTrack: true, isPlaying: false, watchers: 0, pausedForMs: TAKEOVER_WINDOW_MS + 1 }, { delay: PAUSED_GAP_MS, hold: true }],
+    [{ hasTrack: false, isPlaying: false, watchers: 0, pausedForMs: 0 }, { delay: PAUSED_GAP_MS, hold: true }],
+    // Idle and hidden: nothing.
+    [{ hasTrack: true, isPlaying: false, watchers: 0, pausedForMs: TAKEOVER_WINDOW_MS + 1, hidden: true }, null],
+    [{ hasTrack: false, isPlaying: false, watchers: 0, pausedForMs: 0, hidden: true }, null],
   ])('beat %o -> %o', (state, want) => {
     expect(nextBeat(state)).toEqual(want);
   });

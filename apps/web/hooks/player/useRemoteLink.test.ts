@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useRemoteLink, type RemoteIdentity, type RemoteLinkActions } from './useRemoteLink';
+import { LINK_LOCK, TAB_INSTANCE, useRemoteLink, type RemoteIdentity, type RemoteLinkActions } from './useRemoteLink';
 import { BEAT_WATCHED_MS, PAUSED_GAP_MS } from '@/lib/remote/cadence';
 import { HOLD_MS } from '@/lib/remote/types';
 import type { BeatAnswer, BeatBody, RemoteCommand } from '@/lib/remote/types';
@@ -57,10 +57,24 @@ function server(...answers: Planned[]) {
   return fn;
 }
 
-function setup(beat: Beat, a = actions(), notify = vi.fn()) {
+type Locks = NonNullable<Parameters<typeof useRemoteLink>[0]['locks']>;
+
+function setup(beat: Beat, a = actions(), notify = vi.fn(), extra: { locks?: Locks | null; beacon?: (url: string, body: Blob) => boolean } = {}) {
   const actionsRef = { current: a };
-  renderHook(() => useRemoteLink({ enabled: true, identity, actionsRef, beat, notify }));
-  return { a, notify };
+  const hook = renderHook(() => useRemoteLink({ enabled: true, identity, actionsRef, beat, notify, locks: null, ...extra }));
+  return { a, notify, hook };
+}
+
+/** A Web Lock another tab holds until `release()`. */
+function lockHeldElsewhere() {
+  let release: () => void = () => {};
+  const elsewhere = new Promise<void>((r) => { release = r; });
+  const request = vi.fn(async (name: string, _opts: { signal?: AbortSignal }, cb: () => Promise<void>) => {
+    expect(name).toBe(LINK_LOCK);
+    await elsewhere;
+    await cb();
+  });
+  return { locks: { request } as unknown as Locks, release: () => release() };
 }
 
 beforeEach(() => {
@@ -227,4 +241,66 @@ describe('useRemoteLink', () => {
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
     }
   });
+
+  it('says which tab it is', async () => {
+    const beat = server();
+    setup(beat);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(beat.mock.calls[0][0].instance).toBe(TAB_INSTANCE);
+  });
+
+  it('waits while another tab of the browser holds the lock, and takes over when it goes', async () => {
+    const beat = server();
+    const other = lockHeldElsewhere();
+    setup(beat, actions(), vi.fn(), { locks: other.locks });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(beat).not.toHaveBeenCalled();
+    other.release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(beat).toHaveBeenCalledTimes(1);
+  });
+
+  it('says goodbye with a beacon when the page goes away', async () => {
+    const beat = server();
+    const beacon = vi.fn((_url: string, _body: Blob) => true);
+    setup(beat, actions(), vi.fn(), { beacon });
+    await vi.advanceTimersByTimeAsync(0);
+    window.dispatchEvent(new Event('pagehide'));
+    expect(beacon).toHaveBeenCalledTimes(1);
+    const [url, blob] = beacon.mock.calls[0];
+    expect(url).toMatch(/\/api\/remote\/beat$/);
+    const sent = JSON.parse(await blob.text());
+    expect(sent).toMatchObject({ deviceId: 'windows-device', instance: TAB_INSTANCE, bye: true, light: { isPlaying: false } });
+  });
+
+  it('an open, idle app beats too (held, every 10 s or so), but not while hidden', async () => {
+    usePlayerStore.setState({ queue: [], index: -1, isPlaying: false });
+    const beat = server(answer(), answer());
+    setup(beat);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(beat).toHaveBeenCalledTimes(1);
+    expect(beat.mock.calls[0][0]).toMatchObject({ hold: true, full: { track: null } });
+    await vi.advanceTimersByTimeAsync(PAUSED_GAP_MS + 100);
+    expect(beat).toHaveBeenCalledTimes(2);
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    try {
+      // The beat already planned goes out; after it, nothing.
+      await vi.advanceTimersByTimeAsync(PAUSED_GAP_MS + 100);
+      const n = beat.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(PAUSED_GAP_MS * 3);
+      expect(beat).toHaveBeenCalledTimes(n);
+    } finally {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    }
+  });
+
+  it('a watched device paused for long keeps beating, so it never goes stale', async () => {
+    usePlayerStore.setState({ isPlaying: false });
+    const beat = server(answer({ watchers: 1 }), answer({ watchers: 1 }), answer({ watchers: 1 }));
+    setup(beat);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(beat.mock.calls.length).toBeGreaterThan(10);
+  });
 });
+

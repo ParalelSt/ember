@@ -24,7 +24,8 @@ const remoteApi = vi.hoisted(() => ({
   command: vi.fn(async () => ({ id: 'c1' })),
 }));
 vi.mock('@/lib/api', () => ({ api: { remote: remoteApi, getTrackGain: async () => ({ gainDb: null }) }, apiUrl: (u: string) => u }));
-vi.mock('@/lib/versions/device', () => ({ deviceId: () => 'phone-device-1', detectDevicePlatform: () => 'android' }));
+const device = vi.hoisted(() => ({ id: 'phone-device-1' }));
+vi.mock('@/lib/versions/device', () => ({ deviceId: () => device.id, detectDevicePlatform: () => 'android' }));
 const web = makeFakeBackend();
 vi.mock('@/lib/playback/webBackend', () => ({ createWebBackend: () => web }));
 const androidFake = makeFakeBackend();
@@ -102,6 +103,7 @@ beforeEach(() => {
   vi.setSystemTime(1_000_000);
   vi.clearAllMocks();
   shell.value = 'web';
+  device.id = 'phone-device-1';
   Object.assign(remote, { playing: true, index: 0, since: Date.now(), stale: false, present: true });
   remoteApi.state.mockImplementation(async () => stateAnswer());
   web.currentTime = 0;
@@ -137,6 +139,15 @@ describe('PlayerProvider: controlling another device', () => {
     expect(st.position).toBeCloseTo(30, 0);
     await tick(3000);
     expect(usePlayerStore.getState().position).toBeGreaterThan(32);
+  });
+
+  it('a browser without storage (the shared no-storage id) neither beats nor controls', async () => {
+    device.id = 'no-storage';
+    await openPhone();
+    await tick(3000);
+    expect(remoteApi.state).not.toHaveBeenCalled();
+    expect(remoteApi.beat).not.toHaveBeenCalled();
+    expect(useRemoteStore.getState().mode).toBe('local');
   });
 
   it('play, pause, next and seek become commands; the local queue is not touched', async () => {

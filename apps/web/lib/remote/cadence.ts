@@ -27,13 +27,27 @@ export const POLL_PICKER_MS = 3_000;
 /** Optimistic state waits this long for a snapshot that agrees. */
 export const REVERT_AFTER_MS = 4_000;
 
-/** The player's next beat: when, and whether the server may hold it.
- *  Null for none (nothing loaded, or paused for longer than the takeover
- *  window). */
-export function nextBeat(s: { hasTrack: boolean; isPlaying: boolean; watchers: number; pausedForMs: number }): { delay: number; hold: boolean } | null {
-  if (!s.hasTrack) return null;
-  if (s.isPlaying) return s.watchers > 0 ? { delay: BEAT_WATCHED_MS, hold: false } : { delay: 0, hold: true };
-  return s.pausedForMs <= TAKEOVER_WINDOW_MS ? { delay: PAUSED_GAP_MS, hold: true } : null;
+/** The device's next beat: when, and whether the server may hold it.
+ *  - playing: watched every 1.5 s, else one held beat after another;
+ *  - watched but not playing (paused for however long): held beats with
+ *    PAUSED_GAP_MS between, so the device that controls it never sees it
+ *    go stale;
+ *  - paused inside the takeover window: the same, hidden or not (a
+ *    minimized player);
+ *  - idle (nothing loaded, or paused long ago) and on screen: the same, so
+ *    an open app is listed and can take the music;
+ *  - idle and hidden: nothing (it shows as "Last seen"). */
+export function nextBeat(s: {
+  hasTrack: boolean;
+  isPlaying: boolean;
+  watchers: number;
+  pausedForMs: number;
+  hidden?: boolean;
+}): { delay: number; hold: boolean } | null {
+  if (s.isPlaying && s.hasTrack) return s.watchers > 0 ? { delay: BEAT_WATCHED_MS, hold: false } : { delay: 0, hold: true };
+  if (s.watchers > 0) return { delay: PAUSED_GAP_MS, hold: true };
+  if (s.hasTrack && s.pausedForMs <= TAKEOVER_WINDOW_MS) return { delay: PAUSED_GAP_MS, hold: true };
+  return s.hidden ? null : { delay: PAUSED_GAP_MS, hold: true };
 }
 
 /** A controller's next poll of the state, or null for none (a hidden page,

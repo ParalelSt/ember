@@ -52,7 +52,7 @@ import { useRemoteLink, type RemoteIdentity, type RemoteLinkActions } from '@/ho
 import { useRemoteDevices } from '@/hooks/player/useRemoteDevices';
 import { createRemoteBackend, isRemoteBackend, type RemoteLink } from '@/lib/playback/remoteBackend';
 import { hereHandover, remoteHandover } from '@/lib/remote/handover';
-import type { CommandBody } from '@/lib/remote/types';
+import { NO_STORAGE_DEVICE, type CommandBody } from '@/lib/remote/types';
 import { browserFamily, deviceWord } from '@/lib/versions/label';
 import { deviceId as localDeviceId, detectDevicePlatform } from '@/lib/versions/device';
 import { remoteDevice, targetSnapshot, useRemoteStore } from '@/stores/useRemoteStore';
@@ -140,10 +140,14 @@ function ownsQueue(kind: { current: BackendKind }, controlling: { current: boole
 /** This device as the other ones see it ("Windows", "Android phone"). */
 function remoteIdentity(): RemoteIdentity | null {
   if (typeof window === 'undefined') return null;
+  const deviceId = localDeviceId();
+  // A browser without storage shares one id with every other such browser:
+  // it names no one device, so it neither beats nor controls.
+  if (deviceId === NO_STORAGE_DEVICE) return null;
   const platform = detectDevicePlatform();
   const shell = detectShell();
   return {
-    deviceId: localDeviceId(),
+    deviceId,
     label: deviceWord(platform),
     browser: platform === 'browser' && typeof navigator !== 'undefined' ? browserFamily(navigator.userAgent) : null,
     platform,

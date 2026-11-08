@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type RefObject } from 'react';
 import { toast } from 'sonner';
-import { api } from '@/lib/api';
+import { api, apiUrl } from '@/lib/api';
 import { addToQueue } from '@/lib/playback/addToQueue';
 import { claimSingleton, createBackoff, releaseSingleton, retryAfterOf } from '@/lib/pranks/backoff';
 import { BEAT_WATCHED_MS, BURST_MAX, BURST_WINDOW_MS, CHANGE_DEBOUNCE_MS, HELD_TOO_SOON_MS, nextBeat } from '@/lib/remote/cadence';
@@ -35,6 +35,28 @@ export interface RemoteIdentity {
   browser?: BrowserFamily | null;
 }
 
+/** This page's own id: every tab of a browser shares the device id, and
+ *  the server takes beats from one of them only (BeatBody.instance). */
+export const TAB_INSTANCE = (() => {
+  try {
+    const bytes = crypto.getRandomValues(new Uint8Array(8));
+    return `tab-${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
+  } catch {
+    return `tab-${Math.random().toString(36).slice(2, 12).padEnd(10, '0')}`;
+  }
+})();
+
+/** The Web Lock one tab of the browser holds while it is the player. */
+export const LINK_LOCK = 'ember-remote-link';
+
+type Locks = Pick<LockManager, 'request'>;
+
+const defaultLocks = (): Locks | null =>
+  typeof navigator !== 'undefined' && navigator.locks && typeof navigator.locks.request === 'function' ? navigator.locks : null;
+
+const defaultBeacon = (url: string, body: Blob): boolean =>
+  typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function' ? navigator.sendBeacon(url, body) : false;
+
 /** Ids already run, so a command delivered twice runs once. */
 const SEEN_MAX = 200;
 /** A seek: the playhead moved further than playing could take it. */
@@ -60,13 +82,25 @@ export function useRemoteLink({
   actionsRef,
   beat = (body: BeatBody, signal?: AbortSignal) => api.remote.beat(body, signal),
   notify = (message: string) => toast(message),
+  locks = defaultLocks(),
+  beacon = defaultBeacon,
 }: {
   enabled: boolean;
   identity: RemoteIdentity | null;
   actionsRef: RefObject<RemoteLinkActions | null>;
   beat?: (body: BeatBody, signal?: AbortSignal) => Promise<BeatAnswer>;
   notify?: (message: string) => void;
+  /** Web Locks: only the tab holding LINK_LOCK beats (others wait). */
+  locks?: Locks | null;
+  /** navigator.sendBeacon, for the goodbye on pagehide. */
+  beacon?: (url: string, body: Blob) => boolean;
 }) {
+  const locksRef = useRef(locks);
+  const beaconRef = useRef(beacon);
+  useEffect(() => {
+    locksRef.current = locks;
+    beaconRef.current = beacon;
+  }, [locks, beacon]);
   const beatRef = useRef(beat);
   const notifyRef = useRef(notify);
   useEffect(() => {
@@ -105,6 +139,7 @@ export function useRemoteLink({
         isPlaying: st.isPlaying,
         watchers,
         pausedForMs: st.isPlaying ? 0 : now - pausedSince,
+        hidden: typeof document !== 'undefined' && document.hidden,
       });
     };
 
@@ -192,8 +227,6 @@ export function useRemoteLink({
       }
       const st = usePlayerStore.getState();
       const full = buildSnapshot(st);
-      // Nothing loaded and nothing owed: a player with no song is no player.
-      if (!full.track && !acked.length) return;
       const key = `${full.trackId}|${full.queueHash}|${full.loopMode}|${full.shuffle}|${JSON.stringify(full.context)}|${full.upNext.length}`;
       const sendFull = wantFull || key !== lastFullKey;
       const sending = acked;
@@ -201,6 +234,7 @@ export function useRemoteLink({
       const hold = !!plan(now)?.hold;
       const body: BeatBody = {
         ...identity!,
+        instance: TAB_INSTANCE,
         acked: sending,
         ...(sendFull ? { full } : { light: lightOf(full) }),
         ...(hold ? { hold: true } : {}),
@@ -247,6 +281,7 @@ export function useRemoteLink({
       } finally {
         inFlight = false;
         if (held === ctrl) held = null;
+        beaten = true;
       }
       if (again) {
         // The change's own beat comes next, and schedules after itself.
@@ -279,7 +314,8 @@ export function useRemoteLink({
     let lastKey = playStateKey(usePlayerStore.getState());
     let lastQueue = usePlayerStore.getState().queue;
     let lastPos = { pos: usePlayerStore.getState().position, at: Date.now(), playing: usePlayerStore.getState().isPlaying };
-    const unsubscribe = usePlayerStore.subscribe((s) => {
+    let unsubscribe = () => {};
+    const listen = () => usePlayerStore.subscribe((s) => {
       const now = Date.now();
       if (!s.isPlaying && lastPos.playing) pausedSince = now;
       const key = playStateKey(s);
@@ -293,13 +329,64 @@ export function useRemoteLink({
       }
     });
 
-    void send();
+    /** The page goes away: the server hears at once that nothing plays here
+     *  any more, rather than 35 s later. */
+    const onPageHide = () => {
+      if (!started || !beaten) return;
+      const light = { ...lightOf(buildSnapshot(usePlayerStore.getState())), isPlaying: false };
+      const body: BeatBody = { ...identity!, instance: TAB_INSTANCE, acked: [], light, bye: true };
+      try {
+        beaconRef.current(apiUrl('/api/remote/beat'), new Blob([JSON.stringify(body)], { type: 'application/json' }));
+      } catch {
+        // Nothing to do on a page that is leaving.
+      }
+    };
+    /** Back to the page (a tab shown again, or out of the back/forward
+     *  cache): an open, idle device beats again so it can be reached. */
+    const onShow = () => {
+      if (started && !document.hidden && !inFlight && !timer) change(true);
+    };
+
+    let started = false;
+    let beaten = false;
+    const start = () => {
+      if (disposed || started) return;
+      started = true;
+      unsubscribe = listen();
+      window.addEventListener('pagehide', onPageHide);
+      window.addEventListener('pageshow', onShow);
+      document.addEventListener('visibilitychange', onShow);
+      void send();
+    };
+
+    // One tab of the browser beats for the device: the one that holds the
+    // lock. Another waits for it (the first closing hands it over).
+    const lockAbort = new AbortController();
+    let releaseLock: (() => void) | null = null;
+    const lockManager = locksRef.current;
+    if (lockManager) {
+      void lockManager.request(LINK_LOCK, { signal: lockAbort.signal }, () => new Promise<void>((resolve) => {
+        releaseLock = resolve;
+        if (disposed) resolve();
+        else start();
+      })).catch(() => {});
+    } else {
+      start();
+    }
+
     return () => {
       disposed = true;
       held?.abort();
       unsubscribe();
       clearTimer();
       if (debounce) clearTimeout(debounce);
+      if (started) {
+        window.removeEventListener('pagehide', onPageHide);
+        window.removeEventListener('pageshow', onShow);
+        document.removeEventListener('visibilitychange', onShow);
+      }
+      lockAbort.abort();
+      (releaseLock as (() => void) | null)?.();
       releaseSingleton('remote-link', owner);
     };
   }, [enabled, identity, actionsRef]);
