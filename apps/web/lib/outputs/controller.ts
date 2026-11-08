@@ -10,6 +10,7 @@ import type { AudioBackend } from '@/lib/playback/types';
 import { requestCast, stopCast } from '@/lib/cast/controller';
 import { useCastStore } from '@/stores/useCastStore';
 import { EMPTY_OUTPUTS, useOutputStore } from '@/stores/useOutputStore';
+import { useRemoteStore } from '@/stores/useRemoteStore';
 import { androidCastPlugin, androidOutputsPlugin, createAndroidOutputs, watchAndroidCastDevices } from './android';
 import { createDesktopOutputs } from './desktop';
 import { createIosOutputs, iosRoutePlugin } from './ios';
@@ -27,6 +28,33 @@ export interface OutputEnv {
   kind: BackendKind;
   /** The page's own engine, even while a cast engine stands in for it. */
   localBackend: () => AudioBackend | null;
+}
+
+/** The player's side of the account's other devices (lib/remote): the
+ *  provider registers them, the picker's rows run them. */
+export interface RemoteMoves {
+  /** Move the music to that device; true once the device has it. */
+  moveTo: (deviceId: string) => Promise<boolean>;
+  /** Bring the music from the device this one controls back here. */
+  moveHere: () => void;
+}
+
+let remoteMoves: RemoteMoves | null = null;
+
+export function setRemoteMoves(moves: RemoteMoves): () => void {
+  remoteMoves = moves;
+  return () => {
+    if (remoteMoves === moves) remoteMoves = null;
+  };
+}
+
+const controlling = () => useRemoteStore.getState().mode === 'controlling';
+
+/** Anything chosen for this device's own sound while it controls another
+ *  (a speaker, the system picker, casting) brings the music here first.
+ *  Synchronous, so the local play still counts as the listener's tap. */
+function bringHere(): void {
+  if (controlling()) remoteMoves?.moveHere();
 }
 
 let provider: OutputProvider | null = null;
@@ -128,6 +156,7 @@ async function run(what: string, fn: () => Promise<OutputSnapshot | null | void>
 
 /** A speaker or headset row. While casting, the music comes back first. */
 export async function chooseOutput(id: string): Promise<void> {
+  bringHere();
   const p = provider;
   if (!p) return;
   if (useCastStore.getState().connection !== 'idle' && p.platform !== 'ios') await stopCast();
@@ -137,6 +166,7 @@ export async function chooseOutput(id: string): Promise<void> {
 /** The system's own picker (Android's Output Switcher, iOS's route picker,
  *  the browser's speaker prompt or permission). */
 export async function openSystemPicker(): Promise<void> {
+  bringHere();
   const p = provider;
   if (!p?.openSystemPicker) return;
   await run('open the system picker', () => p.openSystemPicker!());
@@ -144,6 +174,7 @@ export async function openSystemPicker(): Promise<void> {
 
 /** A cast device the Android app listed. */
 export async function chooseCastDevice(id: string): Promise<void> {
+  bringHere();
   const p = androidCastPlugin();
   if (!p) {
     await requestCast();
@@ -163,7 +194,31 @@ export async function chooseCastDevice(id: string): Promise<void> {
   }
 }
 
-export { requestCast as openCastPicker, stopCast as stopCasting };
+/** The cast picker. While controlling another device, the music comes
+ *  here first: casting sends what plays here. */
+export async function openCastPicker(): Promise<void> {
+  bringHere();
+  await requestCast();
+}
+
+export { stopCast as stopCasting };
+
+/** A row of "Your devices": the music moves there (nothing happens on the
+ *  row already playing). Casting stops first. */
+export async function chooseEmberDevice(id: string, name: string): Promise<void> {
+  const moves = remoteMoves;
+  if (!moves) return;
+  const rs = useRemoteStore.getState();
+  if (rs.mode === 'controlling' && rs.target === id) return;
+  if (useCastStore.getState().connection !== 'idle') await stopCast();
+  if (await moves.moveTo(id)) toast(`Moved to ${name}`);
+}
+
+/** "This phone" / "This computer" while controlling another device: the
+ *  music comes back here, where that device was. */
+export function chooseThisDevice(): void {
+  bringHere();
+}
 
 /** Tests, and a change of engine. */
 export function _resetOutputs(): void {

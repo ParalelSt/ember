@@ -31,6 +31,7 @@ import type {
   PrankSoundKind,
   PresenceReport,
 } from '@/lib/pranks/types';
+import type { BeatAnswer, BeatBody, CommandBody, StateAnswer } from '@/lib/remote/types';
 
 /** One device of a member on the admin Users page (lib/versions/store.ts). */
 export interface AdminDevice {
@@ -229,6 +230,30 @@ async function quiet<T>(path: string, { method = 'GET', body }: ReqOptions = {})
     });
   }
   return (await res.json()) as T;
+}
+
+/** Like quiet, for the remote control's polls and commands: no log entry
+ *  per failed poll, but the error keeps the server's sentence (a 409 says
+ *  which device is not reachable), the status and Retry-After. */
+async function remoteCall<T>(path: string, { method = 'GET', body, signal }: ReqOptions = {}): Promise<T> {
+  const res = await fetch(`${API_BASE}/api${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: 'include',
+    signal,
+  });
+  const data = (await res.json().catch(() => null)) as { error?: unknown } | null;
+  if (!res.ok) {
+    if (res.status === 401) sessionExpired();
+    const secs = Number(res.headers.get('retry-after'));
+    const message = typeof data?.error === 'string' ? data.error : `Request failed: ${res.status}`;
+    throw Object.assign(new Error(message), {
+      status: res.status,
+      retryAfterMs: Number.isFinite(secs) && secs > 0 ? secs * 1000 : null,
+    });
+  }
+  return data as T;
 }
 
 /** A file goes as multipart so it is never turned into a JSON string;
@@ -790,6 +815,15 @@ export const api = {
     ack: (id: string, body: PrankAck) =>
       quiet<{ ok: true }>(`/pranks/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
     presence: (body: PresenceReport) => quiet<{ ok: true }>('/pranks/presence', { method: 'POST', body }),
+  },
+
+  /** Controlling playback on your other devices (lib/remote). */
+  remote: {
+    beat: (body: BeatBody, signal?: AbortSignal) => remoteCall<BeatAnswer>('/remote/beat', { method: 'POST', body, signal }),
+    state: (device: string, rev: number | null, controlling: string | null = null) =>
+      remoteCall<StateAnswer>(`/remote/state?device=${encodeURIComponent(device)}${rev !== null ? `&rev=${rev}` : ''}${controlling ? `&controlling=${encodeURIComponent(controlling)}` : ''}`),
+    command: (target: string, from: string, command: CommandBody) =>
+      remoteCall<{ id: string }>('/remote/command', { method: 'POST', body: { target, from, ...command } }),
   },
 };
 

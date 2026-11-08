@@ -90,3 +90,49 @@ export function cleanShellFields<T extends object>(ctx: T): T {
   if (shellPlatform) out.shellPlatform = shellPlatform;
   return out;
 }
+
+/** What a device is called among the account's own devices (the output
+ *  picker's "Your devices", "Playing on Windows"): the platform's word. */
+const DEVICE_WORDS: Record<DevicePlatform, string> = {
+  windows: 'Windows',
+  macos: 'macOS',
+  linux: 'Linux',
+  android: 'Android phone',
+  ios: 'iPhone',
+  browser: 'Browser',
+};
+
+export function deviceWord(platform: DevicePlatform): string {
+  return DEVICE_WORDS[platform];
+}
+
+export const BROWSER_FAMILIES = ['Edge', 'Opera', 'Samsung Internet', 'Firefox', 'Chrome', 'Safari'] as const;
+export type BrowserFamily = (typeof BROWSER_FAMILIES)[number];
+
+/** The browser a user agent belongs to, or null. Order matters: Edge and
+ *  Opera say "Chrome" too, and Chrome says "Safari". */
+export function browserFamily(userAgent: string): BrowserFamily | null {
+  if (/Edg\//.test(userAgent)) return 'Edge';
+  if (/OPR\//.test(userAgent)) return 'Opera';
+  if (/SamsungBrowser\//.test(userAgent)) return 'Samsung Internet';
+  if (/Firefox\//.test(userAgent)) return 'Firefox';
+  if (/Chrome\/|CriOS\//.test(userAgent)) return 'Chrome';
+  if (/Safari\//.test(userAgent)) return 'Safari';
+  return null;
+}
+
+export function sanitizeBrowser(value: unknown): BrowserFamily | null {
+  return (BROWSER_FAMILIES as readonly unknown[]).includes(value) ? (value as BrowserFamily) : null;
+}
+
+/** A device's name in a list of the account's devices: the platform's word,
+ *  with the browser in brackets when two browsers are listed ("Browser
+ *  (Firefox)"). */
+export function deviceName(
+  device: { platform: DevicePlatform; browser?: string | null },
+  all: readonly { platform: DevicePlatform }[],
+): string {
+  const word = deviceWord(device.platform);
+  if (device.platform !== 'browser' || !device.browser) return word;
+  return all.filter((d) => d.platform === 'browser').length > 1 ? `${word} (${device.browser})` : word;
+}
