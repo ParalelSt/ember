@@ -46,6 +46,7 @@ import {
 } from '@/lib/outputs/rows';
 import { useCastStore } from '@/stores/useCastStore';
 import { useOutputStore } from '@/stores/useOutputStore';
+import { useRemoteStore } from '@/stores/useRemoteStore';
 import { cn } from '@/lib/utils';
 
 /** Where the music plays (Spotify's device picker): this device's outputs
@@ -71,7 +72,12 @@ const ICONS: Record<DeviceRow['icon'], ComponentType<{ className?: string }>> = 
   stop: StopIcon,
 };
 
-function useSummaries(): { out: OutputSummary; cast: CastSummary } {
+/** The device this one controls, by name ("Windows"), else null. */
+function useRemoteName(): string | null {
+  return useRemoteStore((s) => (s.mode === 'controlling' ? s.devices.find((d) => d.deviceId === s.target)?.label ?? null : null));
+}
+
+function useSummaries(): { out: OutputSummary; cast: CastSummary; remote: string | null } {
   const platform = useOutputStore((s) => s.platform);
   const devices = useOutputStore((s) => s.devices);
   const currentId = useOutputStore((s) => s.currentId);
@@ -83,9 +89,11 @@ function useSummaries(): { out: OutputSummary; cast: CastSummary } {
   const availability = useCastStore((s) => s.availability);
   const connection = useCastStore((s) => s.connection);
   const deviceName = useCastStore((s) => s.deviceName);
+  const remote = useRemoteName();
   return {
     out: { platform, devices, currentId, currentName, currentKind, systemPicker, castDevices },
     cast: { path, availability, connection, deviceName },
+    remote,
   };
 }
 
@@ -130,11 +138,11 @@ interface Props {
 }
 
 export function DevicesButton({ className, iconClassName }: Props) {
-  const { out, cast } = useSummaries();
+  const { out, cast, remote } = useSummaries();
   const [open, setOpen] = useState(false);
-  if (!devicesButtonVisible(out, cast)) return null;
-  const label = devicesLabel(out, cast);
-  const lit = cast.connection !== 'idle' || playingOn(out, cast) !== null;
+  if (!devicesButtonVisible(out, cast, remote)) return null;
+  const label = devicesLabel(out, cast, remote);
+  const lit = cast.connection !== 'idle' || playingOn(out, cast, remote) !== null;
   const sections = deviceSections(out, cast);
   const onOpenChange = (next: boolean) => {
     setOpen(next);
@@ -188,12 +196,12 @@ export function DevicesButton({ className, iconClassName }: Props) {
  *  else to play), what to call it, and the output it plays on when that
  *  is not the phone itself (the headset, the TV). */
 export function useDevicesEntry() {
-  const { out, cast } = useSummaries();
+  const { out, cast, remote } = useSummaries();
   return {
-    visible: devicesButtonVisible(out, cast),
-    label: devicesLabel(out, cast),
-    on: playingOn(out, cast) ?? (cast.connection === 'connecting' ? 'Connecting' : null),
-    lit: cast.connection !== 'idle' || playingOn(out, cast) !== null,
+    visible: devicesButtonVisible(out, cast, remote),
+    label: devicesLabel(out, cast, remote),
+    on: playingOn(out, cast, remote) ?? (cast.connection === 'connecting' ? 'Connecting' : null),
+    lit: cast.connection !== 'idle' || playingOn(out, cast, remote) !== null,
   };
 }
 

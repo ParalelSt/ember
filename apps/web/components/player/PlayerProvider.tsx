@@ -38,6 +38,7 @@ import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
 import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, playedWalk, prevIndex, previousFromHistory, rememberPlayed, repeatsCurrent } from '@/lib/playback/queueNav';
 import type { QueuedTrack } from '@/lib/playback/addToQueue';
+import type { LoopMode } from '@/stores/usePlayerStore';
 import { useAvailabilityProbe } from '@/hooks/player/useAvailabilityProbe';
 import { useAutoCache } from '@/hooks/player/useAutoCache';
 import type { BackendKind } from '@/lib/autoCache/select';
@@ -47,6 +48,13 @@ import { usePositionPersistence } from '@/hooks/player/usePositionPersistence';
 import { useRadioExtend } from '@/hooks/player/useRadioExtend';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
 import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
+import { useRemoteLink, type RemoteIdentity, type RemoteLinkActions } from '@/hooks/player/useRemoteLink';
+import { useRemoteDevices } from '@/hooks/player/useRemoteDevices';
+import { createRemoteBackend, isRemoteBackend, type RemoteLink } from '@/lib/playback/remoteBackend';
+import { hereHandover, remoteHandover } from '@/lib/remote/handover';
+import { PLATFORM_WORDS, type CommandBody } from '@/lib/remote/types';
+import { deviceId as localDeviceId, detectDevicePlatform } from '@/lib/versions/device';
+import { remoteDevice, targetSnapshot, useRemoteStore } from '@/stores/useRemoteStore';
 import { useTrackGain } from '@/hooks/player/useTrackGain';
 import { cachedTrackGain, dbToLinear, GAIN_RAMP_MS } from '@/lib/playback/normalization';
 import { eqForDevice, eqNeedsConsent } from '@/lib/playback/eqDevice';
@@ -101,6 +109,44 @@ interface PlayerControls {
   /** Load the current song again (the bar's "Couldn't load ... right now,
    *  tap to retry"). */
   retry: () => void;
+  /** Move the music to another device of this account (it plays there,
+   *  from here, and this device controls it). */
+  moveTo: (deviceId: string) => void;
+  /** Bring the music from the device this one controls back here. */
+  moveHere: () => void;
+}
+
+/** The queue as it was when this device started controlling another, put
+ *  back when it stops without a move. */
+interface QueueBackup {
+  queue: Track[];
+  index: number;
+  position: number;
+  context: PlaybackContext | null;
+  baseCount: number;
+  loopMode: LoopMode;
+  shuffle: boolean;
+  orderBackup: Track[] | null;
+}
+
+/** Whether the engine in charge owns the queue and moves through it by
+ *  itself: the native Android player, or another device this one controls.
+ *  Then next, previous and a new list go to it, and nothing loads here. */
+function ownsQueue(kind: { current: BackendKind }, controlling: { current: boolean }): boolean {
+  return kind.current === 'android' || controlling.current;
+}
+
+/** This device as the other ones see it ("Windows", "Android phone"). */
+function remoteIdentity(): RemoteIdentity | null {
+  if (typeof window === 'undefined') return null;
+  const platform = detectDevicePlatform();
+  const shell = detectShell();
+  return {
+    deviceId: localDeviceId(),
+    label: PLATFORM_WORDS[platform],
+    platform,
+    shell: shell === 'tauri' ? 'tauri' : shell === 'capacitor' && platform === 'android' ? 'android' : 'web',
+  };
 }
 
 const PlayerContext = createContext<PlayerControls | null>(null);
@@ -224,6 +270,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const castingRef = useRef(false);
   const localBackendRef = useRef<AudioBackend | null>(null);
   const [casting, setCasting] = useState(false);
+  /** Controlling another device of this account (lib/remote): the local
+   *  engine waits in localBackendRef, stopped, while a remote backend
+   *  turns every control into a command for the device that plays. */
+  const controllingRef = useRef(false);
+  const [controlling, setControlling] = useState(false);
+  const backupRef = useRef<QueueBackup | null>(null);
   /** When the store's queue/index last changed BECAUSE the native player said
    *  so. The queue-push effect and the load-on-id-change effect both skip
    *  changes inside this window, or a car tap would bounce straight back. A
@@ -283,7 +335,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    *  follows, and the store has what it sends (onPlayed). */
   const setPlayed = useCallback((ids: string[]) => {
     playedRef.current = ids;
-    if (backendKindRef.current !== 'android') usePlayerStore.setState({ played: ids });
+    if (!ownsQueue(backendKindRef, controllingRef)) usePlayerStore.setState({ played: ids });
   }, []);
 
   const current = queue[index] ?? null;
@@ -381,6 +433,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const at = Math.max(0, Math.min(i, tracks.length - 1));
         loadedTrackRef.current = tracks[at]?.id ?? null;
         const st = usePlayerStore.getState();
+        // A remote device says where its queue came from (native does not).
+        const ctx = info && 'context' in info ? { context: info.context ?? null } : null;
         // The same songs in another order: the car's Shuffle button (native
         // reorders the queue itself). The list it came from still holds; the
         // shuffle flag and its way back follow native's.
@@ -391,6 +445,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             index: at,
             shuffle: on,
             orderBackup: !on ? null : st.shuffle ? st.orderBackup : st.queue.slice(),
+            ...ctx,
           });
           return;
         }
@@ -403,16 +458,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             queue: tracks,
             index: at,
             orderBackup: st.orderBackup ? [...st.orderBackup, ...added] : null,
+            ...ctx,
           });
           return;
         }
         // A new list (a tap in the car): not this page's shuffle either, or
-        // the shuffle button would show on with nothing to undo.
+        // the shuffle button would show on with nothing to undo. A remote
+        // device's list keeps its own shuffle: turning it off there needs
+        // no order from here.
         usePlayerStore.setState({
           queue: tracks,
           index: at,
-          context: null,
-          shuffle: false,
+          context: ctx ? ctx.context : null,
+          shuffle: ctx ? !!info?.shuffle : false,
           orderBackup: null,
         });
       },
@@ -433,8 +491,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       },
       onEnded: () => {
         // The native Android player advances by itself; `ended` only means the
-        // whole queue ran out, and there is nothing to load from here.
-        if (backendKindRef.current === 'android') return;
+        // whole queue ran out, and there is nothing to load from here. A
+        // remote device does too.
+        if (ownsQueue(backendKindRef, controllingRef)) return;
         // Read the latest loop state at fire time so a stale closure can't lock
         // us into the wrong mode.
         const state = usePlayerStore.getState();
@@ -565,8 +624,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // An app build that explains its failures (onUnplayable) needs
         // nothing more; an older one only says "error", so the page asks the
         // host about the song it was on and says why it was skipped.
-        if (backendKindRef.current === 'android') {
-          if (!info?.nativeExplains && info?.trackId) explainNativeFailure(info.trackId);
+        if (ownsQueue(backendKindRef, controllingRef)) {
+          if (backendKindRef.current === 'android' && !info?.nativeExplains && info?.trackId) explainNativeFailure(info.trackId);
           return;
         }
         // A downloaded file that will not play (deleted under us, or a
@@ -644,7 +703,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // a late pause or error from the stopped element must not reach the
     // player (see startCasting).
     rawEventsRef.current = events;
-    eventsRef.current = gateEvents(events, () => !castingRef.current);
+    eventsRef.current = gateEvents(events, () => !castingRef.current && !controllingRef.current);
     backendKindRef.current = create === createWebBackend ? 'web'
       : create === createCapacitorBackend ? 'capacitor'
       : create === createAndroidBackend ? 'android'
@@ -701,6 +760,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     normTrackRef.current = trackId;
     normGainRef.current = norm;
     const st = usePlayerStore.getState();
+    // Controlling another device: the slider is that device's own volume
+    // (a phone has none, so nothing is ever sent from one).
+    if (controllingRef.current) {
+      b.setVolume(appVolume(st.volume));
+      return;
+    }
     // Party mode is desktop-only (lib/playback/partyDevice): an ineligible
     // device plays as if it were off, so its engine never builds a graph for it.
     const party = useSettingsStore.getState().partyVolume && isPartyEligible();
@@ -787,10 +852,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     track: Track | null,
     autoplay: boolean,
     next?: QueueOrigin & { list: Track[] },
-    opts?: { listenerRetry?: boolean; at?: number },
+    opts?: { listenerRetry?: boolean; at?: number; startAt?: number },
   ) => {
     let b = backendRef.current;
     if (!b) return;
+    // A start asked for with this load (a song moved here from another
+    // device) wins over every other rule below.
+    if (opts?.startAt !== undefined && track) positions.requestStartAt(opts.startAt);
     if (!track) {
       b.stop();
       b.setMetadata(null);
@@ -819,9 +887,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       b.loadTrack(track, { autoplay, startAt });
       return;
     }
-    if (backendKindRef.current === 'android' && b.setQueue) {
+    if (ownsQueue(backendKindRef, controllingRef) && b.setQueue) {
       // The native player owns the queue: hand it the whole thing and the
       // index to start at. It diffs, so an unchanged queue never restarts.
+      // A remote device gets it as a command (cut at the song, capped).
       let queue = next?.list ?? usePlayerStore.getState().queue;
       // The entry the caller moved to, when it says: a song listed twice (a
       // copy added to the queue by hand) must not jump to its first copy.
@@ -836,7 +905,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // listener was instead, as on web and desktop; it used to go back to
       // 0:00 whenever Android had closed the app. Native only applies it
       // when it has to start the song (not when it is already playing it).
-      if (autoplay) positions.requestStartAt(0);
+      if (autoplay) positions.requestStartAt(opts?.startAt ?? 0);
       const startSec = positions.startAt(track.id);
       setDuration(chooseDuration(track.durationSec ?? 0, null));
       sentQueueRef.current = queue;
@@ -1006,6 +1075,156 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [applyVolume, loadAndPlay, positions, setIsPlaying]);
 
+  /** This device as the account's other devices see it (lib/remote). */
+  const identity = useMemo(() => remoteIdentity(), []);
+
+  /** A command for the device this one controls (or another one). */
+  const sendRemote = useCallback((target: string, command: CommandBody) => {
+    if (!identity) return Promise.reject(new Error('no device id'));
+    return api.remote.command(target, identity.deviceId, command);
+  }, [identity]);
+
+  /** The other device, as the remote backend reaches it. */
+  const remoteLink = useMemo<RemoteLink>(() => ({
+    label: () => remoteDevice(useRemoteStore.getState().target)?.label ?? 'The other device',
+    snapshot: () => targetSnapshot(),
+    offset: () => useRemoteStore.getState().offset,
+    subscribe: (cb) => useRemoteStore.subscribe((st, prev) => {
+      if (st.devices !== prev.devices || st.target !== prev.target) cb();
+    }),
+    send: (command) => {
+      const target = useRemoteStore.getState().target;
+      return target ? sendRemote(target, command) : Promise.reject(Object.assign(new Error('not controlling'), { status: 409 }));
+    },
+    notify: (message) => toast(message),
+  }), [sendRemote]);
+
+  /** Start controlling another device of this account: the local engine
+   *  stops and waits, the remote backend takes over, and every control
+   *  goes there. The local queue is kept aside, so stopping without a move
+   *  puts it back. `transfer`: the music moves there first (from where it
+   *  is here, playing if it was). */
+  const startControlling = useCallback((deviceId: string, opts: { transfer?: boolean } = {}) => {
+    const local = backendRef.current;
+    if (!local || controllingRef.current || castingRef.current || !rawEventsRef.current) return;
+    const st = usePlayerStore.getState();
+    const position = local.getCurrentTime() || st.position;
+    backupRef.current = {
+      queue: st.queue, index: st.index, position, context: st.context, baseCount: st.baseCount,
+      loopMode: st.loopMode, shuffle: st.shuffle, orderBackup: st.orderBackup,
+    };
+    if (opts.transfer) {
+      const plan = remoteHandover({ queue: st.queue, index: st.index, position, isPlaying: !local.isPaused(), context: st.context });
+      if (plan) {
+        void sendRemote(deviceId, { type: 'setQueue', args: plan }).catch((e: unknown) => {
+          toast((e as Error)?.message || 'Could not move the music');
+        });
+      }
+    }
+    controllingRef.current = true;
+    local.stop();
+    // The native Android player must not play on (or keep a queue for the
+    // lock screen and the car) while another device plays.
+    if (backendKindRef.current === 'android' && local.setQueue) {
+      local.setQueue([], 0, false);
+      sentQueueRef.current = [];
+    }
+    localBackendRef.current = local;
+    useRemoteStore.getState().set({ mode: 'controlling', target: deviceId });
+    const remote = createRemoteBackend(
+      gateEvents(rawEventsRef.current, () => controllingRef.current && backendRef.current === remote),
+      remoteLink,
+    );
+    backendRef.current = remote;
+    loadedTrackRef.current = null;
+    playedRef.current = [];
+    usePlayerStore.setState({ played: [] });
+    // Noted, never sent: attaching leaves the other device's volume alone.
+    remote.setVolume(appVolume(st.volume));
+    remote.adopt();
+    setControlling(true);
+    logger.setContext({ backendKind: 'remote' });
+    logger.breadcrumb('playback', 'remote control started', { transfer: !!opts.transfer });
+  }, [remoteLink, sendRemote]);
+
+  /** Stop controlling. `adopt` (a move here): the other device's song and
+   *  what it has up next play here, from where its playhead is, playing if
+   *  it was. Otherwise the queue kept aside comes back, paused where it
+   *  was; `restore: false` only swaps the engines back. */
+  const stopControlling = useCallback((opts: { adopt?: boolean; restore?: boolean } = {}) => {
+    if (!controllingRef.current) return;
+    const remote = backendRef.current;
+    const snap = isRemoteBackend(remote) ? remote.snapshot() : null;
+    const rs = useRemoteStore.getState();
+    const offset = rs.offset;
+    const local = localBackendRef.current;
+    controllingRef.current = false;
+    localBackendRef.current = null;
+    backendRef.current = local;
+    try { remote?.destroy(); } catch { /* it only stops its own timers */ }
+    rs.set({
+      mode: 'local',
+      target: null,
+      // A device left on purpose is not attached to again until it changes.
+      dismissed: opts.adopt && rs.target && snap ? { deviceId: rs.target, changedAt: snap.changedAt } : rs.dismissed,
+    });
+    setControlling(false);
+    setIsPlaying(false);
+    logger.setContext({ backendKind: backendKindRef.current });
+    logger.breadcrumb('playback', 'remote control ended', { adopt: !!opts.adopt });
+    const backup = backupRef.current;
+    backupRef.current = null;
+    if (!local) return;
+    applyVolume(local);
+    loadedTrackRef.current = null;
+    const here = opts.adopt && snap ? hereHandover(snap, Date.now(), offset) : null;
+    if (here) {
+      const list = here.queue;
+      usePlayerStore.setState({ queue: list, index: 0, context: here.context, baseCount: list.length, shuffle: false, orderBackup: null });
+      loadAndPlay(list[0], here.autoplay, { list, context: here.context, baseCount: list.length }, { at: 0, startAt: here.startAt });
+      return;
+    }
+    if (opts.restore === false || !backup) return;
+    usePlayerStore.setState({
+      queue: backup.queue, index: backup.index, context: backup.context, baseCount: backup.baseCount,
+      loopMode: backup.loopMode, shuffle: backup.shuffle, orderBackup: backup.orderBackup,
+    });
+    const track = backup.queue[backup.index];
+    if (track) loadAndPlay(track, false, undefined, { at: backup.index, startAt: backup.position });
+  }, [applyVolume, loadAndPlay, setIsPlaying]);
+  const stopControllingRef = useRef(stopControlling);
+  useLayoutEffect(() => {
+    stopControllingRef.current = stopControlling;
+  });
+
+  /** The output picker's "move the music there" (W7 lists the devices). */
+  const moveTo = useCallback((deviceId: string) => {
+    if (identity && deviceId === identity.deviceId) return;
+    if (!controllingRef.current) {
+      startControlling(deviceId, { transfer: true });
+      return;
+    }
+    const rs = useRemoteStore.getState();
+    if (rs.target === deviceId) return;
+    // From one remote device to another: what this one knows of the first
+    // (its song, the next 20, its playhead) goes to the second; the first
+    // pauses by the one-at-a-time rule.
+    const b = backendRef.current;
+    const st = usePlayerStore.getState();
+    const plan = remoteHandover({ queue: st.queue, index: st.index, position: b?.getCurrentTime() ?? 0, isPlaying: !(b?.isPaused() ?? true), context: st.context });
+    if (!plan) return;
+    void sendRemote(deviceId, { type: 'setQueue', args: plan })
+      .then(() => rs.set({ target: deviceId }))
+      .catch((e: unknown) => toast((e as Error)?.message || 'Could not move the music'));
+  }, [identity, sendRemote, startControlling]);
+
+  const moveHere = useCallback(() => {
+    if (!controllingRef.current) return;
+    const target = useRemoteStore.getState().target;
+    if (target) void sendRemote(target, { type: 'pause' }).catch(() => {});
+    stopControlling({ adopt: true });
+  }, [sendRemote, stopControlling]);
+
   // Google Cast sessions (lib/cast/session). Registered once the engine
   // exists, so a session the page joined while starting up is picked up.
   useEffect(() => {
@@ -1022,6 +1241,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(
     () =>
       onAccountPlaybackCleared(() => {
+        // Another account's devices are not this one's to control.
+        if (controllingRef.current) stopControllingRef.current({ restore: false });
         const b = backendRef.current;
         if (backendKindRef.current !== 'android' || !b?.setQueue) return;
         b.stop();
@@ -1039,7 +1260,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!backendReady) return;
     // A change the native player reported is already playing there; loading
     // it again would restart it (and echo the queue back).
-    if (backendKindRef.current === 'android' && fromNative()) return;
+    if (ownsQueue(backendKindRef, controllingRef) && fromNative()) return;
     // Already handed to the backend by the gesture that changed the track.
     // Loading it again aborted that load's play(): a pause/play flicker on
     // every change, and two loads (two error toasts) on desktop.
@@ -1050,7 +1271,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     // The native Android player records plays itself (car-initiated ones too).
     // A live station is not a song: never a play in history.
-    if (current && userInteracted.current && user && backendKindRef.current !== 'android' && !isLiveTrack(current)) recordPlay.mutate(current);
+    // Nor does a device this one controls: the play is that device's.
+    if (current && userInteracted.current && user && !ownsQueue(backendKindRef, controllingRef) && !isLiveTrack(current)) recordPlay.mutate(current);
     if (!current) {
       setIsPlaying(false);
       setPosition(0);
@@ -1105,7 +1327,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // the rest (not flagged, just out of reach). Nothing left means a stall
     // (see stallOffline); the connection coming back loads the song we
     // stopped at (see the effect below).
-    if (!ac.online && backendKindRef.current !== 'android') {
+    if (!ac.online && !ownsQueue(backendKindRef, controllingRef)) {
       const cached = new Set(ac.adapter.entries().keys());
       const r = nextPlayableOffline(st.queue, target, step, st.loopMode === 'all', cached, pinnedIds());
       announce(skippedNotices(r.skipped));
@@ -1168,7 +1390,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const id = s.stalledTrackId;
     s.setStalled(false);
     toast('Back online', { duration: 2500 });
-    if (!id || backendKindRef.current === 'android') return;
+    if (!id || ownsQueue(backendKindRef, controllingRef)) return;
     const st = usePlayerStore.getState();
     const i = st.queue.findIndex((t) => t.id === id);
     if (i < 0) return;
@@ -1184,7 +1406,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     userInteracted.current = true;
     // The native player owns the queue (and keeps playing when this WebView is
     // gone), so it decides what comes next: loop, radio tail and all.
-    if (backendKindRef.current === 'android') { backendRef.current?.next?.(); return; }
+    if (ownsQueue(backendKindRef, controllingRef)) { backendRef.current?.next?.(); return; }
     const move = nextIndex(navState());
     if (!move) {
       // The end of the queue, offline: radio cannot extend it, so say why
@@ -1201,7 +1423,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     userInteracted.current = true;
     // The native player keeps its own play history (PlayHistory.kt), so the
     // notification, the lock screen and the car go back the same way.
-    if (backendKindRef.current === 'android') { backendRef.current?.prev?.(); return; }
+    if (ownsQueue(backendKindRef, controllingRef)) { backendRef.current?.prev?.(); return; }
     const b = backendRef.current;
     const st = usePlayerStore.getState();
     // The song actually played before this one, when the history has it
@@ -1225,6 +1447,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playBack = useCallback((steps: number) => {
     userInteracted.current = true;
+    // A device this one controls sends no history to go back through.
+    if (controllingRef.current) return;
     const st = usePlayerStore.getState();
     // The native player goes back through its own history (the store has
     // what it sent): it is told the queue entry the list showed.
@@ -1294,7 +1518,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       announce([{ ...waiting, outcome: 'stopped' }]);
     }
   }, [announce]);
-  useRadioExtend({ current, queue, index, history, liked, context, loopMode, onExtended: onRadioExtended });
+  // A device this one controls extends its own queue.
+  useRadioExtend({ current: controlling ? null : current, queue, index, history, liked, context, loopMode, onExtended: onRadioExtended });
 
   useDiscordPresence({ current, isPlaying, position, duration });
 
@@ -1305,8 +1530,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Not before the first load: the page's opening render would send the
     // saved queue here, and then the cold-start load sends it again.
-    if (!backendReady || backendKindRef.current !== 'android' || fromNative()) return;
+    if (!backendReady || !ownsQueue(backendKindRef, controllingRef) || fromNative()) return;
     const b = backendRef.current;
+    // The mirror of a device this one controls only changes by its
+    // snapshots; a new list from here went over as setQueue already.
+    if (controllingRef.current) return;
     if (!b?.setQueue || !current || queue === sentQueueRef.current) return;
     sentQueueRef.current = queue;
     b.setQueue(queue, index, usePlayerStore.getState().isPlaying);
@@ -1319,7 +1547,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // (which has neither) was in charge never reached the local engine.
   useEffect(() => {
     backendRef.current?.setNormalize?.(normalizeVolume);
-  }, [backendReady, initialKind, normalizeVolume, casting]);
+  }, [backendReady, initialKind, normalizeVolume, casting, controlling]);
 
   // The equalizer, on every engine: web audio builds its filters the first
   // time it is switched on, the desktop engine and the Android player keep
@@ -1332,7 +1560,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     backendRef.current?.setEq?.(eqForDevice(equalizer, eqNeedsConsent(initialKind), eqChosenHere));
     // `casting`: the local engine is back when a cast ends, and a change made
     // while casting went to the cast backend, which has no equalizer.
-  }, [backendReady, initialKind, equalizer, eqChosenHere, casting]);
+  }, [backendReady, initialKind, equalizer, eqChosenHere, casting, controlling]);
 
   // The shuffle button, for the native Android player: the queue it
   // reorders goes over with setQueue (above); native keeps the flag, which
@@ -1358,7 +1586,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // provider applies the mode itself in onEnded and next/prev.
   useEffect(() => {
     backendRef.current?.setLoop?.(loopMode);
-  }, [backendReady, loopMode]);
+  }, [backendReady, loopMode, controlling]);
 
   // Web audio and the desktop engine play one song at a time: when the song
   // playing is also the next one (loop-one, loop-all over one song), they
@@ -1371,7 +1599,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
   useEffect(() => {
     backendRef.current?.setRepeatOne?.(repeatOne);
-  }, [backendReady, repeatOne, initialKind, casting]);
+  }, [backendReady, repeatOne, initialKind, casting, controlling]);
 
   // The Android backend's setRemoteCommands/setMetadata are no-ops: the native
   // Media3 session owns the lock screen and the car, so this registers nothing
@@ -1398,9 +1626,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Only on a new engine: setRate itself applies every change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendReady, initialKind]);
-  const canSetRate = (initialKind === 'web' || initialKind === 'capacitor') && !casting;
+  const canSetRate = (initialKind === 'web' || initialKind === 'capacitor') && !casting && !controlling;
 
-  const playTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
+  const playTrack = useCallback((
+    track: Track,
+    list?: Track[],
+    nextContext?: PlaybackContext | null,
+    opts?: { autoplay?: boolean; startAt?: number },
+  ) => {
     userInteracted.current = true;
     // Tapping a search result plays just that song then flows into radio, not
     // the variant-heavy results list. Other contexts queue their whole list.
@@ -1446,7 +1679,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const queue = handQueued.length ? [...queueList.slice(0, i + 1), ...handQueued, ...queueList.slice(i + 1)] : queueList;
     // Size of the curated list, before radio extends it.
     const baseCount = queue.length;
-    loadAndPlay(track, true, { list: queue, context, baseCount }, { at: i });
+    loadAndPlay(track, opts?.autoplay ?? true, { list: queue, context, baseCount }, { at: i, ...(opts?.startAt !== undefined ? { startAt: opts.startAt } : {}) });
     usePlayerStore.setState({
       queue,
       index: i,
@@ -1468,6 +1701,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     userInteracted.current = true;
     const st = usePlayerStore.getState();
     if (i < 0 || i >= st.queue.length) return;
+    // The device this one controls moves to that entry of its own queue.
+    const b = backendRef.current;
+    if (controllingRef.current && isRemoteBackend(b)) {
+      b.playAt(i);
+      return;
+    }
     // goTo walks past an unavailable song (and, offline, one with no copy
     // here), exactly like Next does.
     goTo(i, 1);
@@ -1518,7 +1757,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!track) return;
     // The native player keeps the song it failed on and reloads it itself,
     // with the same retry mark as below.
-    if (backendKindRef.current === 'android') {
+    if (ownsQueue(backendKindRef, controllingRef)) {
       const b = backendRef.current;
       if (b?.retry) b.retry();
       else b?.play();
@@ -1538,13 +1777,48 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     settleUnplayable(currentId, started);
   }, [currentId, isPlaying]);
 
+  // Controlling playback on the account's other devices (lib/remote).
+  // This device's heartbeat, while it is the one that plays: other devices
+  // see what plays here and their commands come back with the answer.
+  const linkActionsRef = useRef<RemoteLinkActions | null>(null);
+  const pendingStartRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    linkActionsRef.current = {
+      play: () => {
+        userInteracted.current = true;
+        const st = usePlayerStore.getState();
+        if (st.queue[st.index]) backendRef.current?.play();
+      },
+      pause: () => backendRef.current?.pause(),
+      next: () => nextRef.current(),
+      prev: () => prevRef.current(),
+      seek,
+      playAt,
+      requestStartAt: (sec) => { pendingStartRef.current = sec; },
+      playTrack: (track, list, ctx, o) => {
+        const startAt = pendingStartRef.current;
+        pendingStartRef.current = null;
+        dismissUnplayable();
+        clearCouldntPlay();
+        playTrack(track, list, ctx, { ...o, ...(startAt !== null ? { startAt } : {}) });
+      },
+    };
+  });
+  useRemoteLink({ enabled: !!user && backendReady && !controlling, identity, actionsRef: linkActionsRef });
+  // The other devices: on open (and back from hidden) a device that plays
+  // nothing starts controlling the one that plays.
+  const onAttach = useCallback((id: string) => startControlling(id), [startControlling]);
+  const onDetach = useCallback(() => stopControlling(), [stopControlling]);
+  const localPlaying = useCallback(() => !controllingRef.current && usePlayerStore.getState().isPlaying, []);
+  useRemoteDevices({ enabled: !!user && backendReady, me: identity?.deviceId ?? null, localPlaying, onAttach, onDetach });
+
   const value = useMemo<PlayerControls>(
     () => ({
       current, isPlaying, duration, queue, index, context,
       playTrack: userPlayTrack, playAt: userPlayAt, playBack: userPlayBack, toggle: userToggle, next: userNext, prev: userPrev,
-      seek, setVolume, rate, setRate, canSetRate, retry,
+      seek, setVolume, rate, setRate, canSetRate, retry, moveTo, moveHere,
     }),
-    [current, isPlaying, duration, queue, index, context, userPlayTrack, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry],
+    [current, isPlaying, duration, queue, index, context, userPlayTrack, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry, moveTo, moveHere],
   );
 
   // Pranks (admin only, never announced) sit beside the tree rather than in

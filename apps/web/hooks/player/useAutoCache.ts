@@ -3,6 +3,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useRemoteStore } from '@/stores/useRemoteStore';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import { logger } from '@/lib/logger/client';
 import type { CacheAdapter } from '@/lib/autoCache/adapter';
@@ -138,7 +139,9 @@ export function useAutoCache({ backendRef, backendKind, createAdapter = createCa
         conditions: () => conditionsRef.current,
         settings: () => {
           const s = useSettingsStore.getState();
-          return { enabled: s.autoCacheEnabled };
+          // Controlling another device: the songs play there, so nothing
+          // here is worth downloading.
+          return { enabled: s.autoCacheEnabled && useRemoteStore.getState().mode !== 'controlling' };
         },
         overrides: readTestOverrides(),
         onCacheChange: () => useAutoCacheStore.getState().refresh(),

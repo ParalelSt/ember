@@ -228,14 +228,15 @@ export function createRemoteBackend(events: AudioBackendEvents, link: RemoteLink
     back(i) {
       backend.playAt(i);
     },
-    // A mode the snapshot brought is the device's own: not sent back.
+    // A mode the snapshot brought is the device's own: not sent back. Nor
+    // is this page's own mode before the device has said what it has.
     setLoop(mode) {
-      if (mode === lastLoop) return;
+      if (!snap || mode === lastLoop) return;
       lastLoop = mode;
       post({ type: 'setLoop', args: { mode } });
     },
     setShuffle(on) {
-      if (on === lastShuffle) return;
+      if (!snap || on === lastShuffle) return;
       lastShuffle = on;
       post({ type: 'setShuffle', args: { on } });
     },

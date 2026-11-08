@@ -145,4 +145,14 @@ describe('playingOn and the button label', () => {
   it('says nothing on a page that cannot pick outputs', () => {
     expect(playingOn({ ...ANDROID, platform: null }, NO_CAST)).toBeNull();
   });
+
+  it('names the device this one controls: after casting, before the headset', () => {
+    const cast: CastSummary = { path: 'android', availability: 'available', connection: 'connected', deviceName: 'Living Room TV' };
+    expect(playingOn(ANDROID, NO_CAST, 'Windows')).toBe('Windows');
+    expect(playingOn(ANDROID, cast, 'Windows')).toBe('Living Room TV');
+    expect(playingOn({ ...ANDROID, platform: null }, NO_CAST, 'Windows')).toBe('Windows');
+    expect(devicesLabel(NO_OUT, NO_CAST, 'Windows')).toBe('Devices: playing on Windows');
+    expect(devicesButtonVisible({ ...NO_OUT, platform: null }, NO_CAST, 'Windows')).toBe(true);
+    expect(devicesButtonVisible({ ...NO_OUT, platform: null }, NO_CAST)).toBe(false);
+  });
 });

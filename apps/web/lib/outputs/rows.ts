@@ -128,26 +128,30 @@ export function deviceSections(out: OutputSummary, cast: CastSummary): DeviceSec
 }
 
 /** Whether the Devices button belongs on screen at all: an output to
- *  switch, or a way to cast (the cast button's own rule). */
-export function devicesButtonVisible(out: Pick<OutputSummary, 'platform' | 'devices' | 'systemPicker'>, cast: CastSummary): boolean {
+ *  switch, a way to cast (the cast button's own rule), or another device of
+ *  the account this one controls (`remote`, its name). */
+export function devicesButtonVisible(out: Pick<OutputSummary, 'platform' | 'devices' | 'systemPicker'>, cast: CastSummary, remote: string | null = null): boolean {
+  if (remote) return true;
   if (out.platform && (out.devices.length > 0 || out.systemPicker)) return true;
   if (!cast.path) return false;
   return cast.connection !== 'idle' || cast.availability !== 'none';
 }
 
-/** "Playing on Pixel Buds" under the full-screen player: casting, or a
+/** "Playing on Pixel Buds" under the full-screen player: casting, another
+ *  device of the account this one controls (`remote`, "Windows"), or a
  *  speaker or headset that is not the phone (or computer) itself. */
-export function playingOn(out: Pick<OutputSummary, 'platform' | 'currentName' | 'currentKind'>, cast: CastSummary): string | null {
+export function playingOn(out: Pick<OutputSummary, 'platform' | 'currentName' | 'currentKind'>, cast: CastSummary, remote: string | null = null): string | null {
   if (cast.connection === 'connected') {
     return cast.path === 'airplay' ? 'AirPlay' : cast.deviceName ?? 'a cast device';
   }
+  if (remote) return remote;
   if (!out.platform || !out.currentName || !out.currentKind || isBuiltIn(out.currentKind)) return null;
   return out.currentName;
 }
 
 /** The Devices button's accessible name and tooltip. */
-export function devicesLabel(out: Pick<OutputSummary, 'platform' | 'currentName' | 'currentKind'>, cast: CastSummary): string {
+export function devicesLabel(out: Pick<OutputSummary, 'platform' | 'currentName' | 'currentKind'>, cast: CastSummary, remote: string | null = null): string {
   if (cast.connection === 'connecting') return 'Devices: connecting to a cast device';
-  const on = playingOn(out, cast);
+  const on = playingOn(out, cast, remote);
   return on ? `Devices: playing on ${on}` : 'Devices';
 }
