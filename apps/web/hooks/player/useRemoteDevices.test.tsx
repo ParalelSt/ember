@@ -96,18 +96,34 @@ describe('useRemoteDevices', () => {
     expect(self.onAttach).not.toHaveBeenCalled();
   });
 
-  it('leaves remote mode once the device has been stale for 35 s', async () => {
+  it('leaves remote mode at the first answer that calls the device stale', async () => {
     let stale = false;
     const fetchState = vi.fn(async () => answer([windows({ stale })], stale ? null : WIN));
     const { onDetach } = setup(fetchState);
     await vi.advanceTimersByTimeAsync(0);
     expect(useRemoteStore.getState().mode).toBe('controlling');
     stale = true;
+    await vi.advanceTimersByTimeAsync(POLL_CONTROLLING_MS);
+    expect(onDetach).toHaveBeenCalledTimes(1);
+    expect(useRemoteStore.getState().mode).toBe('local');
+  });
+
+  it('a device missing from the answers (a host restart) gets 35 s before this one gives up', async () => {
+    let present = true;
+    const fetchState = vi.fn(async () => (present ? answer([windows()]) : answer([], null)));
+    const { onDetach } = setup(fetchState);
+    await vi.advanceTimersByTimeAsync(0);
+    present = false;
+    await vi.advanceTimersByTimeAsync(STALE_MS - 2000);
+    expect(onDetach).not.toHaveBeenCalled();
+    // Back within the grace: still controlling.
+    present = true;
+    await vi.advanceTimersByTimeAsync(POLL_CONTROLLING_MS);
+    present = false;
     await vi.advanceTimersByTimeAsync(STALE_MS - 2000);
     expect(onDetach).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(4000);
     expect(onDetach).toHaveBeenCalledTimes(1);
-    expect(useRemoteStore.getState().mode).toBe('local');
   });
 
   it('follows the music to a third device that started playing', async () => {

@@ -16,7 +16,8 @@ import { mergeDevices, remoteDevice, useRemoteStore } from '@/stores/useRemoteSt
  *  controlling another:
  *  - another device is active and nothing plays here: attach to it;
  *  - the active device changes to a third one while controlling: follow it;
- *  - the device controlled has not been seen fresh for STALE_MS: detach. */
+ *  - the device controlled is stale (the server's STALE_MS without a beat),
+ *    or has been missing (or unanswered) for STALE_MS: detach. */
 export function useRemoteDevices({
   enabled,
   me,
@@ -73,7 +74,14 @@ export function useRemoteDevices({
         return;
       }
       const target = remoteDevice(st.target);
-      if (target && !target.stale) lastFresh = now;
+      // The server calls a device stale after STALE_MS without a beat:
+      // that is the wait already. A device missing from the answer (the
+      // host restarted) gets the same grace here before giving up on it.
+      if (target?.stale) {
+        latest.current.onDetach();
+        return;
+      }
+      if (target) lastFresh = now;
       if (active && !active.stale && active.deviceId !== me && active.deviceId !== st.target && active.snapshot?.isPlaying) {
         lastFresh = now;
         st.set({ target: active.deviceId });
