@@ -7,6 +7,7 @@ import { useRemoteStore } from '@/stores/useRemoteStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
 import { buildSnapshot } from '@/lib/remote/snapshot';
+import { addToQueue } from '@/lib/playback/addToQueue';
 import type { RemoteDevice, StateAnswer } from '@/lib/remote/types';
 
 // Controlling another device, end to end in the provider (W6): the phone
@@ -170,6 +171,20 @@ describe('PlayerProvider: controlling another device', () => {
     await openPhone();
     act(() => controls!.playAt(1));
     expect(remoteApi.command).toHaveBeenLastCalledWith(WIN, ME, { type: 'playAt', args: { index: 2 } });
+  });
+
+  it('Add to queue while controlling adds the song on the other device', async () => {
+    await openPhone();
+    act(() => {
+      const next = addToQueue(usePlayerStore.getState(), B);
+      if (next) usePlayerStore.setState(next);
+    });
+    const cmd = commands().at(-1) as { type: string; args: { tracks: { id: string }[] } };
+    expect(cmd.type).toBe('addToQueue');
+    expect(cmd.args.tracks.map((q) => q.id)).toEqual([B.id]);
+    // The next snapshot (without the song yet) adds nothing again.
+    await tick(1500);
+    expect(commands().filter((c) => (c as { type: string }).type === 'addToQueue')).toHaveLength(1);
   });
 
   it('plays recorded on the other device are not recorded here', async () => {

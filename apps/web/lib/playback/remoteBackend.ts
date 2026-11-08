@@ -3,8 +3,9 @@
 import { REVERT_AFTER_MS } from '@/lib/remote/cadence';
 import { extrapolate } from '@/lib/remote/extrapolate';
 import { queueForTransfer } from '@/lib/remote/handover';
-import type { CommandBody, Snapshot } from '@/lib/remote/types';
+import { ADD_TO_QUEUE_MAX, type CommandBody, type Snapshot } from '@/lib/remote/types';
 import type { LoopMode } from '@/stores/usePlayerStore';
+import type { Track } from '@/types/track';
 import type { AudioBackend, AudioBackendEvents } from './types';
 
 /** The other device, as the remote backend reaches it. The provider builds
@@ -29,6 +30,9 @@ export interface RemoteBackend extends AudioBackend {
   adopt(): void;
   /** A tap on entry `index` of the mirrored queue (the queue sheet). */
   playAt(index: number): void;
+  /** "Add to queue": the songs go after the playing one on the device, the
+   *  way they would here (lib/playback/addToQueue). */
+  addToQueue(tracks: Track[]): void;
   /** The latest snapshot of the controlled device. */
   snapshot(): Snapshot | null;
 }
@@ -227,6 +231,11 @@ export function createRemoteBackend(events: AudioBackendEvents, link: RemoteLink
     },
     back(i) {
       backend.playAt(i);
+    },
+    addToQueue(tracks) {
+      for (let k = 0; k < tracks.length; k += ADD_TO_QUEUE_MAX) {
+        post({ type: 'addToQueue', args: { tracks: tracks.slice(k, k + ADD_TO_QUEUE_MAX) } });
+      }
     },
     // A mode the snapshot brought is the device's own: not sent back. Nor
     // is this page's own mode before the device has said what it has.

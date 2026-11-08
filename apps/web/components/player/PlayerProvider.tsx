@@ -1530,11 +1530,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Not before the first load: the page's opening render would send the
     // saved queue here, and then the cold-start load sends it again.
-    if (!backendReady || !ownsQueue(backendKindRef, controllingRef) || fromNative()) return;
+    if (!backendReady || !ownsQueue(backendKindRef, controllingRef)) return;
     const b = backendRef.current;
     // The mirror of a device this one controls only changes by its
-    // snapshots; a new list from here went over as setQueue already.
-    if (controllingRef.current) return;
+    // snapshots; a new list from here went over as setQueue already. What
+    // is new here is "Add to queue": those songs go over as they are. Only
+    // songs added here carry the mark, so a snapshot never echoes back.
+    if (controllingRef.current) {
+      const known = new Set(sentQueueRef.current ?? []);
+      const added = queue.filter((t) => (t as QueuedTrack).queued && !known.has(t));
+      sentQueueRef.current = queue;
+      if (added.length && isRemoteBackend(b)) b.addToQueue(added);
+      return;
+    }
+    if (fromNative()) return;
     if (!b?.setQueue || !current || queue === sentQueueRef.current) return;
     sentQueueRef.current = queue;
     b.setQueue(queue, index, usePlayerStore.getState().isPlaying);

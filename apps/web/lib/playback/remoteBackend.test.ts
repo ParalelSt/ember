@@ -116,6 +116,16 @@ describe('remote backend', () => {
     expect(cmd.args).toMatchObject({ index: 0, play: true, startSec: 0, context: { type: 'liked' } });
   });
 
+  it('Add to queue posts the songs, at most 50 per command', () => {
+    const { b, send } = setup();
+    b.adopt();
+    b.addToQueue(tracks.slice(0, 2));
+    expect(send).toHaveBeenLastCalledWith({ type: 'addToQueue', args: { tracks: tracks.slice(0, 2) } });
+    send.mockClear();
+    b.addToQueue(tracks.slice(0, 120));
+    expect(send.mock.calls.map((c) => (c[0] as { args: { tracks: unknown[] } }).args.tracks.length)).toEqual([50, 50, 20]);
+  });
+
   it('a playAt maps the mirror entry to the remote queue', () => {
     const { b, send } = setup(snapshotOf({}, 7));
     b.adopt();
