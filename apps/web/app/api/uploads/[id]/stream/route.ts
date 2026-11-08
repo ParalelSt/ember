@@ -5,6 +5,7 @@ import { readUpload } from '@/lib/uploads/record';
 import { resolveUploadPath } from '@/lib/uploads';
 import { serveFile } from '@/lib/serveFile';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { serverLogger } from '@/lib/logger/server';
 import { isPrefetchRequest, PREFETCH_HEADERS, prefetchLimitResponse } from '@/lib/prefetch';
 import { streamTokenUser } from '@/lib/streamToken';
 
@@ -30,7 +31,13 @@ export const GET = withRequestLog('uploads/[id]/stream', async (request: NextReq
     // The filename comes from our own record, but resolve defensively anyway,
     // this is the one place a bad value would read an arbitrary file.
     const full = resolveUploadPath(String(row.filename ?? ''));
-    if (!full || !fs.existsSync(full)) return new Response('file missing', { status: 404 });
+    if (!full || !fs.existsSync(full)) {
+      // The record says the song exists and its file is gone: the host's
+      // data, not a listener's mistake. The player only sees a 404, which
+      // withRequestLog does not log, so say it here.
+      serverLogger.error('uploads', 'upload file missing on disk', { id, filename: row.filename ?? null });
+      return new Response('file missing', { status: 404 });
+    }
 
     return serveFile(full, request.headers.get('range'), prefetch ? PREFETCH_HEADERS : {});
   } catch (e) {

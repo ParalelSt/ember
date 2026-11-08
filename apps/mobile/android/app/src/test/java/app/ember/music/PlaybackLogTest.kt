@@ -294,20 +294,68 @@ class PlaybackLogTest {
         assertEquals(2_500, focus.getJSONObject("data").getLong("ms"))
     }
 
-    @Test fun `a player error carries its errorCodeName and HTTP status, never the URL`() {
-        val log = logger()
-        val watch = PlayWatch(log, delay, clock = { now })
+    private fun refused(status: Int): PlaybackException {
         val spec = androidx.media3.datasource.DataSpec(android.net.Uri.parse("http://10.0.2.2:3069/api/youtube/stream/abc?sig=SECRET"))
         val http = androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException(
-            403, "Forbidden", null, emptyMap(), spec, ByteArray(0))
-        watch.onPlayerError(androidx.media3.exoplayer.ExoPlaybackException.createForSource(http, PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS))
+            status, "Forbidden", null, emptyMap(), spec, ByteArray(0))
+        return androidx.media3.exoplayer.ExoPlaybackException.createForSource(http, PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS)
+    }
+
+    @Test fun `a player error carries its errorCodeName, HTTP status and song, never the URL`() {
+        val log = logger()
+        val watch = PlayWatch(log, delay, clock = { now })
+        watch.onMediaItemTransition(MediaItem.Builder().setMediaId("youtube:abc").build(), Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)
+        watch.onPlayerError(refused(403))
+        log.flush()
         val e = events(sent.single()).single()
-        assertEquals("error", e.getString("level"))
+        // The host refusing a song is the unplayable flow's, not a bug.
+        assertEquals("warn", e.getString("level"))
         val data = e.getJSONObject("data")
         assertEquals("ERROR_CODE_IO_BAD_HTTP_STATUS", data.getString("errorCodeName"))
         assertEquals(403, data.getInt("httpStatus"))
+        assertEquals("youtube:abc", data.getString("trackId"))
+        assertEquals(false, data.getBoolean("station"))
+        assertEquals(false, data.getBoolean("offline"))
         assertEquals("10.0.2.2", data.getString("host"))
         assertFalse(e.toString().contains("SECRET"))
+    }
+
+    @Test fun `a decoder failure stays an error and goes out at once, a request Ember built wrong too`() {
+        val log = logger()
+        val watch = PlayWatch(log, delay, clock = { now })
+        watch.onPlayerError(PlaybackException("decoder died", null, PlaybackException.ERROR_CODE_DECODING_FAILED))
+        assertEquals("error", events(sent.single()).single().getString("level"))
+        sent.clear()
+        watch.onPlayerError(refused(416))
+        assertEquals("error", events(sent.single()).single().getString("level"))
+    }
+
+    @Test fun `a downloaded song that will not load offline stays an error`() {
+        val log = logger()
+        val watch = PlayWatch(log, delay, clock = { now }, online = { false }, local = { it == "youtube:onphone" })
+        watch.onMediaItemTransition(MediaItem.Builder().setMediaId("youtube:onphone").build(), Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+        watch.onPlayerError(PlaybackException("Source error", null, PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND))
+        watch.onPlayerError(PlaybackException("Source error", null, PlaybackException.ERROR_CODE_IO_UNSPECIFIED))
+        log.flush()
+        val logged = sent.flatMap { events(it) }
+        assertEquals(listOf("error", "error"), logged.map { it.getString("level") })
+        assertEquals(true, logged[1].getJSONObject("data").getBoolean("local"))
+    }
+
+    @Test fun `a dead station and a load that fails offline are warnings`() {
+        var phoneOnline = true
+        val log = logger()
+        val watch = PlayWatch(log, delay, clock = { now }, online = { phoneOnline })
+        watch.onMediaItemTransition(MediaItem.Builder().setMediaId("station:0a1b2c3d").build(), Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+        watch.onPlayerError(PlaybackException("Source error", null, PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED))
+        watch.onMediaItemTransition(MediaItem.Builder().setMediaId("youtube:abc").build(), Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+        phoneOnline = false
+        watch.onPlayerError(PlaybackException("Source error", null, PlaybackException.ERROR_CODE_IO_UNSPECIFIED))
+        log.flush()
+        val logged = sent.flatMap { events(it) }
+        assertEquals(listOf("warn", "warn"), logged.map { it.getString("level") })
+        assertEquals(true, logged[0].getJSONObject("data").getBoolean("station"))
+        assertEquals(true, logged[1].getJSONObject("data").getBoolean("offline"))
     }
 
     // ── Exit reasons ────────────────────────────────────────────────────

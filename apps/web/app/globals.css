@@ -434,3 +434,7 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
 @media (prefers-reduced-motion: reduce) {
   .ember-just-approved { animation: none !important; }
 }
+
+/* The Windows app's own show-password eye (Edge WebView2) is dark grey on
+   Ember's dark fields: paint it white. */
+input[type="password"]::-ms-reveal { filter: brightness(0) invert(1); }
