@@ -7,6 +7,11 @@ import { decideAttach } from '@/lib/remote/attach';
 import { controllerPollDelay } from '@/lib/remote/cadence';
 import { clockOffset } from '@/lib/remote/extrapolate';
 import { STALE_MS, type StateAnswer } from '@/lib/remote/types';
+
+/** After the target changes (a move), the music is not "elsewhere" yet:
+ *  the device it went to may not have started. Following the device still
+ *  playing waits until the new target has reported, or this long. */
+export const FOLLOW_GRACE_MS = 5_000;
 import { mergeDevices, remoteDevice, useRemoteStore } from '@/stores/useRemoteStore';
 
 /** The controller's side: asks the server about the account's other
@@ -46,6 +51,8 @@ export function useRemoteDevices({
     const backoff = createBackoff();
     /** When the controlled device was last seen fresh here. */
     let lastFresh = Date.now();
+    /** When the music last moved from the device controlled to another. */
+    let targetSince = 0;
 
     const hidden = () => typeof document !== 'undefined' && document.hidden;
 
@@ -81,9 +88,13 @@ export function useRemoteDevices({
       }
       if (target) lastFresh = now;
       if (active && !active.stale && active.deviceId !== me && active.deviceId !== st.target && active.snapshot?.isPlaying) {
-        lastFresh = now;
-        st.set({ target: active.deviceId });
-        return;
+        // The target's report since the change, in this device's clock.
+        const reported = !!target?.snapshot && target.snapshot.at - st.offset > targetSince;
+        if (reported || now - targetSince >= FOLLOW_GRACE_MS) {
+          lastFresh = now;
+          st.set({ target: active.deviceId });
+          return;
+        }
       }
       if (now - lastFresh > STALE_MS) latest.current.onDetach();
     };
@@ -128,6 +139,7 @@ export function useRemoteDevices({
     document.addEventListener('visibilitychange', onVisibility);
     // Controlling starts or stops, the picker opens: a new cadence.
     const unsubscribe = useRemoteStore.subscribe((s, p) => {
+      if (s.target && p.target && s.target !== p.target) targetSince = Date.now();
       if (s.mode !== p.mode) {
         lastFresh = Date.now();
         schedule();

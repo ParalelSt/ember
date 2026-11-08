@@ -367,7 +367,7 @@ function castRemote() {
   let status: CastRemoteStatus = { state: 'idle', time: 0, duration: 0, idleReason: null };
   const subs = new Set<(s: CastRemoteStatus) => void>();
   return {
-    load: vi.fn(async (_media: { url: string }, _opts: { startAt: number; autoplay: boolean }) => {}),
+    load: vi.fn<(media: { url: string }, opts: { startAt: number; autoplay: boolean }) => Promise<void>>(async () => {}),
     play: vi.fn(), pause: vi.fn(), seek: vi.fn(), stop: vi.fn(), setVolume: vi.fn(),
     status: () => status,
     subscribe(cb: (s: CastRemoteStatus) => void) {

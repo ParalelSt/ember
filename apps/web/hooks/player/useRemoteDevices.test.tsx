@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
-import { useRemoteDevices } from './useRemoteDevices';
+import { act, renderHook } from '@testing-library/react';
+import { FOLLOW_GRACE_MS, useRemoteDevices } from './useRemoteDevices';
 import { POLL_CONTROLLING_MS, POLL_PICKER_MS } from '@/lib/remote/cadence';
 import { buildSnapshot } from '@/lib/remote/snapshot';
 import { STALE_MS, type RemoteDevice, type StateAnswer } from '@/lib/remote/types';
@@ -154,4 +154,20 @@ describe('useRemoteDevices', () => {
     await vi.advanceTimersByTimeAsync(POLL_CONTROLLING_MS);
     expect(useRemoteStore.getState().target).toBe('mac-device-1');
   });
+
+  it('right after a move to another device, does not flip back to the one still playing', async () => {
+    const mac = windows({ deviceId: 'mac-device-1', label: 'macOS' });
+    // Windows keeps playing; macOS has not reported since the move.
+    const fetchState = vi.fn(async () => answer([windows(), { ...mac, snapshot: { ...mac.snapshot!, at: 0, isPlaying: false } }], WIN));
+    setup(fetchState);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useRemoteStore.getState().target).toBe(WIN);
+    act(() => useRemoteStore.getState().set({ target: 'mac-device-1' }));
+    await vi.advanceTimersByTimeAsync(POLL_CONTROLLING_MS * 2);
+    expect(useRemoteStore.getState().target).toBe('mac-device-1');
+    // Still nothing from macOS after the grace: follow the music.
+    await vi.advanceTimersByTimeAsync(FOLLOW_GRACE_MS);
+    expect(useRemoteStore.getState().target).toBe(WIN);
+  });
 });
+
