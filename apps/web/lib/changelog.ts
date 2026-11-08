@@ -26,6 +26,22 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'play-on-other-devices',
+    version: '0.7.40',
+    date: '2026-11-08',
+    title: 'Play on your other devices',
+    summary: 'Control what plays on your computer from your phone, and move the music between devices.',
+    bullets: [
+      'Open Ember on your phone while your computer plays and the player controls it: play, pause, skip, seek, add to queue, or tap any song to play it there.',
+      'Devices now lists your other devices: pick one to move the music there, or This phone to bring it back. Only one device plays at a time.',
+      'Back closes only the sheet on top and keeps you on the page you were on, never sending you to the search page.',
+      'Radio keeps going with the charts when recommendations fail to load.',
+      'When a song stops or will not play, the report now says where it played from and why, so these can be fixed.',
+      'The show-password eye on Windows is now white, readable on the dark field.',
+      'The party volume slider card describes what it really does.',
+    ],
+  },
+  {
     id: 'android-update-install',
     version: '0.7.39',
     date: '2026-11-04',

@@ -1,3 +1,11 @@
+# 0.7.40: Play on your other devices (android 0.4.33)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh (it also updates yt-dlp). Then please check
+the server log for "download failed, falling back to live stream" and tell
+Aron if it shows up. New apps: Android 0.4.33 (versionCode 38). Unchanged: iOS
+0.4.25, Windows 0.4.26, macOS 0.4.26, Linux 0.4.26. Tags: `android-v0.4.33`.
+
 # 0.7.39: Steadier Android updates (android 0.4.32)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
