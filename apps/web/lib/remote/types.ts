@@ -93,6 +93,10 @@ export interface BeatBody {
   full?: FullState;
   /** Ids of the commands this device has run since its last beat. */
   acked: string[];
+  /** Nothing to say back yet? Then the server holds the answer up to
+   *  HOLD_MS and answers early when a command comes in or another device
+   *  starts watching (a long poll: lib/remote/cadence). */
+  hold?: boolean;
 }
 
 export interface BeatAnswer {
@@ -144,6 +148,8 @@ export const COMMAND_TTL_MS = 20_000;
 export const TAKEOVER_WINDOW_MS = 2 * 60_000;
 /** A watcher counts while it asked for the state this recently. */
 export const WATCH_FRESH_MS = 6_000;
+/** The longest a held beat waits for news before it is answered. */
+export const HOLD_MS = 15_000;
 
 /** Payload bounds. */
 export const UP_NEXT_MAX = 20;

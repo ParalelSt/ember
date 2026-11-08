@@ -38,6 +38,12 @@ describe('parseBeat', () => {
     expect(parseBeat({ ...base, light, acked: ['ok', 'not ok!'] })).toBeNull();
   });
 
+  it('takes hold as a plain switch', () => {
+    expect(parseBeat({ ...base, light, hold: true })?.hold).toBe(true);
+    expect(parseBeat({ ...base, light, hold: false })?.hold).toBeUndefined();
+    expect(parseBeat({ ...base, light, hold: 'yes' })).toBeNull();
+  });
+
   it('takes a known browser family only', () => {
     expect(parseBeat({ ...base, light, platform: 'browser', browser: 'Firefox' })?.browser).toBe('Firefox');
     expect(parseBeat({ ...base, light, platform: 'browser', browser: 'Netscape' })).toBeNull();

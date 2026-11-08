@@ -61,4 +61,24 @@ describe('POST /api/remote/beat', () => {
     for (let i = 0; i < 90; i++) expect((await post(beatBody('win-device-1', { full: undefined, light: remoteLight() }))).status).toBe(200);
     expect((await post(beatBody('win-device-1'))).status).toBe(429);
   });
+
+  it('holds a beat with nothing to say until a command comes in', async () => {
+    await post(beatBody('win-device-1'));
+    let answered: { commands: { type: string }[] } | null = null;
+    const pending = Promise.resolve(post(beatBody('win-device-1', { full: undefined, light: remoteLight(), hold: true })))
+      .then(async (r: Response) => { answered = await r.json(); });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(answered).toBeNull();
+    remoteStore().command('u1', 'win-device-1', 'phone-device-1', { type: 'pause' }, Date.now());
+    await pending;
+    expect(answered!.commands.map((c) => c.type)).toEqual(['pause']);
+  });
+
+  it('answers a held beat at once when a command already waits', async () => {
+    await post(beatBody('win-device-1'));
+    remoteStore().command('u1', 'win-device-1', 'phone-device-1', { type: 'next' }, Date.now());
+    const res = await post(beatBody('win-device-1', { full: undefined, light: remoteLight(), hold: true }));
+    expect((await res.json()).commands.map((c: { type: string }) => c.type)).toEqual(['next']);
+  });
 });
+

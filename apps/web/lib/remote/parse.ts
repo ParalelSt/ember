@@ -189,6 +189,10 @@ export function parseBeat(body: unknown): BeatBody | null {
     shell: body.shell as RemoteShell,
     acked: acked as string[],
   };
+  if (body.hold !== undefined) {
+    if (typeof body.hold !== 'boolean') return null;
+    if (body.hold) out.hold = true;
+  }
   if (body.browser !== undefined && body.browser !== null) {
     const browser = sanitizeBrowser(body.browser);
     if (!browser) return null;

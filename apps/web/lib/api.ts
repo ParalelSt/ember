@@ -235,12 +235,13 @@ async function quiet<T>(path: string, { method = 'GET', body }: ReqOptions = {})
 /** Like quiet, for the remote control's polls and commands: no log entry
  *  per failed poll, but the error keeps the server's sentence (a 409 says
  *  which device is not reachable), the status and Retry-After. */
-async function remoteCall<T>(path: string, { method = 'GET', body }: ReqOptions = {}): Promise<T> {
+async function remoteCall<T>(path: string, { method = 'GET', body, signal }: ReqOptions = {}): Promise<T> {
   const res = await fetch(`${API_BASE}/api${path}`, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
     credentials: 'include',
+    signal,
   });
   const data = (await res.json().catch(() => null)) as { error?: unknown } | null;
   if (!res.ok) {
@@ -815,7 +816,7 @@ export const api = {
 
   /** Controlling playback on your other devices (lib/remote). */
   remote: {
-    beat: (body: BeatBody) => remoteCall<BeatAnswer>('/remote/beat', { method: 'POST', body }),
+    beat: (body: BeatBody, signal?: AbortSignal) => remoteCall<BeatAnswer>('/remote/beat', { method: 'POST', body, signal }),
     state: (device: string, rev: number | null, controlling: string | null = null) =>
       remoteCall<StateAnswer>(`/remote/state?device=${encodeURIComponent(device)}${rev !== null ? `&rev=${rev}` : ''}${controlling ? `&controlling=${encodeURIComponent(controlling)}` : ''}`),
     command: (target: string, from: string, command: CommandBody) =>

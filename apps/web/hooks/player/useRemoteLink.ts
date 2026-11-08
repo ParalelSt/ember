@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { addToQueue } from '@/lib/playback/addToQueue';
 import { claimSingleton, createBackoff, releaseSingleton, retryAfterOf } from '@/lib/pranks/backoff';
-import { BURST_MAX, BURST_WINDOW_MS, CHANGE_DEBOUNCE_MS, nextBeatDelay } from '@/lib/remote/cadence';
+import { BEAT_WATCHED_MS, BURST_MAX, BURST_WINDOW_MS, CHANGE_DEBOUNCE_MS, HELD_TOO_SOON_MS, nextBeat } from '@/lib/remote/cadence';
 import { buildSnapshot, lightOf } from '@/lib/remote/snapshot';
 import type { BeatAnswer, BeatBody, RemoteCommand, RemoteShell } from '@/lib/remote/types';
 import type { BrowserFamily, DevicePlatform } from '@/lib/versions/label';
@@ -47,9 +47,10 @@ const playStateKey = (s: ReturnType<typeof usePlayerStore.getState>) =>
 
 /** The playing device's side of "control playback on your other devices":
  *  a heartbeat to the server with what plays here (lib/remote/cadence: 1.5 s
- *  while another device watches, 10 s while nobody does, 30 s paused, and at
- *  once on a change), which brings back the commands other devices sent, run
- *  through the provider's controls and acknowledged on the next beat.
+ *  while another device watches, a held beat (long poll) while nobody does
+ *  or while paused, and at once on a change), which brings back the
+ *  commands other devices sent, run through the provider's controls and
+ *  acknowledged on the next beat.
  *
  *  Beats go on while the page is hidden: the player may be a minimized
  *  desktop window. One link per page (claimSingleton). */
@@ -57,13 +58,13 @@ export function useRemoteLink({
   enabled,
   identity,
   actionsRef,
-  beat = (body: BeatBody) => api.remote.beat(body),
+  beat = (body: BeatBody, signal?: AbortSignal) => api.remote.beat(body, signal),
   notify = (message: string) => toast(message),
 }: {
   enabled: boolean;
   identity: RemoteIdentity | null;
   actionsRef: RefObject<RemoteLinkActions | null>;
-  beat?: (body: BeatBody) => Promise<BeatAnswer>;
+  beat?: (body: BeatBody, signal?: AbortSignal) => Promise<BeatAnswer>;
   notify?: (message: string) => void;
 }) {
   const beatRef = useRef(beat);
@@ -92,6 +93,20 @@ export function useRemoteLink({
     const backoff = createBackoff();
     let pausedSince = Date.now();
     let lastToast = 0;
+    /** The beat the server is holding, to cut short on a change here. */
+    let held: AbortController | null = null;
+    /** The last held beat came back at once with no news. */
+    let tooSoon = false;
+
+    const plan = (now: number) => {
+      const st = usePlayerStore.getState();
+      return nextBeat({
+        hasTrack: !!st.queue[st.index],
+        isPlaying: st.isPlaying,
+        watchers,
+        pausedForMs: st.isPlaying ? 0 : now - pausedSince,
+      });
+    };
 
     const clearTimer = () => {
       if (timer) clearTimeout(timer);
@@ -106,13 +121,9 @@ export function useRemoteLink({
         timer = setTimeout(send, backoff.remaining(now));
         return;
       }
-      const st = usePlayerStore.getState();
-      const delay = nextBeatDelay({
-        hasTrack: !!st.queue[st.index],
-        isPlaying: st.isPlaying,
-        watchers,
-        pausedForMs: st.isPlaying ? 0 : now - pausedSince,
-      });
+      const next = plan(now);
+      // A held beat that came straight back is not held again at once.
+      const delay = next ? (next.hold && tooSoon ? Math.max(next.delay, BEAT_WATCHED_MS) : next.delay) : null;
       // Owed acknowledgements go out even when nothing else would.
       const wait = delay ?? (acked.length ? 1_000 : null);
       if (wait !== null) timer = setTimeout(send, wait);
@@ -168,6 +179,9 @@ export function useRemoteLink({
       clearTimer();
       if (disposed) return;
       if (inFlight) {
+        // News here: the beat the server holds is cut short, and this one
+        // follows it.
+        held?.abort();
         again = true;
         return;
       }
@@ -184,16 +198,22 @@ export function useRemoteLink({
       const sendFull = wantFull || key !== lastFullKey;
       const sending = acked;
       acked = [];
+      const hold = !!plan(now)?.hold;
       const body: BeatBody = {
         ...identity!,
         acked: sending,
         ...(sendFull ? { full } : { light: lightOf(full) }),
+        ...(hold ? { hold: true } : {}),
       };
+      const ctrl = hold ? new AbortController() : null;
+      held = ctrl;
       inFlight = true;
       try {
-        const answer = await beatRef.current(body);
+        const answer = await beatRef.current(body, ctrl?.signal);
         if (disposed) return;
         backoff.ok();
+        tooSoon = hold && Date.now() - now < HELD_TOO_SOON_MS && answer.commands.length === 0
+          && answer.watchers === 0 && !answer.want && !answer.yield;
         if (sendFull) lastFullKey = key;
         watchers = answer.watchers;
         wantFull = answer.want === 'full';
@@ -222,13 +242,17 @@ export function useRemoteLink({
       } catch (e) {
         if (disposed) return;
         acked = [...sending, ...acked];
-        backoff.fail(retryAfterOf(e));
+        // Cut short on purpose (a change here): not a failure.
+        if (!ctrl?.signal.aborted) backoff.fail(retryAfterOf(e));
       } finally {
         inFlight = false;
+        if (held === ctrl) held = null;
       }
       if (again) {
+        // The change's own beat comes next, and schedules after itself.
         again = false;
         change(true);
+        return;
       }
       schedule();
     }
@@ -244,6 +268,8 @@ export function useRemoteLink({
         burst.push(now);
       }
       if (debounce) clearTimeout(debounce);
+      // The change's beat stands in for the next one on the cadence.
+      clearTimer();
       debounce = setTimeout(() => {
         debounce = null;
         void send();
@@ -270,6 +296,7 @@ export function useRemoteLink({
     void send();
     return () => {
       disposed = true;
+      held?.abort();
       unsubscribe();
       clearTimer();
       if (debounce) clearTimeout(debounce);

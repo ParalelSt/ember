@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BEAT_PAUSED_MS, BEAT_UNWATCHED_MS, BEAT_WATCHED_MS, POLL_CONTROLLING_MS, POLL_PICKER_MS, controllerPollDelay, nextBeatDelay } from './cadence';
+import { BEAT_WATCHED_MS, PAUSED_GAP_MS, POLL_CONTROLLING_MS, POLL_PICKER_MS, controllerPollDelay, nextBeat } from './cadence';
 import { buildSnapshot, lightOf, queueHash, type PlayerStateLike } from './snapshot';
 import { clockOffset, extrapolate } from './extrapolate';
 import { decideAttach } from './attach';
@@ -24,13 +24,13 @@ const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
 
 describe('cadence', () => {
   it.each([
-    [{ hasTrack: true, isPlaying: true, watchers: 1, pausedForMs: 0 }, BEAT_WATCHED_MS],
-    [{ hasTrack: true, isPlaying: true, watchers: 0, pausedForMs: 0 }, BEAT_UNWATCHED_MS],
-    [{ hasTrack: true, isPlaying: false, watchers: 3, pausedForMs: 1000 }, BEAT_PAUSED_MS],
+    [{ hasTrack: true, isPlaying: true, watchers: 1, pausedForMs: 0 }, { delay: BEAT_WATCHED_MS, hold: false }],
+    [{ hasTrack: true, isPlaying: true, watchers: 0, pausedForMs: 0 }, { delay: 0, hold: true }],
+    [{ hasTrack: true, isPlaying: false, watchers: 3, pausedForMs: 1000 }, { delay: PAUSED_GAP_MS, hold: true }],
     [{ hasTrack: true, isPlaying: false, watchers: 0, pausedForMs: TAKEOVER_WINDOW_MS + 1 }, null],
     [{ hasTrack: false, isPlaying: false, watchers: 0, pausedForMs: 0 }, null],
-  ])('beat %o -> %s', (state, want) => {
-    expect(nextBeatDelay(state)).toBe(want);
+  ])('beat %o -> %o', (state, want) => {
+    expect(nextBeat(state)).toEqual(want);
   });
 
   it.each([

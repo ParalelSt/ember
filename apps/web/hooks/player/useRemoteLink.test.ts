@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useRemoteLink, type RemoteIdentity, type RemoteLinkActions } from './useRemoteLink';
-import { BEAT_UNWATCHED_MS, BEAT_WATCHED_MS } from '@/lib/remote/cadence';
+import { BEAT_WATCHED_MS, PAUSED_GAP_MS } from '@/lib/remote/cadence';
+import { HOLD_MS } from '@/lib/remote/types';
 import type { BeatAnswer, BeatBody, RemoteCommand } from '@/lib/remote/types';
 import { makeTrack } from '@/test-utils/fakeBackend';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -14,7 +15,7 @@ const A = makeTrack({ id: 'youtube:a', sourceId: 'a', title: 'A', streamUrl: '/s
 const B = makeTrack({ id: 'youtube:b', sourceId: 'b', title: 'B', streamUrl: '/s/b' });
 const identity: RemoteIdentity = { deviceId: 'windows-device', label: 'Windows', platform: 'windows', shell: 'tauri' };
 
-type Beat = (body: BeatBody) => Promise<BeatAnswer>;
+type Beat = (body: BeatBody, signal?: AbortSignal) => Promise<BeatAnswer>;
 const answer = (over: Partial<BeatAnswer> = {}): BeatAnswer => ({ now: Date.now(), commands: [], watchers: 0, active: identity.deviceId, ...over });
 const command = (over: Partial<RemoteCommand> & Pick<RemoteCommand, 'type'>): RemoteCommand =>
   ({ id: `c${Math.random().toString(36).slice(2, 8)}`, issuedBy: 'phone-device', issuedAt: 0, expiresAt: Date.now() + 20_000, ...over }) as RemoteCommand;
@@ -28,14 +29,32 @@ function actions(): FakeActions {
   };
 }
 
-/** A fake server: each beat gets the next queued answer, else a plain one. */
-function server(...answers: Array<BeatAnswer | Error>) {
+/** An answer the server gives a held beat after `ms` (news arrived). */
+const after = (ms: number, a: BeatAnswer = answer()) => ({ ms, a });
+type Planned = BeatAnswer | Error | ReturnType<typeof after>;
+
+/** A fake server: each beat gets the next queued answer, else a plain one.
+ *  A held beat with no news planned is answered after HOLD_MS; an abort
+ *  ends it. `holding` turns holding on (a real server holds). */
+function server(...answers: Planned[]) {
   const queue = [...answers];
-  return vi.fn<Beat>(async () => {
-    const next = queue.shift() ?? answer();
-    if (next instanceof Error) throw next;
-    return next;
-  });
+  const fn = vi.fn<Beat>((body, signal) => {
+    const next = queue.shift();
+    if (next instanceof Error) return Promise.reject(next);
+    const planned = next && 'ms' in next ? next : null;
+    const reply = planned ? planned.a : (next as BeatAnswer | undefined) ?? answer();
+    const wait = planned ? planned.ms : body.hold && fn.holding ? HOLD_MS : 0;
+    if (!wait) return Promise.resolve(reply);
+    return new Promise<BeatAnswer>((resolve, reject) => {
+      const t = setTimeout(() => resolve(reply), wait);
+      signal?.addEventListener('abort', () => {
+        clearTimeout(t);
+        reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      });
+    });
+  }) as ReturnType<typeof vi.fn<Beat>> & { holding: boolean };
+  fn.holding = false;
+  return fn;
 }
 
 function setup(beat: Beat, a = actions(), notify = vi.fn()) {
@@ -51,20 +70,67 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('useRemoteLink', () => {
-  it('beats at once with the full state, then every 10 s, every 1.5 s once watched', async () => {
-    const beat = server(answer(), answer({ watchers: 1 }));
+  it('while nobody watches, one held beat at a time, back to back', async () => {
+    const beat = server();
+    beat.holding = true;
     setup(beat);
     await vi.advanceTimersByTimeAsync(0);
     expect(beat).toHaveBeenCalledTimes(1);
-    expect(beat.mock.calls[0][0]).toMatchObject({ deviceId: 'windows-device', full: { trackId: A.id, isPlaying: true } });
-    await vi.advanceTimersByTimeAsync(BEAT_UNWATCHED_MS - 100);
+    expect(beat.mock.calls[0][0]).toMatchObject({ deviceId: 'windows-device', hold: true, full: { trackId: A.id, isPlaying: true } });
+    await vi.advanceTimersByTimeAsync(HOLD_MS - 100);
+    expect(beat).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(beat).toHaveBeenCalledTimes(2);
+    // Same song and queue: a light beat now, held again.
+    expect(beat.mock.calls[1][0]).toMatchObject({ hold: true });
+    expect(beat.mock.calls[1][0].light).toBeDefined();
+  });
+
+  it('a watcher answers the held beat at once; then a plain beat every 1.5 s', async () => {
+    const beat = server(after(200, answer({ watchers: 1 })), answer({ watchers: 1 }), answer({ watchers: 1 }));
+    setup(beat);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(beat).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(BEAT_WATCHED_MS);
+    expect(beat).toHaveBeenCalledTimes(2);
+    expect(beat.mock.calls[1][0].hold).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(BEAT_WATCHED_MS);
+    expect(beat).toHaveBeenCalledTimes(3);
+  });
+
+  it('a held beat that comes straight back is not held again for 1.5 s', async () => {
+    const beat = server();
+    setup(beat);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(beat).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(BEAT_WATCHED_MS - 100);
     expect(beat).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(100);
     expect(beat).toHaveBeenCalledTimes(2);
-    // Same song and queue: a light beat now.
-    expect(beat.mock.calls[1][0].light).toBeDefined();
-    await vi.advanceTimersByTimeAsync(BEAT_WATCHED_MS);
-    expect(beat).toHaveBeenCalledTimes(3);
+  });
+
+  it('a change here cuts the held beat short and beats with it', async () => {
+    const beat = server();
+    beat.holding = true;
+    setup(beat);
+    await vi.advanceTimersByTimeAsync(0);
+    usePlayerStore.setState({ isPlaying: false });
+    await vi.advanceTimersByTimeAsync(700);
+    expect(beat).toHaveBeenCalledTimes(2);
+    const sent = beat.mock.calls[1][0];
+    expect((sent.light ?? sent.full)?.isPlaying).toBe(false);
+  });
+
+  it('paused: a held beat, then 10 s, then the next', async () => {
+    usePlayerStore.setState({ isPlaying: false });
+    const beat = server(answer(), answer());
+    setup(beat);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(beat.mock.calls[0][0]).toMatchObject({ hold: true });
+    await vi.advanceTimersByTimeAsync(PAUSED_GAP_MS - 100);
+    expect(beat).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(beat).toHaveBeenCalledTimes(2);
   });
 
   it('a pause command runs once and is acknowledged on the next beat', async () => {
@@ -84,7 +150,7 @@ describe('useRemoteLink', () => {
     const { a } = setup(beat);
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(400);
-    await vi.advanceTimersByTimeAsync(BEAT_UNWATCHED_MS);
+    await vi.advanceTimersByTimeAsync(BEAT_WATCHED_MS * 2);
     expect(beat.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(a.next).toHaveBeenCalledTimes(1);
   });
@@ -140,7 +206,7 @@ describe('useRemoteLink', () => {
     const beat = server(answer(), answer({ want: 'full' }));
     setup(beat);
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(BEAT_UNWATCHED_MS);
+    await vi.advanceTimersByTimeAsync(BEAT_WATCHED_MS);
     expect(beat.mock.calls[1][0].light).toBeDefined();
     await vi.advanceTimersByTimeAsync(400);
     expect(beat).toHaveBeenCalledTimes(3);

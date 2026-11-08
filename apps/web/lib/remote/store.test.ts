@@ -1,7 +1,7 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRemoteStore, decideTakeover, pickActive, type ActiveCandidate, type RemoteStore } from './store';
-import { COMMAND_TTL_MS, DROP_MS, STALE_MS, TAKEOVER_WINDOW_MS, type BeatBody, type FullState, type LightState, type RemoteDevice } from './types';
+import { COMMAND_TTL_MS, DROP_MS, HOLD_MS, STALE_MS, TAKEOVER_WINDOW_MS, type BeatBody, type FullState, type LightState, type RemoteDevice } from './types';
 import { makeTrack } from '@/test-utils/fakeBackend';
 
 const T = makeTrack({ id: 'youtube:t1', sourceId: 't1', streamUrl: '/s/t1' });
@@ -174,3 +174,66 @@ describe('remote store', () => {
     expect(answer.commands.filter((c) => c.type === 'pause')).toEqual([]);
   });
 });
+
+describe('held beats', () => {
+  let store: RemoteStore;
+  const now = 1_000_000;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    store = createRemoteStore();
+    store.beat('u1', beat(WIN, { full: full() }), now);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const settled = (p: Promise<void>) => {
+    let done = false;
+    void p.then(() => { done = true; });
+    return () => done;
+  };
+
+  it('end when a command comes in for the device', async () => {
+    const done = settled(store.hold('u1', WIN, HOLD_MS));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(done()).toBe(false);
+    store.command('u1', WIN, PHONE, { type: 'pause' }, now + 100);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(done()).toBe(true);
+    expect(store.answer('u1', WIN, now + 100).commands.map((c) => c.type)).toEqual(['pause']);
+  });
+
+  it('end when a device starts watching, not on its every poll after that', async () => {
+    store.state('u1', PHONE, null, now);
+    const first = settled(store.hold('u1', WIN, HOLD_MS));
+    store.state('u1', PHONE, null, now + 1500);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(first()).toBe(false);
+    store.state('u1', MAC, null, now + 1600);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(first()).toBe(true);
+    expect(store.answer('u1', WIN, now + 1600).watchers).toBe(2);
+  });
+
+  it('end after HOLD_MS, on abort, and when a newer beat of the device arrives', async () => {
+    const timeout = settled(store.hold('u1', WIN, HOLD_MS));
+    await vi.advanceTimersByTimeAsync(HOLD_MS);
+    expect(timeout()).toBe(true);
+    const ctrl = new AbortController();
+    const aborted = settled(store.hold('u1', WIN, HOLD_MS, ctrl.signal));
+    ctrl.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(aborted()).toBe(true);
+    const older = settled(store.hold('u1', WIN, HOLD_MS));
+    store.beat('u1', beat(WIN, { light: light() }), now + 2000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(older()).toBe(true);
+  });
+
+  it('a device of another account never ends it', async () => {
+    const done = settled(store.hold('u1', WIN, HOLD_MS));
+    store.state('u2', PHONE, null, now);
+    store.beat('u2', beat(MAC, { full: full() }), now);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(done()).toBe(false);
+  });
+});
+

@@ -37,6 +37,8 @@ interface UserRemote {
   devices: Map<string, Entry>;
   /** deviceId to when it last asked for the state. */
   watchers: Map<string, number>;
+  /** deviceId to the release of its held beat (one at most per device). */
+  holds: Map<string, () => void>;
 }
 
 /** What pickActive needs of a device. */
@@ -91,6 +93,12 @@ export type CommandResult =
 
 export interface RemoteStore {
   beat(userId: string, body: BeatBody, now: number): BeatAnswer;
+  /** The answer a device's beat gets now, without a beat (after a hold). */
+  answer(userId: string, deviceId: string, now: number): BeatAnswer;
+  /** Waits until a command comes in for the device, another device starts
+   *  watching, a newer beat of the same device arrives, `signal` aborts, or
+   *  `ms` pass. */
+  hold(userId: string, deviceId: string, ms: number, signal?: AbortSignal): Promise<void>;
   /** `controlling`: the device that asks controls another one, so nothing
    *  plays on it (its last beat may still say so). */
   state(userId: string, deviceId: string, rev: number | null, now: number, controlling?: string | null): StateAnswer;
@@ -111,7 +119,7 @@ export function createRemoteStore(): RemoteStore {
   const userOf = (userId: string): UserRemote => {
     let u = users.get(userId);
     if (!u) {
-      u = { rev: 1, devices: new Map(), watchers: new Map() };
+      u = { rev: 1, devices: new Map(), watchers: new Map(), holds: new Map() };
       users.set(userId, u);
     }
     return u;
@@ -136,6 +144,23 @@ export function createRemoteStore(): RemoteStore {
   };
 
   const candidates = (u: UserRemote): ActiveCandidate[] => [...u.devices.values()];
+
+  /** Answers the device's held beat, if one waits. */
+  const wake = (u: UserRemote, deviceId: string) => u.holds.get(deviceId)?.();
+
+  const answerFor = (u: UserRemote, d: Entry, now: number): BeatAnswer => {
+    let watchers = 0;
+    for (const [id, at] of u.watchers) if (id !== d.deviceId && now - at <= WATCH_FRESH_MS) watchers++;
+    const answer: BeatAnswer = {
+      now,
+      commands: d.pending.filter((c) => c.expiresAt > now),
+      watchers,
+      active: pickActive(candidates(u), now),
+    };
+    const { yieldTo } = decideTakeover(candidates(u), d.deviceId, now);
+    if (yieldTo) answer.yield = { by: u.devices.get(yieldTo)!.label };
+    return answer;
+  };
 
   const push = (d: Entry, cmd: RemoteCommand) => {
     // One setQueue at a time: a newer one replaces one not run yet.
@@ -196,7 +221,9 @@ export function createRemoteStore(): RemoteStore {
       const startedAt = d.snapshot.isPlaying ? d.snapshot.changedAt : 0;
       d.pending = d.pending.filter((c) => !(c.type === 'pause' && c.issuedBy === null && c.issuedAt < startedAt));
 
-      const { pause, yieldTo } = decideTakeover(candidates(u), d.deviceId, now);
+      // A newer beat answers the one still held.
+      wake(u, d.deviceId);
+      const { pause } = decideTakeover(candidates(u), d.deviceId, now);
       for (const id of pause) {
         const other = u.devices.get(id)!;
         if (other.pending.some((c) => c.type === 'pause' && c.issuedBy === null)) continue;
@@ -204,25 +231,53 @@ export function createRemoteStore(): RemoteStore {
           id: newId(), type: 'pause', args: { reason: 'took-over', by: d.label },
           issuedBy: null, issuedAt: now, expiresAt: now + COMMAND_TTL_MS,
         });
+        wake(u, id);
       }
+      const out = answerFor(u, d, now);
+      if (want) out.want = want;
+      return out;
+    },
 
-      let watchers = 0;
-      for (const [id, at] of u.watchers) if (id !== d.deviceId && now - at <= WATCH_FRESH_MS) watchers++;
-      const answer: BeatAnswer = {
-        now,
-        commands: d.pending.filter((c) => c.expiresAt > now),
-        watchers,
-        active: pickActive(candidates(u), now),
-      };
-      if (want) answer.want = want;
-      if (yieldTo) answer.yield = { by: u.devices.get(yieldTo)!.label };
-      return answer;
+    answer(userId, deviceId, now) {
+      const u = userOf(userId);
+      prune(u, now);
+      const d = u.devices.get(deviceId);
+      if (!d) return { now, commands: [], watchers: 0, active: pickActive(candidates(u), now), want: 'full' };
+      return answerFor(u, d, now);
+    },
+
+    hold(userId, deviceId, ms, signal) {
+      const u = userOf(userId);
+      wake(u, deviceId);
+      return new Promise<void>((resolve) => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const release = () => {
+          if (timer) clearTimeout(timer);
+          timer = null;
+          signal?.removeEventListener('abort', release);
+          if (u.holds.get(deviceId) === release) u.holds.delete(deviceId);
+          resolve();
+        };
+        if (signal?.aborted) {
+          resolve();
+          return;
+        }
+        u.holds.set(deviceId, release);
+        timer = setTimeout(release, ms);
+        signal?.addEventListener('abort', release);
+      });
     },
 
     state(userId, deviceId, rev, now, controlling = null) {
       const u = userOf(userId);
+      const seen = u.watchers.get(deviceId);
       u.watchers.set(deviceId, now);
       prune(u, now);
+      // A new watcher: every held beat of the account hears it now, so the
+      // player starts beating at the watched pace at once.
+      if (seen === undefined || now - seen > WATCH_FRESH_MS) {
+        for (const id of [...u.holds.keys()]) if (id !== deviceId) wake(u, id);
+      }
       const own = u.devices.get(deviceId);
       if (controlling && own?.snapshot?.isPlaying) {
         own.snapshot = { ...own.snapshot, isPlaying: false };
@@ -256,10 +311,12 @@ export function createRemoteStore(): RemoteStore {
       }
       const id = newId();
       push(d, { ...command, id, issuedBy: from, issuedAt: now, expiresAt: now + COMMAND_TTL_MS } as RemoteCommand);
+      wake(u, target);
       return { ok: true, id };
     },
 
     clear() {
+      for (const u of users.values()) for (const id of [...u.holds.keys()]) wake(u, id);
       users.clear();
     },
   };
