@@ -25,7 +25,7 @@ type FakeActions = { [K in keyof RemoteLinkActions]: Mock<RemoteLinkActions[K]> 
 function actions(): FakeActions {
   return {
     play: vi.fn(), pause: vi.fn(), next: vi.fn(), prev: vi.fn(), seek: vi.fn(),
-    playAt: vi.fn(), playTrack: vi.fn(), requestStartAt: vi.fn(),
+    playAt: vi.fn(), playTrack: vi.fn(), playQueue: vi.fn(),
   };
 }
 
@@ -174,9 +174,9 @@ describe('useRemoteLink', () => {
     const beat = server(answer({ commands: [command({ type: 'setQueue', args: { tracks: [A, B], index: 1, play: false, startSec: 33, context: ctx } })] }));
     const { a } = setup(beat);
     await vi.advanceTimersByTimeAsync(0);
-    expect(a.requestStartAt).toHaveBeenCalledWith(33);
-    expect(a.playTrack).toHaveBeenCalledWith(B, [A, B], ctx, { autoplay: false });
-    expect(a.requestStartAt.mock.invocationCallOrder[0]).toBeLessThan(a.playTrack.mock.invocationCallOrder[0]);
+    // Its own path, not playTrack: the list and the entry as sent.
+    expect(a.playQueue).toHaveBeenCalledWith([A, B], 1, ctx, { autoplay: false, startAt: 33 });
+    expect(a.playTrack).not.toHaveBeenCalled();
   });
 
   it('store commands land in the player store', async () => {

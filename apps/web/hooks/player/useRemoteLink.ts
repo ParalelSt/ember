@@ -22,9 +22,11 @@ export interface RemoteLinkActions {
   seek: (sec: number) => void;
   /** An entry of the whole queue (the controller's queue sheet). */
   playAt: (index: number) => void;
-  playTrack: (track: Track, list: Track[], context: PlaybackContext | null, opts?: { autoplay?: boolean }) => void;
-  /** Where the next load starts (usePositionPersistence). */
-  requestStartAt: (sec: number) => void;
+  /** One song (Add to queue with nothing loaded). */
+  playTrack: (track: Track, list: Track[], context: PlaybackContext | null) => void;
+  /** A whole queue another device sent (setQueue): that list, from that
+   *  entry, with its context, at `startAt`, playing or not. */
+  playQueue: (tracks: Track[], index: number, context: PlaybackContext | null, opts: { autoplay: boolean; startAt: number }) => void;
 }
 
 export interface RemoteIdentity {
@@ -201,10 +203,8 @@ export function useRemoteLink({
           return;
         case 'setQueue': {
           const { tracks, index, play, startSec, context } = cmd.args;
-          const track = tracks[index];
-          if (!track) return;
-          a.requestStartAt(startSec);
-          a.playTrack(track, tracks, context, { autoplay: play });
+          if (!tracks[index]) return;
+          a.playQueue(tracks, index, context, { autoplay: play, startAt: startSec });
           return;
         }
       }

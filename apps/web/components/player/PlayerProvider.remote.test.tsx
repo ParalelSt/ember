@@ -9,6 +9,8 @@ import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
 import { buildSnapshot } from '@/lib/remote/snapshot';
 import { addToQueue } from '@/lib/playback/addToQueue';
 import type { RemoteDevice, StateAnswer } from '@/lib/remote/types';
+import type { AudioBackendEvents } from '@/lib/playback/types';
+import type { CastRemote, CastRemoteStatus } from '@/lib/playback/castBackend';
 
 // Controlling another device, end to end in the provider (W6): the phone
 // opens while Windows plays, attaches, mirrors Windows, and every control
@@ -29,15 +31,24 @@ vi.mock('@/lib/versions/device', () => ({ deviceId: () => device.id, detectDevic
 const web = makeFakeBackend();
 vi.mock('@/lib/playback/webBackend', () => ({ createWebBackend: () => web }));
 const androidFake = makeFakeBackend();
+let androidEvents: AudioBackendEvents | null = null;
 const native = vi.hoisted(() => ({
   setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), back: vi.fn(), setNormalize: vi.fn(), setEq: vi.fn(), setShuffle: vi.fn(),
 }));
 vi.mock('@/lib/playback/androidBackend', () => ({
   androidPluginPresent: () => true,
-  createAndroidBackend: () => Object.assign(androidFake, native),
+  createAndroidBackend: (events: AudioBackendEvents) => {
+    androidEvents = events;
+    return Object.assign(androidFake, native);
+  },
 }));
 vi.mock('@/lib/cast/controller', () => ({ initCast: vi.fn(), setCastMediaElement: vi.fn() }));
-vi.mock('@/lib/cast/signer', () => ({ resolveCastMedia: vi.fn(), clearCastSignCache: vi.fn() }));
+vi.mock('@/lib/cast/signer', () => ({
+  resolveCastMedia: vi.fn(async (t: { id: string; title: string; artist: string }) => ({
+    url: `https://ember.example/s/${t.id}?st=x`, contentType: 'audio/mp4', title: t.title, artist: t.artist, album: null, artworkUrl: null,
+  })),
+  clearCastSignCache: vi.fn(),
+}));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 const recordPlay = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/useLibrary', () => ({
@@ -95,6 +106,7 @@ function Grab() {
   useEffect(() => keep(p));
   return null;
 }
+const { castSessionStarted, castSessionEnded, _resetCastSession } = await import('@/lib/cast/session');
 const tick = (ms = 0) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 const commands = () => remoteApi.command.mock.calls.map((c) => (c as unknown[])[2]);
 
@@ -102,6 +114,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(1_000_000);
   vi.clearAllMocks();
+  _resetCastSession();
+  androidEvents = null;
   shell.value = 'web';
   device.id = 'phone-device-1';
   Object.assign(remote, { playing: true, index: 0, since: Date.now(), stale: false, present: true });
@@ -273,6 +287,11 @@ describe('PlayerProvider: controlling another device', () => {
   it('on Android, the native player is emptied and never handed the other device songs', async () => {
     shell.value = 'capacitor';
     await openPhone();
+    // Native has not said what it does yet: no attaching.
+    expect(useRemoteStore.getState().mode).toBe('local');
+    act(() => androidEvents!.onPause());
+    document.dispatchEvent(new Event('visibilitychange'));
+    await tick(0);
     expect(useRemoteStore.getState().mode).toBe('controlling');
     const afterAttach = native.setQueue.mock.calls.slice(-1)[0];
     expect(afterAttach).toEqual([[], 0, false]);
@@ -284,4 +303,81 @@ describe('PlayerProvider: controlling another device', () => {
     expect(native.next).not.toHaveBeenCalled();
     expect(commands().map((c) => (c as { type: string }).type)).toEqual(['setQueue', 'next']);
   });
+
+  it('a cold start on Android never attaches while the native player plays', async () => {
+    shell.value = 'capacitor';
+    await openPhone();
+    androidFake.paused = false;
+    act(() => androidEvents!.onPlay());
+    document.dispatchEvent(new Event('visibilitychange'));
+    await tick(0);
+    expect(useRemoteStore.getState().mode).toBe('local');
+    expect(native.setQueue).not.toHaveBeenCalledWith([], 0, false);
+    androidFake.paused = true;
+  });
+
+  it('a local engine that plays (whatever the store says) keeps this device local', async () => {
+    web.paused = false;
+    await openPhone();
+    expect(useRemoteStore.getState().mode).toBe('local');
+    web.paused = true;
+  });
+
+  it('casting while controlling brings the music here first, then casts it from where it was', async () => {
+    await openPhone();
+    await tick(2000);
+    const cast = castRemote();
+    act(() => castSessionStarted(cast, 'Living Room TV'));
+    await tick(0);
+    expect(remoteApi.command).toHaveBeenCalledWith(WIN, ME, { type: 'pause' });
+    expect(useRemoteStore.getState().mode).toBe('local');
+    expect(cast.load).toHaveBeenCalledTimes(1);
+    const [media, opts] = cast.load.mock.calls[0];
+    expect(media.url).toContain(X.id);
+    expect(opts.autoplay).toBe(true);
+    expect(opts.startAt).toBeGreaterThan(31);
+    // The cast ends: the page's own engine, not the remote one, comes back.
+    web.load.mockClear();
+    act(() => castSessionEnded());
+    expect(web.load).toHaveBeenCalledWith(X.streamUrl, expect.objectContaining({ autoplay: false }));
+  });
+
+  it('a queue another device sends plays as sent: whole list, entry, context, start, shuffle kept', async () => {
+    remote.present = false;
+    usePlayerStore.setState({ shuffle: true });
+    remoteApi.beat.mockResolvedValueOnce({
+      now: Date.now(), watchers: 1, active: null,
+      commands: [{
+        id: 'c1', type: 'setQueue', issuedBy: WIN, issuedAt: 0, expiresAt: Date.now() + 20_000,
+        args: { tracks: [X, Y, Z], index: 1, play: true, startSec: 12, context: { type: 'search', query: 'y' } },
+      }],
+    } as never);
+    await openPhone();
+    await tick(0);
+    expect(web.load).toHaveBeenLastCalledWith(Y.streamUrl, expect.objectContaining({ autoplay: true, startAt: 12 }));
+    const st = usePlayerStore.getState();
+    expect(st.queue.map((q) => q.id)).toEqual([X.id, Y.id, Z.id]);
+    expect(st.index).toBe(1);
+    expect(st.context).toEqual({ type: 'search', query: 'y' });
+    expect(st.shuffle).toBe(true);
+  });
 });
+
+function castRemote() {
+  let status: CastRemoteStatus = { state: 'idle', time: 0, duration: 0, idleReason: null };
+  const subs = new Set<(s: CastRemoteStatus) => void>();
+  return {
+    load: vi.fn(async (_media: { url: string }, _opts: { startAt: number; autoplay: boolean }) => {}),
+    play: vi.fn(), pause: vi.fn(), seek: vi.fn(), stop: vi.fn(), setVolume: vi.fn(),
+    status: () => status,
+    subscribe(cb: (s: CastRemoteStatus) => void) {
+      subs.add(cb);
+      return () => subs.delete(cb);
+    },
+    emit(patch: Partial<CastRemoteStatus>) {
+      status = { ...status, ...patch };
+      for (const cb of subs) cb(status);
+    },
+  } satisfies CastRemote & { emit: unknown };
+}
+

@@ -282,6 +282,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const controllingRef = useRef(false);
   const [controlling, setControlling] = useState(false);
   const backupRef = useRef<QueueBackup | null>(null);
+  /** moveHere, for startCasting (defined further down). */
+  const moveHereRef = useRef<() => void>(() => {});
+  /** The engine has reported a play state at least once (the native Android
+   *  player answers its first getState some time after the page starts). */
+  const engineHeardRef = useRef(false);
   /** When the store's queue/index last changed BECAUSE the native player said
    *  so. The queue-push effect and the load-on-id-change effect both skip
    *  changes inside this window, or a car tap would bounce straight back. A
@@ -575,6 +580,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // state event so the store converges on what the car is actually doing.
       // Only a real flip writes the flag or leaves a breadcrumb.
       onPlay: () => {
+        engineHeardRef.current = true;
         // Something real is playing, so the listener has asked for music:
         // Space and the OS media keys start it without going through
         // toggle(), and the web-audio fallback must not then load it paused.
@@ -585,6 +591,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         logger.breadcrumb('playback', 'play', { trackId: cur.queue[cur.index]?.id ?? null });
       },
       onPause: () => {
+        engineHeardRef.current = true;
         // Always persist (a pause is the moment the playhead is worth keeping,
         // even when the store already says paused because an error path got
         // there first); only the flip and its breadcrumb are guarded.
@@ -1002,12 +1009,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    *  volume slider now sets the TV's volume; the equalizer and volume
    *  normalization do not apply there. */
   const startCasting = useCallback((remote: CastRemote, deviceName: string, opts: { resumed: boolean }) => {
+    // Controlling another device: the music comes here first (that device
+    // pauses), from where it is there, and then goes to the TV. Taking the
+    // remote engine for the local one would cast nothing and lose the
+    // player when the cast ends.
+    let fromRemote: { startAt: number; autoplay: boolean } | null = null;
+    if (controllingRef.current) {
+      const b = backendRef.current;
+      const snap = isRemoteBackend(b) ? b.snapshot() : null;
+      const here = snap ? hereHandover(snap, Date.now(), useRemoteStore.getState().offset) : null;
+      moveHereRef.current();
+      if (here) fromRemote = { startAt: here.startAt, autoplay: here.autoplay };
+    }
     const local = backendRef.current;
-    if (!local || castingRef.current || !rawEventsRef.current) return;
+    if (!local || castingRef.current || controllingRef.current || !rawEventsRef.current) return;
     const st0 = usePlayerStore.getState();
     const playing = st0.queue[st0.index];
     const remoteNow = opts.resumed ? remote.status() : null;
-    const plan = castHandover({
+    const plan = fromRemote ?? castHandover({
       localTime: local.getCurrentTime(),
       localPaused: local.isPaused(),
       resumed: opts.resumed,
@@ -1228,6 +1247,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (target) void sendRemote(target, { type: 'pause' }).catch(() => {});
     stopControlling({ adopt: true });
   }, [sendRemote, stopControlling]);
+  useLayoutEffect(() => {
+    moveHereRef.current = moveHere;
+  });
 
   // The output picker's "Your devices" rows (lib/outputs/controller).
   useEffect(() => setRemoteMoves({ moveTo, moveHere }), [moveTo, moveHere]);
@@ -1797,7 +1819,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // This device's heartbeat, while it is the one that plays: other devices
   // see what plays here and their commands come back with the answer.
   const linkActionsRef = useRef<RemoteLinkActions | null>(null);
-  const pendingStartRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     linkActionsRef.current = {
       play: () => {
@@ -1810,13 +1831,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       prev: () => prevRef.current(),
       seek,
       playAt,
-      requestStartAt: (sec) => { pendingStartRef.current = sec; },
-      playTrack: (track, list, ctx, o) => {
-        const startAt = pendingStartRef.current;
-        pendingStartRef.current = null;
+      playTrack: (track, list, ctx) => {
         dismissUnplayable();
         clearCouldntPlay();
-        playTrack(track, list, ctx, { ...o, ...(startAt !== null ? { startAt } : {}) });
+        playTrack(track, list, ctx);
+      },
+      // A queue another device sent (a move, a tap there): exactly that
+      // list, from that entry, with its context, where it said, playing or
+      // not. Not playTrack: that keeps one song of a search and turns
+      // shuffle off.
+      playQueue: (tracks, index, ctx, o) => {
+        const track = tracks[index];
+        if (!track) return;
+        userInteracted.current = true;
+        dismissUnplayable();
+        clearCouldntPlay();
+        setPlayed([]);
+        const st = usePlayerStore.getState();
+        const context: PlaybackContext = ctx ?? { type: 'single' };
+        const baseCount = tracks.length;
+        loadAndPlay(track, o.autoplay, { list: tracks, context, baseCount }, { at: index, startAt: o.startAt });
+        // Shuffle stays as it was here; turning it off keeps this order.
+        usePlayerStore.setState({ queue: tracks, index, context, baseCount, orderBackup: st.shuffle ? tracks.slice() : null });
       },
     };
   });
@@ -1825,7 +1861,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // nothing starts controlling the one that plays.
   const onAttach = useCallback((id: string) => startControlling(id), [startControlling]);
   const onDetach = useCallback(() => stopControlling(), [stopControlling]);
-  const localPlaying = useCallback(() => !controllingRef.current && usePlayerStore.getState().isPlaying, []);
+  // Busy here (no attaching): music in the store, the engine itself not
+  // paused, or a native Android player that has not said yet what it is
+  // doing (at a cold start it may be playing for the lock screen or the car).
+  const localPlaying = useCallback(() => {
+    if (controllingRef.current) return false;
+    if (backendKindRef.current === 'android' && !engineHeardRef.current) return true;
+    const b = localEngine();
+    return usePlayerStore.getState().isPlaying || (!!b && !b.isPaused());
+  }, [localEngine]);
   useRemoteDevices({ enabled: !!user && backendReady, me: identity?.deviceId ?? null, localPlaying, onAttach, onDetach });
 
   const value = useMemo<PlayerControls>(
