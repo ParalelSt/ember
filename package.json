@@ -69,6 +69,7 @@
     "test:align-sync": "${PYTHON_BIN:-.venv/bin/python} -m unittest tests/test_align_sync.py",
     "test:preferences-ui": "node tests/preferences-ui.test.mjs",
     "test:pranks-ui": "node tests/pranks-ui.test.mjs",
+    "test:remote-ui": "node tests/remote-control-ui.test.mjs",
     "test:themes-ui": "node tests/themes-ui.test.mjs",
     "test:appearance-fit-ui": "node tests/appearance-fit-ui.test.mjs",
     "test:topbar-ui": "node tests/topbar-ui.test.mjs",
