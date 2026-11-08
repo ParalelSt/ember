@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { HomeIcon, SearchIcon, LibraryIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
+import { forgetNavigationIntent } from '@/lib/chunkReload';
 
 const NAV = [
   { href: '/', label: 'Home', icon: HomeIcon },
@@ -33,6 +34,7 @@ export function MobileNav({ onSearchClick }: MobileNavProps) {
             onClick={(e) => {
               if (isSearch && onSearchClick && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) {
                 e.preventDefault();
+                forgetNavigationIntent();
                 onSearchClick();
               }
             }}

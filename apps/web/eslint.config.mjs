@@ -102,6 +102,7 @@ const eslintConfig = defineConfig([
     // documented here rather than silently exempted.
     files: [
       "lib/useBackDismiss.ts",
+      "lib/useBackDismiss.test.tsx",
       "lib/useOnline.ts",
       "lib/useOnline.test.ts",
       "lib/offlineNative.ts",
