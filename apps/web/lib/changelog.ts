@@ -26,6 +26,22 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'faster-clearer-search',
+    version: '0.7.41',
+    date: '2026-11-10',
+    title: 'Search shows more, sooner',
+    summary: 'Results arrive as they load, artists show up, long names scroll, and every song leads to its own page.',
+    bullets: [
+      'Search results appear as they arrive: your own songs first, then songs, then videos, each row fading in.',
+      'Searching an artist shows them on top, with their picture; songs that match every word you typed come first.',
+      'Long song names scroll in search instead of being cut off.',
+      'Open a song\'s page by tapping its cover (or its name on a computer); the song menu also has Go to song and Go to artist.',
+      'The cover and name in the full-screen player open the song\'s page.',
+      'Song names scroll a little slower and wait a moment longer before they start.',
+      'Radio stations no longer show a LIVE tag under the play button.',
+    ],
+  },
+  {
     id: 'play-on-other-devices',
     version: '0.7.40',
     date: '2026-11-08',

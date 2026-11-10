@@ -1,3 +1,8 @@
+# 0.7.41: Search shows more, sooner
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh as usual.
+
 # 0.7.40: Play on your other devices (android 0.4.33)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
