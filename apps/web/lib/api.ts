@@ -32,6 +32,7 @@ import type {
   PresenceReport,
 } from '@/lib/pranks/types';
 import type { BeatAnswer, BeatBody, CommandBody, StateAnswer } from '@/lib/remote/types';
+import type { SearchChunk } from '@/lib/search/types';
 
 /** One device of a member on the admin Users page (lib/versions/store.ts). */
 export interface AdminDevice {
@@ -120,6 +121,42 @@ const UNREADABLE = Symbol('unreadable');
 const isAbort = (e: unknown, signal?: AbortSignal) =>
   !!signal?.aborted || (e instanceof Error && e.name === 'AbortError');
 
+/** The thrown error for an HTTP failure: logged (a warning for answers
+ *  like 401/429 or `expected`, an error otherwise), carrying `status` and
+ *  the body, and a 401 sends the browser to sign in. */
+function httpFailure(res: Response, data: unknown, method: string, path: string, expected?: number[]): Error {
+  const err = (data !== UNREADABLE && data && typeof data === 'object' ? data : { error: res.statusText }) as { error?: string };
+  // proxy.ts stamps every response with x-request-id; surfacing it here
+  // lets triage line up this client-side entry with the matching
+  // server-side withRequestLog entry for the same request.
+  const reqId = res.headers.get('x-request-id') || undefined;
+  const entry = { method, path, status: res.status, body: err.error, reqId };
+  // A 401 is an answer too (the session is gone), not a fault: as an error
+  // it sent an automatic bug report per call (bughunt V5). So is a 429:
+  // the route's own limit said no, which the server logs as a warning too
+  // (withRequestLog).
+  if (res.status === 401 || res.status === 429 || expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
+  else logger.error('api', `${method} ${path} → ${res.status}`, entry);
+  // Attach the HTTP status so callers can branch on it (e.g. 409 = already
+  // in the playlist → a friendly toast instead of the raw server text).
+  const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number; body?: unknown };
+  error.status = res.status;
+  error.body = err;
+  // The session expired or was never there (proxy.ts answers unauth /api/*
+  // with this same 401 JSON, see bughunt W05): drop it, so every other
+  // signed-in fetch stops (bughunt V5), and send the browser to sign in
+  // rather than let every caller handle it. Public pages (/auth itself,
+  // /track, /privacy, /terms) stay where they are: they work signed out.
+  if (res.status === 401 && typeof window !== 'undefined') {
+    sessionExpired();
+    if (!isPublicPage(window.location.pathname)) {
+      const next = window.location.pathname + window.location.search;
+      window.location.href = `/auth?next=${encodeURIComponent(next)}`;
+    }
+  }
+  return error;
+}
+
 async function req<T>(path: string, { method = 'GET', body, signal, expected, background }: ReqOptions = {}): Promise<T> {
   let res: Response;
   let data: unknown;
@@ -176,38 +213,7 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected, ba
   }
   // Any HTTP answer, even an error status, means the connection is back.
   connectionOk();
-  if (!res.ok) {
-    const err = (data !== UNREADABLE && data && typeof data === 'object' ? data : { error: res.statusText }) as { error?: string };
-    // proxy.ts stamps every response with x-request-id; surfacing it here
-    // lets triage line up this client-side entry with the matching
-    // server-side withRequestLog entry for the same request.
-    const reqId = res.headers.get('x-request-id') || undefined;
-    const entry = { method, path, status: res.status, body: err.error, reqId };
-    // A 401 is an answer too (the session is gone), not a fault: as an error
-    // it sent an automatic bug report per call (bughunt V5). So is a 429:
-    // the route's own limit said no, which the server logs as a warning too
-    // (withRequestLog).
-    if (res.status === 401 || res.status === 429 || expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
-    else logger.error('api', `${method} ${path} → ${res.status}`, entry);
-    // Attach the HTTP status so callers can branch on it (e.g. 409 = already
-    // in the playlist → a friendly toast instead of the raw server text).
-    const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number; body?: unknown };
-    error.status = res.status;
-    error.body = err;
-    // The session expired or was never there (proxy.ts answers unauth /api/*
-    // with this same 401 JSON, see bughunt W05): drop it, so every other
-    // signed-in fetch stops (bughunt V5), and send the browser to sign in
-    // rather than let every caller handle it. Public pages (/auth itself,
-    // /track, /privacy, /terms) stay where they are: they work signed out.
-    if (res.status === 401 && typeof window !== 'undefined') {
-      sessionExpired();
-      if (!isPublicPage(window.location.pathname)) {
-        const next = window.location.pathname + window.location.search;
-        window.location.href = `/auth?next=${encodeURIComponent(next)}`;
-      }
-    }
-    throw error;
-  }
+  if (!res.ok) throw httpFailure(res, data, method, path, expected);
   return data as T;
 }
 
@@ -304,11 +310,68 @@ function transferBody(input: {
   return form;
 }
 
+/** The streamed search: GET /api/search?stream=1, read one JSON line at a
+ *  time and handed over as each arrives (uploads, artists, songs, videos,
+ *  done). A JSON answer instead (the empty-query Trending list, or an older
+ *  server that does not stream) comes out as one `legacy` chunk, so either
+ *  way the caller gets chunks. Errors throw like `req`'s (status attached,
+ *  429 a warning, 401 to sign in); a connection that drops before anything
+ *  arrived is tried again like a GET. */
+export async function* searchStream(q: string, signal?: AbortSignal): AsyncGenerator<SearchChunk> {
+  const path = `/search?q=${encodeURIComponent(clipSearchQuery(q ?? ''))}&stream=1`;
+  let res: Response;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(`${API_BASE}/api${path}`, { credentials: 'include', signal });
+      break;
+    } catch (e) {
+      const aborted = isAbort(e, signal);
+      if (!aborted && attempt < NETWORK_RETRY_DELAYS_MS.length) {
+        logger.warn('api', `GET ${path} network error, retrying`, { method: 'GET', path, network: true, attempt: attempt + 1 });
+        await sleep(NETWORK_RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      if (!aborted) logger.error('api', `GET ${path} network error`, { method: 'GET', path, network: true }, e as Error);
+      throw e;
+    }
+  }
+  connectionOk();
+  const type = res.headers.get('content-type') ?? '';
+  if (!res.ok || !type.includes('ndjson')) {
+    const data = await res.json().catch((e: unknown) => {
+      if (e instanceof SyntaxError) return UNREADABLE;
+      throw e;
+    });
+    if (!res.ok) throw httpFailure(res, data, 'GET', path);
+    if (data === UNREADABLE) throw Object.assign(new Error(NO_ANSWER_MESSAGE), { answered: res.status });
+    yield { type: 'legacy', tracks: (data as { tracks?: Track[] }).tracks ?? [] };
+    return;
+  }
+  if (!res.body) return;
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffered = '';
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      buffered += decoder.decode(value, { stream: !done });
+      const lines = buffered.split('\n');
+      buffered = done ? '' : (lines.pop() ?? '');
+      for (const line of lines) if (line.trim()) yield JSON.parse(line) as SearchChunk;
+      if (done) return;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export const api = {
   /** A pasted paragraph is cut to what the route takes, rather than
    *  refused with a 400 that read as "search failed". */
   search: (q: string) =>
     req<{ tracks: Track[] }>(`/search?q=${encodeURIComponent(clipSearchQuery(q ?? ''))}`),
+  /** The search UI's streamed search (see searchStream above). */
+  searchStream: (q: string, signal?: AbortSignal) => searchStream(q, signal),
   getTrending: () =>
     req<{ tracks: Track[]; title: string | null; country: string; fetchedAt: string | null; stale: boolean }>('/youtube/trending'),
   // 502/503/504: the Python helper failing (the server logs why at error).

@@ -47,7 +47,17 @@ vi.mock('@/hooks/useRecentSearches', () => ({
   useExecuteRemoveRecentSearch: () => ({ mutate: recents.removeMutate }),
 }));
 
-const api = vi.hoisted(() => ({ search: vi.fn() }));
+// The UI reads the streamed search; here it streams whatever the one-shot
+// `api.search` mock answers, as one chunk (what an older server sends).
+const api = vi.hoisted(() => {
+  const search = vi.fn();
+  return {
+    search,
+    searchStream: async function* (q: string) {
+      yield { type: 'legacy' as const, tracks: (await search(q)).tracks };
+    },
+  };
+});
 vi.mock('@/lib/api', () => ({ api }));
 
 function makeTrack(over: Partial<Track> = {}): Track {
@@ -177,8 +187,10 @@ describe('SearchPage', () => {
       target: { value: 'second wind' },
     });
 
-    const row = await screen.findByText('Second Wind');
-    fireEvent.click(row);
+    // The row's play button: on a desktop window the title opens the
+    // song's page instead (the owner's song-page access rule).
+    await screen.findByText('Second Wind');
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
 
     await waitFor(() => expect(recents.addMutate).toHaveBeenCalledWith(track));
     expect(trackActions.onPlay).toHaveBeenCalledWith(track, [track], { type: 'search', query: 'second wind' });

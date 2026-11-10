@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Track } from '@/types/track';
-import { addSearchChunk, EMPTY_SEARCH_PARTS, type SearchArtist, type SearchParts } from './types';
+import { addSearchChunk, EMPTY_SEARCH_PARTS, type SearchArtist, type SearchChunk, type SearchParts } from './types';
 import { ARTISTS_AFTER_SONGS, buildSearchView, SONG_CAP, YOUTUBE_TOTAL, type SearchView } from './view';
 
 const t = (id: string, title = id, artist = 'Someone'): Track => ({
@@ -104,13 +104,14 @@ describe('buildSearchView: arriving one group at a time', () => {
     const own = [t('own1')];
     let p: SearchParts = EMPTY_SEARCH_PARTS;
     const steps: string[][] = [shape(buildSearchView('necro', p, own))];
-    for (const chunk of [
+    const chunks: SearchChunk[] = [
       { type: 'uploads', tracks: [t('upload:u1')] },
       { type: 'artists', artists: [artist('Demetori')] },
       { type: 'songs', tracks: many('s', 5) },
       { type: 'videos', tracks: [t('v0')] },
       { type: 'done' },
-    ] as const) {
+    ];
+    for (const chunk of chunks) {
       p = addSearchChunk(p, chunk);
       steps.push(shape(buildSearchView('necro', p, own)));
     }

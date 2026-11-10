@@ -2,9 +2,10 @@
 
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { TrackList } from '@/components/track/TrackList';
 import { TrackRow } from '@/components/track/TrackRow';
 import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
+import { SearchResults } from '@/components/search/SearchResults';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
 import { useSearchQuery } from '@/hooks/useSearchQuery';
 import { OnlineOnly } from '@/components/OnlineOnly';
@@ -25,12 +26,14 @@ export default function SearchPage() {
     removeRecentTrack,
     voice,
     onMicClick,
-    data,
+    view,
+    hasResults,
     isFetching,
     rateLimited,
     searchFailed,
     onPlay,
   } = useSearchQuery();
+  const isDesktop = useIsDesktop();
 
   const recents = !debouncedQ && recentTracks.length > 0 ? (
     <div className="mt-8 max-w-xl">
@@ -62,11 +65,13 @@ export default function SearchPage() {
     <EmptyState className="text-sm">Searching too fast, one moment.</EmptyState>
   ) : searchFailed && !isFetching ? (
     <EmptyState className="text-sm">{"Search isn't working right now. Try again in a moment."}</EmptyState>
-  ) : isFetching && !data?.length ? (
+  ) : isFetching && !hasResults ? (
     <EmptyState className="text-sm">Searching…</EmptyState>
   ) : (
-    <TrackList
-      tracks={data ?? []}
+    <SearchResults
+      key={debouncedQ}
+      view={view}
+      platform={isDesktop ? 'desktop' : 'phone'}
       context={{ type: 'search', query: debouncedQ }}
       trailing={renderTrackMenu}
       {...trackActions}

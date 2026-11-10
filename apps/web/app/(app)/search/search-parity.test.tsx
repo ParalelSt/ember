@@ -60,7 +60,17 @@ vi.mock('@/hooks/useRecentSearches', () => ({
   useExecuteRemoveRecentSearch: () => ({ mutate: vi.fn() }),
 }));
 
-const api = vi.hoisted(() => ({ search: vi.fn() }));
+// The UI reads the streamed search; here it streams whatever the one-shot
+// `api.search` mock answers, as one chunk (what an older server sends).
+const api = vi.hoisted(() => {
+  const search = vi.fn();
+  return {
+    search,
+    searchStream: async function* (q: string) {
+      yield { type: 'legacy' as const, tracks: (await search(q)).tracks };
+    },
+  };
+});
 vi.mock('@/lib/api', () => ({ api }));
 
 function makeTracks(): Track[] {

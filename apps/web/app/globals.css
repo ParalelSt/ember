@@ -265,6 +265,20 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
   .ember-marquee-anim { animation: none !important; }
 }
 
+/* Search results arriving: each row fades in a moment after the one above
+   (components/search/SearchResults sets the delay per row). Opacity only,
+   so a row takes its full space from the first frame and nothing below it
+   moves; `both` keeps it invisible through its delay. Reduced motion: rows
+   simply appear. */
+@keyframes ember-row-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.ember-row-in { animation: ember-row-in 220ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .ember-row-in { animation: none !important; }
+}
+
 /* Phone rotation lock, the app layout is portrait-only on phones. The PWA
    manifest locks orientation when installed, but a browser tab can't truly
    lock it (iOS Safari ignores the manifest entirely), so cover the broken

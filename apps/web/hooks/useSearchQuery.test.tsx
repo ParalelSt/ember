@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { SEARCH_RATE_LIMIT_RETRY_MS, useSearchQuery } from './useSearchQuery';
+import { failWhenNothingFound, SEARCH_RATE_LIMIT_RETRY_MS, useSearchQuery } from './useSearchQuery';
+import type { SearchChunk } from '@/lib/search/types';
 import type { Track } from '@/types/track';
 
 vi.mock('@/lib/useOnline', () => ({ useOnline: () => true }));
@@ -35,7 +36,17 @@ vi.mock('@/hooks/useRecentSearches', () => ({
   useExecuteRemoveRecentSearch: () => ({ mutate: recents.removeMutate }),
 }));
 
-const api = vi.hoisted(() => ({ search: vi.fn() }));
+// The UI reads the streamed search; here it streams whatever the one-shot
+// `api.search` mock answers, as one chunk (what an older server sends).
+const api = vi.hoisted(() => {
+  const search = vi.fn();
+  return {
+    search,
+    searchStream: async function* (q: string): AsyncGenerator<SearchChunk> {
+      yield { type: 'legacy' as const, tracks: (await search(q)).tracks };
+    },
+  };
+});
 vi.mock('@/lib/api', () => ({ api }));
 
 function makeTrack(over: Partial<Track> = {}): Track {
@@ -150,5 +161,90 @@ describe('useSearchQuery', () => {
     const { result } = renderHook(() => useSearchQuery(), { wrapper });
     act(() => result.current.onMicClick());
     expect(toast.message).toHaveBeenCalledExactlyOnceWith('Update the Ember app to use voice search.');
+  });
+});
+
+describe('failWhenNothingFound', () => {
+  async function run(chunks: SearchChunk[]) {
+    const out: SearchChunk[] = [];
+    async function* source() { yield* chunks; }
+    for await (const c of failWhenNothingFound(source())) out.push(c);
+    return out;
+  }
+
+  it('an error with nothing found throws its status', async () => {
+    await expect(run([{ type: 'uploads', tracks: [] }, { type: 'error', status: 502, error: 'down' }])).rejects.toMatchObject({ status: 502, message: 'down' });
+  });
+
+  it('an error after uploads or artists arrived is swallowed: they stay on screen', async () => {
+    const out = await run([{ type: 'uploads', tracks: [makeTrack()] }, { type: 'error', status: 502, error: 'down' }, { type: 'done' }]);
+    expect(out.map((c) => c.type)).toEqual(['uploads', 'done']);
+    const withArtists = await run([{ type: 'artists', artists: [{ id: 'UC1', name: 'A', artworkUrl: null }] }, { type: 'error', status: 502, error: 'x' }]);
+    expect(withArtists.map((c) => c.type)).toEqual(['artists']);
+  });
+});
+
+describe('useSearchQuery: streamed results', () => {
+  /** A stream the test feeds one chunk at a time. */
+  function controlledStream() {
+    const waiting: ((c: SearchChunk | null) => void)[] = [];
+    const queued: (SearchChunk | null)[] = [];
+    const next = () => new Promise<SearchChunk | null>((resolve) => {
+      const c = queued.shift();
+      if (c !== undefined) resolve(c);
+      else waiting.push(resolve);
+    });
+    const push = (c: SearchChunk | null) => {
+      const w = waiting.shift();
+      if (w) w(c);
+      else queued.push(c);
+    };
+    async function* stream() {
+      for (;;) {
+        const c = await next();
+        if (!c) return;
+        yield c;
+      }
+    }
+    return { push, stream };
+  }
+
+  it('the view grows as each group arrives, while still fetching', async () => {
+    const original = api.searchStream;
+    const feed = controlledStream();
+    api.searchStream = (q: string) => (q ? feed.stream() : original(q));
+    try {
+      const { result } = renderHook(() => useSearchQuery(), { wrapper });
+      act(() => result.current.setQ('wind'));
+      await waitFor(() => expect(result.current.debouncedQ).toBe('wind'));
+
+      act(() => feed.push({ type: 'uploads', tracks: [] }));
+      act(() => feed.push({ type: 'artists', artists: [] }));
+      act(() => feed.push({ type: 'songs', tracks: [makeTrack({ id: 'youtube:s1', title: 'Second Wind' })] }));
+      await waitFor(() => expect(result.current.data.map((t) => t.id)).toEqual(['youtube:s1']));
+      expect(result.current.isFetching).toBe(true);
+      expect(result.current.hasResults).toBe(true);
+
+      act(() => feed.push({ type: 'videos', tracks: [makeTrack({ id: 'youtube:v1', title: 'Wind live' })] }));
+      await waitFor(() => expect(result.current.data.map((t) => t.id)).toEqual(['youtube:s1', 'youtube:v1']));
+      act(() => feed.push({ type: 'done' }));
+      act(() => feed.push(null));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+    } finally {
+      api.searchStream = original;
+    }
+  });
+
+  it('own matches (recent searches) come first, before the server answers', async () => {
+    recents.tracks = [makeTrack({ id: 'youtube:r1', title: 'Necro Fantasia', artist: 'Demetori' })];
+    const original = api.searchStream;
+    api.searchStream = (q: string) => (q ? controlledStream().stream() : original(q));
+    try {
+      const { result } = renderHook(() => useSearchQuery(), { wrapper });
+      act(() => result.current.setQ('demetori'));
+      await waitFor(() => expect(result.current.data.map((t) => t.id)).toEqual(['youtube:r1']));
+    } finally {
+      api.searchStream = original;
+    }
   });
 });
