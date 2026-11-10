@@ -1,5 +1,5 @@
 import type { Track } from '@/types/track';
-import { isDirectArtistSearch, rankByQuery } from './rank';
+import { isDirectArtistSearch, matchesAllWords, queryWords, rankByQuery } from './rank';
 import type { SearchArtist, SearchParts } from './types';
 
 /** Up to this many artists in the Artists section. */
@@ -34,7 +34,13 @@ export interface SearchView {
  *  then YouTube songs (with Artists under the first few when the search is
  *  not for an artist), then videos. A group waits for the one above it, and
  *  a track already shown never shows twice. Songs and videos are each
- *  re-ranked so results with every word of the query come first. */
+ *  re-ranked so results with every word of the query come first.
+ *
+ *  When no song has every word of the query (YouTube Music's song catalog
+ *  missed: "demetori" answers with other Touhou arrangers), the songs wait
+ *  for the videos, which come a moment later from the same lookup, and the
+ *  videos that do match go above the songs: matches move up across both,
+ *  and still nothing on screen moves. */
 export function buildSearchView(q: string, parts: SearchParts, own: Track[] = []): SearchView {
   const rows: SearchRow[] = [];
   const tracks: Track[] = [];
@@ -64,7 +70,11 @@ export function buildSearchView(q: string, parts: SearchParts, own: Track[] = []
   if (artistsOnTop && artistsRow) rows.push(artistsRow);
 
   if (parts.songs === null) return { rows, tracks, artistsOnTop };
-  const ranked = rankByQuery(parts.songs, q);
+  const words = queryWords(q);
+  const songsMiss = words.length > 0 && !parts.songs.some((t) => matchesAllWords(t, words));
+  if (songsMiss && parts.videos === null) return { rows, tracks, artistsOnTop };
+  const promoted = songsMiss ? (parts.videos ?? []).filter((t) => matchesAllWords(t, words)) : [];
+  const ranked = [...promoted, ...rankByQuery(parts.songs, q)];
   const songsShown = add(ranked.slice(0, ARTISTS_AFTER_SONGS));
   if (!artistsOnTop && artistsRow) rows.push(artistsRow);
   const rest = add(ranked.slice(ARTISTS_AFTER_SONGS), Math.max(0, SONG_CAP - songsShown));

@@ -49,7 +49,7 @@ describe('buildSearchView: order', () => {
   });
 
   it('own matches still lead a direct artist search (they are there before the artists are)', () => {
-    const v = buildSearchView('demetori', parts({ uploads: [], artists: [artist('Demetori')], songs: [t('s0')] }), [t('own1')]);
+    const v = buildSearchView('demetori', parts({ uploads: [], artists: [artist('Demetori')], songs: [t('s0')], videos: [] }), [t('own1')]);
     expect(shape(v)).toEqual(['own1', 'ARTISTS', 's0']);
   });
 
@@ -71,7 +71,7 @@ describe('buildSearchView: order', () => {
   });
 
   it('no artists, no section', () => {
-    const v = buildSearchView('x', parts({ uploads: [], artists: [], songs: [t('s0')] }));
+    const v = buildSearchView('x', parts({ uploads: [], artists: [], songs: [t('s0')], videos: [] }));
     expect(shape(v)).toEqual(['s0']);
   });
 
@@ -96,6 +96,25 @@ describe('buildSearchView: order', () => {
     expect(full.tracks).toHaveLength(YOUTUBE_TOTAL);
     const fewSongs = buildSearchView('x', parts({ uploads: [], artists: [], songs: many('s', 4), videos: many('v', 30) }));
     expect(fewSongs.tracks.filter((x) => x.id.startsWith('v'))).toHaveLength(YOUTUBE_TOTAL - 4);
+  });
+});
+
+describe('buildSearchView: no song matches the query', () => {
+  const songs = [t('s0', 'Necro Fantasia', 'Alstroemeria'), t('s1', 'Border of Life', 'coorifime')];
+  const videos = [t('v0', 'Touhou mix', 'someone'), t('v1', 'Demetori - Plastic Mind', 'vicildur'), t('v2', 'Demetori - Suwa', 'vicildur')];
+
+  it('the songs wait for the videos', () => {
+    expect(shape(buildSearchView('demetori', parts({ uploads: [], artists: [], songs })))).toEqual([]);
+  });
+
+  it('then the videos that match go above the songs, in their own order', () => {
+    const v = buildSearchView('demetori', parts({ uploads: [], artists: [], songs, videos }));
+    expect(shape(v)).toEqual(['v1', 'v2', 's0', 's1', 'v0']);
+  });
+
+  it('songs that do match never wait for videos', () => {
+    const matching = [...songs, t('m0', 'Demetori - Septette')];
+    expect(shape(buildSearchView('demetori', parts({ uploads: [], artists: [], songs: matching })))).toEqual(['m0', 's0', 's1']);
   });
 });
 

@@ -135,9 +135,11 @@ describe('SearchResults: rows fade in one after another', () => {
   });
 
   it('a later group staggers from its own first row, and rows already shown keep their timing', () => {
-    const p1 = parts({ uploads: [], artists: [], songs: [t('a1'), t('b2')] });
+    // Songs that match the query, so they show before the videos arrive.
+    const p1 = parts({ uploads: [], artists: [], songs: [t('a1', 'x one'), t('b2', 'x two')] });
     const { rerender, props } = renderResults(buildSearchView('x', p1));
     const before = delays();
+    expect(before).toHaveLength(2);
     const p2 = { ...p1, videos: [t('v1'), t('v2')] };
     rerender(<SearchResults {...props} view={buildSearchView('x', p2)} />);
     expect(delays()).toEqual([...before, '0ms', `${STAGGER_MS}ms`]);
