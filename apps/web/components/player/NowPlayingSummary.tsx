@@ -38,6 +38,9 @@ export interface NowPlayingSummaryProps {
   onArtistNavigate?: () => void;
   /** Only 'lg': scroll an overflowing title while the view is on screen. */
   marquee?: boolean;
+  /** Only 'lg': tapping the title opens the song's page (the full-screen
+   *  view closes itself first). Omit and the title is plain text. */
+  onTitleOpen?: () => void;
   className?: string;
 }
 
@@ -49,6 +52,7 @@ export function NowPlayingSummary({
   artistLink = true,
   onArtistNavigate,
   marquee,
+  onTitleOpen,
   className,
 }: NowPlayingSummaryProps) {
   // Prefer a downloaded copy's own local art (offline, or just to save data)
@@ -78,7 +82,13 @@ export function NowPlayingSummary({
       // title inside it. Shrink-to-fit here would make the box depend on
       // its own content, which is a loop waiting to happen.
       <div className={cn('min-w-0 flex-1', className)}>
-        <MarqueeText text={track?.title ?? ''} active={marquee} className="text-2xl font-bold tracking-tight" />
+        {onTitleOpen ? (
+          <button type="button" onClick={onTitleOpen} data-testid="now-playing-title" className="block w-full min-w-0 text-left">
+            <MarqueeText text={track?.title ?? ''} active={marquee} className="text-2xl font-bold tracking-tight" />
+          </button>
+        ) : (
+          <MarqueeText text={track?.title ?? ''} active={marquee} className="text-2xl font-bold tracking-tight" />
+        )}
         <div className={ARTIST_ROW.lg}>{artist}</div>
       </div>
     );

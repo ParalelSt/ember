@@ -35,6 +35,7 @@ import { contextTitle } from '@/lib/playback/contextTitle';
 import { isUnavailable } from '@/lib/playback/queueNav';
 import { cn } from '@/lib/utils';
 import { tabsHref } from '@/lib/tabSources';
+import { songPageHref } from '@/lib/songPage';
 
 /** One row of the full-screen player's More sheet. */
 interface MoreItem {
@@ -121,6 +122,10 @@ export function NowPlaying() {
     setOpen(false);
     window.setTimeout(go, 400);
   };
+  // The song's own page: the cover and the title both open it (closing
+  // this view first), for a song that has one.
+  const songHref = songPageHref(current);
+  const openSong = songHref ? () => closeThenGo(songHref) : undefined;
   // The tab page for this song, full screen on phones like everything else.
   const openTabs = () => {
     if (current) closeThenGo(tabsHref(current.id));
@@ -197,6 +202,27 @@ export function NowPlaying() {
   // A downloaded copy's own local art wins over the remote artworkUrl, shared
   // with NowPlayingSummary's player-bar thumbnail.
   const art = useTrackArtSrc(current);
+  const coverArt = (
+    <Artwork
+      src={art}
+      className="w-full max-w-md aspect-square rounded-2xl bg-art shadow-2xl ring-1 ring-foreground/10"
+    >
+      <div className="h-full w-full grid place-items-center text-foreground/20">
+        <MusicIcon className="h-20 w-20" />
+      </div>
+    </Artwork>
+  );
+  const coverNode = openSong ? (
+    <button
+      type="button"
+      onClick={openSong}
+      aria-label={`Open ${current?.title ?? 'song'}`}
+      data-testid="now-playing-cover"
+      className="block w-full max-w-md rounded-2xl"
+    >
+      {coverArt}
+    </button>
+  ) : coverArt;
 
   // The More sheet: one plain list of what has no button on the player. Like,
   // Lyrics and Devices stay on the player itself. Each row opens the sheet or
@@ -403,16 +429,10 @@ export function NowPlaying() {
           {title.name && <div className="max-w-full truncate text-sm font-semibold">{title.name}</div>}
         </div>
 
-        {/* Artwork, fills the upper space, centered. */}
+        {/* Artwork, fills the upper space, centered. Opens the song's page
+            when it has one. */}
         <div className="flex-1 grid place-items-center py-4">
-          <Artwork
-            src={art}
-            className="w-full max-w-md aspect-square rounded-2xl bg-art shadow-2xl ring-1 ring-foreground/10"
-          >
-            <div className="h-full w-full grid place-items-center text-foreground/20">
-              <MusicIcon className="h-20 w-20" />
-            </div>
-          </Artwork>
+          {coverNode}
         </div>
 
         {/* Title + artist */}
@@ -426,6 +446,7 @@ export function NowPlaying() {
               size="lg"
               marquee={open}
               onArtistNavigate={() => setOpen(false)}
+              onTitleOpen={openSong}
             />
           )}
           {current && user && !live && (
