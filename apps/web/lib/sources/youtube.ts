@@ -656,6 +656,13 @@ export async function getTrack(videoId: string): Promise<Track | null> {
   return normalize(raw);
 }
 
+/** The YT Music artist channel id whose name matches `name` exactly (case and
+ *  diacritics aside), or null. For tracks stored without an artistId. */
+export async function findArtistId(name: string): Promise<string | null> {
+  const raw = await runPython<{ id?: string | null }>(['artist-id', '--', name], { timeoutMs: 15000 });
+  return raw?.id || null;
+}
+
 /** What `player.py trending` prints: the chart, blended across whichever
  *  countries it was asked for and could fetch, in rank order. */
 export interface RawTrendingChart {

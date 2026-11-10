@@ -720,6 +720,31 @@ def cmd_info(args):
         "httpHeaders": info.get("http_headers") or {},
     }, sys.stdout)
 
+def _fold_name(s):
+    """Case and diacritics folded, spaces squeezed, for comparing artist names."""
+    import unicodedata
+    d = unicodedata.normalize("NFKD", s or "")
+    d = "".join(c for c in d if not unicodedata.combining(c))
+    return " ".join(d.casefold().split())
+
+
+def cmd_artist_id(args):
+    """`artist-id <name>`: the YT Music artist channel id whose name matches
+    (case/diacritics-insensitive), for tracks stored without an artistId.
+    Prints {"id": "UC..."} or {"id": null}; never fails the caller."""
+    want = _fold_name(args.name)
+    found = None
+    try:
+        for r in yt.search(args.name, filter="artists", limit=5) or []:
+            bid = r.get("browseId")
+            if bid and want and _fold_name(r.get("artist") or r.get("title")) == want:
+                found = bid
+                break
+    except Exception as e:
+        print(f"[artist-id] search failed for {args.name!r}: {type(e).__name__}: {e}", file=sys.stderr)
+    json.dump({"id": found}, sys.stdout)
+
+
 def cmd_track(args):
     """Resolve a single videoId to track metadata via ytmusicapi get_song.
     Works for any public YouTube video, not just YT Music-classified songs.
@@ -1552,6 +1577,9 @@ def main():
     p_track = sub.add_parser("track", help="Resolve one videoId to track metadata. Prints JSON.")
     p_track.add_argument("video_id")
 
+    p_aid = sub.add_parser("artist-id", help="YT Music artist channel id for an exact artist name. Prints JSON.")
+    p_aid.add_argument("name")
+
     p_ytpl = sub.add_parser("ytplaylist", help="Public YT Music playlist → {title, tracks}. Prints JSON.")
     p_ytpl.add_argument("playlist_id")
 
@@ -1585,6 +1613,8 @@ def main():
         cmd_lyrics(args)
     elif args.cmd == "track":
         cmd_track(args)
+    elif args.cmd == "artist-id":
+        cmd_artist_id(args)
     elif args.cmd == "ytplaylist":
         cmd_ytplaylist(args)
     elif args.cmd == "match":
