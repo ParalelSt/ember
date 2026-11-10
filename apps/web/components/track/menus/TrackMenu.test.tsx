@@ -1,4 +1,4 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import type { PropsWithChildren, ReactElement, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { Track } from '@/types/track';
@@ -18,11 +18,17 @@ vi.mock('../ShareButton', () => ({
   ShareButton: ({ className }: { className?: string }) => <button type="button" className={className}>Share</button>,
 }));
 vi.mock('@/components/ui/dropdown-menu', () => ({
-  DropdownMenuItem: ({ children, onClick }: PropsWithChildren<{ onClick?: () => void }>) => (
-    <div role="menuitem" onClick={onClick}>
-      {children}
-    </div>
-  ),
+  // A `render` element (a link item) renders as that link, as base-ui does.
+  DropdownMenuItem: ({ children, onClick, render }: PropsWithChildren<{ onClick?: () => void; render?: ReactElement<{ href?: string }> }>) =>
+    render ? (
+      <a role="menuitem" href={render.props.href}>
+        {children}
+      </a>
+    ) : (
+      <div role="menuitem" onClick={onClick}>
+        {children}
+      </div>
+    ),
   DropdownMenuSeparator: () => <hr />,
 }));
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => ({ playTrack }) }));
@@ -111,5 +117,27 @@ describe('TrackMenu on a song that is gone', () => {
   it('a song that plays keeps Share everywhere', () => {
     render(<TrackMenu track={track} />);
     expect(screen.getByRole('button', { name: 'Share' })).not.toHaveClass('max-md:hidden');
+  });
+});
+
+describe('TrackMenu: Go to song / Go to artist', () => {
+  it('a YouTube song offers Go to song, linking its page', () => {
+    render(<TrackMenu track={{ ...track, sourceId: 'abcdefghijk' }} />);
+    expect(screen.getByRole('menuitem', { name: /Go to song/ })).toHaveAttribute('href', '/track/abcdefghijk');
+  });
+
+  it('Go to artist only when the artist id is known', () => {
+    render(<TrackMenu track={{ ...track, artistId: 'UCband' }} />);
+    expect(screen.getByRole('menuitem', { name: /Go to artist/ })).toHaveAttribute('href', '/artist/UCband');
+  });
+
+  it('no artist id, no Go to artist', () => {
+    render(<TrackMenu track={track} />);
+    expect(screen.queryByRole('menuitem', { name: /Go to artist/ })).toBeNull();
+  });
+
+  it('an upload has no song page, so no Go to song', () => {
+    render(<TrackMenu track={{ ...track, id: 'upload:u1', source: 'upload', sourceId: 'u1' }} />);
+    expect(screen.queryByRole('menuitem', { name: /Go to song/ })).toBeNull();
   });
 });

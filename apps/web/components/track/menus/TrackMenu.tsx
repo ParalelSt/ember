@@ -1,13 +1,15 @@
 'use client';
 
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
 import { ShareButton } from '../ShareButton';
-import { QueueIcon, RefreshIcon } from '@/components/icons';
+import { ArtistIcon, MusicIcon, QueueIcon, RefreshIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { addToQueue } from '@/lib/playback/addToQueue';
 import { isUnavailable } from '@/lib/playback/queueNav';
+import { artistPageHref, songPageHref } from '@/lib/songPage';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import type { Track } from '@/types/track';
 
@@ -28,6 +30,10 @@ import type { Track } from '@/types/track';
  *  menu also offers "Wrong song? Re-match", which reopens that song's
  *  candidates.
  *
+ *  "Go to song" opens the song's own page (YouTube songs; an upload has
+ *  none) and "Go to artist" the artist's, when its id is known. They are
+ *  links, so a desktop middle click opens them in a new tab.
+ *
  *  Reordering a playlist is the list toolbar's Edit order, not a row menu. */
 export function TrackMenu({ track, onRematch }: { track: Track; onRematch?: () => void }) {
   const { playTrack } = usePlayer();
@@ -40,6 +46,9 @@ export function TrackMenu({ track, onRematch }: { track: Track; onRematch?: () =
     toast.success(`Added "${track.title}" to the queue`);
   };
 
+  const songHref = songPageHref(track);
+  const artistHref = artistPageHref(track);
+
   return (
     <>
       {!isUnavailable(track) && (
@@ -50,6 +59,16 @@ export function TrackMenu({ track, onRematch }: { track: Track; onRematch?: () =
               <DropdownMenuItem onClick={queue}>
                 <QueueIcon className="h-3.5 w-3.5" /> Add to queue
               </DropdownMenuItem>
+              {songHref && (
+                <DropdownMenuItem render={<Link href={songHref} />}>
+                  <MusicIcon className="h-3.5 w-3.5" /> Go to song
+                </DropdownMenuItem>
+              )}
+              {artistHref && (
+                <DropdownMenuItem render={<Link href={artistHref} />}>
+                  <ArtistIcon className="h-3.5 w-3.5" /> Go to artist
+                </DropdownMenuItem>
+              )}
               {onRematch && (
                 <DropdownMenuItem onClick={onRematch}>
                   <RefreshIcon className="h-3.5 w-3.5" /> Wrong song? Re-match
