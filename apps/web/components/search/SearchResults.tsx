@@ -53,14 +53,14 @@ function Arrival({ delayMs, children }: { delayMs: number; children: ReactNode }
  *  artist page. */
 export function SearchArtists({ artists }: { artists: SearchArtist[] }) {
   return (
-    <section aria-label="Artists" data-testid="search-artists" className="py-2">
-      <h3 className="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Artists</h3>
-      <div className="grid grid-cols-3 gap-1">
+    <section aria-label="Artists" data-testid="search-artists" className="py-cluster">
+      <h3 className="px-row pb-inset text-xs font-semibold uppercase tracking-wider text-muted-foreground">Artists</h3>
+      <div className="grid grid-cols-3 gap-inset">
         {artists.map((a) => (
           <Link
             key={a.id}
             href={`/artist/${encodeURIComponent(a.id)}`}
-            className="flex min-w-0 flex-col items-center gap-1 rounded-md p-2 text-center transition-colors hover:bg-card"
+            className="flex min-w-0 flex-col items-center gap-inset rounded-md p-cluster text-center transition-colors hover:bg-card"
           >
             <Artwork
               src={a.artworkUrl}
