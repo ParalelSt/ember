@@ -58,8 +58,10 @@ export function addSearchChunk(parts: SearchParts, chunk: SearchChunk): SearchPa
     case 'videos':
       return { ...parts, videos: chunk.tracks };
     case 'legacy':
-      // One finished list: every group is in.
-      return { uploads: [], artists: [], songs: chunk.tracks, videos: [], error: null, done: true };
+      // One finished list, shown exactly as the server ordered it (no
+      // re-ranking, no caps: the Trending list keeps all 30), so it rides
+      // in the first group and every other group is in and empty.
+      return { uploads: chunk.tracks, artists: [], songs: [], videos: [], error: null, done: true };
     case 'error':
       return { ...parts, error: { status: chunk.status, error: chunk.error } };
     case 'done':
