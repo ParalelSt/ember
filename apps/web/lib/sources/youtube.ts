@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { Track } from '@/types/track';
+import type { SearchArtist } from '@/lib/search/types';
 import { redactSecrets } from '@/lib/import/redact';
 import { serverLogger } from '@/lib/logger/server';
 import { parseMusicCheck, type MusicCheck, type RawMusicCheck } from '@/lib/import/musicCheck';
@@ -177,9 +178,13 @@ const DOWNLOAD_MAX_WAITING = 64;
  *  long fails with a 503 instead of queueing forever. */
 function runPython<T = unknown>(
   args: string[],
-  { timeoutMs = 30000, lane = 'interactive' }: { timeoutMs?: number; lane?: PythonLane } = {},
+  {
+    timeoutMs = 30000,
+    lane = 'interactive',
+    onLine,
+  }: { timeoutMs?: number; lane?: PythonLane; onLine?: (value: unknown) => void } = {},
 ): Promise<T> {
-  return LANES[lane].run(() => spawnPython<T>(args, timeoutMs)).catch((e: unknown) => {
+  return LANES[lane].run(() => spawnPython<T>(args, timeoutMs, onLine)).catch((e: unknown) => {
     if (e instanceof BusyError) serverLogger.error('python', 'helper queue full', { lane, command: args[0] });
     throw e;
   });
@@ -188,7 +193,11 @@ function runPython<T = unknown>(
 /** The child's stderr is redacted on its way to both the terminal and the
  *  server log, so a helper that ever echoed a credential could not put it
  *  there. */
-function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
+/** With `onLine`, stdout is read as NDJSON: each complete line is parsed
+ *  and handed over the moment it arrives (the streamed search), and the
+ *  promise resolves with undefined once the helper exits cleanly. Without
+ *  it, stdout is one JSON document parsed at the end. */
+function spawnPython<T>(args: string[], timeoutMs: number, onLine?: (value: unknown) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON_BIN, [PLAYER_SCRIPT, ...args], {
       env: { ...process.env, MUSIC_DIR, PATH: SUBPROCESS_PATH },
@@ -222,7 +231,23 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
       // digest groups timeouts per helper instead of as one lump.
       reject_(e, `python timed out: ${args[0] ?? 'unknown'} helper after ${Math.round(timeoutMs / 1000)}s`);
     }, timeoutMs);
-    child.stdout.on('data', (d) => { stdout += d.toString(); });
+    // NDJSON mode: only the unfinished tail of the last chunk is kept.
+    let badLine: string | null = null;
+    const takeLine = (line: string) => {
+      if (!line.trim() || badLine !== null) return;
+      try {
+        onLine?.(JSON.parse(line));
+      } catch {
+        badLine = line;
+      }
+    };
+    child.stdout.on('data', (d) => {
+      stdout += d.toString();
+      if (!onLine) return;
+      const lines = stdout.split('\n');
+      stdout = lines.pop() ?? '';
+      lines.forEach(takeLine);
+    });
     // Buffer stderr for error reporting AND forward live to Node's stderr so
     // `[search] …` / yt-dlp logs surface in the dev/prod terminal as they
     // happen, not just when the process fails.
@@ -260,15 +285,22 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
         if (reason) { e.status = 410; e.unavailableReason = reason; }
         return reject_(e);
       }
-      try {
-        resolve(JSON.parse(stdout) as T);
-      } catch {
-        // Include the args that triggered this so the next "bad python output"
-        // log tells us which call actually failed (info vs. search vs. …).
-        const e: PythonError = new Error(`bad python output for [${args.join(' ')}]: ${stdout.slice(0, 200)}`);
-        e.status = 502;
-        reject_(e);
+      if (onLine) {
+        takeLine(stdout);
+        if (badLine === null) return resolve(undefined as T);
+        stdout = badLine;
+      } else {
+        try {
+          return resolve(JSON.parse(stdout) as T);
+        } catch {
+          // reported below
+        }
       }
+      // Include the args that triggered this so the next "bad python output"
+      // log tells us which call actually failed (info vs. search vs. …).
+      const e: PythonError = new Error(`bad python output for [${args.join(' ')}]: ${stdout.slice(0, 200)}`);
+      e.status = 502;
+      reject_(e);
     });
   });
 }
@@ -337,6 +369,101 @@ export async function searchTracks(query: string, { limit = 30 } = {}): Promise<
   SEARCH_CACHE.set(key, { tracks, expires: Date.now() + SEARCH_TTL_MS });
 
   return tracks;
+}
+
+/** The three lookups of one streamed search, each a promise that settles
+ *  the moment its line arrives from the helper, so the search route can
+ *  send songs while videos are still on their way. */
+export interface YoutubeSearchParts {
+  songs: Promise<Track[]>;
+  videos: Promise<Track[]>;
+  artists: Promise<SearchArtist[]>;
+}
+
+type RawSearchLine =
+  | { part: 'songs' | 'videos' | 'fallback'; tracks: RawYoutubeTrack[] }
+  | { part: 'artists'; artists: SearchArtist[] };
+
+interface FinishedParts {
+  songs: Track[];
+  videos: Track[];
+  artists: SearchArtist[];
+}
+
+/** Same bounds and rules as SEARCH_CACHE: 5 minutes, 100 queries, and an
+ *  answer with no tracks is never kept. Its own map, since an entry here
+ *  holds three lists rather than one. */
+const PARTS_CACHE = new Map<string, { parts: FinishedParts; expires: number }>();
+
+function settled<T>(value: T): Promise<T> {
+  return Promise.resolve(value);
+}
+
+/** One deferred part: resolve/reject from outside, and a rejection nobody
+ *  has awaited yet never counts as unhandled. */
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  let done = false;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = (v) => { done = true; res(v); };
+    reject = (e) => { done = true; rej(e); };
+  });
+  promise.catch(() => {});
+  return { promise, resolve, reject, isDone: () => done };
+}
+
+/** The streamed search (`player.py search --stream`): songs, videos and
+ *  artists asked in parallel in ONE helper run (one interactive lane slot,
+ *  same limits and timeout as searchTracks), each part handed over as soon
+ *  as it is ready. Videos that found nothing wait for the yt-dlp fallback,
+ *  which only runs once songs and videos are both empty. A failed run
+ *  rejects every part still waiting; parts already in stay as they were. */
+export function searchTrackParts(query: string, { limit = 30 } = {}): YoutubeSearchParts {
+  const key = `${query}:${limit}`;
+  const hit = PARTS_CACHE.get(key);
+  if (hit && hit.expires > Date.now()) {
+    return { songs: settled(hit.parts.songs), videos: settled(hit.parts.videos), artists: settled(hit.parts.artists) };
+  }
+
+  const songs = deferred<Track[]>();
+  const videos = deferred<Track[]>();
+  const artists = deferred<SearchArtist[]>();
+  const got: FinishedParts = { songs: [], videos: [], artists: [] };
+
+  const onLine = (value: unknown) => {
+    const line = value as RawSearchLine;
+    if (line?.part === 'artists') {
+      got.artists = Array.isArray(line.artists) ? line.artists : [];
+      artists.resolve(got.artists);
+      return;
+    }
+    if (line?.part !== 'songs' && line?.part !== 'videos' && line?.part !== 'fallback') return;
+    const tracks = dedupeByVideoId(Array.isArray(line.tracks) ? line.tracks : []).map(normalize);
+    if (line.part === 'songs') {
+      got.songs = tracks;
+      songs.resolve(tracks);
+    } else if (tracks.length || line.part === 'fallback') {
+      got.videos = tracks;
+      videos.resolve(tracks);
+    }
+    // An empty videos line waits: the fallback may still fill it.
+  };
+
+  runPython<void>(['search', '--stream', '--limit', String(limit), '--', query], { onLine }).then(
+    () => {
+      if (!songs.isDone()) songs.resolve([]);
+      if (!videos.isDone()) videos.resolve([]);
+      if (!artists.isDone()) artists.resolve([]);
+      if (!got.songs.length && !got.videos.length) return;
+      capInsert(PARTS_CACHE, key, { parts: got, expires: Date.now() + SEARCH_TTL_MS }, SEARCH_CACHE_MAX);
+    },
+    (e: unknown) => {
+      for (const part of [songs, videos, artists]) if (!part.isDone()) part.reject(e);
+    },
+  );
+
+  return { songs: songs.promise, videos: videos.promise, artists: artists.promise };
 }
 
 /** Downloads in flight, keyed by videoId.
