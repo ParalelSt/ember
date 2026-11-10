@@ -26,6 +26,16 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'song-page-artist-link',
+    version: '0.7.42',
+    date: '2026-11-10',
+    title: 'Song pages link the artist',
+    summary: 'The artist on a song\'s page now always opens their artist page when YouTube Music knows them.',
+    bullets: [
+      'The artist name on a song\'s page is a link to their artist page, even for songs saved without one.',
+    ],
+  },
+  {
     id: 'faster-clearer-search',
     version: '0.7.41',
     date: '2026-11-10',
