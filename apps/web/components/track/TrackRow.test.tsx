@@ -558,3 +558,69 @@ describe('TrackRow added by (collaborative playlists)', () => {
     expect(screen.queryByTestId('track-row-added-by')).toBeNull();
   });
 });
+
+// The owner's song-page rule: on a desktop window the cover and the title
+// open the song's own page and the play button plays; on a phone only the
+// cover does, and the title keeps playing (and scrolls when it is long).
+describe('TrackRow: the song page from a row', () => {
+  it('songHref turns the cover into a link to the song page, which never plays', () => {
+    const onPlay = vi.fn();
+    render(<TrackRow track={track} trailingPlayControl songHref="/track/a1" onPlay={onPlay} />);
+    const cover = screen.getByTestId('track-row-cover-link');
+    expect(cover).toHaveAttribute('href', '/track/a1');
+    expect(cover).toHaveAccessibleName('Open Midnight Drive');
+    fireEvent.click(cover.firstElementChild!);
+    expect(onPlay).not.toHaveBeenCalled();
+  });
+
+  it('titleOpensSong makes the title a link too, and the play button still plays', () => {
+    const onPlay = vi.fn();
+    render(<TrackRow track={track} trailingPlayControl songHref="/track/a1" titleOpensSong onPlay={onPlay} />);
+    const title = screen.getByTestId('track-row-title-link');
+    expect(title).toHaveAttribute('href', '/track/a1');
+    fireEvent.click(title);
+    expect(onPlay).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('track-row-play'));
+    expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('without titleOpensSong the title still plays (the phone row)', () => {
+    const onPlay = vi.fn();
+    render(<TrackRow track={track} trailingPlayControl songHref="/track/a1" onPlay={onPlay} />);
+    expect(screen.queryByTestId('track-row-title-link')).toBeNull();
+    fireEvent.click(screen.getByTestId('track-row-title'));
+    expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('no song page (an upload): the cover plays, as before', () => {
+    const onPlay = vi.fn();
+    const { container } = render(
+      <TrackRow track={{ ...track, source: 'upload' }} trailingPlayControl songHref={null} titleOpensSong onPlay={onPlay} />,
+    );
+    expect(screen.queryByTestId('track-row-cover-link')).toBeNull();
+    expect(screen.queryByTestId('track-row-title-link')).toBeNull();
+    fireEvent.click(container.querySelector('img')!.parentElement!);
+    expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('select mode ignores the song page: a click selects', () => {
+    const onSelect = vi.fn();
+    render(<TrackRow track={track} songHref="/track/a1" titleOpensSong onSelect={onSelect} />);
+    expect(screen.queryByTestId('track-row-cover-link')).toBeNull();
+    expect(screen.queryByTestId('track-row-title-link')).toBeNull();
+  });
+
+  it('marqueeTitle puts the title in a one-line MarqueeText instead of cutting it', () => {
+    render(<TrackRow track={track} trailingPlayControl marqueeTitle />);
+    const title = screen.getByTestId('track-row-title');
+    expect(title.querySelector('[data-testid="marquee"]')).not.toBeNull();
+    expect(title).not.toHaveClass('truncate');
+  });
+
+  it('a plain row keeps the cut title', () => {
+    render(<TrackRow track={track} />);
+    const title = screen.getByTestId('track-row-title');
+    expect(title.querySelector('[data-testid="marquee"]')).toBeNull();
+    expect(title).toHaveClass('truncate');
+  });
+});
