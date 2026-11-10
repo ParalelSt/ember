@@ -19,9 +19,9 @@ interface Props {
 const GAP_PX = 56;
 // Scroll speed in px/s; duration is derived so speed is constant regardless
 // of title length.
-const SPEED = 45;
+export const SPEED = 35;
 // Pause before the scroll begins (first iteration only).
-const START_DELAY_MS = 1000;
+export const START_DELAY_MS = 1300;
 // Hysteresis around the overflow threshold. A title has to overrun the box
 // by START_PX before it starts scrolling, and has to come STOP_PX clear of
 // the edge before it goes static again. Without the gap between the two, a
