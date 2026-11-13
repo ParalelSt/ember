@@ -1,3 +1,10 @@
+# 0.7.43: Long names scroll everywhere
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh, then once ./install-auto-update.sh. From
+then on the server updates itself within 5 minutes of each release and posts
+to the crash channel if an update fails.
+
 # 0.7.42: Song pages link the artist
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
