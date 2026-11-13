@@ -210,6 +210,32 @@ if [ "$RELAUNCH" = tmux ] && ! command -v tmux >/dev/null 2>&1; then
   fi
 fi
 
+# One update at a time: this and auto-update.sh (the host's timer, see
+# SETUP.md, "Automatic updates") share logs/.update.lock. A mkdir lock that
+# records its owner's pid; stale when that process is gone, or after 60 min.
+# Released before every exit and before exec-ing into the foreground.
+UPDATE_LOCK="$ROOT/logs/.update.lock"
+HAVE_LOCK=0
+acquire_lock() {
+  mkdir -p "$ROOT/logs"
+  if ! mkdir "$UPDATE_LOCK" 2>/dev/null; then
+    local owner
+    owner="$(tr -dc '0-9' 2>/dev/null <"$UPDATE_LOCK/pid" || true)"
+    if [ -n "$(find "$UPDATE_LOCK" -maxdepth 0 -mmin +60 2>/dev/null)" ] \
+       || [ -z "$owner" ] || ! kill -0 "$owner" 2>/dev/null; then
+      rm -rf "$UPDATE_LOCK"
+      mkdir "$UPDATE_LOCK" 2>/dev/null || return 1
+    else
+      return 1
+    fi
+  fi
+  echo "$$" >"$UPDATE_LOCK/pid"
+  HAVE_LOCK=1
+}
+release_lock() {
+  if [ "$HAVE_LOCK" = 1 ]; then rm -rf "$UPDATE_LOCK"; HAVE_LOCK=0; fi
+}
+
 # launch_ember: the last step. Here; through systemd; or in the tmux session
 # in the background (the tmux server, not this terminal, is then its parent,
 # so an SSH hangup never reaches it). Only the ports are passed to tmux:
@@ -223,6 +249,7 @@ launch_ember() {
   [ -f "$ROOT/apps/web/.next/BUILD_ID" ] || flag=""
   if [ "$RELAUNCH" = here ]; then
     if [ "$NO_TMUX_NOTE" = 1 ]; then say_no_tmux; fi
+    release_lock
     exec "$ROOT/start-static.sh" $flag
   fi
   local cmd pid where look
@@ -262,6 +289,7 @@ launch_ember() {
         echo "  The update did NOT go through: this is the previous version. Fix the"
         echo "  error above (or send it to whoever maintains Ember), then ./update.sh again."
       fi
+      release_lock
       exit "${LAUNCH_RC:-0}"
     fi
     sleep 0.2
@@ -282,8 +310,18 @@ launch_ember() {
     launch_ember
   fi
   echo "✗ Ember did not start. See why: $look"
+  release_lock
   exit 1
 }
+
+if [ "$MODE" != "check" ]; then
+  if ! acquire_lock; then
+    echo "✗ Another update is already running (logs/.update.lock), not starting a second one."
+    echo "  Wait for it to finish, then run ./update.sh again."
+    exit 1
+  fi
+  trap release_lock EXIT
+fi
 
 echo "▶ fetching…"
 git fetch --quiet origin main
@@ -386,10 +424,12 @@ roll_back() {
   restore_aside
   if [ "$STOPPED" = 0 ]; then
     echo "  Ember was not stopped: it still runs the previous version."
+    release_lock
     exit 1
   fi
   if [ "$MODE" = "no-start" ]; then
     echo "  Ember was stopped for the install and stays stopped (--no-start)."
+    release_lock
     exit 1
   fi
   echo "▶ restarting the previous version…"
@@ -403,7 +443,7 @@ roll_back() {
 on_exit() {
   if [ "$ARMED" = 1 ] && [ "$1" != 0 ]; then roll_back; fi
 }
-trap 'on_exit $?' EXIT
+trap 'on_exit $?; release_lock' EXIT
 trap 'fail "interrupted"' INT TERM HUP
 ARMED=1
 
