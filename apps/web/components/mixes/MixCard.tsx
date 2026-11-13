@@ -32,9 +32,9 @@ const FACES: Record<MixKind, readonly string[]> = {
     'right-[8%] top-[30%] size-[36%] rounded-full',
   ],
   artist: [
-    'left-1/2 top-[12%] size-[56%] -translate-x-1/2 rounded-full',
-    'left-[12%] top-[46%] z-10 size-[24%] rounded-full',
-    'right-[12%] top-[46%] z-10 size-[24%] rounded-full',
+    'left-1/2 top-[8%] size-[52%] -translate-x-1/2 rounded-full',
+    'left-[14%] top-[40%] z-10 size-[22%] rounded-full',
+    'right-[14%] top-[40%] z-10 size-[22%] rounded-full',
   ],
   discover: [
     'left-1/2 top-[18%] z-10 size-[44%] -translate-x-1/2 rounded-[6px]',
@@ -42,9 +42,9 @@ const FACES: Record<MixKind, readonly string[]> = {
     'right-[9%] top-[26%] size-[36%] rotate-6 rounded-[6px]',
   ],
   'on-repeat': [
-    'left-[40%] top-[26%] z-20 size-[42%] rounded-[6px]',
-    'left-[28%] top-[19%] z-10 size-[42%] rounded-[6px]',
-    'left-[16%] top-[12%] size-[42%] rounded-[6px]',
+    'left-[42%] top-[20%] z-20 size-[38%] rounded-[6px]',
+    'left-[30%] top-[14%] z-10 size-[38%] rounded-[6px]',
+    'left-[18%] top-[8%] size-[38%] rounded-[6px]',
   ],
   throwback: [
     'left-1/2 top-[22%] z-10 size-[46%] -translate-x-1/2 rounded-full sepia',
@@ -82,7 +82,8 @@ export function MixCard({ title, subtitle, href, artworkUrls, color, ink, kind =
         ))}
         <span
           className={cn(
-            'absolute right-row bottom-row left-row line-clamp-2 break-words font-extrabold leading-none tracking-tight',
+            // Above the covers: a two-line name ("Arctic Monkeys") is never hidden.
+            'absolute right-row bottom-row left-row z-30 line-clamp-2 break-words font-extrabold leading-none tracking-tight',
             variant === 'desktop' ? 'text-2xl' : 'text-[22px]',
           )}
         >

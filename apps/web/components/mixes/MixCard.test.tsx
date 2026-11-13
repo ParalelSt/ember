@@ -64,8 +64,8 @@ describe('MixCard', () => {
       return cls;
     };
     expect(faces('style').every((c) => c.includes('rounded-full'))).toBe(true);
-    expect(faces('artist')[0]).toContain('size-[56%]');
-    expect(faces('artist')[1]).toContain('size-[24%]');
+    expect(faces('artist')[0]).toContain('size-[52%]');
+    expect(faces('artist')[1]).toContain('size-[22%]');
     expect(faces('discover').every((c) => c.includes('rounded-[6px]'))).toBe(true);
     expect(faces('discover')[1]).toContain('-rotate-6');
     expect(faces('on-repeat')[0]).toContain('z-20');
