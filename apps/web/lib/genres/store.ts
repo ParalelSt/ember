@@ -1,5 +1,5 @@
 import type PocketBase from 'pocketbase';
-import { isFamilySlug, type FamilySlug, type RawTag, type SubSlug } from './taxonomy';
+import { isFamilySlug, isSubSlug, type FamilySlug, type RawTag } from './taxonomy';
 import type { ArtistGenre, GenreSource, GenreStore } from './tagger';
 
 /** artist_genres in PocketBase (pocketbase/pb_hooks/ensure_artist_genres.pb.js),
@@ -19,8 +19,6 @@ export interface ArtistGenreRecord {
   fetched_at?: string;
 }
 
-const SUBS = new Set(['rock', 'metal', 'hiphop', 'rnb']);
-
 export function fromRecord(r: ArtistGenreRecord): ArtistGenre {
   const families: Partial<Record<FamilySlug, number>> = {};
   for (const [k, v] of Object.entries(r.families ?? {})) if (isFamilySlug(k) && Number.isFinite(v)) families[k] = v;
@@ -30,7 +28,7 @@ export function fromRecord(r: ArtistGenreRecord): ArtistGenre {
     artistId: r.artist_id || null,
     family: isFamilySlug(r.family) ? r.family : null,
     families,
-    sub: r.sub && SUBS.has(r.sub) ? (r.sub as SubSlug) : null,
+    sub: isSubSlug(r.sub) ? r.sub : null,
     tags: Array.isArray(r.tags) ? r.tags : [],
     source: r.source,
     status: r.status === 'none' ? 'none' : 'found',
