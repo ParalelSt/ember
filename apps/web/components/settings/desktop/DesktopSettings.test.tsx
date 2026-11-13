@@ -198,10 +198,11 @@ describe('edit styles reach Account', () => {
   });
 });
 
-it('picks a layout from the URL', () => {
+it('picks a layout from the URL before deciding where /settings goes', () => {
   window.history.replaceState(null, '', '/settings?settings=D&rows=B');
   open('/settings');
   expect(document.querySelector('[data-settings-layout="D"]')).not.toBeNull();
+  expect(state.replace).not.toHaveBeenCalled();
   window.history.replaceState(null, '', '/');
 });
 

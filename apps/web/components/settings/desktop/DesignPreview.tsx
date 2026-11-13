@@ -10,7 +10,7 @@
  *      AccountSection.
  * Nothing else in the app reads the stored choice. */
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { cn } from '@/lib/utils';
 
 export type LayoutVariant = 'A' | 'B' | 'C' | 'D';
@@ -107,12 +107,22 @@ export function useSettingsDesign(): SettingsDesign {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
-/** Reads the URL's variant params once when desktop Settings opens. */
+/** Reads the URL's variant params once when desktop Settings opens. Done
+ *  in the first render (storage only, before anything reads it), not in an
+ *  effect: otherwise the first render would act on the stored layout, and
+ *  layout A or C would already have sent /settings on to a section. */
 export function useDesignFromUrl() {
-  useEffect(() => {
+  useState(() => {
+    if (typeof window === 'undefined') return null;
     const fromUrl = designFromSearch(window.location.search);
-    if (Object.keys(fromUrl).length > 0) setSettingsDesign(fromUrl);
-  }, []);
+    if (Object.keys(fromUrl).length === 0) return null;
+    try {
+      window.localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify({ ...getSnapshot(), ...fromUrl }));
+    } catch {
+      // Blocked storage: the URL simply does not stick.
+    }
+    return null;
+  });
 }
 
 function Segmented<T extends string>({
