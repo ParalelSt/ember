@@ -120,7 +120,37 @@ describe('AdminUsersPage', () => {
     expect(screen.getByText('robin@ember.test')).toBeInTheDocument();
   });
 
-  it('shows each device with its versions, and marks one that is behind', () => {
+  it('desktop: a Devices column with a chip per device, the one behind in amber (desktop pick A)', () => {
+    render(<AdminUsersPage />);
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers).toEqual(['User', 'Email', 'Role', 'Devices', 'Joined', 'Actions']);
+    const robinRow = screen.getAllByRole('row')[1];
+    const devicesCell = within(robinRow).getAllByRole('cell')[headers.indexOf('Devices')];
+    const list = within(devicesCell).getByRole('list', { name: 'Devices of robin@ember.test' });
+    const [phone, browser, oldPhone] = within(list).getAllByRole('listitem');
+    expect(phone).toHaveTextContent('Android app 0.4.27 · behind');
+    expect(phone).toHaveAttribute('data-behind', 'true');
+    expect(phone.className).toContain('bg-warning/15');
+    expect(phone.className).toContain('text-warning');
+    expect(phone.querySelector('svg')).not.toBeNull();
+    expect(phone).toHaveAttribute('title', 'Android app 0.4.27 · behind (newest 0.4.28) · web 0.7.34 · seen 3 h ago');
+    expect(browser).toHaveTextContent('Browser web 0.7.34');
+    expect(browser).not.toHaveTextContent('behind');
+    expect(browser.className).toContain('bg-muted');
+    expect(browser).toHaveAttribute('title', 'Browser · web 0.7.34 · seen 2 d ago');
+    expect(oldPhone).toHaveTextContent('iOS app version unknown');
+    // The User cell is just the avatar and the name now.
+    expect(within(within(robinRow).getAllByRole('cell')[0]).queryByRole('list')).toBeNull();
+  });
+
+  it('desktop: a member with no devices says None yet in the column', () => {
+    render(<AdminUsersPage />);
+    const meRow = screen.getAllByRole('row')[2];
+    expect(within(meRow).getAllByRole('cell')[3]).toHaveTextContent('None yet');
+  });
+
+  it('phone: each device with its versions, and marks one that is behind', () => {
+    view.desktop = false;
     render(<AdminUsersPage />);
     const list = screen.getByRole('list', { name: 'Devices of robin@ember.test' });
     const [phone, browser, oldPhone] = within(list).getAllByRole('listitem');
@@ -135,7 +165,8 @@ describe('AdminUsersPage', () => {
     expect(oldPhone).toHaveTextContent('web unknown');
   });
 
-  it('says so for a member with no devices yet', () => {
+  it('phone: says so for a member with no devices yet', () => {
+    view.desktop = false;
     render(<AdminUsersPage />);
     expect(screen.getByText('No devices seen yet')).toBeInTheDocument();
   });
@@ -254,7 +285,7 @@ describe('AdminUsersPage on a phone', () => {
 describe('desktop users table', () => {
   it('has the supported columns, role tags, fallback name and search', () => {
     render(<AdminUsersPage />);
-    expect(screen.getAllByRole('columnheader').map(h => h.textContent)).toEqual(['User', 'Email', 'Role', 'Joined', 'Actions']);
+    expect(screen.getAllByRole('columnheader').map(h => h.textContent)).toEqual(['User', 'Email', 'Role', 'Devices', 'Joined', 'Actions']);
     expect(screen.getByText('No name')).toBeInTheDocument();
     expect(screen.queryByText('Last active')).toBeNull();
     fireEvent.change(screen.getByPlaceholderText('Search by email or name…'), { target: { value: 'robin' } });
