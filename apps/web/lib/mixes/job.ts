@@ -32,9 +32,13 @@ export const RADIO_LIMIT = 30;
 export const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
 /** Discover is rebuilt weekly: its row only counts as stale past this. */
 export const WEEKLY_STALE_AFTER_MS = 8 * DAY_MS;
-/** After a lazy build that found nothing to make, wait this long before
- *  trying that member again. */
+/** After a lazy build, wait this long before a lazy build for that member
+ *  again (a row kept from an earlier night stays old meanwhile). */
 export const LAZY_RETRY_MS = 6 * 60 * 60 * 1000;
+/** A mix that keeps coming out too short (not a radio outage) is deleted
+ *  once its last good build is this old, so it neither shows old songs
+ *  forever nor keeps the lazy trigger firing. */
+export const SHORT_KEEP_MS = 3 * DAY_MS;
 
 export interface StoredMix {
   id: string;
@@ -141,19 +145,20 @@ export function createMixJob(deps: MixJobDeps) {
     const [charts, unavailable] = await Promise.all([deps.genreCharts().catch(() => []), deps.unavailableIds().catch(() => new Set<string>())]);
     const day = localDay(at);
     const week = weekKey(at);
+    const seedOk = (s: { track: Track }) => !unavailable.has(s.track.id) && !skip(s.track);
 
     // The candidates of every kind, then the lineup (caps and order).
-    const style: Planned[] = cluster.mixes.map((plan) => ({ kind: 'style', key: plan.key, plan, seeds: pickSeeds(plan, day).map((s) => s.track.sourceId) }));
+    const style: Planned[] = cluster.mixes.map((plan) => ({ kind: 'style', key: plan.key, plan, seeds: pickSeeds(plan, day, undefined, seedOk).map((s) => s.track.sourceId) }));
     const artistMixes: Planned[] = cluster.eligible
       ? artistPlans(artists, knownGenres, KIND_CAPS.artist.max).map((plan) => ({
-        kind: 'artist', key: plan.key, plan, seeds: pickSeeds({ key: plan.key, songs: plan.songs }, day, ARTIST_SEEDS).map((s) => s.track.sourceId),
+        kind: 'artist', key: plan.key, plan, seeds: pickSeeds({ key: plan.key, songs: plan.songs }, day, ARTIST_SEEDS, seedOk).map((s) => s.track.sourceId),
       }))
       : [];
     const discover: Planned[] = [];
     if (cluster.eligible) {
       const old = stored.find((m) => m.key === DISCOVER_KEY);
       const keepAsIs = !!old && weekKey(Date.parse(old.builtAt) || 0) === week;
-      const seeds = discoverSeeds(artists, week);
+      const seeds = discoverSeeds(artists, week, seedOk);
       if (keepAsIs || seeds.length) discover.push({ kind: 'discover', key: DISCOVER_KEY, seeds: seeds.map((s) => s.track.sourceId), songKeys: seeds.map((s) => s.key), keepAsIs });
     }
     const repeat = onRepeatMix(history, unavailable, skip);
@@ -239,13 +244,13 @@ export function createMixJob(deps: MixJobDeps) {
           skip,
         });
         if (tracks) meta = describeMix(item.plan, tracks);
-        seeds = pickSeeds(item.plan, day).map((s) => s.key);
+        seeds = pickSeeds(item.plan, day, undefined, seedOk).map((s) => s.key);
       } else if (item.kind === 'artist') {
         const list = radios.get(item.key);
         tracks = list === null ? null : assembleArtistMix({ plan: item.plan, radios: list ?? [], genres, unavailable, skip });
         const tint = artistTint(item.key, item.plan.family ? familyOf(item.plan.family)?.tint ?? null : null);
         if (tracks) meta = describeArtistMix(item.plan, tracks, tint);
-        seeds = pickSeeds({ key: item.key, songs: item.plan.songs }, day, ARTIST_SEEDS).map((s) => s.key);
+        seeds = pickSeeds({ key: item.key, songs: item.plan.songs }, day, ARTIST_SEEDS, seedOk).map((s) => s.key);
       } else if (item.kind === 'discover') {
         if (!item.keepAsIs) {
           const list = radios.get(item.key);
@@ -258,6 +263,16 @@ export function createMixJob(deps: MixJobDeps) {
         meta = describeTracks(FIXED_TITLE[item.kind]!, tracks, KIND_TINT[item.kind]!);
       }
       if (!tracks || !meta) {
+        // Short (not an outage, and not Discover kept for the week): the
+        // last good row stays a few days, then goes.
+        const outage = (item.kind === 'style' || item.kind === 'artist' || item.kind === 'discover') && radios.get(item.key) === null;
+        const keptForWeek = item.kind === 'discover' && item.keepAsIs;
+        const old = stored.find((m) => m.key === item.key);
+        if (old && !outage && !keptForWeek && at - (Date.parse(old.builtAt) || 0) >= SHORT_KEEP_MS) {
+          await deps.deleteMix(old.id);
+          result.deleted.push(item.key);
+          continue;
+        }
         result.kept.push(item.key);
         continue;
       }
@@ -322,7 +337,7 @@ export function createMixJob(deps: MixJobDeps) {
   /** The lazy trigger (GET /api/mixes): build this member in the background
    *  when their mixes are missing or older than STALE_AFTER_MS (Discover:
    *  WEEKLY_STALE_AFTER_MS), unless a
-   *  build for them ran in the last LAZY_RETRY_MS and made nothing.
+   *  build for them ran in the last LAZY_RETRY_MS.
    *  Answers whether a build is now queued or running. */
   function requestBuild(userId: string, stored: readonly { builtAt: string; key?: string }[]): boolean {
     if (isBuilding(userId)) return true;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { chartTracksFor, createMixJob, LAZY_RETRY_MS, localDay, otherChartArtists, STALE_AFTER_MS, WEEKLY_STALE_AFTER_MS, type MixJobDeps, type MixRow, type StoredMix } from './job';
+import { chartTracksFor, createMixJob, LAZY_RETRY_MS, localDay, otherChartArtists, SHORT_KEEP_MS, STALE_AFTER_MS, WEEKLY_STALE_AFTER_MS, type MixJobDeps, type MixRow, type StoredMix } from './job';
 import { MAX_MIXES, mixKind } from './kinds';
 import { songKey } from '../songKey';
 import { createTagger, type ArtistGenre, type GenreStore } from '../genres/tagger';
@@ -252,6 +252,41 @@ describe('every kind', () => {
     await createMixJob(w.deps).buildMember('u1');
     const all = w.radioBatch.mock.calls.flatMap((c) => c[0]);
     expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('a dead or blocked song is never a radio seed', async () => {
+    const dead = rockSongs[0];
+    const blocked = rockSongs[4];
+    const w = world({ unavailableIds: async () => new Set([dead.id]), loadBlocked: async () => [blocked] }, { plays: fullPlays() });
+    await createMixJob(w.deps).buildMember('u1');
+    const seeds = w.radioBatch.mock.calls.flatMap((c) => c[0]);
+    expect(seeds.length).toBeGreaterThan(0);
+    expect(seeds).not.toContain(dead.sourceId);
+    expect(seeds).not.toContain(blocked.sourceId);
+  });
+
+  it('a mix that keeps coming out short is kept a few days, then deleted; an outage never deletes', async () => {
+    let clock = NOW;
+    const w = world({ now: () => clock }, { plays: fullPlays() });
+    const job = createMixJob(w.deps);
+    await job.buildMember('u1');
+    expect([...w.mixes.values()].some((m) => m.key === 'artist-rock-band-0')).toBe(true);
+    // From now on every radio is empty: the radio mixes come out short.
+    w.deps.radioBatch = vi.fn(async (seeds: string[]) => ({ radios: seeds.map((seed) => ({ seed, tracks: [] })), failed: [] }));
+    clock = NOW + DAY;
+    expect((await job.buildMember('u1')).kept).toContain('artist-rock-band-0');
+    clock = NOW + SHORT_KEEP_MS;
+    const r = await job.buildMember('u1');
+    expect(r.deleted).toContain('artist-rock-band-0');
+    expect(r.deleted).toContain('rock-metal');
+    // An outage (every seed failing) keeps them however old.
+    const w2 = world({ now: () => clock }, { plays: fullPlays() });
+    const job2 = createMixJob({ ...w2.deps, now: () => NOW });
+    await job2.buildMember('u1');
+    w2.deps.radioBatch = vi.fn(async () => { throw new Error('every seed failed'); });
+    const r2 = await createMixJob({ ...w2.deps, now: () => NOW + 10 * DAY }).buildMember('u1');
+    expect(r2.deleted).toEqual([]);
+    expect(r2.kept).toContain('artist-rock-band-0');
   });
 
   it('a member with too little listening gets no style, artist or Discover mix', async () => {

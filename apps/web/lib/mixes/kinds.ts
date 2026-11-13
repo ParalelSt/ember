@@ -124,14 +124,23 @@ function hash(s: string): number {
   return h >>> 0;
 }
 
+/** An artist credit as a mix names it: the lead artist, without YouTube's
+ *  " - Topic" and VEVO ("Gojira - Topic" -> "Gojira"). */
+export function artistDisplayName(credit: string): string {
+  return firstArtist(credit)
+    .replace(/\s*-\s*topic\s*$/i, '')
+    .replace(/\s*\bvevo\b\s*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** "artist-" plus a URL-safe slug of the lead artist's name ("Đorđe
  *  Balašević" -> "artist-dorde-balasevic"), at most 40 characters in all
  *  (the collection's key limit). A name with no Latin letters (Цеца) gets
  *  a stable hash instead. */
 export function artistMixKey(name: string): string {
-  const lead = firstArtist(name);
+  const lead = artistDisplayName(name);
   const slug = lead
-    .replace(/\s*-\s*topic\s*$/i, '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()

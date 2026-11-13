@@ -71,4 +71,10 @@ describe('assembleDiscover', () => {
     expect(meta.subtitle).toBe(`${[...new Set(out.map((t) => t.artist))].slice(0, 3).join(', ')} and more`);
     expect(meta.artworkUrls).toHaveLength(3);
   });
+
+  it('a dead or blocked song is never a seed: the artist\'s next song stands in', () => {
+    const songs = [s(tt('dead1', 'Solo'), 10), s(tt('good1', 'Solo'), 5)];
+    const seeds = discoverSeeds(scoreArtists(songs), '2026-10-12', (x) => !x.track.id.includes('dead'));
+    expect(seeds.map((x) => x.track.id)).toEqual([tt('good1', 'Solo').id]);
+  });
 });

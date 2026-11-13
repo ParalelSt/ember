@@ -27,11 +27,11 @@ export function weekKey(now: number): string {
 
 /** The week's seeds: the best YouTube song of DISCOVER_SEEDS of the
  *  member's top DISCOVER_SEED_ARTISTS artists, shuffled by the week. */
-export function discoverSeeds(artists: readonly ArtistScore[], week: string): SongScore[] {
+export function discoverSeeds(artists: readonly ArtistScore[], week: string, ok: (s: SongScore) => boolean = () => true): SongScore[] {
   const best: SongScore[] = [];
   for (const a of artists) {
     if (best.length >= DISCOVER_SEED_ARTISTS) break;
-    const s = a.songs.find((x) => x.track.source === 'youtube');
+    const s = a.songs.find((x) => x.track.source === 'youtube' && ok(x));
     if (s) best.push(s);
   }
   return pickSeeds({ key: DISCOVER_KEY, songs: best }, week, DISCOVER_SEEDS);

@@ -36,6 +36,12 @@ describe('pickSeeds', () => {
     expect(sets.size).toBeGreaterThan(1);
   });
 
+  it('never picks a song the filter refuses (dead or blocked)', () => {
+    const picked = pickSeeds(plan, '2026-10-16', 4, (x) => x.key !== songs[0].key && x.key !== songs[1].key);
+    expect(picked).toHaveLength(4);
+    expect(picked.some((x) => x.key === songs[0].key || x.key === songs[1].key)).toBe(false);
+  });
+
   it('never picks an upload (no radio for those)', () => {
     const up = { ...s(tt('up', 'Me'), 99), track: { ...tt('up', 'Me'), source: 'upload' as const } };
     expect(pickSeeds(planOf([up, ...songs]), '2026-10-16').some((x) => x.track.source === 'upload')).toBe(false);

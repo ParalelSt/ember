@@ -76,4 +76,13 @@ describe('assembleArtistMix', () => {
     expect(meta.artworkUrls[0]).toBe(plan.songs[0].track.artworkUrl);
     expect(meta.color).toBe('#c9c3d6');
   });
+
+  it('names and keys the artist by their usual credit, never "- Topic" or VEVO, whichever song is on top', () => {
+    const top = s(tt('t0', 'Gojira - Topic', 'Topic Song'), 9);
+    const songs = [top, ...own('Gojira', 3, 2), s(tt('v0', 'GojiraVEVO', 'Vevo Song'), 1), s(tt('v1', 'Gojira VEVO', 'Vevo Two'), 1)];
+    const [plan] = artistPlans(scoreArtists(songs), new Map(), 6);
+    expect(plan).toMatchObject({ key: 'artist-gojira', name: 'Gojira' });
+    const tracks = assembleArtistMix({ plan, radios: [{ seed: 'x', tracks: Array.from({ length: 30 }, (_, i) => tt(`r${i}`, `Other ${i % 10} - Topic`)) }], genres: new Map(), unavailable: new Set() })!;
+    expect(describeArtistMix(plan, tracks, '#fff').subtitle).toMatch(/^Gojira, Other \d, Other \d and more$/);
+  });
 });

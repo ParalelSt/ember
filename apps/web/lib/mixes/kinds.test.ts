@@ -80,4 +80,12 @@ describe('lineup', () => {
   it('empty in, empty out', () => {
     expect(lineup({})).toEqual([]);
   });
+
+  it('cleans artist credits for names and keys', async () => {
+    const { artistDisplayName } = await import('./kinds');
+    expect(artistDisplayName('Gojira - Topic')).toBe('Gojira');
+    expect(artistDisplayName('Metallica VEVO')).toBe('Metallica');
+    expect(artistDisplayName('Dua Lipa feat. DaBaby')).toBe('Dua Lipa');
+    expect(artistMixKey('Metallica VEVO')).toBe(artistMixKey('Metallica'));
+  });
 });

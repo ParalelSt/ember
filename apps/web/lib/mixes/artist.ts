@@ -1,9 +1,9 @@
 import { songKey } from '../songKey';
-import { artistKey, firstArtist } from '../genres/artistKey';
+import { artistKey } from '../genres/artistKey';
 import type { FamilySlug } from '../genres/taxonomy';
 import type { Track } from '../../types/track';
 import { MIN_MIX_SIZE, MIX_SIZE, PER_ARTIST_MAX, weave, type GenreOf, type MixMeta } from './build';
-import { artistMixKey } from './kinds';
+import { artistDisplayName, artistMixKey } from './kinds';
 import type { ArtistScore, SongScore } from './score';
 
 /** Artist mixes (docs/mixes.md): "Gojira Mix", one per top artist, made of
@@ -33,6 +33,26 @@ export interface ArtistPlan {
   songs: SongScore[];
 }
 
+/** The artist's name as most of their songs credit it (ties: the better
+ *  song's), cleaned of " - Topic" and VEVO, so the mix's name and key stay
+ *  the same night after night whichever song is on top. */
+function commonCredit(a: ArtistScore): string {
+  const count = new Map<string, number>();
+  for (const s of a.songs) {
+    const n = artistDisplayName(s.track.artist);
+    if (n) count.set(n, (count.get(n) ?? 0) + 1);
+  }
+  let best = '';
+  let top = 0;
+  for (const [n, c] of count) {
+    if (c > top) {
+      best = n;
+      top = c;
+    }
+  }
+  return best;
+}
+
 /** The member's artist mixes, best artist first, at most `max`. */
 export function artistPlans(artists: readonly ArtistScore[], genres: ReadonlyMap<string, GenreOf>, max: number): ArtistPlan[] {
   const out: ArtistPlan[] = [];
@@ -42,7 +62,7 @@ export function artistPlans(artists: readonly ArtistScore[], genres: ReadonlyMap
     if (a.score < ARTIST_MIN_WEIGHT) continue;
     if (new Set(a.songs.map((s) => s.key)).size < ARTIST_MIN_SONGS) continue;
     if (!a.songs.some((s) => s.track.source === 'youtube')) continue;
-    const name = firstArtist(a.songs[0]?.track.artist ?? a.name) || a.name;
+    const name = commonCredit(a) || a.name;
     const key = artistMixKey(name);
     if (keys.has(key)) continue;
     keys.add(key);
@@ -114,7 +134,7 @@ export function describeArtistMix(plan: ArtistPlan, tracks: readonly Track[], co
   for (const t of tracks) {
     const k = artistKey(t.artist);
     if (!k || k === plan.artistKey) continue;
-    const o = others.get(k) ?? { name: firstArtist(t.artist), count: 0, art: null };
+    const o = others.get(k) ?? { name: artistDisplayName(t.artist), count: 0, art: null };
     o.count += 1;
     o.art ??= t.artworkUrl ?? null;
     others.set(k, o);

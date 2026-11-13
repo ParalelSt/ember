@@ -48,8 +48,9 @@ function hash(s: string): number {
  *  shuffled by the date (YYYY-MM-DD) and the mix key, so mixes change from
  *  day to day but a rerun on the same day gives the same mix. YouTube songs
  *  only: an upload has no radio. */
-export function pickSeeds(plan: Pick<MixPlan, 'key' | 'songs'>, day: string, n = SEEDS_PER_MIX): SongScore[] {
-  const pool = plan.songs.filter((s) => s.track.source === 'youtube').slice(0, SEED_POOL);
+export function pickSeeds(plan: Pick<MixPlan, 'key' | 'songs'>, day: string, n = SEEDS_PER_MIX, ok: (s: SongScore) => boolean = () => true): SongScore[] {
+  // A dead or blocked song is no seed either.
+  const pool = plan.songs.filter((s) => s.track.source === 'youtube' && ok(s)).slice(0, SEED_POOL);
   const rand = prng(hash(`${day}|${plan.key}`));
   const shuffled = [...pool];
   for (let i = shuffled.length - 1; i > 0; i--) {
