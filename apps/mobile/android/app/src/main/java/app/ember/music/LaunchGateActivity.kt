@@ -159,6 +159,7 @@ class LaunchGateActivity : ComponentActivity() {
                 when {
                     offer == null -> null to "none"
                     GateRules.refusedBefore(offer, AppUpdater.rejectedVersion()) -> null to "refused"
+                    !GateRules.holdsLaunch(offer) -> null to "reminder"
                     else -> offer to "update"
                 }
             }
@@ -194,7 +195,7 @@ class LaunchGateActivity : ComponentActivity() {
     private fun apply(effect: Effect) {
         when (effect) {
             is Effect.EnterApp -> enter()
-            is Effect.StartDownload -> AppUpdater.check(manual = true, reason = "launch")
+            is Effect.StartDownload -> AppUpdater.check(manual = true, reason = "launch", download = true)
             is Effect.Install -> {
                 // Handing over to Android is not a crash, whatever happens to
                 // this process next.

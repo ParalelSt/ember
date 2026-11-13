@@ -116,6 +116,12 @@ object GateRules {
     fun refusedBefore(offer: Offer?, rejectedVersion: String?): Boolean =
         offer != null && rejectedVersion != null && offer.version == rejectedVersion
 
+    /** Whether the gate shows its dialog for [offer]. Only a required
+     *  update holds the launch; any other opens the app at once, and the
+     *  page's update reminder offers it: nothing downloads or installs
+     *  until a tap there (owner, 2026-11-13). */
+    fun holdsLaunch(offer: Offer?): Boolean = offer?.mandatory == true
+
     fun checkPath(version: String?): String =
         "/api/app/update?platform=android&version=${version.orEmpty()}&install=apk&launch=1"
 

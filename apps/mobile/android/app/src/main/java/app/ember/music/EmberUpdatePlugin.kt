@@ -21,8 +21,11 @@ import org.json.JSONObject
  *       checkedAt, needsPermission, silent }`, where status is idle |
  *    checking | up-to-date | downloading | ready | installing | failed and
  *    waiting (when ready) is car | playback | idle | tap | permission.
- *  - `check()`: check now (the Settings button).
- *  - `install()`: the person tapped Install. On Android 13+ it first asks
+ *  - `check()`: check now (the Settings button). Only checks: a newer
+ *    version is "available" and nothing downloads until a tap.
+ *  - `download()`: fetch the update now, to install at the end of the song.
+ *  - `install()`: the person tapped Update: install the downloaded update,
+ *    or download it first and then install. On Android 13+ it first asks
  *    for notifications when they are off: after the update Android does not
  *    reopen Ember, and the "Ember updated, tap to open" notice is the way
  *    back (UpdatedReceiver).
@@ -94,14 +97,23 @@ class EmberUpdatePlugin : Plugin() {
             requestPermissionForAlias(NOTIFICATIONS, call, "onNotifications")
             return
         }
-        AppUpdater.installNow()
+        AppUpdater.updateNow()
         call.resolve(state())
     }
 
     @PermissionCallback
     private fun onNotifications(call: PluginCall) {
         // Refused or not, the update goes ahead: the notice only brings Ember back.
-        AppUpdater.installNow()
+        AppUpdater.updateNow()
+        call.resolve(state())
+    }
+
+    /** The reminder was tapped while a song plays: fetch the update now;
+     *  `install()` follows at the end of the song. Its presence tells the
+     *  page this app waits for a tap (apps/web/lib/appUpdate.ts). */
+    @PluginMethod
+    fun download(call: PluginCall) {
+        AppUpdater.downloadNow()
         call.resolve(state())
     }
 

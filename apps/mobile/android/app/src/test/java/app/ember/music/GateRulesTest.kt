@@ -85,6 +85,12 @@ class GateRulesTest {
         assertFalse(GateRules.refusedBefore(null, "0.4.25"))
     }
 
+    @Test fun `only a required update holds the launch, any other is left to the page's reminder`() {
+        assertFalse(GateRules.holdsLaunch(null))
+        assertFalse(GateRules.holdsLaunch(offer()))
+        assertTrue(GateRules.holdsLaunch(offer(mandatory = true, reason = "min-version")))
+    }
+
     @Test fun `asks the shared endpoint as an android apk at launch`() {
         assertEquals("/api/app/update?platform=android&version=0.4.22&install=apk&launch=1", GateRules.checkPath("0.4.22"))
     }
