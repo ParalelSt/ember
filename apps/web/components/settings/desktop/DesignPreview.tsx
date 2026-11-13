@@ -168,27 +168,32 @@ export function DesignPreviewSwitcher() {
   const [open, setOpen] = useState(true);
   const summary = `${design.layout}/${design.rows}/${design.edit}`;
   return (
-    <div data-testid="design-preview" className="pointer-events-none sticky bottom-block z-30 h-0">
-      <div className="pointer-events-auto absolute bottom-0 left-0 rounded-xl border border-border bg-popover/95 p-cluster text-xs text-popover-foreground shadow-lg backdrop-blur">
-        <div className="flex items-center justify-between gap-block">
-          <span className="font-semibold">Design preview</span>
-          <button
-            type="button"
-            aria-expanded={open}
-            onClick={() => setOpen((o) => !o)}
-            className="rounded-full px-cluster py-inset text-muted-foreground hover:bg-secondary hover:text-foreground"
-          >
-            {open ? 'Hide' : summary}
-          </button>
-        </div>
-        {open && (
-          <div className="mt-cluster flex flex-col gap-inset">
-            <Segmented label="Layout" options={LAYOUTS} value={design.layout} onChange={(layout) => setSettingsDesign({ layout })} />
-            <Segmented label="Rows" options={ROWS} value={design.rows} onChange={(rows) => setSettingsDesign({ rows })} />
-            <Segmented label="Edit" options={EDITS} value={design.edit} onChange={(edit) => setSettingsDesign({ edit })} />
+    <>
+      {/* Room for the panel under the last row, so on a short page it never
+          covers a setting; on a long one it floats over the page. */}
+      <div aria-hidden className={open ? 'h-40' : 'h-12'} />
+      <div data-testid="design-preview" className="pointer-events-none sticky bottom-block z-30 h-0">
+        <div className="pointer-events-auto absolute bottom-0 left-0 rounded-xl border border-border bg-popover/95 p-cluster text-xs text-popover-foreground shadow-lg backdrop-blur">
+          <div className="flex items-center justify-between gap-block">
+            <span className="font-semibold">Design preview</span>
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen((o) => !o)}
+              className="rounded-full px-cluster py-inset text-muted-foreground hover:bg-secondary hover:text-foreground"
+            >
+              {open ? 'Hide' : summary}
+            </button>
           </div>
-        )}
+          {open && (
+            <div className="mt-cluster flex flex-col gap-inset">
+              <Segmented label="Layout" options={LAYOUTS} value={design.layout} onChange={(layout) => setSettingsDesign({ layout })} />
+              <Segmented label="Rows" options={ROWS} value={design.rows} onChange={(rows) => setSettingsDesign({ rows })} />
+              <Segmented label="Edit" options={EDITS} value={design.edit} onChange={(edit) => setSettingsDesign({ edit })} />
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
