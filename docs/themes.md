@@ -49,6 +49,7 @@ to L, clamp to 0..1"):
 | `--sidebar-foreground` | text -0.03 |
 | `--sidebar-accent` | sidebar +0.09 |
 | `--destructive` | fixed `oklch(0.65 0.22 25)`: danger is the same red in every theme |
+| `--warning` | fixed amber: `oklch(0.8 0.15 75)` for a dark scheme, `oklch(0.55 0.13 65)` for a light one (a device behind on Admin > Users) |
 | `--ember-foreground` | white while white on the accent reads at 3:1 or better, else the darker of text and background |
 | `--art` | black for a dark scheme, else background -0.08 |
 

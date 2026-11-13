@@ -111,6 +111,14 @@ describe('derive rules (plan section 1b)', () => {
     expect(derive(PRESET_BY_ID.forest.inputs).vars['--destructive']).toBe('oklch(0.65 0.22 25)');
   });
 
+  it('keeps the warning amber fixed whatever the accent, darker on a light background', () => {
+    expect(vars['--warning']).toBe('oklch(0.8 0.15 75)');
+    expect(derive(PRESET_BY_ID.forest.inputs).vars['--warning']).toBe('oklch(0.8 0.15 75)');
+    const light = derive({ ...inputs, background: [0.97, 0.01, 90], surface: [0.99, 0, 0], text: [0.2, 0, 0] });
+    expect(light.scheme).toBe('light');
+    expect(light.vars['--warning']).toBe('oklch(0.55 0.13 65)');
+  });
+
   it('clamps lightness steps at 0 and 1', () => {
     const bright = derive({ ...inputs, surface: [0.97, 0, 0], text: [0.01, 0, 0] }).vars;
     expect(bright['--accent']).toBe('oklch(1 0 0)');

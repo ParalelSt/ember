@@ -30,6 +30,7 @@
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -105,6 +106,9 @@
   --accent: oklch(0.30 0.005 260);
   --accent-foreground: oklch(0.98 0 0);
   --destructive: oklch(0.65 0.22 25);
+  /* Needs attention but is not an error (a device on an old version):
+     amber, the same in every dark theme (lib/theme/derive.ts). */
+  --warning: oklch(0.8 0.15 75);
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 12%);
   --ring: oklch(0.68 0.20 25);

@@ -21,6 +21,7 @@ export const THEME_VARS = [
   '--accent',
   '--accent-foreground',
   '--destructive',
+  '--warning',
   '--border',
   '--input',
   '--ring',
@@ -112,6 +113,8 @@ export function derive(inputs: ThemeInputs): DerivedTheme {
     '--sidebar-accent': f(lighten(sidebar, 0.09)),
     // Danger stays the same red in every theme: a warning, not decoration.
     '--destructive': 'oklch(0.65 0.22 25)',
+    // "Behind" amber, fixed too; darker on a light background to stay legible.
+    '--warning': scheme === 'dark' ? 'oklch(0.8 0.15 75)' : 'oklch(0.55 0.13 65)',
     '--ember-foreground': f(emberForeground(inputs)),
     '--art': scheme === 'dark' ? 'oklch(0 0 0)' : f(lighten(background, -0.08)),
   };
