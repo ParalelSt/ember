@@ -274,6 +274,18 @@ describe('the Android app (0.4.34 on: it waits for a tap)', () => {
     stop();
   });
 
+  it('the install hands the app the resume note, which survives the app being replaced', async () => {
+    androidOffer();
+    playing(true);
+    const stop = watchPendingUpdate();
+    requestUpdate();
+    usePlayerStore.setState({ index: 1 });
+    await vi.waitFor(() => expect(installAndroid).toHaveBeenCalledTimes(1));
+    const note = (installAndroid.mock.calls[0] as unknown as [string])[0];
+    expect(JSON.parse(note)).toMatchObject({ index: 1, trackId: B.id });
+    stop();
+  });
+
   it('with "Install unknown apps" off, its settings open once, and back with it on the install goes ahead', async () => {
     androidOffer();
     requestUpdate();

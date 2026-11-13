@@ -113,11 +113,22 @@ class UpdateWaitsForTapTest {
         assertFalse(status() == "installing")
     }
 
+    @Test fun `the page's resume note survives the install, and is handed over once`() {
+        AppUpdater.keepResume("""{"index":2,"trackId":"youtube:b","at":1}""")
+        // A new process: the note is in preferences, not memory.
+        AppUpdater.resetForTest(null, Executor { it.run() })
+        AppUpdater.init(app)
+        assertEquals("""{"index":2,"trackId":"youtube:b","at":1}""", AppUpdater.takeResume())
+        assertEquals(null, AppUpdater.takeResume())
+    }
+
     @Test fun `the plugin has download, and install goes through updateNow`() {
         val src = java.io.File("src/main/java/app/ember/music/EmberUpdatePlugin.kt").readText()
         assertTrue(src.contains("fun download(call: PluginCall)"))
         assertTrue(src.contains("AppUpdater.downloadNow()"))
         assertTrue(src.contains("AppUpdater.updateNow()"))
+        assertTrue(src.contains("AppUpdater.keepResume(call.getString(\"resume\"))"))
+        assertTrue(src.contains("fun takeResume(call: PluginCall)"))
         assertFalse(src.contains("AppUpdater.installNow()"))
     }
 

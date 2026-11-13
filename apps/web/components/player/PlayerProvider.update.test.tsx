@@ -65,6 +65,11 @@ const C = makeTrack({ id: 'youtube:c', sourceId: 'c', streamUrl: '/s/c', duratio
 const D = makeTrack({ id: 'youtube:d', sourceId: 'd', streamUrl: '/s/d', durationSec: 200 });
 
 const reload = vi.hoisted(() => vi.fn());
+const appNote = vi.hoisted(() => ({ target: null as null | { index: number; trackId: string } }));
+vi.mock('@/lib/update/apply', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/update/apply')>();
+  return { ...real, takeAppUpdateResume: vi.fn(async () => appNote.target) };
+});
 let controls: ReturnType<typeof usePlayer> | null = null;
 const keep = (c: ReturnType<typeof usePlayer>) => {
   controls = c;
@@ -139,6 +144,22 @@ describe('an update waiting for the song to end', () => {
     expect(url).toBe('/s/c');
     expect(opts).toMatchObject({ autoplay: true });
     expect(localStorage.getItem('ember.update.resume')).toBeNull();
+  });
+
+  it("the Android app's own copy of the note starts that song once the engine is up", async () => {
+    appNote.target = { index: 3, trackId: D.id };
+    usePlayerStore.setState({ index: 0, position: 0 });
+    try {
+      render(<PlayerProvider><Grab /></PlayerProvider>);
+      await act(async () => {});
+      expect(at()).toBe(3);
+      const w = web();
+      const [url, opts] = w.load.mock.calls[w.load.mock.calls.length - 1];
+      expect(url).toBe('/s/d');
+      expect(opts).toMatchObject({ autoplay: true });
+    } finally {
+      appNote.target = null;
+    }
   });
 
   it('an ordinary start does not autoplay', () => {

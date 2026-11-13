@@ -72,8 +72,9 @@ type Handle = { remove: () => void | Promise<void> };
 interface EmberUpdatePlugin {
   getState?: () => Promise<unknown>;
   check?: () => Promise<unknown>;
-  install?: () => Promise<unknown>;
+  install?: (o?: { resume?: string }) => Promise<unknown>;
   download?: () => Promise<unknown>;
+  takeResume?: () => Promise<{ resume?: string | null } | undefined>;
   openInstallSettings?: () => Promise<unknown>;
   addListener?: (event: 'updateState', cb: (s: unknown) => void) => Promise<Handle> | Handle;
 }
@@ -147,6 +148,32 @@ async function call(name: 'check' | 'install' | 'download' | 'openInstallSetting
 
 export const checkForAppUpdate = () => call('check');
 export const installAppUpdate = () => call('install');
+
+/** Install, with the page's resume note (lib/update/apply.ts) kept by the
+ *  app itself: the install ends the app within a moment, sooner than the
+ *  WebView writes its own storage to disk. */
+export async function installAppUpdateWithResume(resume: string | null): Promise<boolean> {
+  const fn = plugin()?.install;
+  if (typeof fn !== 'function') return false;
+  try {
+    await fn(resume ? { resume } : undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The resume note an install kept, once; null when none or not this app. */
+export async function takeAppResumeNote(): Promise<string | null> {
+  const fn = plugin()?.takeResume;
+  if (typeof fn !== 'function') return null;
+  try {
+    const r = await fn();
+    return typeof r?.resume === 'string' ? r.resume : null;
+  } catch {
+    return null;
+  }
+}
 /** Fetch the update now, to install at the end of the song (tap flow). */
 export const downloadAppUpdate = () => call('download');
 export const openInstallSettings = () => call('openInstallSettings');

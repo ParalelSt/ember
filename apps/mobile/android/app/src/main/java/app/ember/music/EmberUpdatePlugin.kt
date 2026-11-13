@@ -93,6 +93,8 @@ class EmberUpdatePlugin : Plugin() {
 
     @PluginMethod
     fun install(call: PluginCall) {
+        // The song to start again once the new version opens.
+        AppUpdater.keepResume(call.getString("resume"))
         if (UpdateRules.askNotificationsFirst(Build.VERSION.SDK_INT, getPermissionState(NOTIFICATIONS) == PermissionState.GRANTED)) {
             requestPermissionForAlias(NOTIFICATIONS, call, "onNotifications")
             return
@@ -115,6 +117,12 @@ class EmberUpdatePlugin : Plugin() {
     fun download(call: PluginCall) {
         AppUpdater.downloadNow()
         call.resolve(state())
+    }
+
+    /** The resume note `install({ resume })` kept, once (null when none). */
+    @PluginMethod
+    fun takeResume(call: PluginCall) {
+        call.resolve(JSObject().put("resume", AppUpdater.takeResume()))
     }
 
     @PluginMethod

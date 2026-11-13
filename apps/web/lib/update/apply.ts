@@ -2,8 +2,9 @@ import {
   appUpdateWaitsForTap,
   checkForAppUpdate,
   downloadAppUpdate,
-  installAppUpdate,
+  installAppUpdateWithResume,
   openInstallSettings,
+  takeAppResumeNote,
   type AppUpdateState,
 } from '@/lib/appUpdate';
 import { loadDeviceInfo } from '@/lib/versions/device';
@@ -66,7 +67,7 @@ function online(): boolean {
 export interface ApplyDeps {
   reload: () => void;
   restartShell: () => Promise<boolean>;
-  installAndroid: () => Promise<boolean>;
+  installAndroid: (resume: string | null) => Promise<boolean>;
   downloadAndroid: () => Promise<boolean>;
   openInstallSettings: () => Promise<boolean>;
 }
@@ -84,7 +85,7 @@ async function restartShellViaTauri(): Promise<boolean> {
 const defaultDeps: ApplyDeps = {
   reload: () => window.location.reload(),
   restartShell: restartShellViaTauri,
-  installAndroid: installAppUpdate,
+  installAndroid: installAppUpdateWithResume,
   downloadAndroid: downloadAppUpdate,
   openInstallSettings,
 };
@@ -94,9 +95,13 @@ export function setApplyDepsForTests(d: Partial<ApplyDeps> | null): void {
   deps = d ? { ...defaultDeps, ...d } : defaultDeps;
 }
 
+function resumeNote(target: ResumeTarget, now: number): string {
+  return JSON.stringify({ ...target, at: now });
+}
+
 function writeResume(target: ResumeTarget, now: number): void {
   try {
-    localStorage.setItem(RESUME_KEY, JSON.stringify({ ...target, at: now }));
+    localStorage.setItem(RESUME_KEY, resumeNote(target, now));
   } catch {
     // No storage: the page comes back paused on that song instead.
   }
@@ -121,6 +126,16 @@ export function takeUpdateResume(queue: readonly { id: string }[], now: number =
   } catch {
     return null;
   }
+  return readResumeNote(raw, queue, now);
+}
+
+/** The Android app's copy of the note (kept by the app through the install,
+ *  see installAppUpdateWithResume), once. */
+export async function takeAppUpdateResume(queue: readonly { id: string }[], now: number = Date.now()): Promise<ResumeTarget | null> {
+  return readResumeNote(await takeAppResumeNote(), queue, now);
+}
+
+function readResumeNote(raw: string | null, queue: readonly { id: string }[], now: number): ResumeTarget | null {
   if (!raw) return null;
   try {
     const m = JSON.parse(raw) as { index?: unknown; trackId?: unknown; at?: unknown };
@@ -144,7 +159,8 @@ export async function performUpdate(resume: ResumeTarget | null = null, now: num
   if (offer.via === 'android') {
     // Downloads first when the tap's download has not finished; the app
     // then installs it and Android replaces it.
-    if (await deps.installAndroid()) return true;
+    lastAndroidNote = resume ? resumeNote(resume, now) : null;
+    if (await deps.installAndroid(lastAndroidNote)) return true;
     clearResume();
     useUpdateStore.getState().set({ applying: false, applyFailed: true });
     return false;
@@ -280,6 +296,8 @@ export function checkForUpdates(fetchImpl?: typeof fetch): Promise<void> {
 }
 
 let askedPermission = false;
+/** The resume note of the Android install under way, for its retry. */
+let lastAndroidNote: string | null = null;
 
 const ANDROID_HAS_UPDATE: readonly AppUpdateState['status'][] = ['available', 'downloading', 'ready', 'installing'];
 
@@ -307,7 +325,7 @@ export async function noteAppUpdateState(state: AppUpdateState): Promise<void> {
     void deps.openInstallSettings();
   } else if (askedPermission && state.status === 'ready' && state.waiting === 'tap') {
     askedPermission = false;
-    void deps.installAndroid();
+    void deps.installAndroid(lastAndroidNote);
   }
   const prev = now.offer;
   useUpdateStore.getState().set({
@@ -329,6 +347,7 @@ export function resetUpdateForTests(): void {
   elsewhere = () => false;
   pauseForUpdate = () => {};
   askedPermission = false;
+  lastAndroidNote = null;
   deps = defaultDeps;
   clearResume();
 }

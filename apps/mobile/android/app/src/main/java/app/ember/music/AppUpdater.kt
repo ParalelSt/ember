@@ -95,6 +95,11 @@ object AppUpdater {
     const val TAG = "EmberUpdate"
     private const val PREFS = "ember.update"
     private const val KEY_LAST_CHECK = "lastCheck"
+    /** The page's note of the song to start once the new version opens
+     *  (apps/web/lib/update/apply.ts). Kept here, written at once: the
+     *  install ends this process within a moment, sooner than the WebView
+     *  writes its own storage to disk. */
+    private const val KEY_RESUME = "resumeNote"
     private const val KEY_READY_VERSION = "readyVersion"
     private const val KEY_READY_CODE = "readyCode"
     private const val KEY_READY_PATH = "readyPath"
@@ -548,6 +553,19 @@ object AppUpdater {
         if (readyVersion() != null) { installNow(); return }
         installAfterDownload = true
         fetchWhenFree()
+    }
+
+    /** Keeps the page's resume note through the install (KEY_RESUME). */
+    fun keepResume(note: String?) {
+        if (note.isNullOrBlank() || note.length > 2000) return
+        prefs().edit().putString(KEY_RESUME, note).commit()
+    }
+
+    /** The resume note, once: the new version's page asks for it at start. */
+    fun takeResume(): String? {
+        val note = prefs().getString(KEY_RESUME, null) ?: return null
+        prefs().edit().remove(KEY_RESUME).commit()
+        return note
     }
 
     /** The page's Update while a song plays: fetch it now, install later
