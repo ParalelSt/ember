@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { HomeIcon, LibraryIcon, RadioIcon, SearchIcon, SettingsIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
+import { forgetNavigationIntent } from '@/lib/chunkReload';
 
 /** The rail's buttons, in the owner's order (carlayout2, option G). */
 export const CAR_RAIL_NAV = [
@@ -79,6 +80,7 @@ export function CarRail({ onSearchClick }: { onSearchClick: () => void }) {
                 ? (e) => {
                     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                     e.preventDefault();
+                    forgetNavigationIntent();
                     onSearchClick();
                   }
                 : undefined

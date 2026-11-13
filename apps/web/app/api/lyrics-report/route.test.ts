@@ -38,6 +38,18 @@ async function postedEmbed() {
 }
 
 describe('POST /api/lyrics-report', () => {
+  it('shows the version, cleaned', async () => {
+    await POST(request({ trackTitle: 'Song', context: { appVersion: '0.7.34', shellPlatform: 'android', shellVersion: '0.4.28' } }), undefined as never);
+    let embed = (await postedEmbed()) as unknown as { fields: { name: string; value: string }[] };
+    expect(embed.fields.find((f) => f.name === 'Version')?.value).toBe('Android app 0.4.28, web 0.7.34');
+    await POST(request({ trackTitle: 'Song', context: { appVersion: '@everyone', shellPlatform: '<@1>' } }), undefined as never);
+    embed = (await postedEmbed()) as unknown as { fields: { name: string; value: string }[] };
+    expect(embed.fields.find((f) => f.name === 'Version')?.value).toBe('Version unknown');
+    await POST(request({ trackTitle: 'Song' }), undefined as never);
+    embed = (await postedEmbed()) as unknown as { fields: { name: string; value: string }[] };
+    expect(embed.fields.find((f) => f.name === 'Version')?.value).toBe('Version unknown');
+  });
+
   it('scrubs secrets out of the note before it goes to Discord', async () => {
     const res = await POST(request({ trackTitle: 'Song', note: 'wrong words, Authorization: Bearer abcdef0123456789abcdef' }), undefined as never);
     expect(res.status).toBe(200);

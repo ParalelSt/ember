@@ -103,6 +103,60 @@ export function parseNotice(raw: unknown): UnplayableNotice | null {
 function parseNotices(d: { notices?: unknown } | null | undefined): UnplayableNotice[] {
   return Array.isArray(d?.notices) ? d.notices.map(parseNotice).filter((n): n is UnplayableNotice => n !== null) : [];
 }
+/** The native player's `error` event. App builds with PlayerErrors.kt send
+ *  what failed along with the message; older ones send the message only. */
+export interface NativeErrorEvent {
+  message?: string;
+  errorCodeName?: string;
+  code?: number;
+  httpStatus?: number;
+  trackId?: string;
+  station?: boolean;
+  offline?: boolean;
+  /** The song is on the phone (downloaded, or whole in the auto cache). */
+  local?: boolean;
+  /** Native's verdict: an outside failure (no connection, the host refusing
+   *  the song, a dead station), not Ember's bug. */
+  expected?: boolean;
+}
+
+/** What the old builds' plugin sent when the player's error was CLEARED (the
+ *  next prepare: play pressed after a failure, "Tap to retry"): its fallback
+ *  for an error that is not there. A real error always has a message. */
+const CLEARED_ERROR_MESSAGE = 'playback error';
+
+/** ExoPlayer's message for every load failure (a source error); a decoder or
+ *  renderer failure says "... error, index=..." or "Unexpected runtime
+ *  error". Only a load failure is the missing network's fault. */
+const LOAD_FAILURE_MESSAGE = 'Source error';
+
+/** How the page logs a native player error, or null when it is no error at
+ *  all. `level` decides whether it becomes an automatic bug report (error)
+ *  or not (warn). New app builds decide (`expected`, PlayerErrors.kt). Old
+ *  ones say nothing but the message: a station is still known here, and a
+ *  load failure while the phone is offline; anything else, a decoder
+ *  failure offline included, stays an error. */
+export function nativeErrorLog(
+  d: NativeErrorEvent | null | undefined,
+  ctx: { trackId: string | null; online: boolean },
+): { level: 'error' | 'warn'; message: string; data: Record<string, unknown> } | null {
+  const detailed = typeof d?.code === 'number';
+  if (!detailed && d?.message === CLEARED_ERROR_MESSAGE) return null;
+  const message = d?.message || 'native player error';
+  const trackId = (typeof d?.trackId === 'string' && d.trackId) || ctx.trackId;
+  const station = d?.station === true || !!trackId?.startsWith('station:');
+  const offline = d?.offline === true || !ctx.online;
+  const data: Record<string, unknown> = { trackId, station, offline };
+  if (detailed) {
+    data.errorCodeName = d!.errorCodeName ?? null;
+    data.code = d!.code;
+    if (typeof d!.httpStatus === 'number') data.httpStatus = d!.httpStatus;
+    if (typeof d!.local === 'boolean') data.local = d!.local;
+  }
+  const outside = detailed ? d!.expected === true : station || (offline && message === LOAD_FAILURE_MESSAGE);
+  return { level: outside ? 'warn' : 'error', message, data };
+}
+
 const LOOP_MODES: readonly LoopMode[] = ['off', 'all', 'one'];
 /** A state native read longer ago than this was held up on its way here (a
  *  frozen page, see below), not merely late: the page asks for a fresh one. */
@@ -328,8 +382,16 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
       }) as (d: never) => void,
     );
     on('ended', (() => events.onEnded()) as (d: never) => void);
-    on('error', ((d: { message?: string }) => {
-      logger.error('audio', d?.message || 'native player error');
+    on('error', ((d: NativeErrorEvent) => {
+      const log = nativeErrorLog(d, { trackId, online: typeof navigator === 'undefined' || navigator.onLine !== false });
+      // An old build announcing that the error went away: nothing failed.
+      // Handled as one more failure, it asked the host about a song that was
+      // loading fine and could say "Couldn't load" over it.
+      if (!log) {
+        logger.breadcrumb('audio', 'native error cleared', { trackId });
+        return;
+      }
+      logger[log.level]('audio', log.message, log.data);
       events.onError({ trackId, nativeExplains });
     }) as (d: never) => void);
     if (nativeExplains) {

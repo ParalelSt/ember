@@ -52,5 +52,8 @@ describe('runPython timeout logging', () => {
     const err = await settled;
     expect((err as Error).message).toBe('python timed out');
     expect(loggedErrors).toHaveLength(1);
+    // The log line names the helper and its timeout so the digest groups per helper.
+    expect(loggedErrors[0][1]).toBe('python timed out: info helper after 30s');
+    expect(loggedErrors[0][2]).toMatchObject({ helper: 'info', timeoutMs: 30000 });
   });
 });

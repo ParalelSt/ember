@@ -1,3 +1,63 @@
+# 0.7.42: Song pages link the artist
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh as usual.
+
+# 0.7.41: Search shows more, sooner
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh as usual.
+
+# 0.7.40: Play on your other devices (android 0.4.33)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh (it also updates yt-dlp). Then please check
+the server log for "download failed, falling back to live stream" and tell
+Aron if it shows up. New apps: Android 0.4.33 (versionCode 38). Unchanged: iOS
+0.4.25, Windows 0.4.26, macOS 0.4.26, Linux 0.4.26. Tags: `android-v0.4.33`.
+
+# 0.7.39: Steadier Android updates (android 0.4.32)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Nothing to do on the host. Android only. New apps: Android
+0.4.32 (versionCode 37). Unchanged: iOS 0.4.25, Windows 0.4.26, macOS 0.4.26,
+Linux 0.4.26. Tags: `android-v0.4.32`.
+
+# 0.7.38: Fixes from your bug reports (android 0.4.31, ios 0.4.25)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** New apps: Android 0.4.31 (versionCode 36), iOS 0.4.25.
+Unchanged: Windows 0.4.26, macOS 0.4.26, Linux 0.4.26. Tags:
+`android-v0.4.31`, `ios-v0.4.25`.
+
+# 0.7.37: No more surprise scans (android 0.4.30)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Phones get the new app without it. New apps: Android 0.4.30
+(versionCode 35). Unchanged: iOS 0.4.24, Windows 0.4.26, macOS 0.4.26, Linux
+0.4.26. Tags: `android-v0.4.30`.
+
+# 0.7.36: Updates finish properly (android 0.4.29)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Phones get the new app without it. New apps: Android 0.4.29
+(versionCode 34). Unchanged: iOS 0.4.24, Windows 0.4.26, macOS 0.4.26, Linux
+0.4.26. Tags: `android-v0.4.29`.
+
+# 0.7.35: See which version everyone runs
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** The update restarts PocketBase by itself, which loads the new
+user_devices collection.
+
+# 0.7.34: Keeps trying when the connection drops (android 0.4.28)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh as usual, only the What's new page changes.
+Phones get the new app without it. New apps: Android 0.4.28 (versionCode 33).
+Unchanged: iOS 0.4.24, Windows 0.4.26, macOS 0.4.26, Linux 0.4.26. Tags:
+`android-v0.4.28`.
+
 # 0.7.34: Your mixes and charts by genre
 
 **Host: run `./update.sh` as usual (no new packages).** It restarts

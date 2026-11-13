@@ -56,6 +56,19 @@ export function formatAgo(iso: string, now: number = Date.now()): string {
   return `${mins} min ago`;
 }
 
+/** Like formatAgo for things seen days apart: "just now", "12 min ago",
+ *  "3 h ago", "5 d ago". */
+export function formatLastSeen(iso: string, now: number = Date.now()): string {
+  const at = new Date(String(iso ?? '').replace(' ', 'T')).getTime();
+  if (Number.isNaN(at)) return 'unknown';
+  const mins = Math.max(0, Math.round((now - at) / 60000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
+}
+
 /** "12 Jun" for a date this year, "12 Jun 2025" before it: when a song was
  *  added to a playlist or liked. Takes PocketBase's `2026-06-12 10:00:00.000Z`
  *  as well as ISO. Empty for a missing or unreadable date. The day is the

@@ -167,7 +167,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'app/(app)/settings/plugins/page.tsx': 14,
   'app/(app)/settings/profile/page.tsx': 7,
   'app/auth/page.tsx': 18,
-  'components/BugReportDialog.tsx': 9,
+  'components/BugReportDialog.tsx': 2,
   'components/FriendsListening.tsx': 5,
   'components/RequestDialog.tsx': 4,
   'components/changelog/HideTagsSwitch.tsx': 1,
@@ -292,7 +292,6 @@ const COLOUR_BASELINE: Record<string, number> = {
   // Danger stays red in every theme (owner decision 5), so white on it stays.
   'components/ui/confirm-dialog.tsx': 1, // text-white on bg-destructive
   // Status colours: severity is semantic, not decorative.
-  'components/BugReportDialog.tsx': 6, // SEVERITY_STYLE low/medium/high
 };
 
 describe('colour ratchet', () => {

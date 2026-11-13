@@ -13,6 +13,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.ContextThemeWrapper
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.session.MediaController
@@ -47,6 +48,41 @@ internal fun cacheState(extras: Bundle): Triple<List<String>, Boolean, Boolean> 
     extras.getBoolean(EmberPlaybackService.EXTRA_OFFLINE_STALLED, false),
     extras.getBoolean(EmberPlaybackService.EXTRA_OFFLINE, false),
 )
+
+/** The page's `error` event for the player's error state; null when there
+ *  is no error to report.
+ *
+ *  Media3 raises EVENT_PLAYER_ERROR whenever the player's error CHANGES,
+ *  which includes it being cleared by the next prepare() (play pressed after
+ *  a failure, "Tap to retry", the service moving on to the next song). That
+ *  reached the page as an error of its own, "playback error" (the fallback
+ *  for a missing error), logged at error level and handled as a second
+ *  failure of a song that was now loading fine.
+ *
+ *  The event carries what the failure was (PlayerErrors.detail), so the
+ *  page can log it by what it means and a report says what broke. */
+internal fun errorEvent(error: PlaybackException?, mediaId: String?, offline: Boolean, local: Boolean = false): JSObject? {
+    if (error == null) return null
+    val detail = PlayerErrors.detail(error, mediaId, offline, local)
+    return JSObject().apply {
+        put("message", error.message ?: "playback error")
+        val keys = detail.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            put(k, detail.get(k))
+        }
+    }
+}
+
+/** [errorEvent] for [player] (the page's MediaController): the song it is
+ *  on, and from the service's session [extras] (cacheState) whether the
+ *  phone is offline and whether that song is on the phone. An older service
+ *  without the extras reads as online with nothing on the phone. */
+internal fun errorEventFor(player: Player, extras: Bundle): JSObject? {
+    val mediaId = player.currentMediaItem?.mediaId
+    val (onPhone, _, offline) = cacheState(extras)
+    return errorEvent(player.playerError, mediaId, offline, local = mediaId != null && mediaId in onPhone)
+}
 
 /** The play history the queue sheet shows ("Played": song ids, oldest
  *  first), from the service's session extras; null from a service from
@@ -345,7 +381,7 @@ class EmberPlayerPlugin : Plugin() {
                 notifyListeners("ended", JSObject())
             }
             if (events.contains(Player.EVENT_PLAYER_ERROR)) {
-                notifyListeners("error", JSObject().put("message", player.playerError?.message ?: "playback error"))
+                errorEventFor(player, controller?.sessionExtras ?: Bundle.EMPTY)?.let { notifyListeners("error", it) }
             }
         }
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {

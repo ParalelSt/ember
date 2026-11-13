@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
+import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.HttpDataSource
@@ -244,6 +245,12 @@ class PlayWatch(
     /** Who asked (the car, the app, a headset): a package name, or null. */
     private val caller: () -> String? = { null },
     val timeoutMs: Long = TIMEOUT_MS,
+    /** Whether the phone has a working connection: a load that fails
+     *  offline is not a bug (PlayerErrors). */
+    private val online: () -> Boolean = { true },
+    /** Whether a song is on the phone (downloaded, or whole in the auto
+     *  cache): offline, a failure to load one of those is a bug. */
+    private val local: (String) -> Boolean = { false },
 ) : Player.Listener {
     companion object {
         const val TIMEOUT_MS = 8_000L
@@ -284,6 +291,8 @@ class PlayWatch(
     @Volatile private var armedAt = 0L
     @Volatile private var armedBy: String? = null
     @Volatile private var generation = 0
+    /** The song the player is on, for the error log. */
+    @Volatile private var mediaId: String? = null
     private var cancel: (() -> Unit)? = null
     private var measuring = false
 
@@ -377,17 +386,28 @@ class PlayWatch(
         }
     }
 
+    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        mediaId = mediaItem?.mediaId
+    }
+
+    /** At error level only when it may be Ember's own fault: a phone that
+     *  lost its connection, a song the host refused and a dead station are
+     *  warnings (PlayerErrors.outside), so the daily digest counts real
+     *  problems. */
     override fun onPlayerError(error: PlaybackException) {
         disarm()
-        val data = JSONObject().put("errorCodeName", error.errorCodeName).put("code", error.errorCode)
+        val offline = !runCatching { online() }.getOrDefault(true)
+        val id = mediaId
+        val onPhone = id != null && runCatching { local(id) }.getOrDefault(false)
+        val data = PlayerErrors.detail(error, id, offline, onPhone)
         var cause: Throwable? = error.cause
         while (cause != null) {
-            if (cause is HttpDataSource.InvalidResponseCodeException) data.put("httpStatus", cause.responseCode)
             if (cause is HttpDataSource.HttpDataSourceException) LogRedact.host(cause.dataSpec.uri.toString())?.let { data.put("host", it) }
             if (!data.has("cause")) data.put("cause", cause.javaClass.simpleName)
             cause = cause.cause
         }
-        log.error("player.error", "${error.errorCodeName}: ${error.message.orEmpty()}", data)
+        val level = if (data.optBoolean("expected")) "warn" else "error"
+        log.log(level, "player.error", "${error.errorCodeName}: ${error.message.orEmpty()}", data)
     }
 }
 
@@ -420,9 +440,15 @@ object ExitReasons {
         else -> "unknown"
     }
 
-    fun level(reason: Int): String = when (reason) {
+    /** Low memory and "other" are normal Android housekeeping for a cached or
+     *  background process (info), and only a defect when the killed process
+     *  was in the foreground or a foreground service, i.e. it was playing
+     *  (warn). [importance] is ApplicationExitInfo.importance; unknown counts
+     *  as foreground so a kill is never hidden by a missing value. */
+    fun level(reason: Int, importance: Int = ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND): String = when (reason) {
         4, 5, 6, 7 -> "error"
-        2, 3, 9, 12, 13, 14 -> "warn"
+        3, 13 -> if (importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE) "warn" else "info"
+        2, 9, 12, 14 -> "warn"
         else -> "info"
     }
 
@@ -443,7 +469,7 @@ object ExitReasons {
                 .put("at", info.timestamp)
                 .put("importance", info.importance)
             info.description?.takeIf { it.isNotBlank() }?.let { data.put("description", it) }
-            log.log(level(info.reason), "exit", "last run ended: $reason", data)
+            log.log(level(info.reason, info.importance), "exit", "last run ended: $reason", data)
         }
         val newest = infos.maxOfOrNull { it.timestamp } ?: return
         if (newest > seen) prefs.edit().putLong(KEY_SEEN, newest).apply()

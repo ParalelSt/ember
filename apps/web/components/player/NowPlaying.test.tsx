@@ -168,6 +168,36 @@ describe('NowPlaying', () => {
   });
 });
 
+// The song's own page from the full-screen player: both the cover and the
+// title open it, the view closing first (it is phone-only, md:hidden).
+describe('NowPlaying: the song page', () => {
+  it('tapping the cover closes the view and opens /track/<id>', async () => {
+    render(<NowPlaying />);
+    fireEvent.click(within(view()).getByTestId('now-playing-cover'));
+    expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/track/v1'));
+  });
+
+  // The title lives in NowPlayingSummary (stubbed here): the view hands it
+  // the opener, and its own test shows the title calls it.
+  const titleOpener = () =>
+    (summaryRendered.mock.calls.at(-1) as unknown as [{ onTitleOpen?: () => void }] | undefined)?.[0].onTitleOpen;
+
+  it('tapping the title does the same', async () => {
+    render(<NowPlaying />);
+    act(() => titleOpener()!());
+    expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/track/v1'));
+  });
+
+  it('a song with no page (an upload) keeps a plain cover and title', () => {
+    player.current = { ...TRACK, source: 'upload', sourceId: 'u1' };
+    render(<NowPlaying />);
+    expect(within(view()).queryByTestId('now-playing-cover')).toBeNull();
+    expect(titleOpener()).toBeUndefined();
+  });
+});
+
 describe('NowPlaying: the top row', () => {
   it('is the close chevron, the "Playing from" title and one More button, nothing else', () => {
     auth.user = { id: 'u1' };

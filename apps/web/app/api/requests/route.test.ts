@@ -49,6 +49,8 @@ function validBody(over: Record<string, unknown> = {}) {
   };
 }
 
+const VERSION_FIELD = { name: 'Version', value: 'Browser, web 1.2.3' };
+
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
@@ -83,7 +85,7 @@ describe('POST /api/requests: routing per kind', () => {
     const embed = body.embeds[0];
     expect(embed.title).toBe('New feature: Sleep timer');
     expect(embed.description).toBe('Stop playback after 30 minutes so I can fall asleep to music.');
-    expect(embed.footer).toEqual({ text: 'dev@ember.test · 1.2.3 · web · /library' });
+    expect(embed.footer).toEqual({ text: 'dev@ember.test · /library' });
     expect(embed.color).toBe(0xff5a3a);
   });
 
@@ -105,7 +107,7 @@ describe('POST /api/requests: routing per kind', () => {
     await POST(request(validBody({ extra: 'Happens on Chrome only' })), undefined as never);
     const { body } = postedPayload();
     const embed = body.embeds[0];
-    expect(embed.fields).toEqual([{ name: 'Anything else', value: 'Happens on Chrome only' }]);
+    expect(embed.fields).toEqual([VERSION_FIELD, { name: 'Anything else', value: 'Happens on Chrome only' }]);
   });
 
   it('accepts a body with no extra key at all (current clients)', async () => {
@@ -114,14 +116,14 @@ describe('POST /api/requests: routing per kind', () => {
     const res = await POST(request(noExtra), undefined as never);
     expect(res.status).toBe(200);
     const { body } = postedPayload();
-    expect(body.embeds[0].fields).toEqual([]);
+    expect(body.embeds[0].fields).toEqual([VERSION_FIELD]);
   });
 
   it('omits the field entirely when extra is empty', async () => {
     await POST(request(validBody({ extra: '' })), undefined as never);
     const { body } = postedPayload();
     const embed = body.embeds[0];
-    expect(embed.fields).toEqual([]);
+    expect(embed.fields).toEqual([VERSION_FIELD]);
   });
 });
 
@@ -365,6 +367,7 @@ describe('POST /api/requests: attachments too big for Discord', () => {
     const embed = JSON.parse(init.body.get('payload_json') as string).embeds[0];
     expect(embed.title).toBe('New feature: Sleep timer');
     expect(embed.fields).toEqual([
+      VERSION_FIELD,
       { name: 'Anything else', value: 'Only on Chrome' },
       { name: 'Attachments', value: '2 files, 4 KB, too big for Discord, not included', inline: false },
     ]);
@@ -408,5 +411,36 @@ describe('POST /api/requests: Discord unreachable', () => {
     expect(res.status).toBe(502);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Couldn't send the request, please try again");
+  });
+});
+
+describe('POST /api/requests: the version', () => {
+  const version = () => postedPayload().body.embeds[0].fields.find((f) => f.name === 'Version')?.value;
+
+  it('reads like the phone app it came from', async () => {
+    await POST(request(validBody({ context: { appVersion: '0.7.34 (a 2026-10-22)', shell: 'capacitor', shellPlatform: 'android', shellVersion: '0.4.28', route: '/x' } })), undefined as never);
+    expect(version()).toBe('Android app 0.4.28, web 0.7.34');
+  });
+
+  it('reads like a browser', async () => {
+    await POST(request(validBody({ context: { appVersion: '0.7.34 (a 2026-10-22)', shell: 'web', shellPlatform: 'browser', shellVersion: null } })), undefined as never);
+    expect(version()).toBe('Browser, web 0.7.34');
+  });
+
+  it('says unknown when a request came without context', async () => {
+    await POST(request(validBody({ context: undefined })), undefined as never);
+    expect(version()).toBe('Version unknown');
+  });
+
+  it('never repeats what a hand-written body claims', async () => {
+    await POST(request(validBody({ context: { appVersion: '@everyone', shell: '<@1>', shellPlatform: '<@1>', shellVersion: '[x](http://evil)' } })), undefined as never);
+    expect(version()).toBe('Version unknown');
+    expect(JSON.stringify(postedPayload().body)).not.toContain('evil');
+    expect(JSON.stringify(postedPayload().body)).not.toContain('@everyone');
+  });
+
+  it('goes for a fix as well as a feature', async () => {
+    await POST(request(validBody({ kind: 'fix', context: { appVersion: '0.7.34', shell: 'web', shellPlatform: 'browser' } })), undefined as never);
+    expect(version()).toBe('Browser, web 0.7.34');
   });
 });

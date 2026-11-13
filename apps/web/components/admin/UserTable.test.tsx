@@ -35,8 +35,8 @@ vi.mock('@/components/ui/dialog', () => ({
 
 const { UserTable } = await import('./UserTable');
 
-const robin: AdminUser = { id: 'u1', email: 'robin@ember.test', name: 'Robin', avatarUrl: null, isAdmin: false, created: '2024-01-01' };
-const me: AdminUser = { id: 'admin1', email: 'admin@ember.test', name: '', avatarUrl: null, isAdmin: true, created: '2024-01-01' };
+const robin: AdminUser = { id: 'u1', email: 'robin@ember.test', name: 'Robin', avatarUrl: null, isAdmin: false, created: '2024-01-01', devices: [] };
+const me: AdminUser = { id: 'admin1', email: 'admin@ember.test', name: '', avatarUrl: null, isAdmin: true, created: '2024-01-01', devices: [] };
 
 function setup() {
   const actions = {

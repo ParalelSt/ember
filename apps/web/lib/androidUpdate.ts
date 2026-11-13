@@ -71,7 +71,7 @@ export async function androidUpdateFor(currentVersion: string): Promise<AndroidU
 
   const asset = (release.assets ?? []).find((a) => isAndroidApkName(a.name));
   if (!asset) {
-    serverLogger.error('update', 'latest release has no android apk', { tag: release.tag_name });
+    serverLogger.warn('update', 'latest release has no android apk', { tag: release.tag_name });
     return null;
   }
 

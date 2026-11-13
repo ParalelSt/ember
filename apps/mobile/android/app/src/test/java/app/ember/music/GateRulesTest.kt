@@ -445,4 +445,68 @@ class GateRulesTest {
         val src = java.io.File("src/main/java/app/ember/music/GateRules.kt").readText()
         assertFalse(src.contains('\u2014'))
     }
+
+    // Android's confirm screen over the gate (first install not from Ember).
+    private fun installing(): Machine {
+        val m = Machine(recovery = false, resumed = true)
+        m.handle(Input.Checked(Offer("0.4.23", false, null, null), ready = true))
+        m.handle(Input.UpdateNow)
+        assertEquals(Phase.Installing, m.phase)
+        return m
+    }
+
+    @Test fun `returning from the confirm screen keeps Installing`() {
+        val m = installing()
+        m.handle(Input.Resumed(false))
+        m.handle(Input.Resumed(true))
+        // AppUpdater stays "installing" now, and says nothing new.
+        assertNull(GateRules.fromUpdater(m.phase, "installing", null, null))
+        assertEquals(Phase.Installing, m.phase)
+    }
+
+    @Test fun `a real failure from the receiver gives Couldn't update, then the app opens`() {
+        val m = installing()
+        assertEquals(Input.InstallFailed, GateRules.fromUpdater(m.phase, "ready", "tap", null))
+        m.handle(Input.InstallFailed)
+        assertEquals(Phase.Failed, m.phase)
+        assertTrue(Effect.EnterApp in m.handle(Input.FailedTimeout))
+    }
+
+    @Test fun `cancelling on Android's screen (aborted) is an answer that ends the wait`() {
+        // onInstallFailed(aborted, keep) publishes READY with waiting "tap".
+        val m = installing()
+        m.handle(GateRules.fromUpdater(m.phase, "ready", "tap", null)!!)
+        assertEquals(Phase.Failed, m.phase)
+        assertTrue(Effect.EnterApp in m.handle(Input.FailedTimeout))
+    }
+
+    @Test fun `a slow Play Protect scan keeps Installing`() {
+        // The updater stays "installing" while Android has the session,
+        // however many times the gate is covered and uncovered.
+        val m = installing()
+        repeat(20) {
+            m.handle(Input.Resumed(false))
+            m.handle(Input.Resumed(true))
+            GateRules.fromUpdater(m.phase, "installing", null, null)?.let { m.handle(it) }
+        }
+        assertEquals(Phase.Installing, m.phase)
+        assertEquals("Installing update", GateRules.copy(m, silent = false)!!.title)
+    }
+
+    @Test fun `the backstop or a session gone with no answer ends the wait and the gate opens the app`() {
+        // AppUpdater.unstick publishes READY with waiting "tap".
+        val m = installing()
+        m.handle(GateRules.fromUpdater(m.phase, "ready", "tap", null)!!)
+        assertTrue(Effect.EnterApp in m.handle(Input.FailedTimeout))
+        assertEquals(Phase.Done, m.phase)
+    }
+
+    @Test fun `a failed install is a warning for the digest, every other gate event is info`() {
+        assertEquals("warn", GateRules.eventLevel("update.gate.failed", mapOf("stage" to "install", "version" to "0.4.23")))
+        assertEquals("info", GateRules.eventLevel("update.gate.failed", mapOf("stage" to "download")))
+        assertEquals("info", GateRules.eventLevel("update.gate.install", mapOf("version" to "0.4.23")))
+        val m = installing()
+        val failed = m.handle(Input.InstallFailed).filterIsInstance<Effect.Event>().single()
+        assertEquals("warn", GateRules.eventLevel(failed.name, failed.data))
+    }
 }

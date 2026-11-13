@@ -1,6 +1,7 @@
 'use client';
 
 import { logger } from '@/lib/logger/client';
+import { mediaSrcKind } from './srcKind';
 import { autoPreampDb, DEFAULT_EQ, EQ_BANDS, EQ_PEAK_Q, eqActive, type EqSettings } from './eq';
 import { createGainRamp } from './gainRamp';
 import type { AudioBackend, CreateAudioBackend, RemoteCommands } from './types';
@@ -8,6 +9,9 @@ import type { AudioBackend, CreateAudioBackend, RemoteCommands } from './types';
 /** HTMLMediaElement.NETWORK_LOADING, spelled out: some DOMs (and test
  *  environments) do not expose the constant on the class. */
 const NETWORK_LOADING = 2;
+
+/** MediaError.MEDIA_ERR_NETWORK, spelled out: the global is absent in tests. */
+const MEDIA_ERR_NETWORK = 2;
 
 export const createWebBackend: CreateAudioBackend = (events) => {
   // --- Audio element (DOM-attached; Firefox Android only surfaces lock-screen
@@ -197,7 +201,16 @@ export const createWebBackend: CreateAudioBackend = (events) => {
   const onError = () => {
     const code = a.error?.code;
     const message = a.error?.message ?? 'audio element error';
-    logger.error('audio', message, { code, src: a.src });
+    // What the src was (a station, a song's stream, a cached or downloaded
+    // copy), so a report of a bare "Format error" says what would not play.
+    const kind = mediaSrcKind(a.src);
+    const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+    const data = { code, src: a.src, kind, online };
+    // A dead radio station is an outside failure (see isStationStreamUrl), and
+    // so is a network failure while the device is offline.
+    const outside = kind === 'station' || (!online && code === MEDIA_ERR_NETWORK);
+    if (outside) logger.warn('audio', message, data);
+    else logger.error('audio', message, data);
     // Drop the dead src so the prior position doesn't stick on screen.
     a.removeAttribute('src');
     events.onError();

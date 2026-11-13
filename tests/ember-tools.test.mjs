@@ -11,6 +11,7 @@ import {
   isLivePbData,
   messageHeadline,
   messageLine,
+  pickBotToken,
   pickFreePort,
   plainVersion,
   sandboxPortProblem,
@@ -367,4 +368,13 @@ test('tracker: the launchd agent runs sync every 300 seconds', () => {
   const p = plistText({ label: 'com.ember.tracker', node: '/n/node', script: '/m/tracker.mjs', log: '/l.log', interval: 300 });
   assert.match(p, /<integer>300<\/integer>/);
   assert.match(p, /<string>\/m\/tracker\.mjs<\/string>\s*<string>sync<\/string>/);
+});
+
+test('bot token: Ember reads only its own file or env, never the shared Claude channel file', () => {
+  assert.equal(pickBotToken({}, {}), null);
+  assert.equal(pickBotToken({}, { DISCORD_BOT_TOKEN: 'file' }), 'file');
+  assert.equal(pickBotToken({}, { EMBER_DISCORD_BOT_TOKEN: 'ember', DISCORD_BOT_TOKEN: 'file' }), 'ember');
+  assert.equal(pickBotToken({ EMBER_DISCORD_BOT_TOKEN: 'env' }, { DISCORD_BOT_TOKEN: 'file' }), 'env');
+  // A DISCORD_BOT_TOKEN in the process env (another bot's) is ignored.
+  assert.equal(pickBotToken({ DISCORD_BOT_TOKEN: 'other' }, {}), null);
 });

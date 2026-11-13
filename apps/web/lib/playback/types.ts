@@ -1,5 +1,5 @@
 import type { OverlayHandle } from '@/lib/pranks/overlayPlayer';
-import type { Track } from '@/types/track';
+import type { PlaybackContext, Track } from '@/types/track';
 import type { LoopMode } from '@/stores/usePlayerStore';
 import type { QueueOrigin } from '@/lib/autoCache/native';
 import type { EqSettings } from './eq';
@@ -47,8 +47,10 @@ export interface AudioBackendEvents {
   /** Queue-owning backends only: the native side built a new queue (a tap in
    *  the car, native radio, the car's Shuffle button reordering it). The
    *  provider mirrors it; it must NOT push it back. `shuffle` is whether
-   *  native's queue is shuffled now (app builds from before it leave it out). */
-  onQueueReplaced?: (tracks: Track[], index: number, info?: { shuffle?: boolean }) => void;
+   *  native's queue is shuffled now (app builds from before it leave it out).
+   *  `context`: where the queue came from, when the engine knows (a remote
+   *  device sends its own; native does not). */
+  onQueueReplaced?: (tracks: Track[], index: number, info?: { shuffle?: boolean; context?: PlaybackContext | null }) => void;
   /** Queue-owning backends only: shuffle was turned on or off outside the
    *  app (the car's or the notification's Shuffle button). Native reorders
    *  its queue itself; the new order arrives as onQueueReplaced. `initial`:

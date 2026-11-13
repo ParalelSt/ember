@@ -69,7 +69,17 @@ vi.mock('@/hooks/useRecentSearches', () => ({
 // A fetch that never resolves by default: proves opening and typing never
 // wait on the network. api.search is swapped per-test where a real response
 // is needed.
-const api = vi.hoisted(() => ({ search: vi.fn<() => Promise<{ tracks: Track[] }>>() }));
+// The UI reads the streamed search; here it streams whatever the one-shot
+// `api.search` mock answers, as one chunk (what an older server sends).
+const api = vi.hoisted(() => {
+  const search = vi.fn<(q: string) => Promise<{ tracks: Track[] }>>();
+  return {
+    search,
+    searchStream: async function* (q: string) {
+      yield { type: 'legacy' as const, tracks: (await search(q)).tracks };
+    },
+  };
+});
 vi.mock('@/lib/api', () => ({ api }));
 
 function makeTrack(over: Partial<Track> = {}): Track {
@@ -92,8 +102,10 @@ function makeTrack(over: Partial<Track> = {}): Track {
 /** The overlay plus one ordinary button beside it, standing in for the rest
  *  of the app: on desktop the dropdown covers nothing, so that button has to
  *  stay clickable and is where focus goes back to on Escape. */
-function renderOverlay(withPlayer = false) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderOverlay(
+  withPlayer = false,
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return render(
     <QueryClientProvider client={client}>
       <button type="button" data-testid="elsewhere">Play</button>
@@ -578,7 +590,10 @@ describe('SearchOverlayContainer, phone sheet', () => {
     fireEvent.click(pause);
     fireEvent.change(box(), { target: { value: 'result' } });
     fireEvent.click(pause);
-    expect(await screen.findByText('Search result')).toBeVisible();
+    // The phone row's title is a MarqueeText (with a hidden measuring copy).
+    const title = await screen.findByTestId('track-row-title');
+    expect(title).toHaveTextContent('Search result');
+    expect(title).toBeVisible();
     fireEvent.click(pause);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(playback.toggle).toHaveBeenCalledTimes(3);
@@ -620,6 +635,8 @@ describe('SearchOverlayContainer, phone sheet', () => {
   it('still closes on the Android back gesture', () => {
     renderOverlay();
 
+    // Back lands on the page's entry under the sheet, then says so.
+    window.history.replaceState(null, '');
     fireEvent(window, new PopStateEvent('popstate'));
     expect(useUiStore.getState().searchOpen).toBe(false);
   });
@@ -675,5 +692,54 @@ describe('SearchOverlayContainer, phone sheet', () => {
     renderOverlay();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(useUiStore.getState().searchOpen).toBe(false);
+  });
+});
+
+// Song pages from search (the owner's rule): on a desktop window the cover
+// and the title open the song page; in the phone sheet only the cover does,
+// the title keeps playing and scrolls when long.
+describe('SearchOverlayContainer, song page access', () => {
+  const song = () => makeTrack({ id: 'youtube:b2', sourceId: 'b2', title: 'Second Wind', artworkUrl: 'https://example.test/b2.jpg' });
+
+  async function search() {
+    api.search.mockResolvedValue({ tracks: [song()] });
+    renderOverlay();
+    fireEvent.change(box(), { target: { value: 'second wind' } });
+    return screen.findByTestId('track-row-cover-link');
+  }
+
+  it('desktop: cover and title both link to /track/<id>', async () => {
+    desktop.value = true;
+    expect(await search()).toHaveAttribute('href', '/track/b2');
+    expect(screen.getByTestId('track-row-title-link')).toHaveAttribute('href', '/track/b2');
+  });
+
+  it('phone: only the cover links; tapping the title plays it', async () => {
+    desktop.value = false;
+    expect(await search()).toHaveAttribute('href', '/track/b2');
+    expect(screen.queryByTestId('track-row-title-link')).toBeNull();
+    const title = screen.getByTestId('track-row-title');
+    expect(title.querySelector('[data-testid="marquee"]')).not.toBeNull();
+    fireEvent.click(title);
+    expect(trackActions.onPlay).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'youtube:b2' }),
+      [expect.objectContaining({ id: 'youtube:b2' })],
+      { type: 'search', query: 'second wind' },
+    );
+  });
+});
+
+// Own matches come first and need no network: liked songs the app already
+// holds show the moment the query settles, before the server answers.
+describe('SearchOverlayContainer, own matches first', () => {
+  it('a liked song that matches shows while the search is still running', async () => {
+    desktop.value = true;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['likes'], [makeTrack({ id: 'youtube:l1', sourceId: 'l1', title: 'Necro Fantasia', artist: 'Demetori' })]);
+    api.search.mockImplementation(neverResolves);
+    renderOverlay(false, client);
+    fireEvent.change(box(), { target: { value: 'demetori' } });
+    expect(await screen.findByText('Necro Fantasia')).toBeInTheDocument();
+    expect(screen.queryByText('Searching…')).toBeNull();
   });
 });

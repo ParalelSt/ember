@@ -2,15 +2,16 @@ import { nativePlatform } from '@/lib/playback/nativePlatform';
 
 /** The Android app's in-app updater, as the page sees it (the EmberUpdate
  *  plugin, apps/mobile/android/.../EmberUpdatePlugin.kt). The app checks,
- *  downloads and installs by itself; the page only shows where that is
- *  ("Downloading update", "Update ready, tap to install") and passes on the
- *  person's taps. Nothing here exists in a browser, the desktop app, the
+ *  downloads by itself and installs only when the person taps; the page
+ *  shows where that is ("Downloading update", "Update ready, tap to
+ *  install") and passes on the taps. Nothing here exists in a browser, the desktop app, the
  *  iPhone app, or an Android app from before the updater: every function
  *  then does nothing and never throws. */
 
 export type AppUpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'downloading' | 'ready' | 'installing' | 'failed';
-/** What a ready update waits for: the car to go, the music to stop, a few
- *  idle minutes, a tap, or the "Install unknown apps" switch. */
+/** What a ready update waits for: the car to go, a tap, or the "Install
+ *  unknown apps" switch. Older apps also send 'playback' and 'idle' (they
+ *  installed by themselves); those now read as a plain tap. */
 export type AppUpdateWaiting = 'car' | 'playback' | 'idle' | 'tap' | 'permission';
 
 export interface AppUpdateState {
@@ -172,15 +173,7 @@ export function updatePill(s: AppUpdateState): UpdatePill | null {
             dismissable: true,
           };
         case 'car':
-          return { title: `Update${v} ready`, detail: "Installs when you're parked", action: null, dismissable: true };
-        case 'playback':
-        case 'idle':
-          return {
-            title: `Update${v} ready`,
-            detail: 'Installs when the music stops, or tap to install now',
-            action: 'install',
-            dismissable: true,
-          };
+          return { title: `Update${v} ready`, detail: "Install once you're parked", action: null, dismissable: true };
         default:
           // The app keeps the APK after a failed install and sets `error`:
           // say so, or a second tap looks like the first one did nothing.

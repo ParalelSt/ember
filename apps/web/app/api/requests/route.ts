@@ -12,6 +12,7 @@ import { scrubText } from "@/lib/logger/sanitize";
 import { resolveWebhook } from "@/lib/requestWebhooks";
 import { postToDiscord } from "@/lib/reports/discord";
 import { readReportBody } from "@/lib/reports/readBody";
+import { cleanShellFields, reportVersionLabel } from "@/lib/versions/label";
 import {
   droppedAttachmentsField,
   isTooLargeForDiscord,
@@ -38,6 +39,8 @@ const EMBED_COLOR: Record<Kind, number> = {
 interface RequestContext {
   appVersion?: string;
   shell?: string;
+  shellVersion?: string | null;
+  shellPlatform?: string;
   route?: string;
   platform?: string;
 }
@@ -61,7 +64,7 @@ function sanitizeContext(ctx: unknown): RequestContext | undefined {
   for (const [k, v] of Object.entries(ctx as Record<string, unknown>)) {
     out[k] = typeof v === "string" ? v.slice(0, MAX_CONTEXT_STRING_LEN) : v;
   }
-  return out as RequestContext;
+  return cleanShellFields(out) as RequestContext;
 }
 
 /** Discord caps a field/description at these lengths; truncate with an
@@ -130,14 +133,13 @@ export const POST = withRequestLog("requests", async (request: NextRequest) => {
 
       const footerParts = [
         user.email,
-        context?.appVersion,
-        context?.shell,
         context?.route,
       ].filter((p): p is string => typeof p === "string" && p.length > 0);
 
-      const fields = scrubbedExtra
-        ? [{ name: "Anything else", value: truncate(scrubbedExtra, 1024) }]
-        : [];
+      const fields = [
+        { name: "Version", value: reportVersionLabel(context) },
+        ...(scrubbedExtra ? [{ name: "Anything else", value: truncate(scrubbedExtra, 1024) }] : []),
+      ];
 
       const embed = {
         title: truncate(title, 256),

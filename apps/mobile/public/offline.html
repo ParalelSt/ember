@@ -84,19 +84,102 @@
 
       // No plugin, or status() failed: behave like the old fallback page so a
       // transient server hiccup still looks like the app starting up.
-      function connecting() {
+      function connecting(attempt) {
         app.innerHTML = '';
         var wrap = el('div', 'center');
         wrap.appendChild(el('div', 'brand', 'Ember'));
         wrap.appendChild(el('div', 'msg', 'Connecting to server…'));
+        if (attempt) wrap.appendChild(el('div', 'msg', 'Attempt ' + attempt + ' of ' + DELAYS.length));
         app.appendChild(wrap);
       }
 
-      function header() {
+      // Retrying. A failed load lands here, often only for a moment (a radio
+      // waking up), so the Offline screen waits for DELAYS.length checks of the
+      // server, 1s, 2s, 3s... apart. A check is a no-cors fetch: this page is a
+      // local origin, so the answer is opaque, and an opaque response is still
+      // proof the server answered. Only a passed check navigates, so a failed
+      // navigation cannot reload this page and restart the count forever.
+      var DELAYS = [1000, 2000, 3000, 4000, 5000];
+      var PROBE_MS = 4000;
+      var GUARD_MAX = 3, GUARD_WINDOW = 60000;   // auto-returns allowed per minute
+      var busy = false;
+
+      function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+      function serverUrl() {
+        return plugin.serverUrl().then(function (r) { return (r && r.url) || null; }, function () { return null; });
+      }
+
+      function reachable(url) {
+        // An http server cannot be probed from this https origin (mixed
+        // content is blocked), so the probe could never pass: go and see.
+        if (location.protocol === 'https:' && /^http:/i.test(url)) return Promise.resolve(true);
+        var ctl = window.AbortController ? new AbortController() : null;
+        var timer = setTimeout(function () { if (ctl) ctl.abort(); }, PROBE_MS);
+        return fetch(url, { mode: 'no-cors', cache: 'no-store', signal: ctl && ctl.signal }).then(
+          function () { clearTimeout(timer); return true; },
+          function () { clearTimeout(timer); return false; });
+      }
+
+      // One round: wait, check, repeat. Resolves the URL once a check passes,
+      // else null. onAttempt(n) lets the caller show the progress.
+      async function round(onAttempt) {
+        for (var n = 1; n <= DELAYS.length; n++) {
+          await sleep(DELAYS[n - 1]);
+          if (onAttempt) onAttempt(n);
+          var url = await serverUrl();
+          if (url && await reachable(url)) return url;
+        }
+        return null;
+      }
+
+      // The loop guard: if the server keeps answering the check yet the load
+      // still lands back here, stop auto-returning and let the person press
+      // Try again. Kept in sessionStorage so it survives this page reloading.
+      function mayReturn() {
+        try {
+          var now = Date.now();
+          var log = JSON.parse(sessionStorage.getItem('emberReturns') || '[]').filter(function (t) { return now - t < GUARD_WINDOW; });
+          if (log.length >= GUARD_MAX) return false;
+          log.push(now);
+          sessionStorage.setItem('emberReturns', JSON.stringify(log));
+        } catch (e) {}
+        return true;
+      }
+
+      // Library mode only: never pull someone away from a song they started.
+      function go(url) {
+        if (index >= 0 || !mayReturn()) return false;
+        location.href = url;
+        return true;
+      }
+
+      // Nothing downloaded: show progress, then the Offline screen if all fail.
+      async function retryScreen() {
+        if (busy) return;
+        busy = true;
+        connecting(1);
+        var url = await round(connecting);
+        busy = false;
+        if (url && go(url)) return;
+        render([]);
+      }
+
+      // Downloads exist: the library is already up; keep trying quietly and
+      // return to the server once it answers and nothing is playing.
+      async function watch() {
+        for (;;) {
+          var url = await round();
+          if (url && go(url)) return;
+          if (url) await sleep(DELAYS[DELAYS.length - 1]);
+        }
+      }
+
+      function header(again) {
         var h = el('header');
         h.appendChild(el('div', 'brand', 'Offline'));
         var retry = el('button', null, 'Try again');
-        retry.onclick = function () {
+        retry.onclick = again || function () {
           if (!plugin) return location.reload();
           plugin.serverUrl().then(function (r) {
             location.href = (r && r.url) || location.href;
@@ -194,7 +277,7 @@
 
       function render(sections) {
         app.innerHTML = '';
-        app.appendChild(header());
+        app.appendChild(header(sections.length ? null : retryScreen));
         if (!sections.length) {
           app.appendChild(el('div', 'pin msg', 'Nothing downloaded yet. Connect once and download a playlist for offline use.'));
           return;
@@ -229,7 +312,7 @@
       async function boot() {
         if (!plugin) return connecting();
         var st;
-        try { st = await plugin.status(); } catch (e) { return connecting(); }
+        try { st = await plugin.status(); } catch (e) { return retryScreen(); }
         var files = (st && st.trackFiles) || {};
         // Absent on older native builds: default to {} so art is just skipped.
         var artFiles = (st && st.artFiles) || {};
@@ -249,7 +332,9 @@
           });
           if (playable.length) sections.push({ name: pin.name, tracks: playable });
         }
+        if (!sections.length) return retryScreen();
         render(sections);
+        watch();
       }
 
       boot();

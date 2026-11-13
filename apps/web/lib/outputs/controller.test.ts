@@ -12,12 +12,17 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 import {
   _resetOutputs,
   chooseCastDevice,
+  chooseEmberDevice,
   chooseOutput,
+  chooseThisDevice,
   initOutputs,
+  openCastPicker,
   openSystemPicker,
   providerFor,
   refreshOutputs,
+  setRemoteMoves,
 } from './controller';
+import { useRemoteStore } from '@/stores/useRemoteStore';
 import { useOutputStore } from '@/stores/useOutputStore';
 import { useCastStore } from '@/stores/useCastStore';
 import type { AudioBackend } from '@/lib/playback/types';
@@ -222,5 +227,76 @@ describe('actions', () => {
       window.matchMedia = mm;
       localStorage.clear();
     }
+  });
+});
+
+describe('your devices', () => {
+  function moves() {
+    const order: string[] = [];
+    const m = {
+      moveTo: vi.fn(async (id: string) => { order.push(`moveTo:${id}`); return true; }),
+      moveHere: vi.fn(() => {
+        order.push('moveHere');
+        useRemoteStore.setState({ mode: 'local', target: null });
+      }),
+    };
+    return { m, order, off: setRemoteMoves(m) };
+  }
+  beforeEach(() => useRemoteStore.setState({ mode: 'local', target: null }));
+
+  it('a device row moves the music there and says so; the lit row does nothing', async () => {
+    const { m, off } = moves();
+    await chooseEmberDevice('win-1', 'Windows');
+    expect(m.moveTo).toHaveBeenCalledWith('win-1');
+    expect(toast).toHaveBeenCalledWith('Moved to Windows');
+    m.moveTo.mockClear();
+    useRemoteStore.setState({ mode: 'controlling', target: 'win-1' });
+    await chooseEmberDevice('win-1', 'Windows');
+    expect(m.moveTo).not.toHaveBeenCalled();
+    off();
+  });
+
+  it('a refused move says nothing more (the provider told why)', async () => {
+    const { m, off } = moves();
+    m.moveTo.mockResolvedValueOnce(false);
+    await chooseEmberDevice('win-1', 'Windows');
+    expect(toast).not.toHaveBeenCalledWith('Moved to Windows');
+    off();
+  });
+
+  it('a local output while controlling brings the music here before it is selected', async () => {
+    const plugin = androidPlugin();
+    setCapacitor('android', { EmberPlayer: plugin });
+    initOutputs({ kind: 'android', localBackend: noBackend });
+    await flush();
+    const { m, order, off } = moves();
+    plugin.setOutput.mockImplementation(async ({ id }: { id: string | null }) => {
+      order.push(`select:${id}`);
+      return { ...ANDROID_RAW, currentId: id };
+    });
+    useRemoteStore.setState({ mode: 'controlling', target: 'win-1' });
+    await chooseOutput('9');
+    expect(order).toEqual(['moveHere', 'select:9']);
+    expect(m.moveHere).toHaveBeenCalledTimes(1);
+    off();
+  });
+
+  it('This phone brings the music here; outside remote mode it does nothing', () => {
+    const { m, off } = moves();
+    chooseThisDevice();
+    expect(m.moveHere).not.toHaveBeenCalled();
+    useRemoteStore.setState({ mode: 'controlling', target: 'win-1' });
+    chooseThisDevice();
+    expect(m.moveHere).toHaveBeenCalledTimes(1);
+    off();
+  });
+
+  it('casting while controlling brings the music here first, then casts', async () => {
+    const { order, off } = moves();
+    cast.requestCast.mockImplementationOnce(async () => { order.push('cast'); });
+    useRemoteStore.setState({ mode: 'controlling', target: 'win-1' });
+    await openCastPicker();
+    expect(order).toEqual(['moveHere', 'cast']);
+    off();
   });
 });

@@ -105,6 +105,12 @@ describe('Song page', () => {
     expect(screen.queryByRole('button', { name: /^Share/ })).toBeNull();
   });
 
+  it('links the artist when the route resolved an id the saved song lacked', () => {
+    state.query = { data: { ...TRACK, artistId: 'UCresolved' }, isLoading: false, error: null };
+    render(<TrackPageClient videoId="a1" />);
+    expect(screen.getByRole('link', { name: 'The Nulls' })).toHaveAttribute('href', '/artist/UCresolved');
+  });
+
   it('an artist with no id is plain text, not a dead link', () => {
     state.query = { data: { ...TRACK, artistId: undefined }, isLoading: false, error: null };
     render(<TrackPageClient videoId="a1" />);

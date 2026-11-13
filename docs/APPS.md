@@ -311,7 +311,9 @@ in `apps/mobile/android/app/src/main/java/app/ember/music/`).
    is rate limited.
 2. **Download.** Only over a network Android has validated (INTERNET +
    VALIDATED) on Wi-Fi, mobile data or ethernet; offline it skips and tries
-   at the next check. The APK goes to the app's private cache.
+   at the next check. The APK goes to the app's private storage
+   (`noBackupFilesDir/updates`, not the cache, which Android and cleaner
+   apps may wipe before the tap).
 3. **Verify.** Installed only when the file matches the release's sha256
    (when GitHub reported one), its package is `app.ember.music`, its
    versionCode is higher than the installed one, and it is signed with the
@@ -350,10 +352,25 @@ screen, or waits for a tap.
 **Check for updates** (`lib/appUpdate.ts`, `components/update/`,
 `components/settings/AppUpdateCard.tsx`).
 
+**While installing.** The updater remembers the session it committed and
+waits for as long as Android still has it: its confirm screen, a vendor's
+security scan and Play Protect's "Install anyway" can take minutes. The
+install ends only on Android's answer, when the session is gone with no
+answer, or after 10 minutes with no sign of life. A second tap reuses the
+live session (its confirm screen again, or keeps waiting); answers for any
+other session are ignored. After a restart mid-install the app comes back on
+Installing. Play Protect's block keeps the APK and tells the person to choose
+More details, then Install anyway; only a signature, versionCode or ABI
+mismatch refuses a version for good.
+
 **Logs.** Every step is sent to `POST /api/native-log` as `update.*` events
 (check, available, skip, download, ready, rejected, deferred, install,
-confirm, declined, failed, installed, car), so they show on the admin's
-**Car and Android Auto** page with the device and surface.
+confirm, declined, blocked, failed, unanswered, waiting, reuse, resumed,
+stale, installed, car), so they show on the admin's **Car and Android Auto**
+page with the device and surface. Every installer answer carries its status,
+message, session id (`sid`) and ms since the install began, and is sent at
+once. Play Protect or a phone blocking the install, an unanswered install
+and a gate install failure are warnings, so the daily digest counts them.
 
 **For each release**
 

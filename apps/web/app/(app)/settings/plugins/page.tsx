@@ -48,7 +48,7 @@ export default function SettingsPlugins() {
           <PluginToggle
             name="Party-size volume slider"
             tag="PC only"
-            description="Wider slider in the player bar and removes the 85% cap so the audio can go all the way to max. Desktop only, hidden on phones, tablets and the Android app."
+            description="A wider slider in the player bar that can go above 100% for parties. Desktop only."
             on={partyVolume}
             onToggle={() => void setPartyVolume(!partyVolume)}
           />

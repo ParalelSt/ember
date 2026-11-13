@@ -1,6 +1,7 @@
 'use client';
 
 import type { ComponentType, ReactNode } from 'react';
+import Link from 'next/link';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +17,9 @@ export interface MenuAction {
   description?: string;
   /** Accessible name when it should differ from the label. */
   ariaLabel?: string;
+  /** A place to go (Go to song, Go to artist): the item is a link, so a
+   *  desktop middle click opens it in a new tab. `onSelect` still runs. */
+  href?: string;
 }
 
 /** The phone's ⋯ menu (owner's popups1 pick): a sheet up from the bottom with
@@ -65,6 +69,7 @@ export function ActionSheetItem({
   testId,
   description,
   ariaLabel,
+  href,
 }: {
   icon?: ComponentType<{ className?: string }>;
   children: ReactNode;
@@ -76,20 +81,16 @@ export function ActionSheetItem({
   /** A line of help under the label. */
   description?: string;
   ariaLabel?: string;
+  /** Makes the row a link to this place (it still runs `onSelect`). */
+  href?: string;
 }) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      aria-label={ariaLabel}
-      onClick={onSelect}
-      disabled={disabled}
-      className={cn(
-        'flex min-h-12 w-full items-center gap-row rounded-lg px-row py-cluster text-left text-[15px] outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-60 disabled:hover:bg-transparent',
-        tone === 'ember' && 'font-semibold text-ember',
-        tone === 'destructive' && 'text-destructive',
-      )}
-    >
+  const className = cn(
+    'flex min-h-12 w-full items-center gap-row rounded-lg px-row py-cluster text-left text-[15px] outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-60 disabled:hover:bg-transparent',
+    tone === 'ember' && 'font-semibold text-ember',
+    tone === 'destructive' && 'text-destructive',
+  );
+  const content = (
+    <>
       {Icon && (
         <Icon className={cn('h-5 w-5 shrink-0', tone ? 'text-current' : 'text-muted-foreground')} />
       )}
@@ -102,6 +103,25 @@ export function ActionSheetItem({
         <span className="min-w-0 flex-1 truncate">{children}</span>
       )}
       {trailing}
+    </>
+  );
+  if (href && !disabled) {
+    return (
+      <Link href={href} data-testid={testId} aria-label={ariaLabel} onClick={onSelect} className={className}>
+        {content}
+      </Link>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      aria-label={ariaLabel}
+      onClick={onSelect}
+      disabled={disabled}
+      className={className}
+    >
+      {content}
     </button>
   );
 }

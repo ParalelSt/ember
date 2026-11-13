@@ -389,6 +389,26 @@ describe('POST /api/bug-report: Evidence timeline', () => {
   });
 });
 
+describe('POST /api/bug-report: triage stays in Discord', () => {
+  it('posts the triage to Discord but never returns it to the reporter', async () => {
+    vi.mocked(triageBugReport).mockResolvedValueOnce({
+      summary: 'Stream 502s',
+      likelyCause: 'Upstream timeout',
+      area: 'streaming',
+      severity: 'medium',
+      confidence: 'medium',
+      nextSteps: ['Check yt-dlp'],
+      reproduction: 'Play any song',
+    });
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true });
+    expect(JSON.stringify(body)).not.toContain('Stream 502s');
+    expect(postedEmbed(fetchMock).fields.some((f) => f.name === 'Reproduce')).toBe(true);
+  });
+});
+
 describe('POST /api/bug-report: Seen before', () => {
   it('reports "first time" for an error fingerprint with no history', async () => {
     vi.mocked(serverLogger.recentSince).mockResolvedValue([serverError()]);
@@ -485,6 +505,52 @@ describe('POST /api/bug-report: field restructure', () => {
     expect(embed.fields[0].value).toBe('songs skip');
     expect(embed.fields.some((f) => f.name === 'Where')).toBe(true);
     // Title is unchanged (T3's "(automatic)" suffix is out of scope here).
+  });
+});
+
+describe('POST /api/bug-report: the version', () => {
+  const versionOf = async (context: unknown, extra: Record<string, unknown> = {}) => {
+    await POST(request({ note: 'x', client: snapshot({ context: context as ClientSnapshot['context'] }), ...extra }), undefined as never);
+    return postedEmbed(fetchMock).fields.find((f) => f.name === 'Version')?.value;
+  };
+
+  it('shows the app and the web build, near the top', async () => {
+    expect(
+      await versionOf({ appVersion: '0.7.34 (a1b2c3d 2026-10-22)', shell: 'capacitor', shellPlatform: 'android', shellVersion: '0.4.28' }),
+    ).toBe('Android app 0.4.28, web 0.7.34');
+    expect(postedEmbed(fetchMock).fields[1].name).toBe('Version');
+  });
+
+  it('shows a browser', async () => {
+    expect(await versionOf({ appVersion: '0.7.34', shell: 'web', shellPlatform: 'browser', shellVersion: null })).toBe('Browser, web 0.7.34');
+  });
+
+  it('shows an old phone app that cannot say its version', async () => {
+    expect(await versionOf({ appVersion: '0.7.34', shell: 'capacitor', shellPlatform: 'android', shellVersion: null })).toBe('Android app (version unknown), web 0.7.34');
+  });
+
+  it('an automatic report shows it too', async () => {
+    expect(await versionOf({ appVersion: '0.7.34', shell: 'web', shellPlatform: 'browser' }, { automatic: true })).toBe('Browser, web 0.7.34');
+  });
+
+  it('says unknown without a context', async () => {
+    expect(await versionOf(undefined)).toBe('Version unknown');
+  });
+
+  it('cleans what goes to report.json and never shows a forged value', async () => {
+    expect(await versionOf({ appVersion: '@everyone', shell: 'web', shellPlatform: '<@1>', shellVersion: '<@1>' })).toBe('Browser, web unknown');
+    const embed = JSON.stringify(postedEmbed(fetchMock));
+    expect(embed).not.toContain('<@1>');
+    const reportJson = JSON.parse(await (postedForm(fetchMock).get('files[0]') as File).text());
+    expect(reportJson.client.context).not.toHaveProperty('shellVersion');
+    expect(reportJson.client.context).not.toHaveProperty('shellPlatform');
+  });
+
+  it('the "Where" line no longer repeats it', async () => {
+    await versionOf({ appVersion: '0.7.34', shell: 'web', route: '/library' });
+    const where = postedEmbed(fetchMock).fields.find((f) => f.name === 'Where')!.value;
+    expect(where).toContain('/library');
+    expect(where).not.toContain('0.7.34');
   });
 });
 
@@ -644,7 +710,7 @@ describe('POST /api/bug-report: attachments too big for Discord', () => {
       undefined as never,
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, triage: null, attachmentsDropped: true });
+    expect(await res.json()).toEqual({ ok: true, attachmentsDropped: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const first = (fetchMock.mock.calls[0] as [string, { body: FormData }])[1].body;
     expect((first.get('files[2]') as File).name).toBe('clip.webm');

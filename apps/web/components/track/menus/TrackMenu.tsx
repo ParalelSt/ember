@@ -3,18 +3,23 @@
 import { toast } from 'sonner';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
 import { canShare, shareTrack } from '../ShareButton';
-import { BlockIcon, CloseIcon, QueueIcon, RefreshIcon, ShareIcon, TrashIcon } from '@/components/icons';
+import { ArtistIcon, BlockIcon, CloseIcon, MusicIcon, QueueIcon, RefreshIcon, ShareIcon, TrashIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useBlockedTracks } from '@/hooks/useBlockedTracks';
 import type { MenuAction } from '@/components/ui/action-sheet';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { addToQueue } from '@/lib/playback/addToQueue';
 import { isUnavailable } from '@/lib/playback/queueNav';
+import { artistPageHref, songPageHref } from '@/lib/songPage';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import type { Track } from '@/types/track';
 
 /** Row actions share one More menu, including imported-track re-matching:
- *  a dropdown on desktop, a sheet from the bottom on a phone. */
+ *  a dropdown on desktop, a sheet from the bottom on a phone.
+ *
+ *  "Go to song" opens the song's own page (YouTube songs; an upload has
+ *  none) and "Go to artist" the artist's, when its id is known. They are
+ *  links, so a desktop middle click opens them in a new tab. */
 /** How a row's own Remove sits in the menu (recent searches; /dizajn R1-R4):
  *  R1 last action, plain with an X; R2 last action, red with a bin; R3 first
  *  action, plain with an X; R4 apart at the very end, red with a bin. */
@@ -68,9 +73,15 @@ export function TrackMenu({
   const remove: MenuAction | null = onRemove
     ? { key: 'remove', label: removeLabel, icon: red ? TrashIcon : CloseIcon, onSelect: onRemove, destructive: red }
     : null;
+  const songHref = songPageHref(track);
+  const artistHref = artistPageHref(track);
+  // Following the link is the action; the sheet closes on the way.
+  const go = () => {};
   const actions: MenuAction[] = [
     ...(remove && removeStyle === 'R3' ? [remove] : []),
     ...(!isUnavailable(track) ? [{ key: 'queue', label: 'Add to queue', icon: QueueIcon, onSelect: queue }] : []),
+    ...(songHref ? [{ key: 'song', label: 'Go to song', icon: MusicIcon, onSelect: go, href: songHref }] : []),
+    ...(artistHref ? [{ key: 'artist', label: 'Go to artist', icon: ArtistIcon, onSelect: go, href: artistHref }] : []),
     ...(canShare(track) ? [{ key: 'share', label: 'Share', icon: ShareIcon, onSelect: () => void shareTrack(track) }] : []),
     ...(onRematch ? [{ key: 'rematch', label: 'Wrong song? Re-match', icon: RefreshIcon, onSelect: onRematch }] : []),
     ...(user ? [{ key: 'block', label: blocked ? 'Unblock song' : 'Block song', icon: BlockIcon, onSelect: toggleBlock }] : []),

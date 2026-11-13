@@ -29,24 +29,31 @@ import {
 } from '@/components/icons';
 import {
   chooseCastDevice,
+  chooseEmberDevice,
   chooseOutput,
+  chooseThisDevice,
   openCastPicker,
   openSystemPicker,
   refreshOutputs,
   stopCasting,
 } from '@/lib/outputs/controller';
 import {
+  controlledName,
   deviceSections,
   devicesButtonVisible,
   devicesLabel,
+  freshDevices,
   playingOn,
   type CastSummary,
   type DeviceRow,
   type OutputSummary,
+  type RemoteSummary,
   type RowAction,
 } from '@/lib/outputs/rows';
+import { isPhone } from '@/lib/isPhone';
 import { useCastStore } from '@/stores/useCastStore';
 import { useOutputStore } from '@/stores/useOutputStore';
+import { useRemoteStore } from '@/stores/useRemoteStore';
 import { cn } from '@/lib/utils';
 
 /** Where the music plays (Spotify's device picker): this device's outputs
@@ -72,7 +79,26 @@ const ICONS: Record<DeviceRow['icon'], ComponentType<{ className?: string }>> = 
   stop: StopIcon,
 };
 
-function useSummaries(): { out: OutputSummary; cast: CastSummary } {
+/** The picker's view of the account's other devices. */
+function useRemoteSummary(): RemoteSummary {
+  const devices = useRemoteStore((s) => s.devices);
+  const mode = useRemoteStore((s) => s.mode);
+  const target = useRemoteStore((s) => s.target);
+  const now = useRemoteStore((s) => s.heardAt);
+  return { devices, mode, target, now, thisKind: isPhone() ? 'phone' : 'computer' };
+}
+
+/** While the picker is open the device list is kept fresh (the remote
+ *  devices hook polls faster). */
+function useMarkPickerOpen(open: boolean): void {
+  useEffect(() => {
+    if (!open) return;
+    useRemoteStore.getState().set({ pickerOpen: true });
+    return () => useRemoteStore.getState().set({ pickerOpen: false });
+  }, [open]);
+}
+
+function useSummaries(): { out: OutputSummary; cast: CastSummary; remote: RemoteSummary; remoteName: string | null; others: number } {
   const platform = useOutputStore((s) => s.platform);
   const devices = useOutputStore((s) => s.devices);
   const currentId = useOutputStore((s) => s.currentId);
@@ -84,9 +110,13 @@ function useSummaries(): { out: OutputSummary; cast: CastSummary } {
   const availability = useCastStore((s) => s.availability);
   const connection = useCastStore((s) => s.connection);
   const deviceName = useCastStore((s) => s.deviceName);
+  const remote = useRemoteSummary();
   return {
     out: { platform, devices, currentId, currentName, currentKind, systemPicker, castDevices },
     cast: { path, availability, connection, deviceName },
+    remote,
+    remoteName: controlledName(remote),
+    others: freshDevices(remote),
   };
 }
 
@@ -106,6 +136,12 @@ function runAction(a: RowAction): void {
       return;
     case 'cast-stop':
       void stopCasting();
+      return;
+    case 'ember-device':
+      void chooseEmberDevice(a.id, a.name);
+      return;
+    case 'here':
+      chooseThisDevice();
       return;
   }
 }
@@ -142,12 +178,13 @@ interface Props {
 }
 
 export function DevicesButton({ className, iconClassName }: Props) {
-  const { out, cast } = useSummaries();
+  const { out, cast, remote, remoteName, others } = useSummaries();
   const [open, setOpen] = useState(false);
-  if (!devicesButtonVisible(out, cast)) return null;
-  const label = devicesLabel(out, cast);
-  const lit = cast.connection !== 'idle' || playingOn(out, cast) !== null;
-  const sections = deviceSections(out, cast);
+  useMarkPickerOpen(open);
+  if (!devicesButtonVisible(out, cast, remoteName, others)) return null;
+  const label = devicesLabel(out, cast, remoteName);
+  const lit = cast.connection !== 'idle' || playingOn(out, cast, remoteName) !== null;
+  const sections = deviceSections(out, cast, remote);
   const onOpenChange = (next: boolean) => {
     setOpen(next);
     if (next) void refreshOutputs();
@@ -200,21 +237,22 @@ export function DevicesButton({ className, iconClassName }: Props) {
  *  else to play), what to call it, and the output it plays on when that
  *  is not the phone itself (the headset, the TV). */
 export function useDevicesEntry() {
-  const { out, cast } = useSummaries();
+  const { out, cast, remoteName, others } = useSummaries();
   return {
-    visible: devicesButtonVisible(out, cast),
-    label: devicesLabel(out, cast),
-    on: playingOn(out, cast) ?? (cast.connection === 'connecting' ? 'Connecting' : null),
-    lit: cast.connection !== 'idle' || playingOn(out, cast) !== null,
+    visible: devicesButtonVisible(out, cast, remoteName, others),
+    label: devicesLabel(out, cast, remoteName),
+    on: playingOn(out, cast, remoteName) ?? (cast.connection === 'connecting' ? 'Connecting' : null),
+    lit: cast.connection !== 'idle' || playingOn(out, cast, remoteName) !== null,
   };
 }
 
 /** The phone's devices sheet, from the bottom. Opening it refreshes the
  *  list; picking a row switches and closes it. */
 export function DevicesSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { out, cast } = useSummaries();
-  const sections = deviceSections(out, cast);
+  const { out, cast, remote } = useSummaries();
+  const sections = deviceSections(out, cast, remote);
   const casting = cast.connection === 'connected';
+  useMarkPickerOpen(open);
   useEffect(() => {
     if (open) void refreshOutputs();
   }, [open]);

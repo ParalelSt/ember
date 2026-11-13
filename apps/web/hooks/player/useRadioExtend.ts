@@ -85,6 +85,10 @@ export function useRadioExtend({
     // able to ask again. Clearing it later, in a finally, let that change
     // slip past the guard, and the dead song sat there with nothing after it.
     const done = () => { if (fetchingRadioFor.current === currentId) fetchingRadioFor.current = null; };
+    const failed = () => {
+      done();
+      onExtended?.(0, currentId);
+    };
     api.getRecommended(currentSourceId).then(({ tracks }) => {
       done();
       const state = usePlayerStore.getState();
@@ -125,10 +129,22 @@ export function useRadioExtend({
         }));
       }
       onExtended?.(merged.length, currentId);
-    }).catch((e) => {
-      done();
-      logger.error('radio', 'recommended fetch failed', { context: activeContext?.type ?? 'single', seed: currentSourceId }, e as Error);
-      onExtended?.(0, currentId);
+    }, (e: unknown) => {
+      // The request itself was already logged by the api client, at the
+      // level its answer deserves (a helper 502 or an offline phone is a
+      // warning there, an unexpected status an error). Logging it again here
+      // at error turned every such answer into a second bug report.
+      logger.warn('radio', 'recommended fetch failed', {
+        context: activeContext?.type ?? 'single',
+        seed: currentSourceId,
+        status: (e as { status?: number })?.status ?? null,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      failed();
+    }).catch((e: unknown) => {
+      // Not the fetch: ranking or writing the queue threw, which is ours.
+      logger.error('radio', 'radio extend failed', { context: activeContext?.type ?? 'single', seed: currentSourceId }, e as Error);
+      failed();
     });
     // onExtended is a latest-callback the provider keeps stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps

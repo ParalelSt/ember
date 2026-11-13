@@ -9,6 +9,7 @@ import app.ember.music.UpdateRules.Verdict
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -149,38 +150,28 @@ class UpdateRulesTest {
         assertFalse(UpdateRules.silentLikely(34, null))
     }
 
-    private fun facts(
-        playing: Boolean = false, car: Boolean = false, foreground: Boolean = false, idleMs: Long = Long.MAX_VALUE,
-        tapped: Boolean = false, silent: Boolean = true, canInstall: Boolean = true,
-    ) = InstallFacts(playing, car, foreground, idleMs, tapped, silent, canInstall)
+    private fun facts(car: Boolean = false, tapped: Boolean = false, canInstall: Boolean = true) =
+        InstallFacts(car, tapped, canInstall)
 
-    @Test fun `installs by itself when idle, off screen, and Android will not ask`() {
-        assertEquals(Decision.INSTALL, UpdateRules.decide(facts()))
-        assertEquals(Decision.INSTALL, UpdateRules.decide(facts(idleMs = UpdateRules.IDLE_GRACE_MS)))
+    @Test fun `never installs without a tap, in any combination of facts`() {
+        val bools = listOf(false, true)
+        for (car in bools) for (canInstall in bools) {
+            val d = UpdateRules.decide(facts(car = car, tapped = false, canInstall = canInstall))
+            assertNotEquals("car=$car canInstall=$canInstall", Decision.INSTALL, d)
+        }
+    }
+
+    @Test fun `without a tap an update that can install just waits for one`() {
+        assertEquals(Decision.ASK_USER, UpdateRules.decide(facts()))
+    }
+
+    @Test fun `a tap installs`() {
+        assertEquals(Decision.INSTALL, UpdateRules.decide(facts(tapped = true)))
     }
 
     @Test fun `never during a car session, not even on a tap`() {
         assertEquals(Decision.WAIT_CAR, UpdateRules.decide(facts(car = true)))
-        assertEquals(Decision.WAIT_CAR, UpdateRules.decide(facts(car = true, playing = true, tapped = true)))
-        assertEquals(Decision.WAIT_CAR, UpdateRules.decide(facts(car = true, playing = false, tapped = true)))
-    }
-
-    @Test fun `defers while music plays, unless the person taps`() {
-        assertEquals(Decision.WAIT_PLAYING, UpdateRules.decide(facts(playing = true, idleMs = 0)))
-        assertEquals(Decision.WAIT_PLAYING, UpdateRules.decide(facts(playing = true, foreground = true, idleMs = 0)))
-        assertEquals(Decision.INSTALL, UpdateRules.decide(facts(playing = true, idleMs = 0, tapped = true)))
-    }
-
-    @Test fun `waits out the grace after the music stops`() {
-        assertEquals(Decision.WAIT_IDLE, UpdateRules.decide(facts(idleMs = 5_000)))
-        assertEquals(Decision.WAIT_IDLE, UpdateRules.decide(facts(idleMs = UpdateRules.IDLE_GRACE_MS - 1)))
-    }
-
-    @Test fun `asks for a tap on screen, or when Android will ask anyway`() {
-        assertEquals(Decision.ASK_USER, UpdateRules.decide(facts(foreground = true, idleMs = 0)))
-        assertEquals(Decision.ASK_USER, UpdateRules.decide(facts(silent = false)))
-        assertEquals(Decision.INSTALL, UpdateRules.decide(facts(silent = false, tapped = true)))
-        assertEquals(Decision.INSTALL, UpdateRules.decide(facts(foreground = true, tapped = true)))
+        assertEquals(Decision.WAIT_CAR, UpdateRules.decide(facts(car = true, tapped = true)))
     }
 
     @Test fun `without the install permission the page offers the setting`() {
@@ -202,8 +193,8 @@ class UpdateRulesTest {
         val (title, subtitle) = UpdateRules.carNotice(true)!!
         assertEquals("Ember update ready", title)
         assertTrue(subtitle.contains("parked"))
-        val (_, ask) = UpdateRules.carNotice(true, silent = false)!!
-        assertTrue(ask.contains("open Ember on your phone"))
+        assertTrue(subtitle.contains("open Ember on your phone"))
+        assertFalse(subtitle.contains("Installs when"))
     }
 
     @Test fun `before Android 10 the updated app opens itself again, from 10 on Android forbids it`() {
@@ -218,5 +209,161 @@ class UpdateRulesTest {
         assertTrue(UpdateRules.askNotificationsFirst(sdk = 35, granted = false))
         assertFalse(UpdateRules.askNotificationsFirst(sdk = 35, granted = true))
         assertFalse(UpdateRules.askNotificationsFirst(sdk = 32, granted = false))
+    }
+
+    @Test fun `leaving the confirm screen is not an answer, for Settings and the gate alike`() {
+        // Session alive (confirm, a vendor scan, Play Protect): keep waiting,
+        // however long it has been short of the backstop.
+        assertFalse(UpdateRules.unstickNow(staging = false, sessionAlive = true, sinceActivityMs = 0, goneForMs = 0))
+        assertFalse(UpdateRules.unstickNow(staging = false, sessionAlive = true, sinceActivityMs = 5 * 60_000, goneForMs = 0))
+        // The old 60 s limit is gone.
+        assertFalse(UpdateRules.unstickNow(staging = false, sessionAlive = true, sinceActivityMs = 61_000, goneForMs = 0))
+    }
+
+    @Test fun `the APK still being staged is never stuck short of the backstop`() {
+        assertFalse(UpdateRules.unstickNow(staging = true, sessionAlive = false, sinceActivityMs = 90_000, goneForMs = 0))
+    }
+
+    @Test fun `a session gone with no answer ends the install after a short grace`() {
+        assertFalse(UpdateRules.unstickNow(staging = false, sessionAlive = false, sinceActivityMs = 1_000, goneForMs = 0))
+        assertFalse(UpdateRules.unstickNow(staging = false, sessionAlive = false, sinceActivityMs = 1_000, goneForMs = UpdateRules.SESSION_GONE_GRACE_MS - 1))
+        assertTrue(UpdateRules.unstickNow(staging = false, sessionAlive = false, sinceActivityMs = 1_000, goneForMs = UpdateRules.SESSION_GONE_GRACE_MS))
+    }
+
+    @Test fun `no sign of life for the backstop ends the wait whatever the session says`() {
+        val b = UpdateRules.INSTALL_BACKSTOP_MS
+        assertTrue(UpdateRules.unstickNow(staging = false, sessionAlive = true, sinceActivityMs = b, goneForMs = 0))
+        assertTrue(UpdateRules.unstickNow(staging = true, sessionAlive = false, sinceActivityMs = b, goneForMs = 0))
+        assertTrue(b >= 10 * 60_000L)
+    }
+
+    // ── Android's answers ───────────────────────────────────────────────
+
+    @Test fun `an answer is described with its status name, number and message`() {
+        assertEquals("aborted (3): INSTALL_FAILED_VERIFICATION_FAILURE", UpdateRules.describeStatus(3, "INSTALL_FAILED_VERIFICATION_FAILURE"))
+        assertEquals("incompatible (7): INSTALL_FAILED_USER_RESTRICTED: Install canceled by user",
+            UpdateRules.describeStatus(7, " INSTALL_FAILED_USER_RESTRICTED: Install canceled by user "))
+        assertEquals("pending-user-action (-1)", UpdateRules.describeStatus(-1, ""))
+        assertEquals("success (0)", UpdateRules.describeStatus(0, null))
+        assertEquals("failure (1)", UpdateRules.describeStatus(1, null))
+        assertEquals("blocked (2)", UpdateRules.describeStatus(2, null))
+        assertEquals("invalid (4)", UpdateRules.describeStatus(4, null))
+        assertEquals("conflict (5)", UpdateRules.describeStatus(5, null))
+        assertEquals("storage (6)", UpdateRules.describeStatus(6, null))
+        assertEquals("timeout (8)", UpdateRules.describeStatus(8, null))
+        assertEquals("status 42 (42): x", UpdateRules.describeStatus(42, "x"))
+    }
+
+    @Test fun `only a no on Android's own screen counts as a plain cancel`() {
+        assertTrue(UpdateRules.isPlainCancel(3, "INSTALL_FAILED_ABORTED: User rejected permissions"))
+        assertTrue(UpdateRules.isPlainCancel(3, ""))
+        assertTrue(UpdateRules.isPlainCancel(3, "INSTALL_FAILED_ABORTED"))
+        // Play Protect or a verifier stopping it is not the person's no.
+        assertFalse(UpdateRules.isPlainCancel(3, "INSTALL_FAILED_VERIFICATION_FAILURE"))
+        assertFalse(UpdateRules.isPlainCancel(3, "INSTALL_FAILED_VERIFICATION_TIMEOUT: rejected by verifier"))
+        assertFalse(UpdateRules.isPlainCancel(3, "Session was abandoned"))
+        // Only ABORTED is ever a cancel.
+        assertFalse(UpdateRules.isPlainCancel(7, "INSTALL_FAILED_USER_RESTRICTED: Install canceled by user"))
+    }
+
+    @Test fun `only an answer for the session this install committed counts`() {
+        assertTrue(UpdateRules.isCurrentSession(current = 7, incoming = 7))
+        assertFalse(UpdateRules.isCurrentSession(current = 7, incoming = 6))
+        assertFalse(UpdateRules.isCurrentSession(current = 7, incoming = -1))
+        assertFalse(UpdateRules.isCurrentSession(current = null, incoming = 7))
+        assertFalse(UpdateRules.isCurrentSession(current = null, incoming = -1))
+    }
+
+    // ── Reusing a session ───────────────────────────────────────────────
+
+    private val backstop = UpdateRules.INSTALL_BACKSTOP_MS
+
+    @Test fun `a session is in progress while Android has it and it showed life within the backstop`() {
+        assertTrue(UpdateRules.sessionInProgress(alive = true, sinceActivityMs = 0))
+        assertTrue(UpdateRules.sessionInProgress(alive = true, sinceActivityMs = backstop - 1))
+        assertTrue(UpdateRules.sessionInProgress(alive = true, sinceActivityMs = -5_000)) // clock went back
+        assertFalse(UpdateRules.sessionInProgress(alive = true, sinceActivityMs = backstop))
+        assertFalse(UpdateRules.sessionInProgress(alive = false, sinceActivityMs = 0))
+    }
+
+    @Test fun `a new install abandons leftovers and stuck sessions, never the one in progress`() {
+        assertFalse(UpdateRules.mayAbandon(id = 7, current = 7, currentInProgress = true))
+        assertTrue(UpdateRules.mayAbandon(id = 7, current = 7, currentInProgress = false))
+        assertTrue(UpdateRules.mayAbandon(id = 6, current = 7, currentInProgress = true))
+        assertTrue(UpdateRules.mayAbandon(id = 6, current = null, currentInProgress = false))
+    }
+
+    @Test fun `a tap reuses a live session and only starts a new one when nothing is worth keeping`() {
+        fun tap(staging: Boolean = false, alive: Boolean = true, since: Long = 1_000, held: Boolean = false, canShow: Boolean = true) =
+            UpdateRules.onTap(staging, alive, since, held, canShow)
+        assertEquals(UpdateRules.Tap.WAIT, tap(staging = true, alive = false))
+        assertEquals(UpdateRules.Tap.RELAUNCH_CONFIRM, tap(held = true))
+        // A held confirm of a live session is better than a new session, stuck or not.
+        assertEquals(UpdateRules.Tap.RELAUNCH_CONFIRM, tap(held = true, since = backstop + 1))
+        // Play Protect still checking: nothing to show, nothing to restart.
+        assertEquals(UpdateRules.Tap.WAIT, tap())
+        assertEquals(UpdateRules.Tap.WAIT, tap(held = true, canShow = false))
+        assertEquals(UpdateRules.Tap.NEW_SESSION, tap(since = backstop))
+        assertEquals(UpdateRules.Tap.NEW_SESSION, tap(alive = false))
+        assertEquals(UpdateRules.Tap.NEW_SESSION, tap(alive = false, held = true))
+    }
+
+    @Test fun `a session whose confirm screen nobody can show any more is replaced`() {
+        assertEquals(UpdateRules.Tap.NEW_SESSION, UpdateRules.onTap(false, alive = true, sinceActivityMs = 1_000, confirmHeld = false, canShowConfirm = true, confirmLost = true))
+        // Still staging, or the screen is held after all: as before.
+        assertEquals(UpdateRules.Tap.WAIT, UpdateRules.onTap(true, alive = true, sinceActivityMs = 1_000, confirmHeld = false, canShowConfirm = true, confirmLost = true))
+        assertEquals(UpdateRules.Tap.RELAUNCH_CONFIRM, UpdateRules.onTap(false, alive = true, sinceActivityMs = 1_000, confirmHeld = true, canShowConfirm = true, confirmLost = true))
+    }
+
+    // ── What an answer means ────────────────────────────────────────────
+
+    @Test fun `answers are classified by their INSTALL_FAILED code first, their status only otherwise`() {
+        fun c(status: Int, message: String, legacy: Int? = null) = UpdateRules.classify(UpdateRules.Answer(status, message, 1, legacy))
+        val table: List<Pair<Triple<Int, String, Int?>, UpdateRules.Outcome>> = listOf(
+            // status, message, legacy -> outcome
+            Triple(-1, "", null) to UpdateRules.Outcome.NEEDS_USER,
+            Triple(0, "INSTALL_SUCCEEDED", null) to UpdateRules.Outcome.INSTALLED,
+            // A plain no, or an abort with nothing more to say.
+            Triple(3, "INSTALL_FAILED_ABORTED: User rejected permissions", null) to UpdateRules.Outcome.DECLINED,
+            Triple(3, "", null) to UpdateRules.Outcome.DECLINED,
+            Triple(3, "Session was abandoned", null) to UpdateRules.Outcome.DECLINED,
+            // Play Protect: the verifier's codes arrive as ABORTED.
+            Triple(3, "INSTALL_FAILED_VERIFICATION_FAILURE", null) to UpdateRules.Outcome.PLAY_PROTECT,
+            Triple(3, "INSTALL_FAILED_VERIFICATION_TIMEOUT: Verification timed out", null) to UpdateRules.Outcome.PLAY_PROTECT,
+            Triple(3, "", -22) to UpdateRules.Outcome.PLAY_PROTECT,
+            Triple(3, "", -21) to UpdateRules.Outcome.PLAY_PROTECT,
+            // Xiaomi: USER_RESTRICTED arrives as INCOMPATIBLE.
+            Triple(7, "INSTALL_FAILED_USER_RESTRICTED: Install canceled by user", null) to UpdateRules.Outcome.PHONE_BLOCKED,
+            Triple(7, "", -111) to UpdateRules.Outcome.PHONE_BLOCKED,
+            // Permanent: signature, versionCode, ABI.
+            Triple(5, "INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match", null) to UpdateRules.Outcome.PERMANENT,
+            Triple(5, "", -7) to UpdateRules.Outcome.PERMANENT,
+            Triple(4, "INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES: x", null) to UpdateRules.Outcome.PERMANENT,
+            Triple(4, "INSTALL_FAILED_VERSION_DOWNGRADE: older", null) to UpdateRules.Outcome.PERMANENT,
+            Triple(7, "INSTALL_FAILED_NO_MATCHING_ABIS: arm64", null) to UpdateRules.Outcome.PERMANENT,
+            Triple(7, "", -16) to UpdateRules.Outcome.PERMANENT,
+            // A broken file is downloaded again, not refused.
+            Triple(4, "INSTALL_FAILED_INVALID_APK: bad zip", null) to UpdateRules.Outcome.BROKEN_FILE,
+            Triple(4, "INSTALL_PARSE_FAILED_NOT_APK: x", null) to UpdateRules.Outcome.BROKEN_FILE,
+            // Not a real incompatibility: kept, tried again.
+            Triple(7, "", null) to UpdateRules.Outcome.FAILED,
+            Triple(7, "INSTALL_FAILED_OLDER_SDK: needs 24", null) to UpdateRules.Outcome.FAILED,
+            Triple(5, "INSTALL_FAILED_REPLACE_COULDNT_DELETE", null) to UpdateRules.Outcome.FAILED,
+            Triple(4, "INSTALL_FAILED_DEXOPT: low storage", null) to UpdateRules.Outcome.FAILED,
+            Triple(6, "INSTALL_FAILED_INSUFFICIENT_STORAGE", null) to UpdateRules.Outcome.FAILED,
+            Triple(1, "INSTALL_FAILED_INTERNAL_ERROR", null) to UpdateRules.Outcome.FAILED,
+            Triple(2, "", null) to UpdateRules.Outcome.FAILED,
+            Triple(8, "", null) to UpdateRules.Outcome.FAILED,
+        )
+        for ((input, expected) in table) {
+            val (status, message, legacy) = input
+            assertEquals("$status '$message' $legacy", expected, c(status, message, legacy))
+        }
+    }
+
+    @Test fun `the failure code comes from the message, or else the legacy status`() {
+        assertEquals("INSTALL_FAILED_USER_RESTRICTED", UpdateRules.failureCode(UpdateRules.Answer(7, "INSTALL_FAILED_USER_RESTRICTED: Install canceled by user", 1)))
+        assertEquals("INSTALL_FAILED_VERIFICATION_FAILURE", UpdateRules.failureCode(UpdateRules.Answer(3, "", 1, -22)))
+        assertNull(UpdateRules.failureCode(UpdateRules.Answer(3, "nothing here", 1, -9999)))
     }
 }

@@ -8,7 +8,7 @@
  *
  *  Prints one short line per message and saves the full text to
  *  docs/reports/discord-<date>.md (git ignores that folder). Read by the Ember
- *  bot; its token stays in ~/.claude/channels/discord/.env. */
+ *  bot; its token stays in ~/.ember-tools/discord.env. */
 
 import fs from 'node:fs';
 import path from 'node:path';

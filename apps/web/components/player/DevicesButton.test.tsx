@@ -9,6 +9,8 @@ const actions = vi.hoisted(() => ({
   openCastPicker: vi.fn(async () => {}),
   stopCasting: vi.fn(async () => {}),
   refreshOutputs: vi.fn(async () => {}),
+  chooseEmberDevice: vi.fn(async () => {}),
+  chooseThisDevice: vi.fn(),
 }));
 vi.mock('@/lib/outputs/controller', () => actions);
 // base-ui's menu and dialog bring the root's second React into a test
@@ -43,6 +45,8 @@ vi.mock('@/components/ui/sheet', () => ({
 import { DevicesButton, DevicesSheet, useDevicesEntry } from './DevicesButton';
 import { useOutputStore } from '@/stores/useOutputStore';
 import { useCastStore } from '@/stores/useCastStore';
+import { useRemoteStore } from '@/stores/useRemoteStore';
+import type { RemoteDevice } from '@/lib/remote/types';
 
 const DESKTOP = {
   platform: 'desktop' as const,
@@ -62,7 +66,17 @@ beforeEach(() => {
   Object.values(actions).forEach((f) => f.mockClear());
   useOutputStore.setState({ platform: null, devices: [], currentId: null, currentName: null, currentKind: null, systemPicker: null, castDevices: null, busy: false });
   useCastStore.setState({ path: null, availability: 'none', connection: 'idle', deviceName: null });
+  useRemoteStore.setState({ devices: [], active: null, rev: null, offset: 0, mode: 'local', target: null, dismissed: null, pickerOpen: false, heardAt: 0 });
 });
+
+const WINDOWS: RemoteDevice = {
+  deviceId: 'win-1', label: 'Windows', platform: 'windows', shell: 'tauri', browser: null, lastBeat: 1000, stale: false,
+  snapshot: {
+    trackId: 'youtube:a', index: 0, queueHash: 'h', position: 1, duration: 200, isPlaying: true, volume: 1, muted: false,
+    track: { id: 'youtube:a', source: 'youtube', sourceId: 'a', title: 'A', artist: 'X', artistId: null, album: null, albumId: null, durationSec: 200, artworkUrl: null, streamUrl: '/s/a' },
+    upNext: [], queueLength: 1, loopMode: 'off', shuffle: false, context: null, at: 1000, changedAt: 1000,
+  },
+};
 
 /** The phone's way in, as NowPlaying's More sheet uses it: a row named by
  *  useDevicesEntry that opens DevicesSheet. */
@@ -258,5 +272,39 @@ describe('DevicesButton, full player', () => {
     useCastStore.setState({ path: 'google', availability: 'available', connection: 'connecting' });
     render(<PhoneDevices />);
     expect(screen.getByTestId('devices-button')).toHaveTextContent('Connecting');
+  });
+
+  it('your devices: listed with what they do, a click moves the music; the picker keeps the list fresh while open', () => {
+    useOutputStore.setState(DESKTOP);
+    useRemoteStore.setState({ devices: [WINDOWS], heardAt: 2000 });
+    render(<DevicesButton variant="bar" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Devices' }));
+    expect(useRemoteStore.getState().pickerOpen).toBe(true);
+    const menu = screen.getByRole('menu');
+    expect(within(menu).getAllByRole('heading').map((h) => h.textContent)).toEqual(['This computer', 'Your devices']);
+    const row = within(menu).getByText('Windows').closest('[role="menuitem"]')!;
+    expect(row).toHaveTextContent('Playing');
+    fireEvent.click(row);
+    expect(actions.chooseEmberDevice).toHaveBeenCalledWith('win-1', 'Windows');
+    expect(useRemoteStore.getState().pickerOpen).toBe(false);
+  });
+
+  it('phone controlling Windows: Playing on Windows, Windows lit, This phone brings it back', () => {
+    useRemoteStore.setState({ devices: [WINDOWS], mode: 'controlling', target: 'win-1' });
+    render(<PhoneDevices />);
+    const entry = screen.getByTestId('devices-button');
+    expect(entry).toHaveAttribute('aria-label', 'Devices: playing on Windows');
+    fireEvent.click(entry);
+    const list = screen.getByTestId('devices-list');
+    expect(within(list).getByText('Windows').closest('button')).toHaveAttribute('aria-current', 'true');
+    const here = within(list).getByText(/^This (phone|computer)$/).closest('button')!;
+    fireEvent.click(here);
+    expect(actions.chooseThisDevice).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows up for another device even with no outputs here', () => {
+    useRemoteStore.setState({ devices: [WINDOWS] });
+    render(<PhoneDevices />);
+    expect(screen.getByTestId('devices-button')).toHaveAttribute('aria-label', 'Devices');
   });
 });

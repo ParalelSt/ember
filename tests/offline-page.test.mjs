@@ -46,15 +46,24 @@ const browser = await chromium.launch({ executablePath: findChrome(), args: ['--
 
 /** One page with the fake plugin injected. `pins`/`files` shape the status;
  *  `art` is trackId -> absolute local art path (status().artFiles). */
-async function open({ plugin = true, pins, files, art = {}, artBytes = null, themeScript = null } = {}) {
+async function open({ plugin = true, pins, files, art = {}, artBytes = null, themeScript = null, reachOn = 0, clock = false } = {}) {
   const ctx = await browser.newContext();
   // What MainActivity registers as a document-start script for this page.
   if (themeScript) await ctx.addInitScript({ content: themeScript });
-  await ctx.addInitScript(({ plugin, pins, files, art, artBytes, serverUrl }) => {
+  await ctx.addInitScript(({ plugin, pins, files, art, artBytes, serverUrl, reachOn }) => {
     window.__calls = [];
+    window.__probes = 0;
+    // reachOn: 0 = the retry probe always passes; N = passes from the Nth
+    // probe on; -1 = never passes. The probe is the page's no-cors fetch.
+    window.__reachOn = reachOn;
     // The page re-reads local art through fetch to hand the native plugin a
     // data: URL; a capfile:// path cannot really be fetched in a browser.
     if (artBytes) window.fetch = async () => ({ blob: async () => new Blob([artBytes], { type: 'image/jpeg' }) });
+    else window.fetch = async () => {
+      const n = ++window.__probes, on = window.__reachOn;
+      if (on < 0 || (on > 0 && n < on)) throw new TypeError('Failed to fetch');
+      return { type: 'opaque' };
+    };
     if (!plugin) return;                    // no plugin: the fallback path
     const tracksById = {
       p1: [
@@ -79,8 +88,9 @@ async function open({ plugin = true, pins, files, art = {}, artBytes = null, the
         },
       },
     };
-  }, { plugin, pins, files, art, artBytes, serverUrl: `file://${serverStub}` });
+  }, { plugin, pins, files, art, artBytes, serverUrl: `file://${serverStub}`, reachOn });
   const page = await ctx.newPage();
+  if (clock) await page.clock.install();
   // Nothing here needs real decoding, and a fake path would stall on load.
   await page.addInitScript(() => {
     Object.defineProperty(HTMLMediaElement.prototype, 'paused', { configurable: true, get() { return !this.__playing; } });
@@ -198,11 +208,71 @@ const twoPins = {
 
 // 8. Nothing downloaded at all: a plain explanation, no empty sections.
 {
-  const { ctx, page } = await open({ pins: [], files: {} });
+  const { ctx, page } = await open({ pins: [], files: {}, reachOn: -1, clock: true });
+  await page.clock.runFor(100);
+  check('with no pins it first shows Connecting, not Offline', (await page.locator('body').innerText()).includes('Attempt 1 of 5'));
+  await page.clock.runFor(16000);
   const text = await page.locator('body').innerText();
   check('with no pins the page says so', text.includes('Nothing downloaded yet'));
   check('with no pins there are no rows', (await page.locator('.row').count()) === 0);
   await ctx.close();
+}
+
+// 8b. The retry rounds (no downloads). Fake clock: 1s, 2s, 3s, 4s, 5s apart.
+const empty = { pins: [], files: {} };
+const body = (page) => page.locator('body').innerText();
+{
+  // Success on attempt 3 navigates, and not before.
+  const { ctx, page } = await open({ ...empty, reachOn: 3, clock: true });
+  await page.clock.runFor(3100);                       // attempts 1 (1s) and 2 (3s) fail
+  check('attempt 2 shows progress', (await body(page)).includes('Attempt 2 of 5'));
+  check('still on the page while the probes fail', (await page.evaluate(() => window.__probes)) === 2 && page.url().endsWith('offline.html'));
+  await page.clock.runFor(3000);                       // attempt 3 at 6s passes
+  await page.waitForURL(`file://${serverStub}`);
+  check('success on attempt 3 navigates to the server', (await page.locator('h1').innerText()) === 'THE SERVER UI');
+  await ctx.close();
+}
+{
+  // Five failures, then Offline unchanged; Try again runs five more.
+  const { ctx, page } = await open({ ...empty, reachOn: -1, clock: true });
+  await page.clock.runFor(14000);
+  check('no Offline screen before the fifth failure', (await body(page)).includes('Attempt'));
+  await page.clock.runFor(2000);
+  check('five probes were made', (await page.evaluate(() => window.__probes)) === 5);
+  check('then the Offline screen shows', (await body(page)).includes('Nothing downloaded yet') && (await body(page)).includes('Try again'));
+  await page.getByRole('button', { name: 'Try again' }).click();
+  check('Try again returns to the Connecting state', (await body(page)).includes('Attempt 1 of 5'));
+  await page.clock.runFor(16000);
+  check('Try again runs five more probes', (await page.evaluate(() => window.__probes)) === 10);
+  check('and ends on the Offline screen again', (await body(page)).includes('Nothing downloaded yet'));
+  await ctx.close();
+}
+{
+  // The loop guard: three auto-returns in a minute and the next goes to Offline.
+  const { ctx, page } = await open({ ...empty, reachOn: 0, clock: true });
+  await page.evaluate(() => sessionStorage.setItem('emberReturns', JSON.stringify([Date.now(), Date.now(), Date.now()])));
+  await page.reload();
+  await page.clock.runFor(2000);
+  check('a tripped loop guard shows Offline instead of navigating', page.url().endsWith('offline.html') && (await body(page)).includes('Nothing downloaded yet'));
+  await ctx.close();
+}
+{
+  // Downloads exist: the library is up at once; the server answering returns
+  // there unless a song was started.
+  const idle = await open({ ...twoPins, reachOn: 2, clock: true });
+  check('the library shows with no waiting', (await idle.page.locator('.row').count()) === 2);
+  await idle.page.clock.runFor(9000);
+  await idle.page.waitForURL(`file://${serverStub}`);
+  check('idle in the library, it returns to the server in the background', true);
+  await idle.ctx.close();
+
+  const playing = await open({ ...twoPins, reachOn: 2, clock: true });
+  await playing.page.locator('.row').first().click();
+  await playing.page.clock.runFor(60000);
+  check('music playing: no navigation', playing.page.url().endsWith('offline.html'));
+  check('music playing: the song is still playing', !(await playing.page.locator('audio').evaluate((a) => a.paused)));
+  check('the probes kept going in the background', (await playing.page.evaluate(() => window.__probes)) > 5);
+  await playing.ctx.close();
 }
 
 // 9. No plugin (the page opened outside the shell): the old fallback copy.
@@ -278,7 +348,7 @@ const twoPins = {
 {
   const source = fs.readFileSync(PAGE, 'utf8');
   check('no em dashes in the page', !source.includes('\u2014'));
-  check('the page is one small file', source.split('\n').length < 260);
+  check('the page is one small file', source.split('\n').length < 400);
 }
 
 await browser.close();

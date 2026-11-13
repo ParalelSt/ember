@@ -485,7 +485,114 @@ def _search_videos(query, limit):
     return yt.search(query, filter="videos", limit=limit)
 
 
+# How many artists the streamed search hands back: the app shows up to 3.
+ARTIST_LIMIT = 5
+
+
+def _search_artists(query, limit):
+    return yt.search(query, filter="artists", limit=limit)
+
+
+def _bigger_thumb(url):
+    """Search answers artist pictures at 60 or 120 px; ask Google's image
+    server for a size that stays sharp in a round 56 px avatar on a 3x
+    screen. Other hosts are left alone."""
+    if not url or "googleusercontent.com" not in url:
+        return url
+    return re.sub(r"=w\d+-h\d+", "=w240-h240", url)
+
+
+def to_artist_json(a):
+    """One ytmusicapi artist search hit as {id, name, artworkUrl}, or None
+    when it has no channel id or no name (nothing to open)."""
+    artist_id = a.get("browseId")
+    name = a.get("artist") or a.get("title")
+    if not artist_id or not name:
+        return None
+    thumbs = a.get("thumbnails") or []
+    artwork = thumbs[-1].get("url") if thumbs else None
+    return {"id": artist_id, "name": name, "artworkUrl": _bigger_thumb(artwork)}
+
+
+def _emit(part):
+    """One NDJSON line, flushed at once so the web app can show it now."""
+    sys.stdout.write(json.dumps(part) + "\n")
+    sys.stdout.flush()
+
+
+def cmd_search_stream(args):
+    """`search --stream`: songs, videos and artists searched in parallel,
+    each printed as its own JSON line the moment it is ready:
+
+        {"part": "songs", "tracks": [...]}
+        {"part": "videos", "tracks": [...]}
+        {"part": "artists", "artists": [...]}
+        {"part": "fallback", "tracks": [...]}   (only when songs and videos found nothing)
+
+    Lines come in whatever order the lookups finish; the web app puts them
+    in display order. Same failure rule as the one-shot search: when no
+    track was found and songs or videos could not be asked, it fails
+    (exit 1) instead of answering "no results". Artists are extra, so they
+    never decide that."""
+    lookups = {"songs": _search_songs, "videos": _search_videos, "artists": _search_artists}
+    found_tracks = False
+    unreachable = False
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(lookups)) as ex:
+        futures = {
+            ex.submit(fn, args.query, ARTIST_LIMIT if kind == "artists" else args.limit): kind
+            for kind, fn in lookups.items()
+        }
+        for fut in concurrent.futures.as_completed(futures):
+            kind = futures[fut]
+            try:
+                items = fut.result() or []
+            except Exception as e:
+                if kind != "artists":
+                    unreachable = unreachable or not isinstance(e, PARSER_ERRORS)
+                print(
+                    f"[search] ytmusicapi {kind} failed for query={args.query!r}: {type(e).__name__}: {e}",
+                    file=sys.stderr,
+                )
+                items = []
+            if kind == "artists":
+                artists = [a for a in (to_artist_json(i) for i in items) if a][:ARTIST_LIMIT]
+                _emit({"part": "artists", "artists": artists})
+                continue
+            seen = set()
+            tracks = []
+            for t in items:
+                vid = t.get("videoId")
+                if not vid or vid in seen:
+                    continue
+                seen.add(vid)
+                tracks.append(to_track_json(t))
+            found_tracks = found_tracks or bool(tracks)
+            _emit({"part": kind, "tracks": tracks[: args.limit]})
+
+    if found_tracks:
+        return
+
+    print(f"[search] falling back to yt-dlp for query={args.query!r}", file=sys.stderr)
+    entries = []
+    try:
+        entries = ytdlp_search(args.query, args.limit)
+    except Exception as e:
+        unreachable = True
+        print(
+            f"[search] yt-dlp fallback failed for query={args.query!r}: {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
+    tracks = [to_track_json_from_ytdlp(e) for e in entries if _ytdlp_usable(e)]
+    if not tracks and unreachable:
+        print("ERROR: search is unavailable right now, try again shortly", file=sys.stderr)
+        sys.exit(1)
+    _emit({"part": "fallback", "tracks": tracks})
+
+
 def cmd_search(args):
+    if getattr(args, "stream", False):
+        cmd_search_stream(args)
+        return
     # Run songs + videos in parallel. Songs come first in the merged list
     # (music-aware metadata). Videos backfill rare tracks that aren't in
     # YouTube Music's songs catalog (niche / doujin / fan-uploaded).
@@ -612,6 +719,31 @@ def cmd_info(args):
         # proxy MUST replay these when fetching, a mismatched UA gets a 403.
         "httpHeaders": info.get("http_headers") or {},
     }, sys.stdout)
+
+def _fold_name(s):
+    """Case and diacritics folded, spaces squeezed, for comparing artist names."""
+    import unicodedata
+    d = unicodedata.normalize("NFKD", s or "")
+    d = "".join(c for c in d if not unicodedata.combining(c))
+    return " ".join(d.casefold().split())
+
+
+def cmd_artist_id(args):
+    """`artist-id <name>`: the YT Music artist channel id whose name matches
+    (case/diacritics-insensitive), for tracks stored without an artistId.
+    Prints {"id": "UC..."} or {"id": null}; never fails the caller."""
+    want = _fold_name(args.name)
+    found = None
+    try:
+        for r in yt.search(args.name, filter="artists", limit=5) or []:
+            bid = r.get("browseId")
+            if bid and want and _fold_name(r.get("artist") or r.get("title")) == want:
+                found = bid
+                break
+    except Exception as e:
+        print(f"[artist-id] search failed for {args.name!r}: {type(e).__name__}: {e}", file=sys.stderr)
+    json.dump({"id": found}, sys.stdout)
+
 
 def cmd_track(args):
     """Resolve a single videoId to track metadata via ytmusicapi get_song.
@@ -1557,6 +1689,8 @@ def main():
     p_search = sub.add_parser("search", help="Search YT Music. Prints JSON to stdout.")
     p_search.add_argument("query")
     p_search.add_argument("--limit", type=int, default=30)
+    p_search.add_argument("--stream", action="store_true",
+                          help="Print songs, videos and artists as separate JSON lines as each lookup finishes")
 
     p_download = sub.add_parser("download", help="Download by videoId. Prints {filePath} JSON.")
     # nargs='?' so a missing id degrades to a clean JSON error in the handler
@@ -1597,6 +1731,9 @@ def main():
     p_track = sub.add_parser("track", help="Resolve one videoId to track metadata. Prints JSON.")
     p_track.add_argument("video_id")
 
+    p_aid = sub.add_parser("artist-id", help="YT Music artist channel id for an exact artist name. Prints JSON.")
+    p_aid.add_argument("name")
+
     p_ytpl = sub.add_parser("ytplaylist", help="Public YT Music playlist → {title, tracks}. Prints JSON.")
     p_ytpl.add_argument("playlist_id")
 
@@ -1634,6 +1771,8 @@ def main():
         cmd_lyrics(args)
     elif args.cmd == "track":
         cmd_track(args)
+    elif args.cmd == "artist-id":
+        cmd_artist_id(args)
     elif args.cmd == "ytplaylist":
         cmd_ytplaylist(args)
     elif args.cmd == "match":

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldScroll } from './MarqueeText';
+import { shouldScroll, SPEED, START_DELAY_MS } from './MarqueeText';
 
 /** The marquee's whole decision is "is this title wider than its box", and
  *  the bug this guards against is that decision changing on every measure.
@@ -64,5 +64,12 @@ describe('MarqueeText / shouldScroll', () => {
     expect(state).toBe(false);
     state = shouldScroll(state, 500, 200);
     expect(state).toBe(true);
+  });
+});
+
+describe('MarqueeText / pace', () => {
+  it('scrolls at 35 px/s and waits 1.3 s before the first pass', () => {
+    expect(SPEED).toBe(35);
+    expect(START_DELAY_MS).toBe(1300);
   });
 });

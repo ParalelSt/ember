@@ -5,6 +5,13 @@ const n = (over: Partial<UnplayableNotice> = {}): UnplayableNotice => ({
   trackId: 'youtube:a', title: 'Klinček stoji pod oblokom', kind: 'unavailable', reason: 'unavailable', outcome: 'skipped', ...over,
 });
 
+describe('unplayableMessage for a live station', () => {
+  it('says the station is not answering, and that play tries again', () => {
+    expect(unplayableMessage(n({ trackId: 'station:abc', title: 'Radio X', kind: 'transient', reason: null, outcome: 'stopped' })))
+      .toBe('"Radio X" is not answering right now. Press play to try again.');
+  });
+});
+
 describe('unplayableMessage', () => {
   it('names the song and says it was skipped (the wording from the report)', () => {
     expect(unplayableMessage(n())).toBe('Couldn\'t play "Klinček stoji pod oblokom": not available on YouTube. Skipped to the next song.');

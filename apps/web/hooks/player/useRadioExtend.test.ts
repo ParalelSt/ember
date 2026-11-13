@@ -11,7 +11,7 @@ import type { PlaybackContext, Track } from '@/types/track';
 const api = vi.hoisted(() => ({ getRecommended: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api }));
 
-const logger = vi.hoisted(() => ({ breadcrumb: vi.fn(), error: vi.fn() }));
+const logger = vi.hoisted(() => ({ breadcrumb: vi.fn(), error: vi.fn(), warn: vi.fn() }));
 vi.mock('@/lib/logger/client', () => ({ logger }));
 
 const seed = makeTrack({ id: 'youtube:seed', sourceId: 'seed', title: 'Seed Song' });
@@ -172,14 +172,26 @@ describe('useRadioExtend', () => {
     expect(usePlayerStore.getState().queue.map((t) => t.id)).not.toContain('youtube:stale');
   });
 
-  it('logs a failed fetch and lets a later render retry', async () => {
-    api.getRecommended.mockRejectedValueOnce(new Error('offline'));
+  it('logs a failed fetch as a warning (the api client logged the request) and lets a later render retry', async () => {
+    api.getRecommended.mockRejectedValueOnce(Object.assign(new Error('the media helper failed'), { status: 502 }));
     const { rerender } = setup();
-    await waitFor(() => expect(logger.error).toHaveBeenCalled());
-    expect(logger.error.mock.calls[0][1]).toBe('recommended fetch failed');
+    await waitFor(() => expect(logger.warn).toHaveBeenCalled());
+    expect(logger.warn.mock.calls[0][1]).toBe('recommended fetch failed');
+    expect(logger.warn.mock.calls[0][2]).toMatchObject({ seed: 'seed', status: 502 });
+    expect(logger.error).not.toHaveBeenCalled();
     // The guard is cleared once the answer is in, so the next render can try again.
     rerender({ ...base, queue: [seed] });
     await waitFor(() => expect(api.getRecommended).toHaveBeenCalledTimes(2));
+  });
+  it('a failure while ranking the answer (ours, not the fetch) is still an error', async () => {
+    const onExtended = vi.fn();
+    // A pool that is not a list: the ranking throws.
+    api.getRecommended.mockResolvedValueOnce({ tracks: null });
+    setup({ onExtended });
+    await waitFor(() => expect(logger.error).toHaveBeenCalled());
+    expect(logger.error.mock.calls[0][1]).toBe('radio extend failed');
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(onExtended).toHaveBeenCalledWith(0, 'youtube:seed');
   });
 });
 

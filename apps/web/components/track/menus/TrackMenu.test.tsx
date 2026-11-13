@@ -14,9 +14,15 @@ vi.mock('./AddToPlaylistMenu', () => ({
       <button type="button">{actions?.length ? 'More' : 'Add to playlist'}</button>
       <div role="menu">
         {[...(actions ?? []), ...(footer ? [{ ...footer, key: `footer-${footer.key}` }] : [])].map((a) => (
-          <div key={a.key} role="menuitem" data-key={a.key} data-destructive={a.destructive ? 'true' : undefined} onClick={a.onSelect}>
-            {a.label}
-          </div>
+          a.href ? (
+            <a key={a.key} role="menuitem" href={a.href} data-key={a.key}>
+              {a.label}
+            </a>
+          ) : (
+            <div key={a.key} role="menuitem" data-key={a.key} data-destructive={a.destructive ? 'true' : undefined} onClick={a.onSelect}>
+              {a.label}
+            </div>
+          )
         ))}
       </div>
     </div>
@@ -124,7 +130,6 @@ describe('TrackMenu on a song that is gone', () => {
   });
 });
 
-
 it('shares the song URL through the same clipboard action as ShareButton', async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { clipboard: { writeText } });
@@ -194,4 +199,26 @@ it("owner's pick: without a style, Remove is the last item, plain, with an X (R1
   const items = screen.getAllByRole('menuitem');
   expect(items[items.length - 1].getAttribute('data-key')).toBe('remove');
   expect(items[items.length - 1].getAttribute('data-destructive')).toBeNull();
+});
+
+describe('TrackMenu: Go to song / Go to artist', () => {
+  it('a YouTube song offers Go to song, linking its page', () => {
+    render(<TrackMenu track={{ ...track, sourceId: 'abcdefghijk' }} />);
+    expect(screen.getByRole('menuitem', { name: /Go to song/ })).toHaveAttribute('href', '/track/abcdefghijk');
+  });
+
+  it('Go to artist only when the artist id is known', () => {
+    render(<TrackMenu track={{ ...track, artistId: 'UCband' }} />);
+    expect(screen.getByRole('menuitem', { name: /Go to artist/ })).toHaveAttribute('href', '/artist/UCband');
+  });
+
+  it('no artist id, no Go to artist', () => {
+    render(<TrackMenu track={track} />);
+    expect(screen.queryByRole('menuitem', { name: /Go to artist/ })).toBeNull();
+  });
+
+  it('an upload has no song page, so no Go to song', () => {
+    render(<TrackMenu track={{ ...track, id: 'upload:u1', source: 'upload', sourceId: 'u1' }} />);
+    expect(screen.queryByRole('menuitem', { name: /Go to song/ })).toBeNull();
+  });
 });

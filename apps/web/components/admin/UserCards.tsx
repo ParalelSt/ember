@@ -9,6 +9,7 @@ import { EditIcon, KeyIcon, LogOutIcon, MoreIcon, ShieldIcon, TrashIcon } from '
 import type { AdminUser } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { AdminSheet, AdminSheetItem } from './AdminSheet';
+import { UserDevices } from './UserDevices';
 
 export interface UserActions {
   onRename: (user: AdminUser, name: string) => void;
@@ -43,37 +44,40 @@ export function UserCards({ users, actorId, ...actions }: Props) {
     <>
       <ul aria-label="Users" className="flex flex-col gap-cluster">
         {users.map((u) => (
-          <li key={u.id} data-testid="user-card" className="flex min-w-0 items-center gap-row rounded-xl bg-card p-row">
-            <Avatar
-              src={u.avatarUrl}
-              name={u.name}
-              email={u.email}
-              className="size-10 shrink-0 bg-ember text-ember-foreground text-sm"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-cluster">
-                <span className={cn('truncate font-semibold', !u.name && 'text-muted-foreground')}>
-                  {u.name || 'No name'}
-                </span>
-                <span
-                  className={cn(
-                    'shrink-0 rounded-full px-cluster text-[10px] font-bold uppercase tracking-wider',
-                    u.isAdmin ? 'bg-ember/15 text-ember' : 'bg-muted text-muted-foreground',
-                  )}
-                >
-                  {u.isAdmin ? 'Admin' : 'Member'}
-                </span>
+          <li key={u.id} data-testid="user-card" className="flex min-w-0 flex-col gap-cluster rounded-xl bg-card p-row">
+            <div className="flex min-w-0 items-center gap-row">
+              <Avatar
+                src={u.avatarUrl}
+                name={u.name}
+                email={u.email}
+                className="size-10 shrink-0 bg-ember text-ember-foreground text-sm"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-cluster">
+                  <span className={cn('truncate font-semibold', !u.name && 'text-muted-foreground')}>
+                    {u.name || 'No name'}
+                  </span>
+                  <span
+                    className={cn(
+                      'shrink-0 rounded-full px-cluster text-[10px] font-bold uppercase tracking-wider',
+                      u.isAdmin ? 'bg-ember/15 text-ember' : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    {u.isAdmin ? 'Admin' : 'Member'}
+                  </span>
+                </div>
+                <div className="truncate text-xs text-muted-foreground">{u.email}</div>
               </div>
-              <div className="truncate text-xs text-muted-foreground">{u.email}</div>
+              <button
+                type="button"
+                aria-label={`Actions for ${u.email}`}
+                onClick={() => setMenuFor(u)}
+                className="grid size-hit shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <MoreIcon className="size-5" />
+              </button>
             </div>
-            <button
-              type="button"
-              aria-label={`Actions for ${u.email}`}
-              onClick={() => setMenuFor(u)}
-              className="grid size-hit shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <MoreIcon className="size-5" />
-            </button>
+            <UserDevices email={u.email} devices={u.devices} />
           </li>
         ))}
       </ul>

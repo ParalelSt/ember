@@ -93,6 +93,8 @@ describe('CarlistButton (Your library)', () => {
     open();
     await screen.findByTestId('carlist-sheet');
     act(() => {
+      // Back lands on the page's entry under the sheet, then says so.
+      window.history.replaceState(null, '');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
     await waitFor(() => expect(screen.queryByTestId('carlist-sheet')).toBeNull());

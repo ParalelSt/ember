@@ -1,6 +1,8 @@
 /** Shared types for the bug-report logging system (see internal design
  *  notes on the logging design, 2026-06-04). */
 
+import type { DevicePlatform } from '@/lib/versions/label';
+
 export type LogKind = 'error' | 'breadcrumb';
 // 'warn' added for withRequestLog (T2): 429s and 502/504 upstream failures
 // are noteworthy but not necessarily our bug, so they get a lower level than
@@ -52,6 +54,11 @@ export interface ContextTrack {
 export interface ReportContext {
   appVersion: string;
   shell: 'web' | 'capacitor' | 'tauri';
+  /** Which app or browser this is, and the app shell's own version (null in
+   *  a browser and on a phone app too old to say). Set through setContext by
+   *  lib/versions/device.ts, so absent until that has answered. */
+  shellPlatform?: DevicePlatform;
+  shellVersion?: string | null;
   platform: string;
   language: string;
   online: boolean;

@@ -87,4 +87,19 @@ describe('NowPlayingSummary', () => {
     expect(container.querySelector('img')).toBeNull();
     expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
   });
+
+  it('at size lg, onTitleOpen makes the scrolling title a button that calls it', () => {
+    const onTitleOpen = vi.fn();
+    render(<NowPlayingSummary track={makeTrack()} size="lg" onTitleOpen={onTitleOpen} />);
+    const title = screen.getByTestId('now-playing-title');
+    expect(title.tagName).toBe('BUTTON');
+    expect(title.querySelector('[data-testid="marquee"]')).not.toBeNull();
+    fireEvent.click(title);
+    expect(onTitleOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('without onTitleOpen the title is plain text', () => {
+    render(<NowPlayingSummary track={makeTrack()} size="lg" />);
+    expect(screen.queryByTestId('now-playing-title')).toBeNull();
+  });
 });

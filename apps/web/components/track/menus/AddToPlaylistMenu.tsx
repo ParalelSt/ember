@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -209,7 +210,7 @@ export function AddToPlaylistMenu({
                 </ActionSheetItem>
               )}
               {actions?.map((a) => (
-                <ActionSheetItem key={a.key} icon={a.icon} onSelect={run(a.onSelect)} tone={a.destructive ? 'destructive' : undefined}>
+                <ActionSheetItem key={a.key} icon={a.icon} href={a.href} onSelect={run(a.onSelect)} tone={a.destructive ? 'destructive' : undefined}>
                   {a.label}
                 </ActionSheetItem>
               ))}
@@ -281,7 +282,12 @@ export function AddToPlaylistMenu({
           <>
             {more}
             {actions?.map((a) => (
-              <DropdownMenuItem key={a.key} onClick={a.onSelect} variant={a.destructive ? 'destructive' : undefined}>
+              <DropdownMenuItem
+                key={a.key}
+                onClick={a.onSelect}
+                render={a.href ? <Link href={a.href} /> : undefined}
+                variant={a.destructive ? 'destructive' : undefined}
+              >
                 <a.icon className="h-3.5 w-3.5" /> {a.label}
               </DropdownMenuItem>
             ))}

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Artwork } from '@/components/primitives/Artwork';
 import { Checkbox } from '@/components/primitives/Checkbox';
+import { MarqueeText } from '@/components/player/MarqueeText';
 import { Avatar } from '@/components/primitives/Avatar';
 import { LikeButton } from '@/components/primitives/LikeButton';
 import { CloseIcon, PauseIcon, PlayIcon, RefreshIcon, TrashIcon } from '@/components/icons';
@@ -90,6 +91,15 @@ export interface TrackRowProps {
    *  the artist, and the name too where the row is wide enough. `list`
    *  density only. */
   addedBy?: Pick<PlaylistPerson, 'name' | 'avatarUrl'> | null;
+  /** The song's own page (lib/songPage). Set, the cover is a link to it
+   *  rather than a play target. `list` density outside select mode only. */
+  songHref?: string | null;
+  /** The title links to `songHref` too, instead of playing (a desktop
+   *  search row: playing is the play button's job there). */
+  titleOpensSong?: boolean;
+  /** A title that does not fit scrolls on one line (MarqueeText) instead
+   *  of being cut with an ellipsis: the phone search row. */
+  marqueeTitle?: boolean;
   density?: TrackRowDensity;
   tone?: TrackRowTone;
   className?: string;
@@ -124,6 +134,9 @@ export function TrackRow({
   selected = false,
   addedLabel,
   addedBy,
+  songHref,
+  titleOpensSong = false,
+  marqueeTitle = false,
   density = 'list',
   tone = 'default',
   className,
@@ -148,8 +161,14 @@ export function TrackRow({
   // means "no override" and falls back to the track's own remote URL.
   const resolvedArtworkUrl = artworkSrc !== undefined ? artworkSrc : track.artworkUrl;
   const hasArtwork = !!resolvedArtworkUrl || artworkFallback !== undefined;
+  // Where the song's own page is reachable from the row: the cover always
+  // (when given a page), the title only where the caller asks for it.
+  const coverLink = !compact && !selecting && songHref ? songHref : null;
+  const titleLink = coverLink && titleOpensSong ? coverLink : null;
+  // A link inside the row: following it is never also a click on the row.
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
-  const artwork = hasArtwork ? (
+  const cover = hasArtwork ? (
     <Artwork
       src={resolvedArtworkUrl}
       size="xs"
@@ -164,6 +183,17 @@ export function TrackRow({
       {artworkFallback}
     </Artwork>
   ) : null;
+  const artwork = cover && coverLink ? (
+    <Link
+      href={coverLink}
+      onClick={stop}
+      aria-label={`Open ${track.title}`}
+      data-testid="track-row-cover-link"
+      className="shrink-0 rounded"
+    >
+      {cover}
+    </Link>
+  ) : cover;
 
   const remove = onRemove ? (
     <Button
@@ -365,10 +395,28 @@ export function TrackRow({
         >
           <div
             data-testid="track-row-title"
-
-            className={cn('truncate text-sm font-semibold', emberTitle, unavailable && 'col-span-2 text-muted-foreground @md:col-span-1')}
+            title={titleLink && !marqueeTitle ? track.title : undefined}
+            className={cn(
+              marqueeTitle ? 'min-w-0' : 'truncate',
+              'text-sm font-semibold',
+              emberTitle,
+              unavailable && 'col-span-2 text-muted-foreground @md:col-span-1',
+            )}
           >
-            {track.title}
+            {titleLink ? (
+              <Link
+                href={titleLink}
+                onClick={stop}
+                data-testid="track-row-title-link"
+                className={cn('hover:underline', marqueeTitle ? 'block' : 'inline-block max-w-full truncate align-top')}
+              >
+                {marqueeTitle ? <MarqueeText text={track.title} /> : track.title}
+              </Link>
+            ) : marqueeTitle ? (
+              <MarqueeText text={track.title} />
+            ) : (
+              track.title
+            )}
           </div>
           {unavailablePill}
           <div className={cn('truncate text-xs text-muted-foreground', unavailable && 'hidden @md:col-span-2 @md:block')}>

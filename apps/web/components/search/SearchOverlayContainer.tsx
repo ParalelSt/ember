@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { SearchNoResults } from '@/components/search/SearchNoResults';
-import { TrackList } from '@/components/track/TrackList';
 import { TrackRow } from '@/components/track/TrackRow';
 import { TrackMenu, renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { MusicIcon } from '@/components/icons';
 import { SearchOverlay } from '@/components/search/SearchOverlay';
+import { SearchResults } from '@/components/search/SearchResults';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useSearchQuery } from '@/hooks/useSearchQuery';
@@ -91,7 +91,8 @@ export function SearchOverlayContainer({ leading }: { leading?: ReactNode } = {}
     removeRecentTrack,
     voice,
     onMicClick,
-    data,
+    view,
+    hasResults,
     isFetching,
     rateLimited,
     searchFailed,
@@ -140,11 +141,15 @@ export function SearchOverlayContainer({ leading }: { leading?: ReactNode } = {}
     </div>
   ) : null;
 
-  const resultsNode = !data?.length ? (
+  // Keyed by the query: a new search counts its arrival fades from the
+  // top again.
+  const resultsNode = !hasResults ? (
     <SearchNoResults query={debouncedQ} />
   ) : (
-    <TrackList
-      tracks={data}
+    <SearchResults
+      key={debouncedQ}
+      view={view}
+      platform={isDesktop ? 'desktop' : 'phone'}
       context={{ type: 'search', query: debouncedQ }}
       trailing={renderTrackMenu}
       trailingPlayControl
@@ -194,7 +199,7 @@ export function SearchOverlayContainer({ leading }: { leading?: ReactNode } = {}
       isFetching={isFetching}
       rateLimited={rateLimited}
       searchFailed={searchFailed}
-      hasResults={!!data?.length}
+      hasResults={hasResults}
       recentsNode={recentsNode}
       resultsNode={resultsNode}
       leading={leading}

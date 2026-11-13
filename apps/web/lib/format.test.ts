@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { formatAddedDate, formatAgo, formatSince, formatBytes, formatCount, formatTime, formatTotalDuration } from './format';
-
+import { formatAddedDate, formatAgo, formatLastSeen, formatSince, formatBytes, formatCount, formatTime, formatTotalDuration } from './format';
 import { pinTz } from '@/test-utils/tz';
+
 describe('formatTime', () => {
   it('formats whole seconds as m:ss', () => {
     expect(formatTime(0)).toBe('0:00');
@@ -211,5 +211,19 @@ describe('formatSince', () => {
     expect(formatSince('', now)).toBe('');
     expect(formatSince(null, now)).toBe('');
     expect(formatSince('soon', now)).toBe('');
+  });
+});
+
+describe('formatLastSeen', () => {
+  const now = Date.UTC(2026, 9, 30, 12);
+  const ago = (ms: number) => new Date(now - ms).toISOString().replace('T', ' ');
+  it('scales from minutes to days', () => {
+    expect(formatLastSeen(ago(20_000), now)).toBe('just now');
+    expect(formatLastSeen(ago(5 * 60_000), now)).toBe('5 min ago');
+    expect(formatLastSeen(ago(3 * 3_600_000), now)).toBe('3 h ago');
+    expect(formatLastSeen(ago(2 * 86_400_000), now)).toBe('2 d ago');
+  });
+  it('says unknown for what it cannot read', () => {
+    expect(formatLastSeen('', now)).toBe('unknown');
   });
 });

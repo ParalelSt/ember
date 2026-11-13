@@ -10,6 +10,7 @@ import { readDesktopLog } from '@/lib/desktopLog';
 import { detectShell } from '@/lib/playback/detectShell';
 import { scrubText } from '@/lib/logger/sanitize';
 import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
+import { loadDeviceInfo } from '@/lib/versions/device';
 import { AttachmentPicker } from '@/components/AttachmentPicker';
 import {
   ATTACHMENT_FIELD,
@@ -20,29 +21,12 @@ import {
 
 const MAX_NOTE = 1000;
 
-interface Triage {
-  summary: string;
-  likelyCause: string;
-  area: string;
-  severity: 'low' | 'medium' | 'high';
-  confidence: 'low' | 'medium' | 'high';
-  nextSteps: string[];
-  reproduction: string;
-}
-
-const SEVERITY_STYLE: Record<Triage['severity'], string> = {
-  low: 'bg-emerald-500/15 text-emerald-400',
-  medium: 'bg-amber-500/15 text-amber-400',
-  high: 'bg-red-500/15 text-red-400',
-};
-
 export function BugReportDialog() {
   const open = useUiStore((s) => s.bugReportOpen);
   const setOpen = useUiStore((s) => s.setBugReportOpen);
   const [note, setNote] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
-  const [triage, setTriage] = useState<Triage | null>(null);
 
   // Snapshot is recomputed every render the dialog is open so the counts shown
   // reflect activity right up to the moment the user opens it.
@@ -57,6 +41,7 @@ export function BugReportDialog() {
     if (busy || attachmentProblem(files) !== null) return;
     setBusy(true);
     try {
+      await loadDeviceInfo();
       const snapshot = logger.snapshot();
       // Desktop only, best effort: the shell's own log holds what the WebView
       // never sees. An empty string means there is nothing to attach.
@@ -90,7 +75,6 @@ export function BugReportDialog() {
       // its place (a Wi-Fi sign-in page), and the report never arrived. As
       // "Report sent" it cleared the note.
       const data = (await res.json().catch(() => null)) as {
-        triage?: Triage | null;
         attachmentsDropped?: boolean;
       } | null;
       if (!data) throw new Error(NO_ANSWER_MESSAGE);
@@ -98,11 +82,9 @@ export function BugReportDialog() {
       else toast.success('Report sent');
       setNote('');
       setFiles([]);
-      // With AI triage on, stay open to show the diagnosis; without it there's
-      // nothing to show, so close as before. Closed while it was sending:
-      // no diagnosis either, or the next Report a bug would open on it.
-      if (data.triage && useUiStore.getState().bugReportOpen) setTriage(data.triage);
-      else setOpen(false);
+      // The AI triage goes to the Discord channel only; the reporter just
+      // gets the confirmation toast and the dialog closes.
+      setOpen(false);
     } catch (e) {
       toast.error(`Couldn't send report: ${(e as Error).message}`);
     } finally {
@@ -110,61 +92,10 @@ export function BugReportDialog() {
     }
   };
 
-  const close = () => {
-    setOpen(false);
-    setTriage(null);
-    setFiles([]);
-  };
-
   const onOpenChange = (o: boolean) => {
     if (!o) setFiles([]);
     setOpen(o);
   };
-
-  if (triage) {
-    return (
-      <Popup
-        open={open}
-        onOpenChange={(o) => (o ? setOpen(true) : close())}
-        className="sm:max-w-md"
-        title="Report sent"
-        description={<>Here&apos;s what the logs look like from our side.</>}
-        cancelLabel={null}
-        actionLabel="Done"
-        onAction={close}
-      >
-          <div className="mt-2 flex flex-col gap-3 text-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${SEVERITY_STYLE[triage.severity]}`}>
-                {triage.severity}
-              </span>
-              <span className="rounded bg-card px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                {triage.area}
-              </span>
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                {triage.confidence} confidence
-              </span>
-            </div>
-            <p>{triage.summary}</p>
-            <p className="text-muted-foreground">
-              <span className="text-foreground">Reproduce: </span>
-              {triage.reproduction}
-            </p>
-            <p className="text-muted-foreground">{triage.likelyCause}</p>
-            {triage.nextSteps.length > 0 && (
-              <ul className="list-disc pl-4 text-muted-foreground">
-                {triage.nextSteps.map((s) => (
-                  <li key={s}>{s}</li>
-                ))}
-              </ul>
-            )}
-            <p className="text-xs text-muted-foreground">
-              This is an automated guess from the logs, not a verdict. The full report is with the host.
-            </p>
-          </div>
-      </Popup>
-    );
-  }
 
   return (
     <Popup

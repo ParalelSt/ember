@@ -76,7 +76,7 @@ describe('AppUpdatePill', () => {
   it('has no Install button when it cannot install now (in the car)', async () => {
     fakePlugin({ status: 'ready', latest: '0.4.19', waiting: 'car' });
     render(<AppUpdatePill />);
-    expect(await screen.findByText("Installs when you're parked")).toBeInTheDocument();
+    expect(await screen.findByText("Install once you're parked")).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
   });
 

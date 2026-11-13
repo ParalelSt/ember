@@ -1,4 +1,3 @@
-import { getVersion } from '@tauri-apps/api/app';
 import { detectShell } from '@/lib/playback/detectShell';
 
 /** The version of the app shell around the page: the desktop app's (its
@@ -27,8 +26,12 @@ export async function shellAppVersion(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   try {
     switch (detectShell()) {
-      case 'tauri':
+      case 'tauri': {
+        // Only here: the reports' path reaches this file from the logger, and
+        // everywhere else has no use for Tauri's API.
+        const { getVersion } = await import('@tauri-apps/api/app');
         return clean(await getVersion());
+      }
       case 'capacitor': {
         const plugin = (window as unknown as CapWindow).Capacitor?.Plugins?.EmberApp;
         if (typeof plugin?.info !== 'function') return null;

@@ -11,6 +11,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { createTauriBackend } from './tauriBackend';
 import { makeFakeEvents } from '@/test-utils/fakeBackend';
+import { logger } from '@/lib/logger/client';
 
 type Listener = (e: { payload: unknown }) => void;
 const listeners = new Map<string, Listener>();
@@ -34,6 +35,10 @@ async function emit(name: string, payload: unknown = {}) {
   await Promise.resolve();
   listeners.get(name)?.({ payload });
 }
+
+vi.mock('@/lib/logger/client', () => ({
+  logger: { breadcrumb: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn(), setContext: vi.fn() },
+}));
 
 beforeEach(() => {
   listeners.clear();
@@ -438,5 +443,31 @@ describe('tauriBackend after a playback stall (Luka, 2026-10-02)', () => {
     await emit('audio:error', { message: 'playback stalled at 0.5s', token: 3 });
     expect(events.onError).toHaveBeenCalledTimes(1);
     expect(loads().at(-1)?.args).toMatchObject({ url: `${window.location.origin}/api/youtube/stream/b`, startAt: 0.5 });
+  });
+});
+
+describe('audio:error log level', () => {
+  it('logs a dead live station as a warning, any other song as an error', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/radio/stream/0a1b2c3d-0000-4000-8000-000000000000', { autoplay: true });
+    await emit('audio:error', { message: 'the host refused the song', retry: 'none' });
+    expect(logger.warn).toHaveBeenCalledWith('audio', 'the host refused the song');
+    expect(logger.error).not.toHaveBeenCalled();
+
+    backend.load('/api/youtube/stream/abc', { autoplay: true });
+    await emit('audio:error', { message: 'this engine could not decode the song', retry: 'web-audio' });
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs a song the host explained (refused, 502) as a warning, an unexplained failure as an error', async () => {
+    const backend = createTauriBackend(makeFakeEvents());
+    backend.load('/api/youtube/stream/abc', { autoplay: true });
+    await emit('audio:error', { message: 'the host refused the song: HTTP status 502', retry: 'none' });
+    expect(logger.warn).toHaveBeenCalledWith('audio', 'the host refused the song: HTTP status 502');
+    expect(logger.error).not.toHaveBeenCalled();
+
+    await emit('audio:error', { message: 'the host sent nothing for 8s', retry: 'none' });
+    expect(logger.error).toHaveBeenCalledTimes(1);
   });
 });

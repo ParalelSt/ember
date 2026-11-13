@@ -5,6 +5,7 @@ import { isTriageConfigured, summarizeDigest, type DigestSummary } from '@/lib/a
 import { logDir, serverLogger } from '@/lib/logger/server';
 import { scrubServerEntry } from '@/lib/logger/sanitize';
 import { formatDigest, groupForDigest, type DigestGroup } from '@/lib/reports/digest';
+import { sanitizeVersion } from '@/lib/versions/label';
 import { codeFields, DISCORD_FIELD_CHARS, remainingEmbedBudget, webhookUrl, type EmbedField } from '@/lib/reports/discord';
 
 /** The daily error digest: one Discord message a day saying what broke,
@@ -259,12 +260,22 @@ async function post(
   // sized first so "Errors" (codeFields' maxChars) only claims what's left
   // of the embed's 6000-character budget, rather than risking a rejected
   // post on a busy day.
+  // The digest is this server's own errors, so the version that matters is
+  // the build it runs; no one device's stands behind a group.
+  const buildVersion = sanitizeVersion(process.env.NEXT_PUBLIC_APP_VERSION);
+  const version: EmbedField = {
+    name: 'Version',
+    value: `Server web ${buildVersion ?? 'unknown'}`,
+    inline: false,
+  };
   const usedChars =
     title.length +
     description.length +
     footerText.length +
+    version.name.length +
+    version.value.length +
     (whatToLookAt ? whatToLookAt.name.length + whatToLookAt.value.length : 0);
-  const fields: EmbedField[] = [...codeFields('Errors', text, 6, remainingEmbedBudget(usedChars))];
+  const fields: EmbedField[] = [version, ...codeFields('Errors', text, 6, remainingEmbedBudget(usedChars))];
   if (whatToLookAt) fields.push(whatToLookAt);
 
   const embed = {
@@ -279,6 +290,7 @@ async function post(
   const payload = {
     since: new Date(since).toISOString(),
     until: new Date(nowMs).toISOString(),
+    serverVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? null,
     groups,
     summary,
   };
