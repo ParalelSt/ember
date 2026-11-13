@@ -3,16 +3,25 @@ import { SettingsTabs } from '@/components/settings/SettingsTabs';
 import { SettingsHeader, SettingsContent } from '@/components/settings/SettingsHeader';
 import { BuildStamp } from '@/components/settings/BuildStamp';
 import { AppUpdateCard } from '@/components/settings/AppUpdateCard';
+import { SettingsFrame } from '@/components/settings/desktop/DesktopSettings';
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div>
-      <SettingsHeader />
-      {/* Start two columns at lg: the app sidebar leaves too little room at md. */}
-      <div className="flex flex-col lg:flex-row gap-stack lg:gap-section">
-        <SettingsTabs />
-        <SettingsContent>{children}</SettingsContent>
-      </div>
+      {/* Desktop (lg and up) draws its own layout variants (components/
+          settings/desktop); phones and narrow windows keep this one. */}
+      <SettingsFrame
+        phone={
+          <>
+            <SettingsHeader />
+            {/* Start two columns at lg: the app sidebar leaves too little room at md. */}
+            <div className="flex flex-col lg:flex-row gap-stack lg:gap-section">
+              <SettingsTabs />
+              <SettingsContent>{children}</SettingsContent>
+            </div>
+          </>
+        }
+      />
       {/* The Android app's updater: its version, where the update is, and
           Check for updates. Renders nothing outside the Android app. */}
       <AppUpdateCard />

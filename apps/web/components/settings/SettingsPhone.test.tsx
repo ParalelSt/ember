@@ -129,19 +129,17 @@ it.each([900, 1023])('keeps the grouped home and section bar at %ipx', width => 
   expect(within(nav).queryByRole('list')).not.toBeInTheDocument();
 });
 
-it.each([1024, 1280])('shows the grouped column and content header at %ipx and responds to resizing', width => {
+it.each([1024, 1280])('hands %ipx to the desktop layouts and comes back on resizing', width => {
   setWidth(width);
   state.path = '/settings/profile';
   render(<SettingsLayout>Profile form</SettingsLayout>);
-  const nav = screen.getByRole('navigation', { name: 'Settings' });
-  expect(nav).toHaveClass('hidden', 'lg:block', 'lg:w-80');
-  expect(nav.parentElement).toHaveClass('lg:flex-row');
-  expect(within(nav).getByRole('list', { name: 'Account' })).toBeInTheDocument();
-  const title = screen.getByRole('heading', { level: 2, name: 'Profile' });
-  expect(title.parentElement?.querySelector('svg')).toBeInTheDocument();
+  // Desktop draws its own layout (components/settings/desktop), not the routed page.
+  expect(document.querySelector('[data-settings-layout]')).not.toBeNull();
+  expect(screen.queryByText('Profile form')).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Back to Settings' })).not.toBeInTheDocument();
   setWidth(900);
-  expect(within(nav).queryByRole('list')).not.toBeInTheDocument();
+  expect(document.querySelector('[data-settings-layout]')).toBeNull();
+  expect(screen.getByText('Profile form')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Back to Settings' })).toBeInTheDocument();
-  expect(screen.queryByRole('heading', { level: 2, name: 'Profile' })).not.toBeInTheDocument();
+  expect(screen.getByRole('navigation', { name: 'Settings' })).toHaveClass('hidden', 'lg:block');
 });
