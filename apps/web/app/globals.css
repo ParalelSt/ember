@@ -449,9 +449,28 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
   .ember-just-approved { animation: none !important; }
 }
 
-/* The update reminder (components/update/UpdateReminder.tsx, its look in
-   updateReminderLook.tsx): slides down in under the top bar and back up out.
-   Reduced motion: it simply appears and goes. */
+/* The update reminder (components/update/UpdateReminder.tsx, its shape and
+   words in updateReminderLook.tsx). Owner's picks 2026-11-13: a dark pill,
+   a soft orange outline with a faint haze, the version in a solid orange
+   chip. The same in every theme on purpose: it has to stand out from the
+   app's own notices. It slides down in under the top bar and back up out;
+   under reduced motion it simply appears and goes. */
+:root {
+  --update-pill-bg: #141d23;
+  --update-pill-fg: #f4efe9;
+  --update-pill-accent: #ff8a3d;
+  --update-pill-chip-fg: #0b1216;
+  --update-pill-glow: 0 0 0 1.5px var(--update-pill-accent), 0 0 8px rgb(255 138 61 / 0.22);
+}
+.ember-update-pill {
+  background: var(--update-pill-bg);
+  color: var(--update-pill-fg);
+  box-shadow: var(--update-pill-glow);
+}
+.ember-update-chip {
+  background: var(--update-pill-accent);
+  color: var(--update-pill-chip-fg);
+}
 @keyframes ember-update-in {
   from { transform: translateY(-140%); opacity: 0; }
   to   { transform: translateY(0); opacity: 1; }

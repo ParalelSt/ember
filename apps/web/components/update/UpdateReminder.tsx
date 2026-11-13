@@ -14,7 +14,7 @@ import {
 } from '@/lib/update/reminder';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useUpdateStore } from '@/stores/useUpdateStore';
-import { PILL_CLASS, PILL_STYLE, REMINDER_WORDING, ReminderMark } from './updateReminderLook';
+import { PILL_CLASS, REMINDER_WORDING, ReminderMark } from './updateReminderLook';
 
 /** How long the slide out takes before the pill is gone (the
  *  ember-update-out keyframes in app/globals.css). */
@@ -156,7 +156,7 @@ export function UpdateReminder() {
 
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-4"
+      className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-block"
       style={{ top: 'calc(var(--ember-topbar-h, 0px) + 0.75rem)' }}
     >
       <button
@@ -168,7 +168,6 @@ export function UpdateReminder() {
         aria-label={`Ember ${offer.version}: ${words}`}
         onClick={tap}
         className={`${PILL_CLASS} ${phase === 'out' ? 'ember-update-out' : 'ember-update-in'}`}
-        style={PILL_STYLE}
       >
         <ReminderMark version={offer.version} />
         <span className="truncate">{words}</span>

@@ -1,7 +1,8 @@
-import type { CSSProperties } from 'react';
-
-/** The update reminder's look, all in one place, so a newly picked design
- *  drops in here without touching the behaviour in UpdateReminder.tsx.
+/** The update reminder's look, so a newly picked design drops in without
+ *  touching the behaviour in UpdateReminder.tsx: the shape, the front mark
+ *  and the words here; the colours and the glow as the --update-pill-*
+ *  tokens in app/globals.css (the colour lint keeps literal colours out of
+ *  components), next to its slide-in keyframes.
  *
  *  Owner's picks (2026-11-13): a dark pill with a soft orange outline and a
  *  faint haze; at its front the new version in a small solid orange chip;
@@ -10,22 +11,16 @@ import type { CSSProperties } from 'react';
  *  `ember-update-out` keyframes in app/globals.css (no motion under
  *  reduced motion). */
 
-/** The pill: colours, outline and glow. */
-export const PILL_STYLE: CSSProperties = {
-  background: '#141d23',
-  color: '#f4efe9',
-  boxShadow: '0 0 0 1.5px #ff8a3d, 0 0 8px rgba(255,138,61,.22)',
-};
+/** The pill: its colours, outline and glow are `.ember-update-pill`. */
 export const PILL_CLASS =
-  'pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 text-[13px] font-bold leading-5';
+  'ember-update-pill pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-cluster rounded-full py-inset pl-inset pr-row text-[13px] font-bold leading-6';
 
 /** The front mark: the new version in a small solid orange chip. */
 export function ReminderMark({ version }: { version: string }) {
   return (
     <span
       data-testid="update-reminder-chip"
-      className="shrink-0 rounded-full px-2 text-[10.5px] font-bold leading-[18px] tabular-nums"
-      style={{ background: '#ff8a3d', color: '#0b1216' }}
+      className="ember-update-chip shrink-0 rounded-full px-cluster text-[10.5px] font-bold leading-[18px] tabular-nums"
     >
       {version}
     </span>
