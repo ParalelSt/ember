@@ -78,6 +78,7 @@ import { musicLevel } from '@/lib/pranks/mix';
 import { isLiveTrack } from '@/lib/radio/station';
 import { PrankReceiver } from './PrankReceiver';
 import { UnplayableAnnouncer } from './UnplayableMessage';
+import { setPlaybackElsewhereProbe, takeUpdateResume, updateAtSongEnd } from '@/lib/update/apply';
 
 interface PlayerControls {
   current: Track | null;
@@ -308,6 +309,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const localEngine = useCallback(() => localBackendRef.current ?? backendRef.current, []);
 
   const userInteracted = useRef(false);
+  // Back from an update that waited for a song to end (lib/update/apply.ts):
+  // the song that came next starts by itself, from its beginning. Declared
+  // before the engine starts, so the store is in place before anything
+  // loads; the engine's first load then plays it (userInteracted).
+  useEffect(() => {
+    const st = usePlayerStore.getState();
+    const resume = takeUpdateResume(st.queue);
+    if (!resume) return;
+    usePlayerStore.setState({ index: resume.index, position: 0 });
+    userInteracted.current = true;
+    logger.breadcrumb('playback', 'resumed after an update', { trackId: resume.trackId });
+  }, []);
+  // Music the page's reload cannot stop (the Android app's own player,
+  // another device this one controls) does not hold an update back.
+  useEffect(() => {
+    setPlaybackElsewhereProbe(() => ownsQueue(backendKindRef, controllingRef));
+    return () => setPlaybackElsewhereProbe(null);
+  }, []);
   const notifierRef = useRef<UnplayableNotifier | null>(null);
   /** Say why these songs did not play (see createNotifier). */
   const announce = useCallback((notices: UnplayableNotice[], opts?: { away?: boolean }) => {
@@ -563,6 +582,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           });
           handleError();
           return;
+        }
+        // An update waiting for this song to end (lib/update/apply.ts): it
+        // goes in now, in the gap, and the song that comes next (this one
+        // again under repeat) starts once the page is back. Nothing loads
+        // here meanwhile.
+        if (cur) {
+          const again = repeatsCurrent({ queue: state.queue, index: state.index, loopMode: state.loopMode, context: state.context, baseCount: state.baseCount });
+          const move = again ? { index: state.index } : nextIndex({ queue: state.queue, index: state.index, loopMode: state.loopMode, context: state.context, baseCount: state.baseCount });
+          const to = move ? nextPlayable(state.queue, move.index, 1, state.loopMode === 'all').index : -1;
+          const resume = to >= 0 && state.queue[to] ? { index: to, trackId: state.queue[to].id } : null;
+          if (updateAtSongEnd(resume)) {
+            logger.breadcrumb('playback', 'update at song end', { trackId: cur.id, next: resume?.trackId ?? null });
+            return;
+          }
         }
         // Loop-one, or loop-all over a single song: the same song again,
         // from the audio already loaded. Going through next() here loaded
