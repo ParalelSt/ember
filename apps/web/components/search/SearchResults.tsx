@@ -146,7 +146,8 @@ export function SearchResults({
               unavailable={unavailable}
               songHref={songPageHref(t)}
               titleOpensSong={desktop}
-              marqueeTitle={!desktop}
+              // Long names scroll on every screen; ones that fit stay still.
+              marqueeTitle
             />
           </Arrival>
         );

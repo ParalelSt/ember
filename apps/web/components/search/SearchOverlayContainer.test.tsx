@@ -168,7 +168,7 @@ describe('SearchOverlayContainer', () => {
       target: { value: 'second wind' },
     });
 
-    expect(await screen.findByText('Second Wind')).toBeInTheDocument();
+    expect((await screen.findAllByText('Second Wind'))[0]).toBeInTheDocument();
   });
 
   it('dismisses on Escape', () => {
@@ -221,7 +221,7 @@ describe('SearchOverlayContainer', () => {
       target: { value: 'third wheel' },
     });
 
-    expect(await screen.findByText('Third Wheel')).toBeInTheDocument();
+    expect((await screen.findAllByText('Third Wheel'))[0]).toBeInTheDocument();
     expect(screen.getByText('Results for "third wheel"')).toBeInTheDocument();
     expect(screen.queryByText('Trending')).toBeNull();
   });
@@ -640,7 +640,7 @@ describe('SearchOverlayContainer, own matches first', () => {
     api.search.mockImplementation(neverResolves);
     renderOverlay(client);
     fireEvent.change(box(), { target: { value: 'demetori' } });
-    expect(await screen.findByText('Necro Fantasia')).toBeInTheDocument();
+    expect((await screen.findAllByText('Necro Fantasia'))[0]).toBeInTheDocument();
     expect(screen.queryByText('Searching…')).toBeNull();
   });
 });
