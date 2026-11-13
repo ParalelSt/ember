@@ -102,6 +102,7 @@ export function SearchOverlayContainer() {
             key={t.id}
             track={t}
             density="compact"
+            marqueeTitle
             trailingPlayControl
             // Same player as the results below: one source of truth for
             // which row is current and whether it is paused.

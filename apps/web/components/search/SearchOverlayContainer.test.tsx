@@ -168,7 +168,7 @@ describe('SearchOverlayContainer', () => {
       target: { value: 'second wind' },
     });
 
-    expect(await screen.findByText('Second Wind')).toBeInTheDocument();
+    expect((await screen.findAllByText('Second Wind'))[0]).toBeInTheDocument();
   });
 
   it('dismisses on Escape', () => {
@@ -191,8 +191,15 @@ describe('SearchOverlayContainer', () => {
     recents.tracks = [makeTrack()];
     renderOverlay();
 
-    expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
+    expect(screen.getAllByText('Midnight Drive')[0]).toBeInTheDocument();
     expect(screen.queryByText('Trending')).toBeNull();
+  });
+
+  it('scrolls a long recent-searches title instead of cutting it off', () => {
+    recents.tracks = [makeTrack()];
+    renderOverlay();
+    const title = screen.getByTestId('track-row-title');
+    expect(title.querySelector('[data-testid="marquee"]')).not.toBeNull();
   });
 
   it('shows no Trending heading or list with an empty query', () => {
@@ -221,7 +228,7 @@ describe('SearchOverlayContainer', () => {
       target: { value: 'third wheel' },
     });
 
-    expect(await screen.findByText('Third Wheel')).toBeInTheDocument();
+    expect((await screen.findAllByText('Third Wheel'))[0]).toBeInTheDocument();
     expect(screen.getByText('Results for "third wheel"')).toBeInTheDocument();
     expect(screen.queryByText('Trending')).toBeNull();
   });
@@ -577,7 +584,7 @@ describe('SearchOverlayContainer, phone sheet', () => {
     recents.tracks = [makeTrack()];
     renderOverlay();
 
-    expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
+    expect(screen.getAllByText('Midnight Drive')[0]).toBeInTheDocument();
     expect(screen.queryByText('Trending')).toBeNull();
     expect(screen.queryByText('No tracks')).toBeNull();
   });
@@ -640,7 +647,7 @@ describe('SearchOverlayContainer, own matches first', () => {
     api.search.mockImplementation(neverResolves);
     renderOverlay(client);
     fireEvent.change(box(), { target: { value: 'demetori' } });
-    expect(await screen.findByText('Necro Fantasia')).toBeInTheDocument();
+    expect((await screen.findAllByText('Necro Fantasia'))[0]).toBeInTheDocument();
     expect(screen.queryByText('Searching…')).toBeNull();
   });
 });

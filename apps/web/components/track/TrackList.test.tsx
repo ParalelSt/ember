@@ -54,7 +54,15 @@ describe('TrackList', () => {
   it('renders one row per track', () => {
     render(<TrackList tracks={tracks} {...actions()} />);
     expect(screen.getAllByRole('button', { name: 'Play' })).toHaveLength(3);
-    expect(screen.getByText('Third Rail')).toBeInTheDocument();
+    expect(screen.getAllByText('Third Rail')[0]).toBeInTheDocument();
+  });
+
+  // Playlists, liked songs, recents and the artist page all render this.
+  it('scrolls every row title when it overflows', () => {
+    render(<TrackList tracks={tracks} {...actions()} />);
+    const titles = screen.getAllByTestId('track-row-title');
+    expect(titles).toHaveLength(3);
+    for (const t of titles) expect(t.querySelector('[data-testid="marquee"]')).not.toBeNull();
   });
 
   it('marks only the current track as active', () => {
@@ -202,7 +210,7 @@ describe('TrackList (unavailable rows)', () => {
     expect(screen.getByRole('button', { name: 'Pause Second Wind' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Play Midnight Drive' })).toBeInTheDocument();
     const ember = screen.getAllByTestId('track-row-title').filter((t) => t.className.includes('text-ember'));
-    expect(ember.map((t) => t.textContent)).toEqual(['Second Wind']);
+    expect(ember.map((t) => t.querySelector('[data-testid="marquee-track"]')?.textContent ?? t.textContent)).toEqual(['Second Wind']);
   });
 
   it('plays the right track from a trailing control, and toggles the current one', () => {

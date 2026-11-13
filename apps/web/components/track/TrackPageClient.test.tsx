@@ -27,3 +27,12 @@ describe('TrackPageClient artist link', () => {
     expect(screen.getByRole('link', { name: 'Peki' }).getAttribute('href')).toBe('/artist/UCresolved');
   });
 });
+
+describe('TrackPageClient title', () => {
+  it('scrolls the song title in the header when it does not fit', () => {
+    data = { ...base };
+    render(<TrackPageClient videoId="Sn1HdLrl94A" />);
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1.querySelector('[data-testid="marquee"]')).not.toBeNull();
+  });
+});

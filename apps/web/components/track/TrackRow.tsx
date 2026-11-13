@@ -305,7 +305,13 @@ export function TrackRow({
         {artwork}
         <div className="min-w-0 flex-1">
           <div data-testid="track-row-title" className={cn('flex min-w-0 items-center gap-cluster text-sm font-medium', emberTitle)}>
-            <span className="truncate">{track.title}</span>
+            {marqueeTitle ? (
+              <div className="min-w-0 flex-1">
+                <MarqueeText text={track.title} />
+              </div>
+            ) : (
+              <span className="truncate">{track.title}</span>
+            )}
             {unavailablePill}
           </div>
           {/* Plain text, not a link: these rows sit inside a sheet, a
