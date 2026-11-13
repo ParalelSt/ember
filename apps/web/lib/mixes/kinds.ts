@@ -71,9 +71,21 @@ export const FIXED_TITLE: Partial<Record<MixKind, string>> = {
 /** The mix's full name for the page heading, the quick grid, the player
  *  and a saved playlist: "Rock Mix", "Gojira Mix", "New to you". */
 export function mixFullTitle(key: string, title: string): string {
-  const kind = mixKind(key);
+  return fullTitleOf(mixKind(key), title);
+}
+
+export function fullTitleOf(kind: MixKind, title: string): string {
   return kind === 'style' || kind === 'artist' ? `${title} Mix` : title;
 }
+
+/** The mix page's small heading over the title. */
+export const KIND_EYEBROW: Record<MixKind, string> = {
+  style: 'Mix',
+  discover: 'Discover',
+  'on-repeat': 'On repeat',
+  artist: 'Artist mix',
+  throwback: 'Throwback',
+};
 
 /** The mix page's refresh note. */
 export function refreshNote(key: string): string {

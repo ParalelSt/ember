@@ -1,11 +1,15 @@
 import type { Track } from '@/types/track';
+import type { MixKind } from '@/lib/mixes/kinds';
 
 /** What GET /api/mixes and GET /api/mixes/[key] answer. Shared by the
  *  routes and the client. */
 
 export interface MixTile {
   key: string;
-  /** "Rock & Metal" (the card adds its own "MIX" label). */
+  /** Style, Discover, On repeat, artist or Throwback (lib/mixes/kinds). */
+  kind: MixKind;
+  /** "Rock & Metal", "Gojira", "New to you" (the card adds its own label:
+   *  "MIX", "ARTIST MIX", "DISCOVER"). */
   title: string;
   /** "Gojira, Tool, Metallica and more". */
   subtitle: string;
@@ -24,6 +28,7 @@ export interface MixesPayload {
 
 export interface MixPayload {
   key: string;
+  kind: MixKind;
   title: string;
   subtitle: string;
   cover: { artworkUrls: string[]; color: string };
