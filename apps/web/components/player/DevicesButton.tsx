@@ -233,6 +233,35 @@ export function DevicesButton({ className, iconClassName }: Props) {
   );
 }
 
+/** The desktop player bar's "Playing on Phone" label (the owner's desktop
+ *  pick B), beside the Devices button, while this computer controls
+ *  another device of the account. Ember, with the device's icon; below lg,
+ *  where the bar has no Devices button, only the icon (the name stays in
+ *  its tooltip and accessible name). */
+export function PlayingOnLabel({ className }: { className?: string }) {
+  const remote = useRemoteSummary();
+  const name = controlledName(remote);
+  if (!name) return null;
+  const target = remote.devices.find((d) => d.deviceId === remote.target);
+  const Icon = target && (target.platform === 'android' || target.platform === 'ios') ? PhoneIcon : LaptopIcon;
+  const label = `Playing on ${name}`;
+  return (
+    <span
+      data-testid="playing-on"
+      role="status"
+      aria-label={label}
+      title={label}
+      className={cn(
+        'inline-flex min-w-0 max-w-56 items-center gap-1.5 rounded-full bg-ember/15 px-2 py-1 text-xs font-medium text-ember lg:px-2.5',
+        className,
+      )}
+    >
+      <Icon className="size-3.5 shrink-0" />
+      <span className="hidden truncate lg:inline">{label}</span>
+    </span>
+  );
+}
+
 /** The phone's More sheet row: whether to show it (only with somewhere
  *  else to play), what to call it, and the output it plays on when that
  *  is not the phone itself (the headset, the TV). */

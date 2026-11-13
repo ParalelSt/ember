@@ -25,7 +25,7 @@ import { PlayheadSeekBar } from '@/components/player/SeekBar';
 import { CarPlayerBar } from '@/components/player/CarPlayerBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { VolumeControl } from '@/components/player/VolumeControl';
-import { DevicesButton, DevicesSheet, useDevicesEntry } from '@/components/player/DevicesButton';
+import { DevicesButton, DevicesSheet, PlayingOnLabel, useDevicesEntry } from '@/components/player/DevicesButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -290,6 +290,9 @@ export function PlayerBar() {
         {/* Devices: where the music plays (this computer's outputs, and
             cast devices when there are any). Only when there is a choice;
             below lg it lives in the More menu instead (bughunt V1). */}
+        {/* While this computer controls another device: "Playing on
+            Phone" in ember, right before the Devices button. */}
+        <PlayingOnLabel />
         <DevicesButton variant="bar" className="hidden lg:inline-flex h-8 w-8" />
         <Button
           variant="ghost"

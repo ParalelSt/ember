@@ -413,6 +413,57 @@ describe('PlayerBar: devices button', () => {
   });
 });
 
+describe('PlayerBar: playing on another device (desktop pick B)', () => {
+  const PHONE = {
+    deviceId: 'ph-1', label: 'Phone', platform: 'android', shell: 'capacitor', browser: null, lastBeat: 1000, stale: false, snapshot: null,
+  };
+  const WINDOWS = { ...PHONE, deviceId: 'win-1', label: 'Windows', platform: 'windows', shell: 'tauri' };
+  const reset = async () => {
+    const { useRemoteStore } = await import('@/stores/useRemoteStore');
+    useRemoteStore.setState({ devices: [], active: null, rev: null, offset: 0, mode: 'local', target: null, dismissed: null, pickerOpen: false, heardAt: 0 });
+    return useRemoteStore;
+  };
+  afterEach(reset);
+
+  it('an ember "Playing on Android phone" label sits right before the Devices button while controlling the phone', async () => {
+    const store = await reset();
+    store.setState({ devices: [PHONE] as never, mode: 'controlling', target: 'ph-1' });
+    desktopBar();
+    const label = screen.getByTestId('playing-on');
+    expect(label).toHaveAccessibleName('Playing on Android phone');
+    expect(label).toHaveAttribute('title', 'Playing on Android phone');
+    expect(label.className).toContain('text-ember');
+    expect(label.className).toContain('bg-ember/15');
+    expect(label).toHaveTextContent('Playing on Android phone');
+    expect(label.querySelector('svg')).not.toBeNull();
+    // The words show from lg, where the Devices button is in the bar.
+    expect(within(label).getByText('Playing on Android phone').className).toContain('lg:inline');
+    expect(label.nextElementSibling).toContainElement(screen.getByTestId('devices-button'));
+  });
+
+  it('names a computer the same way', async () => {
+    const store = await reset();
+    store.setState({ devices: [WINDOWS] as never, mode: 'controlling', target: 'win-1' });
+    desktopBar();
+    expect(screen.getByTestId('playing-on')).toHaveAccessibleName('Playing on Windows');
+  });
+
+  it('no label while the music plays here, even with other devices around', async () => {
+    const store = await reset();
+    store.setState({ devices: [PHONE] as never, mode: 'local', target: null });
+    desktopBar();
+    expect(screen.queryByTestId('playing-on')).toBeNull();
+  });
+
+  it('the phone bar stays as it is (phone picks are still open)', async () => {
+    const store = await reset();
+    store.setState({ devices: [PHONE] as never, mode: 'controlling', target: 'ph-1' });
+    desktop.value = false;
+    render(<PlayerBar />);
+    expect(screen.queryByTestId('playing-on')).toBeNull();
+  });
+});
+
 afterEach(() => vi.unstubAllGlobals());
 it.each(['narrow', 'native'])('hides guitar tabs on %s devices with the plugin enabled', (device) => {
   vi.stubGlobal('matchMedia', (q: string) => ({ matches: device === 'narrow' && q === '(max-width: 767px)', addEventListener() {}, removeEventListener() {} }));
