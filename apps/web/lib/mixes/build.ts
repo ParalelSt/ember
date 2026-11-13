@@ -1,5 +1,5 @@
 import { songKey } from '../songKey';
-import { artistKey } from '../genres/artistKey';
+import { artistKey, firstArtist } from '../genres/artistKey';
 import { mixLook, type FamilySlug, type SubSlug } from '../genres/taxonomy';
 import type { Track } from '../../types/track';
 import type { MixPlan } from './cluster';
@@ -78,6 +78,8 @@ export interface AssembleInput {
   otherFamilyChartArtists: ReadonlySet<string>;
   /** Track ids the server knows are dead. */
   unavailable: ReadonlySet<string>;
+  /** Songs the member blocked ("Block song"). */
+  skip?: (t: Track) => boolean;
 }
 
 /** Whether a new song's artist belongs in this mix. */
@@ -112,7 +114,7 @@ export function weave(known: readonly Track[], fresh: readonly Track[], size = M
 /** The mix's tracks, or null when fewer than MIN_MIX_SIZE survive (the
  *  mix is then not written). */
 export function assembleMix(input: AssembleInput): Track[] | null {
-  const { plan, radios, chartTracks, genres, otherFamilyChartArtists, unavailable } = input;
+  const { plan, radios, chartTracks, genres, otherFamilyChartArtists, unavailable, skip = () => false } = input;
   const perArtist = new Map<string, number>();
   const usedKeys = new Set<string>();
   const take = (t: Track, aKey: string) => {
@@ -124,7 +126,7 @@ export function assembleMix(input: AssembleInput): Track[] | null {
   const known: Track[] = [];
   for (const s of plan.songs) {
     if (known.length >= KNOWN_MAX) break;
-    if (unavailable.has(s.track.id) || usedKeys.has(s.key) || !room(s.artistKey)) continue;
+    if (unavailable.has(s.track.id) || skip(s.track) || usedKeys.has(s.key) || !room(s.artistKey)) continue;
     take(s.track, s.artistKey);
     known.push(s.track);
   }
@@ -144,7 +146,7 @@ export function assembleMix(input: AssembleInput): Track[] | null {
   const fresh: Track[] = [];
   for (const t of pool) {
     if (known.length + fresh.length >= MIX_SIZE) break;
-    if (!t || unavailable.has(t.id)) continue;
+    if (!t || unavailable.has(t.id) || skip(t)) continue;
     const k = songKey(t);
     if (usedKeys.has(k)) continue;
     const aKey = artistKey(t.artist);
@@ -186,4 +188,22 @@ export function describeMix(plan: Pick<MixPlan, 'key' | 'songs' | 'artists'>, tr
   }
   const subtitle = names.length ? `${names.join(', ')} and more` : '';
   return { title: look.name, subtitle, artworkUrls: art.slice(0, 3), color: look.tint };
+}
+
+/** A card for a mix with no genre and no featured artist (Discover, On
+ *  repeat, Throwback): the first three different artists in it, each with
+ *  a cover. */
+export function describeTracks(title: string, tracks: readonly Track[], color: string): MixMeta {
+  const names: string[] = [];
+  const art: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tracks) {
+    const k = artistKey(t.artist);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    if (names.length < 3) names.push(firstArtist(t.artist));
+    if (art.length < 3 && t.artworkUrl) art.push(t.artworkUrl);
+    if (names.length >= 3 && art.length >= 3) break;
+  }
+  return { title, subtitle: names.length ? `${names.join(', ')} and more` : '', artworkUrls: art, color };
 }

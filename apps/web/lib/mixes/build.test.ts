@@ -144,3 +144,15 @@ describe('describeMix', () => {
     expect(meta.color).toMatch(/^#[0-9a-f]{6}$/);
   });
 });
+
+describe('assembleMix skip', () => {
+  it('leaves out blocked songs, own and new', () => {
+    const songs = Array.from({ length: 8 }, (_, i) => s(tt(`own${i}`, `Band ${i % 4}`), 8 - i));
+    const radio = { seed: 'x', tracks: Array.from({ length: 40 }, (_, i) => tt(`new${i}`, `Rock New ${i % 20}`)) };
+    const genres = rockGenres([...Array.from({ length: 4 }, (_, i) => `Band ${i}`), ...Array.from({ length: 20 }, (_, i) => `Rock New ${i}`)]);
+    const blocked = new Set([songs[0].track.id, radio.tracks[0].id]);
+    const tracks = assembleMix({ plan: planOf(songs), radios: [radio], chartTracks: [], genres, otherFamilyChartArtists: new Set(), unavailable: new Set(), skip: (t) => blocked.has(t.id) })!;
+    expect(tracks.length).toBeGreaterThanOrEqual(MIN_MIX_SIZE);
+    expect(tracks.some((t) => blocked.has(t.id))).toBe(false);
+  });
+});
