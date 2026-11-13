@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 import { CollectionCover, type CollectionCoverProps } from '@/components/primitives/CollectionCover';
+import { MarqueeText } from '@/components/player/MarqueeText';
 import { Eyebrow } from '@/components/page/Eyebrow';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +31,9 @@ export interface CollectionHeaderProps {
   /** A small block right under the title and meta (the "Shared by" badge,
    *  the people chip). */
   belowTitle?: ReactNode;
+  /** One line that scrolls when the title does not fit (the song page),
+   *  instead of wrapping over up to three lines. */
+  marqueeTitle?: boolean;
   children?: ReactNode;
 }
 
@@ -63,6 +67,7 @@ export function CollectionHeader({
   coverBusy,
   description,
   belowTitle,
+  marqueeTitle = false,
   children,
 }: CollectionHeaderProps) {
   const v = HEADER_VARIANTS[variant];
@@ -95,7 +100,15 @@ export function CollectionHeader({
       )}
       <div className={v.text || undefined}>
         <Eyebrow>{eyebrow}</Eyebrow>
-        <h1 className={cn('text-hero-title break-words line-clamp-3', HEADER_CLASSES.title)}>{title}</h1>
+        <h1
+          className={cn(
+            'text-hero-title',
+            marqueeTitle ? 'min-w-0' : 'break-words line-clamp-3',
+            HEADER_CLASSES.title,
+          )}
+        >
+          {marqueeTitle ? <MarqueeText text={title} /> : title}
+        </h1>
         {meta.length > 0 && (
           <div data-testid="collection-meta" className={cn('text-meta', HEADER_CLASSES.meta)}>
             {meta.map((entry, i) => (

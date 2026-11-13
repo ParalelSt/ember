@@ -58,14 +58,14 @@ describe('CollectionPage', () => {
     const header = screen.getByTestId('collection-header');
     const meta = screen.getByTestId('collection-meta');
     const bar = screen.getByTestId('action-bar');
-    const firstRow = screen.getByText('Slow Static');
+    const firstRow = screen.getAllByText('Slow Static')[0];
 
     expect(follows(meta, bar)).toBe(true);
     expect(follows(bar, firstRow)).toBe(true);
     // Beside: the action bar lives inside the header's text column.
     expect(header.contains(bar)).toBe(true);
     expect(header.contains(firstRow)).toBe(false);
-    expect(follows(screen.getByText('Slow Static'), screen.getByText('Harbor Lights'))).toBe(true);
+    expect(follows(screen.getAllByText('Slow Static')[0], screen.getAllByText('Harbor Lights')[0])).toBe(true);
   });
 
   it('puts a stack gap between the header and the list, with no margins on either', () => {
@@ -76,7 +76,7 @@ describe('CollectionPage', () => {
     expect(stack.className).toContain('flex-col');
     expect(stack.children).toHaveLength(2);
     expect(stack.children[0]).toBe(header);
-    expect(stack.children[1].contains(screen.getByText('Slow Static'))).toBe(true);
+    expect(stack.children[1].contains(screen.getAllByText('Slow Static')[0])).toBe(true);
     expect(screen.getByTestId('action-bar').className).toContain('gap-cluster');
     expect(screen.getByTestId('action-bar').className).not.toMatch(/(^|\s)m[tbxy]?-/);
   });
@@ -157,7 +157,7 @@ function SelectablePage({ tracks, onCopyBar = () => null, over = {} }: {
   );
 }
 
-const titles = () => screen.getAllByTestId('track-row-title').map((el) => el.textContent);
+const titles = () => screen.getAllByTestId('track-row-title').map((el) => el.querySelector('[data-testid="marquee-track"]')?.textContent ?? el.textContent);
 
 describe('CollectionPage select mode and sort', () => {
   const list = [track('a', 'beta', 'Zed'), track('b', 'Alpha', 'Amy'), track('c', 'Gamma', 'Bo')];
@@ -182,11 +182,11 @@ describe('CollectionPage select mode and sort', () => {
     fireEvent.click(screen.getByTestId('select-toggle'));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Alpha' }));
     expect(screen.getByRole('checkbox', { name: 'Select Alpha' })).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(screen.getByText('Gamma'));
+    fireEvent.click(screen.getAllByText('Gamma')[0]);
     expect(screen.getByTestId('select-count')).toHaveTextContent('2 of 3');
     expect(screen.getByTestId('bar')).toHaveTextContent('2 selected');
     expect(screen.getByTestId('select-all-box')).toHaveAttribute('aria-checked', 'mixed');
-    fireEvent.click(screen.getByText('Gamma'));
+    fireEvent.click(screen.getAllByText('Gamma')[0]);
     expect(screen.getByTestId('select-count')).toHaveTextContent('1 of 3');
   });
 
@@ -241,7 +241,7 @@ describe('CollectionPage select mode and sort', () => {
     pick('Artist, A to Z');
     expect(titles()).toEqual(['Alpha', 'Gamma', 'beta']);
     fireEvent.click(screen.getByTestId('select-toggle'));
-    fireEvent.click(screen.getByText('beta'));
+    fireEvent.click(screen.getAllByText('beta')[0]);
     pick('Artist, Z to A');
     expect(titles()).toEqual(['beta', 'Gamma', 'Alpha']);
     expect(screen.getByRole('checkbox', { name: 'Select beta' })).toHaveAttribute('aria-checked', 'true');

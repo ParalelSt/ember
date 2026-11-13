@@ -56,6 +56,7 @@ function TrackView({ videoId }: { videoId: string }) {
     <CollectionHeader
       variant="album"
       eyebrow="Track"
+      marqueeTitle
       title={track.title}
       meta={meta}
       cover={{ src: track.artworkUrl ?? null, icon: null, fallback: 'card' }}

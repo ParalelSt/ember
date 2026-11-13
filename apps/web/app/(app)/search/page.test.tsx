@@ -99,7 +99,7 @@ describe('SearchPage', () => {
     renderPage();
 
     expect(screen.getByText('Trending')).toBeInTheDocument();
-    expect(await screen.findByText('Chart Topper')).toBeInTheDocument();
+    expect((await screen.findAllByText('Chart Topper'))[0]).toBeInTheDocument();
   });
 
   it('shows the recent searches as compact TrackRows and removes one on request', async () => {
@@ -107,9 +107,16 @@ describe('SearchPage', () => {
     recents.tracks = [track];
     renderPage();
 
-    expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
+    expect(screen.getAllByText('Midnight Drive')[0]).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Remove "Midnight Drive" from recent searches' }));
     expect(recents.removeMutate).toHaveBeenCalledWith(track.id);
+  });
+
+  it('scrolls a long recent-searches title instead of cutting it off', () => {
+    recents.tracks = [makeTrack()];
+    renderPage();
+    const title = screen.getByTestId('track-row-title');
+    expect(title.querySelector('[data-testid="marquee"]')).not.toBeNull();
   });
 
   // O9: the recents row only played on a click of the whole row, a
@@ -175,7 +182,7 @@ describe('SearchPage', () => {
       target: { value: 'second wind' },
     });
 
-    expect(await screen.findByText('Second Wind')).toBeInTheDocument();
+    expect((await screen.findAllByText('Second Wind'))[0]).toBeInTheDocument();
   });
 
   it('playing a result also saves it to recent searches', async () => {
@@ -189,7 +196,7 @@ describe('SearchPage', () => {
 
     // The row's play button: on a desktop window the title opens the
     // song's page instead (the owner's song-page access rule).
-    await screen.findByText('Second Wind');
+    await screen.findAllByText('Second Wind');
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
 
     await waitFor(() => expect(recents.addMutate).toHaveBeenCalledWith(track));

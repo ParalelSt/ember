@@ -191,8 +191,15 @@ describe('SearchOverlayContainer', () => {
     recents.tracks = [makeTrack()];
     renderOverlay();
 
-    expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
+    expect(screen.getAllByText('Midnight Drive')[0]).toBeInTheDocument();
     expect(screen.queryByText('Trending')).toBeNull();
+  });
+
+  it('scrolls a long recent-searches title instead of cutting it off', () => {
+    recents.tracks = [makeTrack()];
+    renderOverlay();
+    const title = screen.getByTestId('track-row-title');
+    expect(title.querySelector('[data-testid="marquee"]')).not.toBeNull();
   });
 
   it('shows no Trending heading or list with an empty query', () => {
@@ -577,7 +584,7 @@ describe('SearchOverlayContainer, phone sheet', () => {
     recents.tracks = [makeTrack()];
     renderOverlay();
 
-    expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
+    expect(screen.getAllByText('Midnight Drive')[0]).toBeInTheDocument();
     expect(screen.queryByText('Trending')).toBeNull();
     expect(screen.queryByText('No tracks')).toBeNull();
   });
