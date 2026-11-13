@@ -252,7 +252,7 @@ export function PlayingOnLabel({ className }: { className?: string }) {
       aria-label={label}
       title={label}
       className={cn(
-        'inline-flex min-w-0 max-w-56 items-center gap-1.5 rounded-full bg-ember/15 px-2 py-1 text-xs font-medium text-ember lg:px-2.5',
+        'inline-flex min-w-0 max-w-56 items-center gap-inset rounded-full bg-ember/15 px-cluster py-inset text-xs font-medium text-ember',
         className,
       )}
     >

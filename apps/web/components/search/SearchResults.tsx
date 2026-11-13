@@ -66,7 +66,7 @@ export function SearchArtists({ artists, layout = 'grid' }: { artists: SearchArt
             href={`/artist/${encodeURIComponent(a.id)}`}
             className={
               rows
-                ? 'flex min-w-0 items-center gap-3 rounded-md py-2 transition-colors hover:bg-card'
+                ? 'flex min-w-0 items-center gap-row rounded-md py-cluster transition-colors hover:bg-card'
                 : 'flex min-w-0 flex-col items-center gap-inset rounded-md p-cluster text-center transition-colors hover:bg-card'
             }
           >

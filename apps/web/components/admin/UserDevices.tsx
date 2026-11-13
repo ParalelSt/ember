@@ -72,7 +72,7 @@ export function UserDeviceChips({ email, devices }: { email: string; devices: Ad
             title={c.title}
             data-behind={c.behind || undefined}
             className={cn(
-              'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-cluster py-inset text-[11px] font-medium tabular-nums',
+              'inline-flex items-center gap-inset whitespace-nowrap rounded-full px-cluster py-inset text-[11px] font-medium tabular-nums',
               c.behind ? 'bg-warning/15 text-warning' : 'bg-muted text-muted-foreground',
             )}
           >
