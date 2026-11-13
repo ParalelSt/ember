@@ -6,7 +6,8 @@ import { TrackRow } from '@/components/track/TrackRow';
 import type { TrackActions } from '@/components/track/TrackList';
 import { Artwork } from '@/components/primitives/Artwork';
 import { EmptyState } from '@/components/page/EmptyState';
-import { ArtistIcon } from '@/components/icons';
+import { ArtistIcon, ChevronRightIcon } from '@/components/icons';
+import { cn } from '@/lib/utils';
 import { songKey } from '@/lib/songKey';
 import { songPageHref } from '@/lib/songPage';
 import type { SearchArtist } from '@/lib/search/types';
@@ -50,29 +51,48 @@ function Arrival({ delayMs, children }: { delayMs: number; children: ReactNode }
 }
 
 /** The Artists section: up to three, round pictures, each opening its
- *  artist page. */
-export function SearchArtists({ artists }: { artists: SearchArtist[] }) {
+ *  artist page. A phone shows them side by side as circles; a desktop
+ *  window (`rows`, the owner's desktop pick) lists them as rows, a round
+ *  picture with the name and "Artist" and an arrow, above the songs. */
+export function SearchArtists({ artists, layout = 'grid' }: { artists: SearchArtist[]; layout?: 'grid' | 'rows' }) {
+  const rows = layout === 'rows';
   return (
-    <section aria-label="Artists" data-testid="search-artists" className="py-cluster">
+    <section aria-label="Artists" data-testid="search-artists" data-layout={layout} className="py-cluster">
       <h3 className="px-row pb-inset text-xs font-semibold uppercase tracking-wider text-muted-foreground">Artists</h3>
-      <div className="grid grid-cols-3 gap-inset">
+      <div className={rows ? 'flex flex-col' : 'grid grid-cols-3 gap-inset'}>
         {artists.map((a) => (
           <Link
             key={a.id}
             href={`/artist/${encodeURIComponent(a.id)}`}
-            className="flex min-w-0 flex-col items-center gap-inset rounded-md p-cluster text-center transition-colors hover:bg-card"
+            className={
+              rows
+                ? 'flex min-w-0 items-center gap-3 rounded-md py-2 transition-colors hover:bg-card'
+                : 'flex min-w-0 flex-col items-center gap-inset rounded-md p-cluster text-center transition-colors hover:bg-card'
+            }
           >
             <Artwork
               src={a.artworkUrl}
               alt=""
               shape="round"
               loading="lazy"
-              className="grid size-16 place-items-center bg-art text-foreground/30"
+              className={cn('grid shrink-0 place-items-center bg-art text-foreground/30', rows ? 'size-art-xs' : 'size-16')}
             >
-              <ArtistIcon className="h-6 w-6" />
+              <ArtistIcon className={rows ? 'h-5 w-5' : 'h-6 w-6'} />
             </Artwork>
-            <span className="w-full truncate text-sm font-semibold">{a.name}</span>
-            <span className="text-xs text-muted-foreground">Artist</span>
+            {rows ? (
+              <>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-sm font-medium">{a.name}</span>
+                  <span className="text-xs text-muted-foreground">Artist</span>
+                </span>
+                <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </>
+            ) : (
+              <>
+                <span className="w-full truncate text-sm font-semibold">{a.name}</span>
+                <span className="text-xs text-muted-foreground">Artist</span>
+              </>
+            )}
           </Link>
         ))}
       </div>
@@ -121,7 +141,7 @@ export function SearchResults({
         if (row.kind === 'artists') {
           return (
             <Arrival key={row.key} delayMs={delayFor(i)}>
-              <SearchArtists artists={row.artists} />
+              <SearchArtists artists={row.artists} layout={desktop ? 'rows' : 'grid'} />
             </Arrival>
           );
         }

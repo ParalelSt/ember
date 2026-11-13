@@ -121,6 +121,33 @@ describe('SearchResults: the Artists section', () => {
     expect(links[0].querySelector('.rounded-full')).not.toBeNull();
   });
 
+  it('desktop: the artists are list rows, round picture, name, "Artist" and an arrow', () => {
+    renderResults(buildSearchView('demetori', parts({ uploads: [], artists, songs: [t('a1')], videos: [] })), 'desktop');
+    const section = screen.getByTestId('search-artists');
+    expect(section).toHaveAttribute('data-layout', 'rows');
+    expect(section.querySelector('.grid-cols-3')).toBeNull();
+    const links = within(section).getAllByRole('link');
+    expect(links).toHaveLength(2);
+    for (const link of links) {
+      expect(link.className).toContain('items-center');
+      expect(link.className).not.toContain('flex-col');
+      expect(link.querySelector('.rounded-full')).not.toBeNull();
+      expect(link.querySelector('.phosphor-caret-right')).not.toBeNull();
+      expect(within(link).getByText('Artist')).toBeInTheDocument();
+    }
+    expect(within(links[1]).getByText('Demetori Tribute')).toBeInTheDocument();
+  });
+
+  it('phone: the artists stay side by side as circles, with no arrow', () => {
+    renderResults(buildSearchView('demetori', parts({ uploads: [], artists, songs: [t('a1')], videos: [] })), 'phone');
+    const section = screen.getByTestId('search-artists');
+    expect(section).toHaveAttribute('data-layout', 'grid');
+    expect(section.querySelector('.grid-cols-3')).not.toBeNull();
+    const links = within(section).getAllByRole('link');
+    expect(links[0].className).toContain('flex-col');
+    expect(section.querySelector('.phosphor-caret-right')).toBeNull();
+  });
+
   it('a direct artist search puts it first', () => {
     renderResults(buildSearchView('demetori', parts({ uploads: [], artists, songs: [t('a1'), t('b2')], videos: [] })));
     expect(rows()[0]).toContainElement(screen.getByTestId('search-artists'));
