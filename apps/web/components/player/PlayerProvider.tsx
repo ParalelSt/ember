@@ -78,7 +78,7 @@ import { musicLevel } from '@/lib/pranks/mix';
 import { isLiveTrack } from '@/lib/radio/station';
 import { PrankReceiver } from './PrankReceiver';
 import { UnplayableAnnouncer } from './UnplayableMessage';
-import { setPlaybackElsewhereProbe, takeUpdateResume, updateAtSongEnd } from '@/lib/update/apply';
+import { setPlaybackElsewhereProbe, setUpdatePause, takeUpdateResume, updateAtSongEnd } from '@/lib/update/apply';
 
 interface PlayerControls {
   current: Track | null;
@@ -325,7 +325,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // another device this one controls) does not hold an update back.
   useEffect(() => {
     setPlaybackElsewhereProbe(() => ownsQueue(backendKindRef, controllingRef));
-    return () => setPlaybackElsewhereProbe(null);
+    // The Android app's install between songs pauses the song that just
+    // started, so it does not play on for a moment under the installer.
+    setUpdatePause(() => backendRef.current?.pause());
+    return () => {
+      setPlaybackElsewhereProbe(null);
+      setUpdatePause(null);
+    };
   }, []);
   const notifierRef = useRef<UnplayableNotifier | null>(null);
   /** Say why these songs did not play (see createNotifier). */

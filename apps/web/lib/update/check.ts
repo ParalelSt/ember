@@ -21,13 +21,20 @@ import { sanitizeVersion, type DevicePlatform } from '@/lib/versions/label';
 
 export type UpdateKind = 'web' | 'shell';
 
+/** How a tap brings an update in: the page reloads (a web build), the
+ *  desktop app restarts into its launch dialog, or the Android app
+ *  downloads and installs it. */
+export type UpdateVia = 'reload' | 'restart' | 'android';
+
 /** What the reminder offers: one update, and whether a tap can apply it. */
 export interface UpdateOffer {
   kind: UpdateKind;
   version: string;
-  /** A tap can bring it in from the page: always for the web build; for the
-   *  desktop app only from the shell version that can restart itself. */
+  /** A tap can bring it in from the page: always for the web build and the
+   *  Android app; for the desktop app only from the shell version that can
+   *  restart itself. */
   canApply: boolean;
+  via: UpdateVia;
 }
 
 export interface UpdateFindings {
@@ -60,20 +67,23 @@ export function newer(candidate: string | null, current: string | null): boolean
   return !!a && !!b && isNewer(a, b);
 }
 
-/** The one update worth a reminder. The desktop app first when the page can
- *  install it (a restart brings the new web build in too); else the web
- *  build, which a reload always can; else a desktop app that only a quit
- *  and reopen installs. Null when everything is current. */
+/** The one update worth a reminder. The app itself first when the page can
+ *  install it (the Android app; a desktop app that can restart itself): the
+ *  new app loads the new web build too. Else the web build, which a reload
+ *  always can; else a desktop app that only a quit and reopen installs.
+ *  Null when everything is current. */
 export function pickOffer(
   found: UpdateFindings,
-  running: { web: string | null; shell: string | null },
+  running: { web: string | null; shell: string | null; platform?: DevicePlatform },
 ): UpdateOffer | null {
   const shell = newer(found.shellLatest, running.shell) ? sanitizeVersion(found.shellLatest) : null;
   const web = newer(found.webLatest, running.web) ? sanitizeVersion(found.webLatest) : null;
-  const restart = shellCanRestart(sanitizeVersion(running.shell));
-  if (shell && restart) return { kind: 'shell', version: shell, canApply: true };
-  if (web) return { kind: 'web', version: web, canApply: true };
-  if (shell) return { kind: 'shell', version: shell, canApply: false };
+  const android = running.platform === 'android';
+  const restart = !android && shellCanRestart(sanitizeVersion(running.shell));
+  if (shell && android) return { kind: 'shell', version: shell, canApply: true, via: 'android' };
+  if (shell && restart) return { kind: 'shell', version: shell, canApply: true, via: 'restart' };
+  if (web) return { kind: 'web', version: web, canApply: true, via: 'reload' };
+  if (shell) return { kind: 'shell', version: shell, canApply: false, via: 'restart' };
   return null;
 }
 

@@ -41,6 +41,16 @@ describe('AppUpdatePill', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('leaves an app that waits for a tap to the update reminder', async () => {
+    const { plugin } = fakePlugin({ status: 'ready', current: '0.4.33', latest: '0.4.34', waiting: 'tap' });
+    (plugin as Record<string, unknown>).download = vi.fn(async () => ({}));
+    render(<AppUpdatePill />);
+    render(<AppUpdateCard />);
+    await act(async () => {});
+    expect(screen.queryByTestId('app-update-pill')).toBeNull();
+    expect(screen.queryByTestId('app-update-card')).toBeNull();
+  });
+
   it('stays out of the way while up to date', async () => {
     fakePlugin({ status: 'up-to-date', current: '0.4.18' });
     render(<AppUpdatePill />);

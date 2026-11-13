@@ -35,6 +35,7 @@ describe('pickOffer', () => {
       kind: 'web',
       version: '0.7.43',
       canApply: true,
+      via: 'reload',
     });
   });
 
@@ -48,6 +49,7 @@ describe('pickOffer', () => {
       kind: 'shell',
       version: '0.4.28',
       canApply: true,
+      via: 'restart',
     });
   });
 
@@ -57,7 +59,17 @@ describe('pickOffer', () => {
       kind: 'shell',
       version: '0.4.27',
       canApply: false,
+      via: 'restart',
     });
+  });
+
+  it('on Android, offers the app first: installing it can always start from the page', () => {
+    expect(
+      pickOffer({ webLatest: '0.7.44', shellLatest: '0.4.34' }, { web: '0.7.43', shell: '0.4.33', platform: 'android' }),
+    ).toEqual({ kind: 'shell', version: '0.4.34', canApply: true, via: 'android' });
+    expect(
+      pickOffer({ webLatest: '0.7.44', shellLatest: null }, { web: '0.7.43', shell: '0.4.33', platform: 'android' }),
+    ).toEqual({ kind: 'web', version: '0.7.44', canApply: true, via: 'reload' });
   });
 
   it('never offers a desktop app in a browser', () => {

@@ -8,10 +8,12 @@ import { checkForAppUpdate, installAppUpdate, openInstallSettings, updateLine } 
 /** Settings' "App updates" card, next to the version stamp: the app's own
  *  version, where the updater is, and Check for updates (or Install, or the
  *  "Install unknown apps" switch, when that is what the update waits for).
- *  Only in the Android app with the updater; nothing elsewhere. */
+ *  Only in an Android app from before 0.4.34 (one that fetches updates by
+ *  itself); nothing elsewhere. */
 export function AppUpdateCard() {
-  const { available, state } = useAppUpdate();
-  if (!available) return null;
+  const { available, state, waitsForTap } = useAppUpdate();
+  // An app that waits for a tap has the Updates card (UpdatesCard) instead.
+  if (!available || waitsForTap) return null;
 
   const busy = state.status === 'checking' || state.status === 'downloading' || state.status === 'installing';
   const ready = state.status === 'ready';

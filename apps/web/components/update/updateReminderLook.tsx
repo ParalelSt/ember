@@ -44,4 +44,6 @@ export const REMINDER_WORDING = {
   /** A desktop app that cannot restart itself: its launch dialog installs
    *  the update at the next start. */
   reopen: 'Quit and reopen Ember to update',
+  /** The Android app could not download or install it; a tap tries again. */
+  failed: "Couldn't update",
 } as const;

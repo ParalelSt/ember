@@ -7,14 +7,17 @@ import { installAppUpdate, openInstallSettings, updatePill } from '@/lib/appUpda
 
 /** The Android app's update, in one small line floating under the top bar:
  *  "Downloading update 0.4.19 · 42%", "Update 0.4.19 ready · Tap to
- *  install", "Allow Ember to install updates". Shows only in the Android
- *  app, only while there is something to say, and can be put away until the
- *  state changes. Lives in the app shell, over every page. */
+ *  install", "Allow Ember to install updates". Shows only in an Android
+ *  app from before 0.4.34 (one that fetches updates by itself), only while
+ *  there is something to say, and can be put away until the state changes.
+ *  Lives in the app shell, over every page. */
 export function AppUpdatePill() {
-  const { available, state } = useAppUpdate();
+  const { available, state, waitsForTap } = useAppUpdate();
   // Put away for this state: a new state (the download finishing) shows again.
   const [dismissed, setDismissed] = useState<string | null>(null);
-  if (!available) return null;
+  // An app that waits for a tap has the update reminder instead
+  // (components/update/UpdateReminder).
+  if (!available || waitsForTap) return null;
   const pill = updatePill(state);
   if (!pill) return null;
   const key = `${state.status}:${state.waiting}:${state.latest}`;

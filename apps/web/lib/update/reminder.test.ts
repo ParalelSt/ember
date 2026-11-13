@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { QUIET_AFTER_PLAY_MS, offerKey, reminderDelay } from './reminder';
 import type { UpdateOffer } from './check';
 
-const offer: UpdateOffer = { kind: 'web', version: '0.7.44', canApply: true };
+const offer: UpdateOffer = { kind: 'web', version: '0.7.44', canApply: true, via: 'reload' };
 const NOW = 1_000_000;
 
 describe('reminderDelay', () => {

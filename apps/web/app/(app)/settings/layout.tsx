@@ -3,7 +3,7 @@ import { SettingsTabs } from '@/components/settings/SettingsTabs';
 import { PageTitle } from '@/components/page/PageTitle';
 import { BuildStamp } from '@/components/settings/BuildStamp';
 import { AppUpdateCard } from '@/components/settings/AppUpdateCard';
-import { DesktopUpdateCard } from '@/components/settings/DesktopUpdateCard';
+import { UpdatesCard } from '@/components/settings/UpdatesCard';
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
@@ -19,9 +19,10 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
       {/* The Android app's updater: its version, where the update is, and
           Check for updates. Renders nothing outside the Android app. */}
       <AppUpdateCard />
-      {/* The desktop app's Updates: versions, Check for updates, and Update
-          when there is one. Renders nothing outside the desktop app. */}
-      <DesktopUpdateCard />
+      {/* Updates in the desktop app and an Android app that waits for a
+          tap: versions, Check for updates, and Update when there is one.
+          Renders nothing in a browser. */}
+      <UpdatesCard />
       {/* Build stamp, NEXT_PUBLIC_APP_VERSION is inlined at build time
           (git SHA + build date, see next.config.ts). Inside the desktop or
           phone app, that app's own version follows it. */}

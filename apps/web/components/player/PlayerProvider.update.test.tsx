@@ -95,7 +95,7 @@ const web = () => engines.web[engines.web.length - 1] as FakeBackend;
 const at = () => usePlayerStore.getState().index;
 
 function waitingUpdate() {
-  useUpdateStore.getState().set({ status: 'available', offer: { kind: 'web', version: '0.7.44', canApply: true }, pending: true });
+  useUpdateStore.getState().set({ status: 'available', offer: { kind: 'web', version: '0.7.44', canApply: true, via: 'reload' }, pending: true });
 }
 
 function endSong(w: FakeBackend) {

@@ -8,7 +8,9 @@ import { nativePlatform } from '@/lib/playback/nativePlatform';
  *  iPhone app, or an Android app from before the updater: every function
  *  then does nothing and never throws. */
 
-export type AppUpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'downloading' | 'ready' | 'installing' | 'failed';
+/** 'available': a newer version is out and nothing is downloaded yet (from
+ *  Android 0.4.34 the app waits for a tap on the update reminder). */
+export type AppUpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'installing' | 'failed';
 /** What a ready update waits for: the car to go, a tap, or the "Install
  *  unknown apps" switch. Older apps also send 'playback' and 'idle' (they
  *  installed by themselves); those now read as a plain tap. */
@@ -40,7 +42,7 @@ export const IDLE_UPDATE_STATE: AppUpdateState = {
   silent: false,
 };
 
-const STATUSES: readonly AppUpdateStatus[] = ['idle', 'checking', 'up-to-date', 'downloading', 'ready', 'installing', 'failed'];
+const STATUSES: readonly AppUpdateStatus[] = ['idle', 'checking', 'up-to-date', 'available', 'downloading', 'ready', 'installing', 'failed'];
 const WAITS: readonly AppUpdateWaiting[] = ['car', 'playback', 'idle', 'tap', 'permission'];
 
 function str(v: unknown, max = 80): string | null {
@@ -71,6 +73,7 @@ interface EmberUpdatePlugin {
   getState?: () => Promise<unknown>;
   check?: () => Promise<unknown>;
   install?: () => Promise<unknown>;
+  download?: () => Promise<unknown>;
   openInstallSettings?: () => Promise<unknown>;
   addListener?: (event: 'updateState', cb: (s: unknown) => void) => Promise<Handle> | Handle;
 }
@@ -85,6 +88,13 @@ function plugin(): EmberUpdatePlugin | null {
 /** Only in the Android app, and only one with the updater in it. */
 export function appUpdateAvailable(): boolean {
   return plugin() !== null;
+}
+
+/** An Android app that downloads and installs only when the person taps the
+ *  update reminder (it has `download()`, from 0.4.34). Older ones fetch by
+ *  themselves and have their own pill (AppUpdatePill). */
+export function appUpdateWaitsForTap(): boolean {
+  return typeof plugin()?.download === 'function';
 }
 
 /** Follows the updater's state: the current one at once, then every change.
@@ -124,7 +134,7 @@ export function subscribeAppUpdate(cb: (s: AppUpdateState) => void): () => void 
   };
 }
 
-async function call(name: 'check' | 'install' | 'openInstallSettings'): Promise<boolean> {
+async function call(name: 'check' | 'install' | 'download' | 'openInstallSettings'): Promise<boolean> {
   const fn = plugin()?.[name];
   if (typeof fn !== 'function') return false;
   try {
@@ -137,6 +147,8 @@ async function call(name: 'check' | 'install' | 'openInstallSettings'): Promise<
 
 export const checkForAppUpdate = () => call('check');
 export const installAppUpdate = () => call('install');
+/** Fetch the update now, to install at the end of the song (tap flow). */
+export const downloadAppUpdate = () => call('download');
 export const openInstallSettings = () => call('openInstallSettings');
 
 export type UpdatePillAction = 'install' | 'settings' | null;
@@ -197,6 +209,8 @@ export function updateLine(s: AppUpdateState): string {
       return 'Checking for updates…';
     case 'up-to-date':
       return 'Ember is up to date';
+    case 'available':
+      return `Ember${v} is ready`;
     case 'downloading':
       return `Downloading update${v}${s.progress !== null ? ` (${Math.round(s.progress * 100)}%)` : ''}`;
     case 'installing':

@@ -14,7 +14,7 @@ type W = Window & { Capacitor?: unknown };
 const reload = vi.fn();
 
 function offer(version = '0.7.44', canApply = true) {
-  act(() => useUpdateStore.getState().set({ status: 'available', offer: { kind: 'web', version, canApply } }));
+  act(() => useUpdateStore.getState().set({ status: 'available', offer: { kind: 'web', version, canApply, via: canApply ? 'reload' : 'restart' } }));
 }
 
 beforeEach(() => {

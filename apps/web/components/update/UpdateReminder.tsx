@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { detectDevicePlatform } from '@/lib/versions/device';
-import { checkForUpdates, requestUpdate, watchPendingUpdate } from '@/lib/update/apply';
+import { appUpdateWaitsForTap, subscribeAppUpdate } from '@/lib/appUpdate';
+import { checkForUpdates, noteAppUpdateState, requestUpdate, watchPendingUpdate } from '@/lib/update/apply';
 import {
   CHECK_EVERY_MS,
   FIRST_CHECK_MS,
@@ -26,10 +27,11 @@ export function resetUpdateReminderForTests(): void {
   shown.clear();
 }
 
-/** Where the reminder runs: everywhere but the Android app, which has its own
- *  update pill in the same spot (components/update/AppUpdatePill). */
+/** Where the reminder runs: everywhere. An Android app from before 0.4.34
+ *  still has its own pill for its own updates (AppUpdatePill); the reminder
+ *  then only says when the web build is newer. */
 function reminderPlatform(): boolean {
-  return detectDevicePlatform() !== 'android';
+  return typeof window !== 'undefined';
 }
 
 /** A newer Ember, said briefly at the top: "[0.7.44] New version". It slides
@@ -66,7 +68,14 @@ export function UpdateReminder() {
     };
     document.addEventListener('visibilitychange', onVisible);
     const offPending = watchPendingUpdate();
+    // The Android app's own updater (one that waits for a tap): what it
+    // finds, downloads and installs.
+    const offApp =
+      detectDevicePlatform() === 'android' && appUpdateWaitsForTap()
+        ? subscribeAppUpdate((s) => void noteAppUpdateState(s))
+        : () => {};
     return () => {
+      offApp();
       clearTimeout(first);
       clearInterval(every);
       document.removeEventListener('visibilitychange', onVisible);
@@ -125,7 +134,9 @@ export function UpdateReminder() {
 
   const words = applying
     ? REMINDER_WORDING.applying
-    : applyFailed || !offer.canApply
+    : applyFailed && offer.via === 'android'
+      ? REMINDER_WORDING.failed
+      : applyFailed || !offer.canApply
       ? REMINDER_WORDING.reopen
       : pending
         ? typeof navigator !== 'undefined' && navigator.onLine === false
@@ -134,7 +145,7 @@ export function UpdateReminder() {
         : REMINDER_WORDING.ready;
 
   const tap = () => {
-    if (!offer.canApply || applyFailed) {
+    if (!offer.canApply || (applyFailed && offer.via !== 'android')) {
       show();
       return;
     }

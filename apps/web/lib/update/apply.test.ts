@@ -3,16 +3,20 @@ import {
   PAUSED_GRACE_MS,
   RESUME_FRESH_MS,
   checkForUpdates,
+  noteAppUpdateState,
   performUpdate,
   requestUpdate,
   resetUpdateForTests,
   setApplyDepsForTests,
   setPlaybackElsewhereProbe,
+  setUpdatePause,
   takeUpdateResume,
   updateAtSongEnd,
   watchPendingUpdate,
 } from './apply';
 import { resetDeviceInfoForTests } from '@/lib/versions/device';
+import { IDLE_UPDATE_STATE } from '@/lib/appUpdate';
+import { makeTrack } from '@/test-utils/fakeBackend';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { INITIAL_UPDATE_STATE, useUpdateStore } from '@/stores/useUpdateStore';
 
@@ -22,9 +26,12 @@ import { INITIAL_UPDATE_STATE, useUpdateStore } from '@/stores/useUpdateStore';
 
 const reload = vi.fn();
 const restartShell = vi.fn(async () => true);
+const installAndroid = vi.fn(async () => true);
+const downloadAndroid = vi.fn(async () => true);
+const openSettings = vi.fn(async () => true);
 
 function offer(kind: 'web' | 'shell' = 'web', canApply = true) {
-  useUpdateStore.getState().set({ status: 'available', offer: { kind, version: kind === 'web' ? '0.7.44' : '0.4.27', canApply } });
+  useUpdateStore.getState().set({ status: 'available', offer: { kind, version: kind === 'web' ? '0.7.44' : '0.4.27', canApply, via: kind === 'web' ? 'reload' : 'restart' } });
 }
 
 function playing(on: boolean) {
@@ -38,8 +45,11 @@ function setOnline(on: boolean) {
 beforeEach(() => {
   resetUpdateForTests();
   useUpdateStore.setState({ ...INITIAL_UPDATE_STATE });
-  setApplyDepsForTests({ reload, restartShell });
+  setApplyDepsForTests({ reload, restartShell, installAndroid, downloadAndroid, openInstallSettings: openSettings });
   reload.mockClear();
+  installAndroid.mockClear();
+  downloadAndroid.mockClear();
+  openSettings.mockClear();
   restartShell.mockClear();
   restartShell.mockImplementation(async () => true);
   playing(false);
@@ -187,7 +197,7 @@ describe('checkForUpdates', () => {
       await checkForUpdates(f as unknown as typeof fetch);
       const s = useUpdateStore.getState();
       expect(s.status).toBe('available');
-      expect(s.offer).toEqual({ kind: 'web', version: '0.7.43', canApply: true });
+      expect(s.offer).toEqual({ kind: 'web', version: '0.7.43', canApply: true, via: 'reload' });
       expect(s.checkedAt).toBeGreaterThan(0);
     } finally {
       process.env.NEXT_PUBLIC_APP_VERSION = running;
@@ -200,5 +210,79 @@ describe('checkForUpdates', () => {
     await checkForUpdates(f as unknown as typeof fetch);
     expect(useUpdateStore.getState().status).toBe('failed');
     expect(useUpdateStore.getState().offer?.version).toBe('0.7.44');
+  });
+});
+
+type W = Window & { Capacitor?: unknown };
+
+describe('the Android app (0.4.34 on: it waits for a tap)', () => {
+  const A = makeTrack({ id: 'youtube:a' });
+  const B = makeTrack({ id: 'youtube:b' });
+
+  beforeEach(() => {
+    resetDeviceInfoForTests();
+    (window as W).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'android',
+      Plugins: { EmberUpdate: { getState: vi.fn(async () => ({})), download: vi.fn(), check: vi.fn(async () => ({})) } },
+    };
+    usePlayerStore.setState({ queue: [A, B], index: 0 });
+  });
+  afterEach(() => {
+    delete (window as W).Capacitor;
+  });
+
+  function androidOffer() {
+    useUpdateStore.getState().set({ status: 'available', offer: { kind: 'shell', version: '0.4.34', canApply: true, via: 'android' } });
+  }
+
+  it('a newer app found by the app becomes the offer', async () => {
+    await noteAppUpdateState({ ...IDLE_UPDATE_STATE, status: 'available', current: '0.4.33', latest: '0.4.34' });
+    expect(useUpdateStore.getState().offer).toEqual({ kind: 'shell', version: '0.4.34', canApply: true, via: 'android' });
+    await noteAppUpdateState({ ...IDLE_UPDATE_STATE, status: 'up-to-date', current: '0.4.34', latest: '0.4.34' });
+    expect(useUpdateStore.getState().offer).toBeNull();
+  });
+
+  it('a tap with nothing playing installs at once (the app downloads first)', () => {
+    androidOffer();
+    expect(requestUpdate()).toBe('now');
+    return vi.waitFor(() => expect(installAndroid).toHaveBeenCalledTimes(1));
+  });
+
+  it('a tap while a song plays downloads now and installs nothing, even though the app plays it', () => {
+    androidOffer();
+    playing(true);
+    // The Android app plays the music itself: a web reload would go ahead,
+    // an app install must not.
+    setPlaybackElsewhereProbe(() => true);
+    expect(requestUpdate()).toBe('after-song');
+    expect(downloadAndroid).toHaveBeenCalledTimes(1);
+    expect(installAndroid).not.toHaveBeenCalled();
+  });
+
+  it('the next song showing up is the gap: it is paused, the install starts, and that song is noted', async () => {
+    const pause = vi.fn();
+    setUpdatePause(pause);
+    androidOffer();
+    playing(true);
+    const stop = watchPendingUpdate();
+    requestUpdate();
+    usePlayerStore.setState({ index: 1 });
+    await vi.waitFor(() => expect(installAndroid).toHaveBeenCalledTimes(1));
+    expect(pause).toHaveBeenCalled();
+    expect(takeUpdateResume([A, B])).toEqual({ index: 1, trackId: B.id });
+    stop();
+  });
+
+  it('with "Install unknown apps" off, its settings open once, and back with it on the install goes ahead', async () => {
+    androidOffer();
+    requestUpdate();
+    await vi.waitFor(() => expect(installAndroid).toHaveBeenCalledTimes(1));
+    const waiting = { ...IDLE_UPDATE_STATE, status: 'ready' as const, current: '0.4.33', latest: '0.4.34' };
+    await noteAppUpdateState({ ...waiting, waiting: 'permission' });
+    await noteAppUpdateState({ ...waiting, waiting: 'permission' });
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    await noteAppUpdateState({ ...waiting, waiting: 'tap' });
+    expect(installAndroid).toHaveBeenCalledTimes(2);
   });
 });

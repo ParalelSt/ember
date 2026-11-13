@@ -1,7 +1,15 @@
+import {
+  appUpdateWaitsForTap,
+  checkForAppUpdate,
+  downloadAppUpdate,
+  installAppUpdate,
+  openInstallSettings,
+  type AppUpdateState,
+} from '@/lib/appUpdate';
 import { loadDeviceInfo } from '@/lib/versions/device';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useUpdateStore } from '@/stores/useUpdateStore';
-import { findUpdates, pickOffer } from './check';
+import { findUpdates, pickOffer, type UpdateOffer } from './check';
 
 /** Checking for, and bringing in, a newer Ember (lib/update/check.ts says
  *  what is newer). Nothing here ever interrupts a song:
@@ -16,8 +24,15 @@ import { findUpdates, pickOffer } from './check';
  *   - Paused while waiting: nothing is playing any more, so it goes ahead.
  *   - Offline: it waits; a reload with no host would leave a blank page.
  *   - The music plays somewhere else (the Android app's own player, another
- *     device this one controls): the page reloading cannot stop it, so it
- *     goes ahead at once. */
+ *     device this one controls): the page reloading cannot stop it, so a
+ *     web build goes in at once.
+ *   - The Android app itself (from 0.4.34 it waits for this tap): installing
+ *     replaces the app and stops its player, so it waits for the song like
+ *     anything else. The page never sees that song end (the app's own
+ *     player moves on by itself), so the next song showing up is the
+ *     moment: it is paused at once and the install starts, and that song
+ *     starts again once the new app is open. The download starts at the
+ *     tap, so the gap stays short. */
 
 const RESUME_KEY = 'ember.update.resume';
 /** A resume note older than this is from some other day: ignored. A desktop
@@ -33,6 +48,11 @@ export interface ResumeTarget {
 }
 
 let elsewhere: () => boolean = () => false;
+let pauseForUpdate: () => void = () => {};
+/** The player's pause, for the Android app's install between songs. */
+export function setUpdatePause(fn: (() => void) | null): void {
+  pauseForUpdate = fn ?? (() => {});
+}
 /** The player says whether the music is played by something the page's
  *  reload cannot stop. */
 export function setPlaybackElsewhereProbe(fn: (() => boolean) | null): void {
@@ -46,6 +66,9 @@ function online(): boolean {
 export interface ApplyDeps {
   reload: () => void;
   restartShell: () => Promise<boolean>;
+  installAndroid: () => Promise<boolean>;
+  downloadAndroid: () => Promise<boolean>;
+  openInstallSettings: () => Promise<boolean>;
 }
 
 async function restartShellViaTauri(): Promise<boolean> {
@@ -61,6 +84,9 @@ async function restartShellViaTauri(): Promise<boolean> {
 const defaultDeps: ApplyDeps = {
   reload: () => window.location.reload(),
   restartShell: restartShellViaTauri,
+  installAndroid: installAppUpdate,
+  downloadAndroid: downloadAppUpdate,
+  openInstallSettings,
 };
 let deps: ApplyDeps = defaultDeps;
 /** Test seam: what "reload" and "restart" do. */
@@ -115,7 +141,15 @@ export async function performUpdate(resume: ResumeTarget | null = null, now: num
   if (!offer?.canApply) return false;
   if (resume) writeResume(resume, now);
   store.set({ pending: false, applying: true, applyFailed: false });
-  if (offer.kind === 'shell') {
+  if (offer.via === 'android') {
+    // Downloads first when the tap's download has not finished; the app
+    // then installs it and Android replaces it.
+    if (await deps.installAndroid()) return true;
+    clearResume();
+    useUpdateStore.getState().set({ applying: false, applyFailed: true });
+    return false;
+  }
+  if (offer.via === 'restart') {
     if (await deps.restartShell()) return true;
     clearResume();
     useUpdateStore.getState().set({ applying: false, applyFailed: true });
@@ -135,11 +169,14 @@ export function requestUpdate(): UpdateRequest {
     store.set({ pending: true });
     return 'waiting-online';
   }
-  if (!usePlayerStore.getState().isPlaying || elsewhere()) {
+  const offer = store.offer;
+  if (!usePlayerStore.getState().isPlaying || (offer.via === 'reload' && elsewhere())) {
     void performUpdate(null);
     return 'now';
   }
   store.set({ pending: true });
+  // Fetched now, installed at the end of the song.
+  if (offer.via === 'android') void deps.downloadAndroid();
   return 'after-song';
 }
 
@@ -162,17 +199,34 @@ export function watchPendingUpdate(): () => void {
     timer = undefined;
     const { pending, applying } = useUpdateStore.getState();
     if (!pending || applying) return;
-    if (usePlayerStore.getState().isPlaying && !elsewhere()) return;
+    const goesNow = () => {
+      const o = useUpdateStore.getState().offer;
+      return !usePlayerStore.getState().isPlaying || (o?.via === 'reload' && elsewhere());
+    };
+    if (!goesNow()) return;
     timer = setTimeout(() => {
       const s = useUpdateStore.getState();
       if (!s.pending || s.applying || !online()) return;
-      if (usePlayerStore.getState().isPlaying && !elsewhere()) return;
+      if (!goesNow()) return;
       void performUpdate(null);
     }, PAUSED_GRACE_MS);
   };
   const offPlayer = usePlayerStore.subscribe((s, prev) => {
     if (s.isPlaying !== prev.isPlaying) evaluate();
+    // A song the page does not see end (the Android app's own player, a
+    // device this one controls): the next one showing up is the gap.
+    const now = s.queue[s.index];
+    const before = prev.queue[prev.index];
+    if (now && before && now.id !== before.id && s.isPlaying) songChanged({ index: s.index, trackId: now.id });
   });
+  const songChanged = (next: ResumeTarget) => {
+    const { pending, applying, offer } = useUpdateStore.getState();
+    if (!pending || applying || !offer?.canApply || !online()) return;
+    if (offer.via === 'android' || elsewhere()) {
+      pauseForUpdate();
+      void performUpdate(next);
+    }
+  };
   const offUpdate = useUpdateStore.subscribe((s, prev) => {
     if (s.pending !== prev.pending) evaluate();
   });
@@ -197,14 +251,21 @@ export function checkForUpdates(fetchImpl?: typeof fetch): Promise<void> {
     store.set({ status: 'checking' });
     try {
       const info = await loadDeviceInfo();
+      const android = info.platform === 'android' && appUpdateWaitsForTap();
+      // The Android app asks its own feed; its answer arrives as a state
+      // (noteAppUpdateState), the one before it is kept here.
+      if (android) void checkForAppUpdate();
       const found = await findUpdates({ platform: info.platform, shell: info.shellVersion }, fetchImpl);
-      const offer = pickOffer(found, { web: info.webVersion, shell: info.shellVersion });
+      if (android) found.shellLatest = useUpdateStore.getState().shellLatest;
+      const offer = pickOffer(found, { web: info.webVersion, shell: info.shellVersion, platform: info.platform });
       const prev = useUpdateStore.getState().offer;
       const same = !!prev && !!offer && prev.kind === offer.kind && prev.version === offer.version;
       useUpdateStore.getState().set({
         status: found.failed ? 'failed' : offer ? 'available' : 'up-to-date',
         // A failed check keeps what an earlier one found.
-        ...(found.failed ? {} : { offer, webLatest: found.webLatest, shellLatest: found.shellLatest }),
+        ...(found.failed
+          ? {}
+          : { offer: sameOffer(prev, offer) ? prev : offer, webLatest: found.webLatest, shellLatest: found.shellLatest }),
         // A different update than the one waiting: the wait was for that one.
         ...(!found.failed && !same ? { pending: false } : {}),
         checkedAt: Date.now(),
@@ -218,10 +279,56 @@ export function checkForUpdates(fetchImpl?: typeof fetch): Promise<void> {
   return checking;
 }
 
+let askedPermission = false;
+
+const ANDROID_HAS_UPDATE: readonly AppUpdateState['status'][] = ['available', 'downloading', 'ready', 'installing'];
+
+/** The Android app's updater moved (a check found a newer app, a download
+ *  ran): the reminder and Settings follow it. Only for an app that waits
+ *  for a tap; older ones have their own pill. */
+export async function noteAppUpdateState(state: AppUpdateState): Promise<void> {
+  const store = useUpdateStore.getState();
+  const shellLatest = ANDROID_HAS_UPDATE.includes(state.status) && state.latest
+    ? state.latest
+    : state.status === 'up-to-date'
+      ? null
+      : store.shellLatest;
+  const info = await loadDeviceInfo();
+  const offer = pickOffer(
+    { webLatest: store.webLatest, shellLatest },
+    { web: info.webVersion, shell: state.current ?? info.shellVersion, platform: info.platform },
+  );
+  // Android's "Install unknown apps" is off for Ember: the tap's install
+  // waits on it. Its settings open once; back from them with it on, the
+  // install goes ahead.
+  const now = useUpdateStore.getState();
+  if (now.applying && state.status === 'ready' && state.waiting === 'permission' && !askedPermission) {
+    askedPermission = true;
+    void deps.openInstallSettings();
+  } else if (askedPermission && state.status === 'ready' && state.waiting === 'tap') {
+    askedPermission = false;
+    void deps.installAndroid();
+  }
+  const prev = now.offer;
+  useUpdateStore.getState().set({
+    shellLatest,
+    offer: sameOffer(prev, offer) ? prev : offer,
+    ...(offer ? { status: 'available' } : {}),
+    // The app could not install it (refused, failed): say so, try again on a tap.
+    ...(state.status === 'failed' && useUpdateStore.getState().applying ? { applying: false, applyFailed: true } : {}),
+  });
+}
+
+function sameOffer(a: UpdateOffer | null, b: UpdateOffer | null): boolean {
+  return !!a && !!b && a.kind === b.kind && a.version === b.version && a.via === b.via && a.canApply === b.canApply;
+}
+
 /** Test seam. */
 export function resetUpdateForTests(): void {
   checking = null;
   elsewhere = () => false;
+  pauseForUpdate = () => {};
+  askedPermission = false;
   deps = defaultDeps;
   clearResume();
 }

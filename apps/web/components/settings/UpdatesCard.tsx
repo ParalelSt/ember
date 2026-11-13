@@ -3,17 +3,19 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { RefreshIcon } from '@/components/icons';
+import { appUpdateWaitsForTap } from '@/lib/appUpdate';
 import { checkForUpdates, requestUpdate } from '@/lib/update/apply';
 import { isDesktopPlatform } from '@/lib/update/check';
 import { loadDeviceInfo, type DeviceInfo } from '@/lib/versions/device';
 import { platformName } from '@/lib/versions/label';
 import { useUpdateStore, type UpdateState } from '@/stores/useUpdateStore';
 
-/** Settings' one line about updates on the desktop app. */
-export function desktopUpdateLine(s: Pick<UpdateState, 'status' | 'offer' | 'pending' | 'applying' | 'applyFailed'>): string {
+/** Settings' one line about updates. */
+export function updatesLine(s: Pick<UpdateState, 'status' | 'offer' | 'pending' | 'applying' | 'applyFailed'>): string {
   const v = s.offer ? ` ${s.offer.version}` : '';
   if (s.applying) return `Updating to Ember${v}`;
   if (s.status === 'checking') return 'Checking for updates…';
+  if (s.offer && s.applyFailed && s.offer.via === 'android') return `Ember${v} is ready. Couldn't update, try again`;
   if (s.offer && (s.applyFailed || !s.offer.canApply)) return `Ember${v} is ready. Quit and reopen Ember to install it`;
   if (s.offer && s.pending) return `Ember${v} is ready. Updating after this song`;
   if (s.offer) return `Ember${v} is ready`;
@@ -22,13 +24,18 @@ export function desktopUpdateLine(s: Pick<UpdateState, 'status' | 'offer' | 'pen
   return 'Ember checks for updates by itself';
 }
 
-/** Settings' "Updates" card in the desktop app: the app's and the web
- *  build's versions, where updates are, a quiet Check for updates, and
- *  Update when there is one. The same update the reminder at the top offers
- *  (components/update/UpdateReminder), so a tap here also waits for the song
- *  playing to end. Nothing outside the desktop app (the Android app has
- *  AppUpdateCard). */
-export function DesktopUpdateCard() {
+/** Where the card shows: the desktop app, and an Android app that waits for
+ *  a tap to update (from 0.4.34; older ones keep AppUpdateCard). */
+function cardPlatform(info: DeviceInfo): boolean {
+  return isDesktopPlatform(info.platform) || (info.platform === 'android' && appUpdateWaitsForTap());
+}
+
+/** Settings' "Updates" card in the desktop and Android apps: the app's and
+ *  the web build's versions, where updates are, a quiet Check for updates,
+ *  and Update when there is one. The same update the reminder at the top
+ *  offers (components/update/UpdateReminder), so a tap here also waits for
+ *  the song playing to end. */
+export function UpdatesCard() {
   const [info, setInfo] = useState<DeviceInfo | null>(null);
   const state = useUpdateStore();
 
@@ -38,17 +45,18 @@ export function DesktopUpdateCard() {
       if (!live) return;
       setInfo(i);
       // Opening Settings before the first check has run: ask now.
-      if (isDesktopPlatform(i.platform) && useUpdateStore.getState().checkedAt === 0) void checkForUpdates();
+      if (cardPlatform(i) && useUpdateStore.getState().checkedAt === 0) void checkForUpdates();
     });
     return () => {
       live = false;
     };
   }, []);
 
-  if (!info || !isDesktopPlatform(info.platform)) return null;
+  if (!info || !cardPlatform(info)) return null;
 
   const busy = state.status === 'checking' || state.applying;
-  const canUpdate = !!state.offer?.canApply && !state.applyFailed && !state.pending && !state.applying;
+  const canUpdate =
+    !!state.offer?.canApply && (!state.applyFailed || state.offer.via === 'android') && !state.pending && !state.applying;
   const versions = [
     info.shellVersion ? `${platformName(info.platform)} ${info.shellVersion}` : null,
     info.webVersion ? `web ${info.webVersion}` : null,
@@ -57,11 +65,11 @@ export function DesktopUpdateCard() {
     .join(', ');
 
   return (
-    <div data-testid="desktop-update-card" className="mt-section max-w-2xl rounded-2xl bg-card p-stack shadow-soft">
+    <div data-testid="updates-card" className="mt-section max-w-2xl rounded-2xl bg-card p-stack shadow-soft">
       <div className="font-semibold">Updates</div>
       <p className="mt-inset text-sm text-muted-foreground">
         {versions ? `${versions}. ` : null}
-        <span data-testid="desktop-update-line">{desktopUpdateLine(state)}</span>
+        <span data-testid="updates-line">{updatesLine(state)}</span>
       </p>
       <div className="mt-block flex flex-wrap gap-cluster">
         {canUpdate && (
