@@ -120,7 +120,7 @@ function renderWith(ui: React.ReactElement) {
 // page and the overlay without relying on a11y roles that don't exist here.
 function resultTitles(container: HTMLElement): (string | null)[] {
   return Array.from(container.querySelectorAll('[data-testid="track-row-title"]')).map(
-    (el) => el.textContent,
+    (el) => el.querySelector('[data-testid="marquee-track"]')?.textContent ?? el.textContent,
   );
 }
 
@@ -137,7 +137,7 @@ describe('search page vs. search overlay parity', () => {
     fireEvent.change(page.getByPlaceholderText('What do you want to listen to?'), {
       target: { value: 'runner' },
     });
-    expect(await page.findByText('Second Wind')).toBeInTheDocument();
+    expect((await page.findAllByText('Second Wind'))[0]).toBeInTheDocument();
     const pageTitles = resultTitles(page.container);
     page.unmount();
 
@@ -145,7 +145,7 @@ describe('search page vs. search overlay parity', () => {
     fireEvent.change(screen.getByPlaceholderText('What do you want to listen to?'), {
       target: { value: 'runner' },
     });
-    expect(await overlay.findByText('Second Wind')).toBeInTheDocument();
+    expect((await overlay.findAllByText('Second Wind'))[0]).toBeInTheDocument();
     const overlayTitles = resultTitles(overlay.container);
 
     expect(overlayTitles).toEqual(pageTitles);

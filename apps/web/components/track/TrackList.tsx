@@ -136,6 +136,8 @@ export function TrackList({
           selected={selection?.selecting ? selection.isSelected(t.id) : false}
           addedLabel={selection?.selecting ? addedLabel?.(t) : undefined}
           addedBy={addedBy?.(t)}
+          // Long names scroll on every screen; ones that fit stay still.
+          marqueeTitle
         />
         );
       })}

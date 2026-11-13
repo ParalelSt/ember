@@ -140,3 +140,11 @@ describe('Song page', () => {
     expect(backRouteFor('/track/a1')).toEqual({ fallbackHref: '/', phone: true });
   });
 });
+
+describe('TrackPageClient title', () => {
+  it('scrolls the song title in the header when it does not fit', () => {
+    render(<TrackPageClient videoId="a1" />);
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1.querySelector('[data-testid="marquee"]')).not.toBeNull();
+  });
+});

@@ -60,6 +60,7 @@ function TrackView({ videoId }: { videoId: string }) {
     <div className="flex flex-col gap-stack">
       <CollectionHeader
         eyebrow="Song"
+        marqueeTitle
         title={track.title}
         meta={meta}
         cover={{ src: track.artworkUrl ?? null, icon: null, fallback: 'card' }}

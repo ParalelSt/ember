@@ -59,7 +59,7 @@ describe('/chart/[slug]', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Rock');
     expect(screen.getByText('Chart')).toBeInTheDocument();
     expect(screen.getByTestId('collection-meta').textContent).toBe('5 songs · Updated daily');
-    expect(screen.getByText('Rock song 1')).toBeInTheDocument();
+    expect(screen.getAllByText('Rock song 1')[0]).toBeInTheDocument();
     expect(state.playbackFor).toEqual({ type: 'chart', chartSlug: 'rock', chartTitle: 'Rock' });
     // The hero is a mosaic of the top four covers.
     expect(document.querySelectorAll('[data-mosaic] img')).toHaveLength(4);

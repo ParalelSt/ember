@@ -47,6 +47,7 @@ export default function SearchPage() {
             key={t.id}
             track={t}
             density="compact"
+            marqueeTitle
             // Same player as the results below, as in the overlay: the row
             // of the song playing now pauses it rather than starting over.
             active={trackActions.currentId === t.id}

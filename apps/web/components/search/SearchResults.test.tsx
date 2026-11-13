@@ -67,6 +67,12 @@ describe('SearchResults: click targets', () => {
     expect(onPlay).toHaveBeenCalledWith(props.view.tracks[0], props.view.tracks, { type: 'search', query: 'x' });
   });
 
+  it('desktop: a title too long for its column scrolls inside the song link', () => {
+    renderResults();
+    const link = within(rows()[0]).getByTestId('track-row-title-link');
+    expect(link.querySelector('[data-testid="marquee"]')).not.toBeNull();
+  });
+
   it('phone: only the cover opens the song page; the title plays and scrolls when long', () => {
     const { onPlay } = renderResults(undefined, 'phone');
     const first = rows()[0];

@@ -26,6 +26,18 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'long-names-scroll-auto-update',
+    version: '0.7.43',
+    date: '2026-11-13',
+    title: 'Long names scroll everywhere',
+    summary: 'Song names too long to fit now scroll in recent searches, playlists, the artist page and the song page, on phones and desktop.',
+    bullets: [
+      'Long song names scroll in recent searches, playlists, liked songs, albums and the artist page',
+      'The song page shows its title on one scrolling line',
+      'Desktop search scrolls names that do not fit; names that fit stay still',
+    ],
+  },
+  {
     id: 'song-page-artist-link',
     version: '0.7.42',
     date: '2026-11-10',

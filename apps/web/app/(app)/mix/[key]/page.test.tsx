@@ -52,7 +52,7 @@ describe('/mix/[key]', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Rock & Metal Mix');
     expect(screen.getByTestId('mix-built').textContent).toBe('Built today from Gojira, Tool, Metallica');
     expect(screen.getByTestId('collection-meta').textContent).toBe('3 songs · Rebuilt every night');
-    expect(screen.getByText('Gojira a1')).toBeInTheDocument();
+    expect(screen.getAllByText('Gojira a1')[0]).toBeInTheDocument();
     expect(state.playbackFor).toEqual({ type: 'mix', mixKey: 'rock-metal', mixTitle: 'Rock & Metal Mix' });
   });
 

@@ -320,6 +320,38 @@ build before restarting:
 signals the watchdog, which stops both services, and the unit gives it 35 s
 to do so.
 
+### Automatic updates (optional)
+
+Ember can update itself: every 5 minutes (and 2 minutes after the machine boots)
+it checks GitHub, and when `main` has new commits it runs `./update.sh` for you.
+Needs Ember to run under systemd (see above) or tmux, so it can be started again
+afterwards. No sudo, except maybe once to let it run while you are logged out.
+
+```bash
+./install-auto-update.sh          # turn on (safe to run again)
+./install-auto-update.sh --off    # turn off
+```
+
+The installer also switches the git `origin` to the public HTTPS address if it
+was an SSH or password one (it prints what it changed), then checks that GitHub
+can be reached.
+
+```bash
+journalctl --user -u ember-auto-update          # what it did
+systemctl --user list-timers ember-auto-update  # when the next check is
+cat logs/auto-update.log                        # the last run
+```
+
+Each update restarts Ember, and Ember is down while it installs and builds:
+expect a few minutes without service, and playback interrupted.
+It never runs together with a manual `./update.sh`: the second one waits or says so.
+
+It will not update when you edited a tracked file or committed on the host, and
+says so instead. Only `package-lock.json` (which npm rewrites) is put back by
+itself. When an update is refused or fails, it posts the reason and the end of
+the output to the crash-report Discord channel, once, not every 5 minutes. To fix
+a refusal, undo the edit (`git checkout -- <file>`); the next check picks it up.
+
 ---
 
 ## Project-owner-only setup

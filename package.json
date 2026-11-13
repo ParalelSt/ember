@@ -106,6 +106,7 @@
     "test:start-static-env": "node tests/start-static-env.test.mjs",
     "test:start-static-fresh-pb": "node tests/start-static-fresh-pb.test.mjs",
     "test:update-script": "bash tests/update-script.test.sh",
+    "test:auto-update": "bash tests/auto-update.test.sh",
     "test:crash-report": "node tests/crash-report.test.mjs",
     "test:import": "node tests/import.test.mjs",
     "test:import-ui": "node tests/import-ui.test.mjs",
