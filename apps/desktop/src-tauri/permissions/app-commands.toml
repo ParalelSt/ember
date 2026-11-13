@@ -64,6 +64,9 @@ allow = [
   "gate_update_now",
   "gate_quit",
   "update_gate_events",
+  # The page's update tap (apps/web/lib/update/apply.ts): restart, so the
+  # launch dialog installs the update (src/update.rs).
+  "update_restart",
   # Links out of the app (the tab page's "Find one", any new-tab link) open
   # in the system browser: the webview itself drops them (src/external.rs).
   "open_external",

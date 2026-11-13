@@ -172,6 +172,17 @@ pub async fn check_on_startup(app: AppHandle, log_path: Option<PathBuf>) {
     }
 }
 
+/// The page's "update" tap (apps/web/lib/update/apply.ts), sent only between
+/// songs or with nothing playing: Ember starts again, and the launch dialog
+/// installs the update this module kept (or downloads it first). Nothing
+/// here installs: the launch dialog stays the one place that does.
+#[tauri::command]
+pub fn update_restart(app: AppHandle) {
+    let log = app.try_state::<applog::LogFile>().and_then(|f| f.0.lock().ok().and_then(|p| p.clone()));
+    applog::write_line(log.as_ref(), "INFO", "restarting for an update, asked by the page");
+    app.restart();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,6 +236,16 @@ mod tests {
         let body = &src[src.find("pub async fn check_on_startup").unwrap()..src.find("#[cfg(test)]").unwrap()];
         assert!(body.contains(".timeout(crate::gate::FEED_TIMEOUT)"), "the check needs a timeout");
         assert!(body.contains("download_unless_stalled(crate::gate::DOWNLOAD_STALL"), "the download needs a stall guard");
+    }
+
+    /// The page's restart only restarts: installing stays with the launch
+    /// dialog, which has the countdown and "Not now".
+    #[test]
+    fn the_page_restart_never_installs() {
+        let src = include_str!("update.rs");
+        let body = &src[src.find("pub fn update_restart").unwrap()..src.find("#[cfg(test)]").unwrap()];
+        assert!(body.contains("app.restart()"));
+        assert!(!body.contains(".install("), "update_restart must leave installing to the launch dialog");
     }
 
     #[test]

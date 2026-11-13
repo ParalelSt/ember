@@ -231,6 +231,7 @@ pub fn run() {
             gate::gate_update_now,
             gate::gate_quit,
             gate::update_gate_events,
+            update::update_restart,
             external::open_external,
         ])
         .build(app_context())
@@ -554,6 +555,14 @@ mod launch_order_tests {
             assert!(LIB.contains(&format!("gate::{cmd}")), "{cmd} not registered");
             assert!(allowed.contains(&format!("\"{cmd}\"")), "{cmd} not allowed");
         }
+    }
+    /// The page's update tap restarts the app (apps/web/lib/update/apply.ts
+    /// calls it from shell 0.4.27 on, SHELL_RESTART_SINCE).
+    #[test]
+    fn the_update_restart_command_is_registered_and_allowed() {
+        let allowed = include_str!("../permissions/app-commands.toml");
+        assert!(LIB.contains("update::update_restart"));
+        assert!(allowed.contains("\"update_restart\""));
     }
 }
 
