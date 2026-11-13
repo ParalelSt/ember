@@ -32,9 +32,9 @@ const FACES: Record<MixKind, readonly string[]> = {
     'right-[8%] top-[30%] size-[36%] rounded-full',
   ],
   artist: [
-    'left-1/2 top-[8%] size-[52%] -translate-x-1/2 rounded-full',
-    'left-[14%] top-[40%] z-10 size-[22%] rounded-full',
-    'right-[14%] top-[40%] z-10 size-[22%] rounded-full',
+    'left-1/2 top-[13%] size-[48%] -translate-x-1/2 rounded-full',
+    'left-[15%] top-[42%] z-10 size-[20%] rounded-full',
+    'right-[15%] top-[42%] z-10 size-[20%] rounded-full',
   ],
   discover: [
     'left-1/2 top-[18%] z-10 size-[44%] -translate-x-1/2 rounded-[6px]',
@@ -42,9 +42,9 @@ const FACES: Record<MixKind, readonly string[]> = {
     'right-[9%] top-[26%] size-[36%] rotate-6 rounded-[6px]',
   ],
   'on-repeat': [
-    'left-[42%] top-[20%] z-20 size-[38%] rounded-[6px]',
-    'left-[30%] top-[14%] z-10 size-[38%] rounded-[6px]',
-    'left-[18%] top-[8%] size-[38%] rounded-[6px]',
+    'left-[38%] top-[25%] z-20 size-[36%] rounded-[6px]',
+    'left-[26%] top-[19%] z-10 size-[36%] rounded-[6px]',
+    'left-[14%] top-[13%] size-[36%] rounded-[6px]',
   ],
   throwback: [
     'left-1/2 top-[22%] z-10 size-[46%] -translate-x-1/2 rounded-full sepia',
@@ -64,10 +64,12 @@ export function MixCard({ title, subtitle, href, artworkUrls, color, ink, kind =
   return (
     <Link href={href} aria-label={fullTitleOf(kind, title)} data-mix-card data-mix-kind={kind} className="group block min-w-0">
       <div
-        className="relative aspect-square overflow-hidden rounded-[8px] transition-transform group-active:scale-[0.98]"
+        // isolate: the covers' z-index stays inside the card (never above
+        // the page's sticky header).
+        className="relative isolate aspect-square overflow-hidden rounded-[8px] transition-transform group-active:scale-[0.98]"
         style={{ backgroundColor: color, color: ink }}
       >
-        <span data-mix-label className="absolute top-row right-row text-[10px] font-bold tracking-[0.12em] opacity-80">{KIND_LABEL[kind] ?? KIND_LABEL.style}</span>
+        <span data-mix-label className="absolute top-row right-row z-30 text-[10px] font-bold tracking-[0.12em] opacity-80">{KIND_LABEL[kind] ?? KIND_LABEL.style}</span>
         {faces.map((url, i) => (
           // eslint-disable-next-line @next/next/no-img-element
           <img

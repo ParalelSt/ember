@@ -35,6 +35,8 @@ describe('MixCard', () => {
     expect(screen.getByText(props.subtitle)).toBeInTheDocument();
     const card = link.firstElementChild as HTMLElement;
     expect(card.style.backgroundColor).toBeTruthy();
+    // Its own stacking context: covers never draw over the sticky header.
+    expect(card.className).toContain('isolate');
   });
 
   it('draws only the faces it has', () => {
@@ -64,8 +66,8 @@ describe('MixCard', () => {
       return cls;
     };
     expect(faces('style').every((c) => c.includes('rounded-full'))).toBe(true);
-    expect(faces('artist')[0]).toContain('size-[52%]');
-    expect(faces('artist')[1]).toContain('size-[22%]');
+    expect(faces('artist')[0]).toContain('size-[48%]');
+    expect(faces('artist')[1]).toContain('size-[20%]');
     expect(faces('discover').every((c) => c.includes('rounded-[6px]'))).toBe(true);
     expect(faces('discover')[1]).toContain('-rotate-6');
     expect(faces('on-repeat')[0]).toContain('z-20');
