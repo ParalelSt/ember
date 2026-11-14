@@ -26,6 +26,19 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'updates-on-your-terms',
+    version: '0.7.44',
+    date: '2026-11-14',
+    title: 'Updates on your terms',
+    summary: 'The desktop and Android apps no longer update by themselves. A small "New version" reminder shows for a few seconds, and nothing changes until you tap it.',
+    bullets: [
+      'Tap the "New version" reminder or Settings > Check for updates to update; a song that is playing finishes first, then the next one starts on the new version',
+      'No more update box when the app starts, and nothing downloads until you tap',
+      'The desktop app now notices a new version of Ember, so new features reach it without restarting',
+      'Long song names scroll on Windows even with animation effects turned off',
+    ],
+  },
+  {
     id: 'long-names-scroll-auto-update',
     version: '0.7.43',
     date: '2026-11-13',

@@ -1,3 +1,12 @@
+# 0.7.44: Updates on your terms (android 0.4.34, ios 0.4.26, windows, macos, linux 0.4.27)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh as usual. If automatic updates are on, the
+server does this by itself. New apps: Android, Windows, macOS and Linux. New
+apps: Android 0.4.34 (versionCode 39), iOS 0.4.26, Windows 0.4.27, macOS
+0.4.27, Linux 0.4.27. Tags: `android-v0.4.34`, `ios-v0.4.26`,
+`windows-v0.4.27`, `macos-v0.4.27`, `linux-v0.4.27`.
+
 # 0.7.43: Long names scroll everywhere
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
