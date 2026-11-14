@@ -26,7 +26,11 @@ import { THEME_CAP } from '@/lib/theme/saved';
  *  sticks under the top bar, so it stays in sight while a long list
  *  scrolls. Picking a theme or changing a colour shows only in the preview;
  *  Apply makes it the theme of the whole app (and saves it), Back to
- *  current drops it. */
+ *  current drops it.
+ *  Nothing on it moves on its own (layout-shift pass): the Apply bar keeps
+ *  one height in every state, the status line keeps its room, every card
+ *  keeps a line for its tags, a list still loading shows stand-in cards,
+ *  and a tab is never shorter than the window. */
 export function AppearanceEditor({ rows }: { rows?: boolean }) {
   const editor = useThemeEditor();
   const [tab, setTab] = useState<InspectorTab>('presets');
@@ -85,23 +89,29 @@ export function AppearanceEditor({ rows }: { rows?: boolean }) {
             onApply={() => void editor.apply()}
             onDiscard={editor.discard}
           />
-          <InspectorTabStrip active={tab} onChange={setTab} />
-          <p
-            role="status"
-            data-testid="save-status"
-            data-tone={status.tone}
-            className={cn(
-              'min-h-5 text-sm',
-              status.tone === 'blocked' || status.tone === 'error' ? 'text-destructive' : 'text-muted-foreground',
-            )}
-          >
-            {status.text}
-          </p>
-          {editor.notice && (
-            <p role="alert" data-testid="appearance-notice" className="text-sm text-muted-foreground">
-              {editor.notice}
-            </p>
-          )}
+          <div className="flex flex-col gap-cluster">
+            <InspectorTabStrip active={tab} onChange={setTab} />
+            {/* One line kept for what the last action did, so a line arriving
+                (or going) does not push the tab under it. */}
+            <div data-testid="status-line" className="flex min-h-5 flex-col gap-inset">
+              <p
+                role="status"
+                data-testid="save-status"
+                data-tone={status.tone}
+                className={cn(
+                  'text-sm',
+                  status.tone === 'blocked' || status.tone === 'error' ? 'text-destructive' : 'text-muted-foreground',
+                )}
+              >
+                {status.text}
+              </p>
+              {editor.notice && (
+                <p role="alert" data-testid="appearance-notice" className="text-sm text-muted-foreground">
+                  {editor.notice}
+                </p>
+              )}
+            </div>
+          </div>
 
           <div data-testid="inspector-panels">
             <InspectorPanel id="presets" active={tab}>

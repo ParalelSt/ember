@@ -18,7 +18,11 @@ const swatch = (inputs: ThemeInputs) => ({
 /** Two columns of cards at every width. A card keeps its own minimum width at
  *  0, so a long name truncates inside it instead of widening its column. */
 const GRID = 'grid grid-cols-2 gap-cluster';
-const CARD = 'flex min-w-0 flex-col gap-cluster rounded-[14px] border p-cluster transition-colors';
+/** Presets and other people's themes never change shape, so every row of
+ *  them is as tall as the tallest one: no card is shorter than its
+ *  neighbour in the next row, and nothing moves when a tag lands on one. */
+const EVEN_GRID = `${GRID} auto-rows-fr`;
+const CARD = 'relative flex min-w-0 flex-col gap-cluster rounded-[14px] border p-cluster transition-colors';
 const cardState = (active: boolean) =>
   active ? 'border-ember bg-ember/10 ring-1 ring-ember' : 'border-transparent bg-card hover:bg-accent';
 /** A card being renamed or asked about deleting needs the room: the whole row. */
@@ -67,7 +71,11 @@ export interface ThemeLibraryProps {
  *  everyone else's shared themes (preview, or copy into mine). Each of mine
  *  has its own share switch (bughunt F3); presets and other people's themes
  *  have none. Each card has a preview of its colours; the one the preview
- *  shows is ember; the one in use says "In use". Props in, callbacks out. */
+ *  shows is ember; the one in use says "In use". Every card keeps a corner
+ *  of its swatch for its tags whether it has any or not, and a list still loading shows
+ *  stand-in cards of the same size, so nothing moves when a tag moves to
+ *  another card or the list arrives (layout-shift pass). Props in,
+ *  callbacks out. */
 export function ThemeLibrary(props: ThemeLibraryProps) {
   return (
     <div data-testid="theme-library" data-view={props.view} className="flex flex-col gap-stack">
@@ -78,7 +86,7 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
 
 function PresetList({ shownPreset, inUsePreset, onPickPreset }: ThemeLibraryProps) {
   return (
-    <div role="radiogroup" aria-label="Presets" className={GRID}>
+    <div role="radiogroup" aria-label="Presets" className={EVEN_GRID}>
       {PRESETS.map((p) => (
         <button
           key={p.id}
@@ -91,10 +99,11 @@ function PresetList({ shownPreset, inUsePreset, onPickPreset }: ThemeLibraryProp
           className={cn(CARD, FOCUS, 'text-left', cardState(p.id === shownPreset))}
         >
           <Preview inputs={p.inputs} selected={p.id === shownPreset} />
-          <CardName name={p.name} selected={p.id === shownPreset}>
-            {p.id === inUsePreset && <InUse />}
-          </CardName>
-          <span className="line-clamp-2 text-xs text-muted-foreground">{p.description}</span>
+          <CardName name={p.name} selected={p.id === shownPreset} />
+          <Tags>{p.id === inUsePreset && <InUse />}</Tags>
+          {/* Two lines kept for every description, so a one-line one does not
+              make its card the short one in the row. */}
+          <span className="line-clamp-2 min-h-8 text-xs text-muted-foreground">{p.description}</span>
         </button>
       ))}
     </div>
@@ -137,7 +146,7 @@ function MyThemes(props: ThemeLibraryProps) {
         loadFailed ? (
           <p className="text-sm text-muted-foreground">Could not load your themes.</p>
         ) : (
-          <p className="text-sm text-muted-foreground">Loading your themes.</p>
+          <Loading what="your themes" kind="mine" />
         )
       ) : mine.length === 0 ? (
         <p className="text-sm text-muted-foreground">None yet. Change a colour and apply it, or press New theme, to make one.</p>
@@ -176,18 +185,17 @@ function SharedThemes(props: ThemeLibraryProps) {
         loadFailed ? (
           <p className="text-sm text-muted-foreground">Could not load shared themes.</p>
         ) : (
-          <p className="text-sm text-muted-foreground">Loading shared themes.</p>
+          <Loading what="shared themes" kind="shared" />
         )
       ) : shared.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nobody has shared a theme yet.</p>
       ) : (
-        <div className={GRID}>
+        <div className={EVEN_GRID}>
           {shared.map((t) => (
             <div key={t.id} data-testid="shared-theme" className={cn(CARD, cardState(t.id === shownThemeId))}>
               <Preview inputs={t.inputs} selected={t.id === shownThemeId} />
-              <CardName name={t.name} selected={t.id === shownThemeId}>
-                {t.id === inUseThemeId && <InUse />}
-              </CardName>
+              <CardName name={t.name} selected={t.id === shownThemeId} />
+              <Tags>{t.id === inUseThemeId && <InUse />}</Tags>
               <div className="truncate text-xs text-muted-foreground">by {t.ownerName}</div>
               <div className="mt-auto flex flex-wrap items-center gap-inset">
                 <Button
@@ -216,6 +224,31 @@ function SharedThemes(props: ThemeLibraryProps) {
   );
 }
 
+/** A list on its way: a row of stand-in cards built like the real ones
+ *  (swatch, name, one line under it, the actions), so the cards
+ *  that replace them land where they stand. */
+function Loading({ what, kind }: { what: string; kind: 'mine' | 'shared' }) {
+  return (
+    <div role="status" aria-label={`Loading ${what}`} className={GRID}>
+      {[0, 1].map((i) => (
+        <div key={i} aria-hidden data-testid="theme-skeleton" className={cn(CARD, 'animate-pulse border-transparent bg-card')}>
+          <span className="flex min-w-0 flex-col gap-cluster">
+            <span className="block h-14 w-full rounded-[10px] bg-muted" />
+            <span className="block h-5 w-2/3 rounded-full bg-muted" />
+            <span className="block h-4 w-1/2 rounded-full bg-muted" />
+          </span>
+          {kind === 'mine' ? (
+            // A phone stacks the share switch over the three icon buttons.
+            <span className="mt-auto block h-[calc(var(--spacing-hit)*2)] md:h-8" />
+          ) : (
+            <span className="mt-auto block h-6" />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** A card's preview, with an ember tick on the one the preview shows. */
 function Preview({ inputs, selected }: { inputs: ThemeInputs; selected: boolean }) {
   return (
@@ -234,15 +267,27 @@ function Preview({ inputs, selected }: { inputs: ThemeInputs; selected: boolean 
   );
 }
 
-/** The name under the preview, truncated, and any tags on their own line, so
- *  they never squeeze it in a narrow column. */
-function CardName({ name, selected, children }: { name: string; selected: boolean; children?: ReactNode }) {
+/** A card's tags (In use, Shared), drawn in the top corner of its swatch.
+ *  Every card has this corner, empty or not, and it sits over the swatch
+ *  rather than in the card's flow: a tag landing on a card (or leaving it)
+ *  never changes its height, so its row never jumps (layout-shift pass). In
+ *  the markup it comes after the name, so the name is read first. */
+function Tags({ children }: { children?: ReactNode }) {
   return (
-    <span className="flex min-w-0 flex-col items-start gap-inset">
-      <span title={name} className={cn('w-full truncate text-sm font-medium', selected && 'text-ember')}>
-        {name}
-      </span>
+    <span
+      data-testid="tag-slot"
+      className="absolute left-[calc(var(--spacing-cluster)+var(--spacing-inset))] top-[calc(var(--spacing-cluster)+var(--spacing-inset))] flex max-w-[calc(100%-3rem)] gap-inset overflow-hidden"
+    >
       {children}
+    </span>
+  );
+}
+
+/** The name under the preview, truncated. */
+function CardName({ name, selected }: { name: string; selected: boolean }) {
+  return (
+    <span title={name} className={cn('block w-full min-w-0 truncate text-sm font-medium', selected && 'text-ember')}>
+      {name}
     </span>
   );
 }
@@ -353,14 +398,11 @@ function MyThemeCard({
         className={cn(FOCUS, 'flex min-w-0 flex-col gap-cluster rounded-[10px] text-left')}
       >
         <Preview inputs={theme.inputs} selected={active} />
-        <CardName name={theme.name} selected={active}>
-          {(theme.shared || inUse) && (
-            <span className="flex flex-wrap gap-inset">
-              {theme.shared && <SharedTag />}
-              {inUse && <InUse />}
-            </span>
-          )}
-        </CardName>
+        <CardName name={theme.name} selected={active} />
+        <Tags>
+          {theme.shared && <SharedTag />}
+          {inUse && <InUse />}
+        </Tags>
         <span className="block text-xs text-muted-foreground">
           {theme.shared ? 'Everyone can use it' : 'Only you'}
         </span>
@@ -396,7 +438,7 @@ function MyThemeCard({
 /** The tag on each of my themes that everyone can see. */
 function SharedTag() {
   return (
-    <span data-testid="shared-tag" className="shrink-0 rounded-full bg-ember/15 px-cluster text-xs font-normal text-ember">
+    <span data-testid="shared-tag" className="shrink-0 rounded-full bg-ember px-cluster text-xs font-medium text-ember-foreground">
       Shared
     </span>
   );
@@ -449,7 +491,7 @@ function ShareSwitch({
 /** The tag on the theme the app uses now. */
 function InUse() {
   return (
-    <span data-testid="in-use" className="shrink-0 rounded-full bg-muted px-cluster text-xs font-normal text-muted-foreground">
+    <span data-testid="in-use" className="shrink-0 rounded-full bg-foreground px-cluster text-xs font-medium text-background">
       In use
     </span>
   );

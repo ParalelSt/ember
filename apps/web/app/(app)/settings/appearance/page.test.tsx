@@ -221,6 +221,30 @@ describe('Settings > Appearance', () => {
     expect(screen.getByTestId('theme-preview')).toHaveClass('xl:sticky', 'xl:h-128');
   });
 
+  it('a tab is never shorter than the window, so switching to a short one does not pull the page up', async () => {
+    start();
+    await loaded();
+    for (const name of ['Presets', 'My themes', 'Shared', 'Colours']) {
+      tab(name);
+      expect(screen.getByRole('tabpanel').className).toContain(
+        'min-h-[calc(var(--ember-scroller-h,100svh)-var(--ember-topbar-h,0px)-var(--spacing-section)*4)]',
+      );
+    }
+  });
+
+  it('keeps a line for the status, with a notice in the same room, so neither pushes the tab down', async () => {
+    server.shared = [LUKA];
+    start();
+    await loaded();
+    const line = screen.getByTestId('status-line');
+    expect(line).toHaveClass('min-h-5');
+    expect(line).toContainElement(screen.getByTestId('save-status'));
+    tab('Shared');
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Cold brew to my themes' }));
+    expect(await screen.findByTestId('appearance-notice')).toHaveTextContent('Copied to My themes as Cold brew copy.');
+    expect(screen.getByTestId('status-line')).toContainElement(screen.getByTestId('appearance-notice'));
+  });
+
   it('picking a preset shows it in the preview only; Apply applies and saves it', async () => {
     start();
     await loaded();

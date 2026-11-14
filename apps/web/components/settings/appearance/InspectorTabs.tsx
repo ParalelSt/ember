@@ -39,11 +39,21 @@ export function InspectorTabStrip({ active, onChange }: { active: InspectorTab; 
   );
 }
 
-/** A tab's content, only while its tab is the open one. */
+/** A tab's content. About as tall as the page scroller's window at least
+ *  (less the top bar, and the room the tabs above and the build stamp below
+ *  already give), so switching to a shorter tab never leaves the page
+ *  scrolled past its new end while the tabs are in sight: the browser would
+ *  pull the page up and the tabs would jump under the finger (layout-shift
+ *  pass). */
 export function InspectorPanel({ id, active, children }: { id: InspectorTab; active: InspectorTab; children: ReactNode }) {
   if (id !== active) return null;
   return (
-    <div role="tabpanel" id={`appearance-panel-${id}`} aria-labelledby={`appearance-tab-${id}`}>
+    <div
+      role="tabpanel"
+      id={`appearance-panel-${id}`}
+      aria-labelledby={`appearance-tab-${id}`}
+      className="min-h-[calc(var(--ember-scroller-h,100svh)-var(--ember-topbar-h,0px)-var(--spacing-section)*4)]"
+    >
       {children}
     </div>
   );

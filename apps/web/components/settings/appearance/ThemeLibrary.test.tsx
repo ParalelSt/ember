@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { formatOklch } from '@/lib/theme/oklch';
 import { PRESETS } from '@/lib/theme/presets';
 import type { SavedTheme, SharedTheme } from '@/lib/theme/saved';
@@ -231,5 +231,60 @@ describe('ThemeLibrary, the New theme button', () => {
     library({ view: 'mine', cap: 1 });
     expect(screen.getByRole('button', { name: 'New theme' })).toBeDisabled();
     expect(screen.getByText('That is the most you can keep (1). Delete one to make room.')).toBeInTheDocument();
+  });
+});
+
+describe('ThemeLibrary, nothing moves (layout-shift pass)', () => {
+  it('every preset card keeps a tag corner on its swatch, empty or not, out of the flow, so In use never changes a card\'s height', () => {
+    library({ inUsePreset: 'midnight' });
+    const slots = screen.getAllByTestId('tag-slot');
+    expect(slots).toHaveLength(PRESETS.length);
+    for (const slot of slots) expect(slot).toHaveClass('absolute');
+    expect(slots.filter((l) => l.childElementCount > 0)).toHaveLength(1);
+    const midnight = within(radio(/Midnight/));
+    expect(midnight.getByTestId('tag-slot')).toContainElement(midnight.getByTestId('in-use'));
+    // Drawn over the swatch's corner, but read after the name.
+    expect(radio(/Midnight/)).toHaveClass('relative');
+    expect(radio(/Midnight/)).toHaveAccessibleName(/^Midnight/);
+    expect(within(radio(/^Ember/)).getByTestId('tag-slot')).toBeEmptyDOMElement();
+  });
+
+  it('every description keeps two lines, and every row of presets is as tall as the tallest', () => {
+    library();
+    for (const p of PRESETS) expect(within(radio(new RegExp(p.name))).getByText(p.description)).toHaveClass('min-h-8', 'line-clamp-2');
+    expect(screen.getByRole('radiogroup', { name: 'Presets' })).toHaveClass('auto-rows-fr');
+  });
+
+  it('my cards and other people\'s keep the tag corner too', () => {
+    library({ view: 'mine', mine: [MINE, { ...MINE, id: 'mine2', name: 'Shared one', shared: true }], inUseThemeId: 'mine2' });
+    const [plain, both] = screen.getAllByTestId('my-theme');
+    expect(within(plain!).getByTestId('tag-slot')).toBeEmptyDOMElement();
+    expect(within(both!).getByTestId('tag-slot')).toHaveClass('absolute');
+    expect(within(both!).getByTestId('tag-slot')).toContainElement(within(both!).getByTestId('shared-tag'));
+    expect(within(both!).getByTestId('tag-slot')).toContainElement(within(both!).getByTestId('in-use'));
+    cleanup();
+    library({ view: 'shared', inUseThemeId: 'their1' });
+    expect(within(screen.getByTestId('shared-theme')).getByTestId('tag-slot')).toContainElement(screen.getByTestId('in-use'));
+  });
+
+  it('a list still loading shows stand-in cards in the same grid, not a line of text', () => {
+    library({ view: 'mine', mine: null });
+    const loading = screen.getByRole('status', { name: 'Loading your themes' });
+    expect(loading).toHaveClass('grid', 'grid-cols-2');
+    const stand = within(loading).getAllByTestId('theme-skeleton');
+    expect(stand).toHaveLength(2);
+    // Built like a card: the swatch's block and the name's line.
+    expect(stand[0]!.querySelector('.h-14')).not.toBeNull();
+    expect(stand[0]!.querySelector('.h-5')).not.toBeNull();
+    expect(screen.queryByTestId('theme-count')).toBeNull();
+  });
+
+  it('shared themes loading show stand-in cards too; a failed load says so', () => {
+    library({ view: 'shared', shared: null });
+    expect(screen.getByRole('status', { name: 'Loading shared themes' })).toBeInTheDocument();
+    cleanup();
+    library({ view: 'shared', shared: null, loadFailed: true });
+    expect(screen.getByText('Could not load shared themes.')).toBeInTheDocument();
+    expect(screen.queryByTestId('theme-skeleton')).toBeNull();
   });
 });
