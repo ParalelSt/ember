@@ -16,8 +16,14 @@ function getSnapshot() {
   return typeof window !== 'undefined' && !!window.matchMedia?.(SETTINGS_DESKTOP).matches;
 }
 
-const getServerSnapshot = () => false;
+/** Unknown on the server and while the page hydrates: no window yet. */
+const getServerSnapshot = () => null;
 
-export function useSettingsDesktop() {
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+/** True on a desktop-width window (lg and up), false below it, and null on
+ *  the server and during hydration, when the width is not known yet. A
+ *  caller that drew the phone layout for null would show it for a moment on
+ *  a desktop window and then swap it for the desktop one, a jump on every
+ *  hard load (Settings > Appearance layout-shift pass). */
+export function useSettingsDesktop(): boolean | null {
+  return useSyncExternalStore<boolean | null>(subscribe, getSnapshot, getServerSnapshot);
 }

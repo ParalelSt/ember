@@ -106,8 +106,27 @@ export function DesktopSettings() {
 }
 
 /** Settings' frame: desktop (lg and up) gets the menu layout, phones and
- *  narrow windows keep `phone`, exactly as before. */
-export function SettingsFrame({ phone }: { phone: ReactNode }) {
+ *  narrow windows keep `phone`. Until the width is known (the server's
+ *  render and hydration) the phone layout is drawn but hidden from lg up, so
+ *  a phone still gets it straight from the server while a desktop window
+ *  never shows it for a moment before the menu layout replaces it. The
+ *  wrapper stays once the width is known, so the phone layout is not
+ *  mounted twice. `footer` (the build stamp) follows the same rule, or it
+ *  would sit at the top of an empty page until then. */
+export function SettingsFrame({ phone, footer }: { phone: ReactNode; footer?: ReactNode }) {
   const desktop = useSettingsDesktop();
-  return desktop ? <DesktopSettings /> : <>{phone}</>;
+  if (desktop) {
+    return (
+      <>
+        <DesktopSettings />
+        {footer}
+      </>
+    );
+  }
+  return (
+    <div data-settings-frame={desktop === null ? 'pending' : 'phone'} className={desktop === null ? 'lg:hidden' : undefined}>
+      {phone}
+      {footer}
+    </div>
+  );
 }

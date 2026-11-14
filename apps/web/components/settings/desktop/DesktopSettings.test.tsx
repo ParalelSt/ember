@@ -147,3 +147,54 @@ it('keeps phones and narrow windows on the old layout', () => {
   expect(document.querySelector('[data-settings-layout]')).toBeNull();
   expect(screen.queryByRole('navigation', { name: 'Settings' })).toBeNull();
 });
+
+describe('a hard load draws one layout, never the phone one first (layout-shift pass)', () => {
+  // The server has no window: it draws the phone layout, hidden from lg up
+  // until the client knows the width, so a desktop window never shows it.
+  it('the server render hides the phone layout from lg up, build stamp included', async () => {
+    const { renderToString } = await import('react-dom/server');
+    state.path = '/settings/appearance';
+    const html = renderToString(<SettingsLayout>Routed page</SettingsLayout>);
+    const box = document.createElement('div');
+    box.innerHTML = html;
+    const frame = box.querySelector('[data-settings-frame]');
+    expect(frame).toHaveAttribute('data-settings-frame', 'pending');
+    expect(frame).toHaveClass('lg:hidden');
+    expect(frame).toHaveTextContent('Routed page');
+    expect(box.querySelector('[data-settings-layout]')).toBeNull();
+    // Nothing outside the hidden frame.
+    expect(box.firstElementChild?.children).toHaveLength(1);
+  });
+
+  it('on a desktop window hydration swaps straight to the menu layout', async () => {
+    const { renderToString } = await import('react-dom/server');
+    const { hydrateRoot } = await import('react-dom/client');
+    state.path = '/settings/appearance';
+    const box = document.createElement('div');
+    box.innerHTML = renderToString(<SettingsLayout>Routed page</SettingsLayout>);
+    document.body.appendChild(box);
+    const root = await act(async () => hydrateRoot(box, <SettingsLayout>Routed page</SettingsLayout>));
+    expect(box.querySelector('[data-settings-layout="menu"]')).not.toBeNull();
+    expect(box.querySelector('[data-settings-frame]')).toBeNull();
+    act(() => root.unmount());
+    box.remove();
+  });
+
+  it('on a phone the wrapper stays and only stops hiding, so the page is not mounted twice', async () => {
+    setWidth(390);
+    const { renderToString } = await import('react-dom/server');
+    const { hydrateRoot } = await import('react-dom/client');
+    state.path = '/settings/appearance';
+    const box = document.createElement('div');
+    box.innerHTML = renderToString(<SettingsLayout><p data-testid="routed">Routed page</p></SettingsLayout>);
+    document.body.appendChild(box);
+    const before = box.querySelector('[data-testid="routed"]');
+    const root = await act(async () => hydrateRoot(box, <SettingsLayout><p data-testid="routed">Routed page</p></SettingsLayout>));
+    const frame = box.querySelector('[data-settings-frame]');
+    expect(frame).toHaveAttribute('data-settings-frame', 'phone');
+    expect(frame).not.toHaveClass('lg:hidden');
+    expect(box.querySelector('[data-testid="routed"]')).toBe(before);
+    act(() => root.unmount());
+    box.remove();
+  });
+});
