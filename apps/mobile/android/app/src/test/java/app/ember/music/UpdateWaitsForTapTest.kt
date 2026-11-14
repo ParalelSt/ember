@@ -132,9 +132,9 @@ class UpdateWaitsForTapTest {
         assertFalse(src.contains("AppUpdater.installNow()"))
     }
 
-    @Test fun `the launch gate leaves an update nobody has to take to the reminder`() {
+    @Test fun `the launch gate is gone, no launch check downloads or offers anything`() {
         val gate = java.io.File("src/main/java/app/ember/music/LaunchGateActivity.kt").readText()
-        assertTrue(gate.contains("!GateRules.holdsLaunch(offer) -> null to \"reminder\""))
-        assertTrue(gate.contains("AppUpdater.check(manual = true, reason = \"launch\", download = true)"))
+        assertFalse(gate.contains("AppUpdater.check("))
+        assertFalse(java.io.File("src/main/java/app/ember/music/GateRules.kt").exists())
     }
 }

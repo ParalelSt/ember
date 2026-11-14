@@ -177,11 +177,6 @@ object AppUpdater {
     @Volatile private var sessionId: Int? = null
     /** KEY_ACTIVITY_AT, in memory. */
     @Volatile private var activityAt = 0L
-    /** The launch gate asked for the install and evaluate(true) has not run
-     *  for it yet. States published meanwhile (onStart's and refresh()'s
-     *  re-evaluation, still "ready") say so, so the gate does not read them
-     *  as the install having failed. */
-    @Volatile private var gatePending = false
     private var activity: WeakReference<Activity>? = null
     private var lastDecision: UpdateRules.Decision? = null
 
@@ -211,7 +206,7 @@ object AppUpdater {
         latest = null; progress = null; error = null; waiting = null; ready = null
         busy.set(false)
         pendingConfirm = null; autoBlocked = false; goneSince = 0L
-        installStartedAt = 0L; sessionId = null; activityAt = 0L; gatePending = false; installAfterDownload = false
+        installStartedAt = 0L; sessionId = null; activityAt = 0L; installAfterDownload = false
         activity = null; lastDecision = null
         listeners.clear()
         main.removeCallbacksAndMessages(null)
@@ -222,39 +217,12 @@ object AppUpdater {
     /** The version of the downloaded, verified APK that waits, if any. */
     fun readyVersion(): String? = ready?.takeIf { it.file.exists() }?.version
 
-    /** The launch gate asks for the notification permission before
-     *  installFromGate: states published meanwhile are from before the
-     *  install too. Released when the gate goes away without installing. */
-    fun holdForGate() { gatePending = true }
-    fun releaseGateHold() { gatePending = false }
-
     /** A version refused for good (UpdateRules.isPermanent), if any. */
     fun rejectedVersion(): String? = prefs().getString(KEY_REJECTED, null)
 
-    /** The launch gate's countdown ended, or the person pressed "Update
-     *  now" (LaunchGateActivity): install the waiting APK now, as a tap on
-     *  Install would. The person is looking at the gate and chose it, so the
-     *  "never while on screen" rule does not apply; the car and the install
-     *  permission still do (UpdateRules.decide). False when nothing waits. */
-    fun installFromGate(a: Activity): Boolean {
-        if (readyVersion() == null) return false
-        gatePending = true
-        attachActivity(a)
-        UpdatePresence.setForeground(true)
-        var tries = 0
-        main.post(object : Runnable {
-            override fun run() {
-                // The check that downloaded it may still be finishing.
-                if (busy.get() && tries++ < 50) { main.postDelayed(this, 200); return }
-                gatePending = false
-                tap()
-            }
-        })
-        return true
-    }
-
-    /** The launch gate's telemetry ("update.gate.*"), through the same log
-     *  as the updater's own. */
+    /** Update telemetry outside the updater itself ("update.gate.*": the
+     *  first start after an update, the relaunch notice), through the same
+     *  log as the updater's own. */
     fun gateEvent(event: String, message: String, data: JSONObject? = null, level: String = "info") {
         if (!::log.isInitialized) return
         log.log(level, event, message, data)
@@ -281,7 +249,6 @@ object AppUpdater {
         o.put("checkedAt", prefs().getLong(KEY_LAST_CHECK, 0L))
         o.put("needsPermission", !canInstall())
         o.put("silent", silentLikely())
-        if (gatePending) o.put("gatePending", true)
         return o
     }
 
@@ -389,8 +356,8 @@ object AppUpdater {
         else main.post { evaluate(false) }
     }
 
-    /** Ask the server what is newest. Only with [download] (a tap on Update,
-     *  a required update at launch) is a newer version fetched; otherwise it
+    /** Ask the server what is newest. Only with [download] (a tap on
+     *  Update) is a newer version fetched; otherwise it
      *  is only announced (Status.AVAILABLE), and nothing downloads or
      *  installs until the person taps (owner, 2026-11-13). [done] runs when
      *  all of that has finished (the job's end). */
@@ -583,8 +550,8 @@ object AppUpdater {
         check(manual = true, reason = "tap", download = true)
     }
 
-    /** Main thread. A person asked for the install (Install, or the gate's
-     *  Update now). A session that is still alive is reused, never
+    /** Main thread. A person asked for the install (Update in the page). A
+     *  session that is still alive is reused, never
      *  abandoned (UpdateRules.onTap). */
     private fun tap() {
         autoBlocked = false
@@ -730,8 +697,7 @@ object AppUpdater {
      *  Protect's check, however long the person takes; only when it is gone
      *  with no answer, or showed no sign of life for
      *  UpdateRules.INSTALL_BACKSTOP_MS, does the install end
-     *  (UpdateRules.unstickNow). The same for the gate, the pill and
-     *  Settings. */
+     *  (UpdateRules.unstickNow). The same for the pill and Settings. */
     private fun checkInstall() {
         main.removeCallbacks(watch)
         if (status != Status.INSTALLING) return

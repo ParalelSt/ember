@@ -86,26 +86,25 @@ Tests: `NetworkSecurityTest`.
 
 ## Updates (Android only)
 
-The app updates itself from the Ember server: it checks on start and every 6
-hours, downloads the release APK over Wi-Fi or mobile data, checks that it is
-the next Ember signed with the same key, and installs it when that stops
-nothing (never in the car, never by itself while music plays). Android 12+
-installs silently once Ember is the installer of record; the first update and
-older Android versions show the system's confirm dialog. Every APK must be
-signed with the same release keystore (alias `ember`, GitHub secrets
-`ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASSWORD`), so keep it safe.
-Details, per-version behaviour and the release checklist: [docs/APPS.md](../../docs/APPS.md#in-app-updates-android).
+The app updates itself from the Ember server, but only when the person asks.
+It checks on start and every 6 hours and only says a newer version is out
+("available"); the page then shows the update reminder pill and Settings'
+Updates card. A tap downloads the release APK, checks that it is the next
+Ember signed with the same key, and installs it in the gap after the song
+playing (at once when nothing plays; never in the car). Android 12+ installs
+silently once Ember is the installer of record; the first update and older
+Android versions show the system's confirm dialog. There are no required
+updates. Every APK must be signed with the same release keystore (alias
+`ember`, GitHub secrets `ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASSWORD`),
+so keep it safe. Details, per-version behaviour and the release checklist:
+[docs/APPS.md](../../docs/APPS.md#in-app-updates-android).
 
-**On launch.** The home screen icon opens a launch gate first
-(`LaunchGateActivity`, decisions in `GateRules.kt`): before the WebView or the
-player exist it asks `/api/app/update` (2 s budget), and with an update out
-shows "Not now" / "Update now", downloads, counts down "Restarting in 7s" and
-installs. A required update has "Quit Ember" instead of "Not now". Never in a
-car, never with music already playing, never for anything but a launcher tap.
-Android does not reopen an app that updated itself, so the new version posts
-"Ember updated, tap to open" (`UpdatedReceiver`). The icon keeps its old
-component name (`.MainActivity` is now an alias of the gate) so pinned icons
-survive the update; the app itself is `EmberActivity`.
+**On launch.** The home screen icon opens `LaunchGateActivity`, which hands
+the start straight to the app (`EmberActivity`): no update check, no dialog.
+It used to be a launch gate with an update dialog; it stays so the icon keeps
+its old component name (`.MainActivity` is an alias of it) and pinned icons
+survive updates. Android does not reopen an app that updated itself, so the
+new version posts "Ember updated, tap to open" (`UpdatedReceiver`).
 
 ## Offline (Android only)
 

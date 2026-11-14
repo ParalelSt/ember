@@ -20,7 +20,7 @@ object UpdateRules {
     /** Whether a check nobody asked for (the 6-hourly job, the app-start
      *  check) may run. The test build never updates in the background: a
      *  release APK is another package, so it could never install anyway.
-     *  A person's own tap (manual) and the launch gate always may. */
+     *  A person's own tap (manual) always may. */
     fun backgroundCheckAllowed(packageName: String?, manual: Boolean): Boolean =
         manual || !isTestBuild(packageName)
 
@@ -182,7 +182,7 @@ object UpdateRules {
     data class InstallFacts(
         /** Android Auto is projecting, or a car is connected to the player. */
         val carSession: Boolean,
-        /** The person tapped Install (or the launch gate's Update now). */
+        /** The person tapped Update in the page. */
         val userRequested: Boolean,
         /** "Install unknown apps" is allowed for Ember. */
         val canInstall: Boolean,
@@ -270,7 +270,7 @@ object UpdateRules {
         NEW_SESSION,
     }
 
-    /** What a tap on Install (or the gate's Update now) does while Ember may
+    /** What a tap on Update does while Ember may
      *  already have a session. Reusing the live one is always better than a
      *  new one: abandoning a session in Play Protect's check ends that
      *  install, and its late answer used to end the new one too. The one
@@ -420,8 +420,8 @@ object UpdateRules {
      *  security scan and Play Protect's "Install anyway" all keep it, however
      *  long they take, and leaving one of those screens is not an answer.
      *  Only a session gone for [SESSION_GONE_GRACE_MS] with no answer, or no
-     *  sign of life for [INSTALL_BACKSTOP_MS], ends it. The launch gate, the
-     *  pill and Settings follow the same rule. */
+     *  sign of life for [INSTALL_BACKSTOP_MS], ends it. The pill and Settings
+     *  follow the same rule. */
     fun unstickNow(staging: Boolean, sessionAlive: Boolean, sinceActivityMs: Long, goneForMs: Long): Boolean = when {
         sinceActivityMs >= INSTALL_BACKSTOP_MS -> true
         staging || sessionAlive -> false

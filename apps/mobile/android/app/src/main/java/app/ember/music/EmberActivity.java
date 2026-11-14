@@ -20,10 +20,11 @@ import java.util.List;
 
 /**
  * The app itself: Capacitor's WebView on the Ember server, the plugins, the
- * player. Started by the launch gate (LaunchGateActivity), which the home
- * screen icon opens through the `.MainActivity` alias in the manifest: the
- * icon's component name must never change, or launchers drop pinned icons
- * after an update. This class was called MainActivity before the gate.
+ * player. Started by LaunchGateActivity, which the home screen icon opens
+ * through the `.MainActivity` alias in the manifest and which hands every
+ * start straight here: the icon's component name must never change, or
+ * launchers drop pinned icons after an update. This class was called
+ * MainActivity before the launch gate (since removed) existed.
  */
 public class EmberActivity extends BridgeActivity {
 
@@ -35,8 +36,6 @@ public class EmberActivity extends BridgeActivity {
     /** The document-start script giving the offline page the theme's
      *  variables, so a new theme replaces it rather than piling up. */
     private ScriptHandler themeScript;
-    /** This run's first page load was reported to the launch history. */
-    private boolean launchReady = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -60,12 +59,6 @@ public class EmberActivity extends BridgeActivity {
                 @Override
                 public void onPageLoaded(WebView view) {
                     CookieFlush.INSTANCE.now();
-                    // The first page load means this launch worked: the
-                    // launch gate's crash counter starts over (GateHistory).
-                    if (!launchReady) {
-                        launchReady = true;
-                        GateHistory.INSTANCE.mark(EmberActivity.this, GateRules.Stage.READY);
-                    }
                 }
 
                 // The page's renderer died (killed for memory while the

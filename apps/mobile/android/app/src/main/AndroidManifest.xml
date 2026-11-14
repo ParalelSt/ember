@@ -18,7 +18,7 @@
              nothing but the config decides. -->
 
         <!-- The app itself (Capacitor's WebView, the plugins, the player).
-             Started by the launch gate below, not by the launcher. -->
+             Started by LaunchGateActivity below, not by the launcher. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:name=".EmberActivity"
@@ -27,9 +27,10 @@
             android:launchMode="singleTask"
             android:exported="false" />
 
-        <!-- The launch gate (LaunchGateActivity, GateRules): a launcher tap
-             asks the server for an update before the WebView or the player
-             exist, and offers it with "Not now". -->
+        <!-- LaunchGateActivity: hands every launcher start straight to the
+             app. It used to be the launch gate (an update check and dialog
+             before the app opened); updates now start only from a tap in
+             the page. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:name=".LaunchGateActivity"
@@ -134,7 +135,7 @@
             android:name=".UpdateInstallReceiver"
             android:exported="false" />
         <!-- Android does not reopen an app that updated itself: after an
-             update from the launch gate, a notification offers to (S3). -->
+             update the person tapped, a notification offers to (S3). -->
         <receiver
             android:name=".UpdatedReceiver"
             android:exported="false">
