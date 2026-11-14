@@ -574,10 +574,11 @@ describe('desktop Settings > Appearance as rows', () => {
     expect(within(bar).getByRole('button', { name: 'Apply' })).toBeEnabled();
   });
 
-  it('the phone page keeps its heading and the soft card bar', async () => {
+  it('the phone page has no heading of its own either (its header shows Appearance once) and keeps the soft card bar', async () => {
     start();
     await screen.findByTestId('theme-count');
-    expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading')).toBeNull();
+    expect(screen.queryByText('Appearance')).toBeNull();
     expect(screen.getByTestId('in-use-bar')).toHaveClass('bg-card', 'rounded-[12px]');
   });
 });

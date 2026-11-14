@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
-import { SectionHeader } from '@/components/page/SectionHeader';
 import { ApplyBar } from '@/components/settings/appearance/ApplyBar';
 import { ColourEditor } from '@/components/settings/appearance/ColourEditor';
 import { InspectorPanel, InspectorTabStrip, type InspectorTab } from '@/components/settings/appearance/InspectorTabs';
@@ -17,8 +16,9 @@ import { THEME_CAP } from '@/lib/theme/saved';
 
 /** Settings > Appearance, the "Preview + inspector" layout, shared by the
  *  phone page (app/(app)/settings/appearance) and desktop Settings, which
- *  passes `rows`: no heading of its own (the menu layout shows one) and the
- *  Apply bar drawn as a row, without its card, like the other sections.
+ *  passes `rows`: the Apply bar drawn as a row, without its card, like the
+ *  other sections. Neither draws a heading here: the phone page's header
+ *  and the desktop menu layout each show one already.
  *  The layout: a live preview
  *  of the app next to one panel with two tabs (Themes, Colours). Sharing is
  *  per theme, a switch on each row of My themes (bughunt F3).
@@ -46,7 +46,6 @@ export function AppearanceEditor({ rows }: { rows?: boolean }) {
 
   return (
     <section data-testid="appearance" className="flex flex-col gap-block">
-      {!rows && <SectionHeader title="Appearance" />}
       {/* --appearance-top: this row's distance from the scroller's top, so
           from xl its height is the scroller's visible height minus that and
           a block of air above the player bar. A floor keeps it usable on a
