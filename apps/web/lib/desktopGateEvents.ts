@@ -3,10 +3,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { detectShell } from '@/lib/playback/detectShell';
 
-/** The desktop app's launch gate (apps/desktop/src-tauri/src/gate.rs) runs
- *  before any page exists and before anyone is signed in, so it keeps its
- *  update events ("update.gate.check", ".shown", ".cancel", ".install",
- *  ".failed", ".done") on disk. The page picks them up once per load
+/** The desktop app keeps its update events on disk (apps/desktop/src-tauri/
+ *  src/gate.rs and update.rs: "update.gate.done" on the first launch after
+ *  an update, "update.ready", ".install", ".failed" from a tap; an older
+ *  app's launch gate also sent "update.gate.check", ".shown", ".cancel"):
+ *  an install ends the app, and nobody may be signed in yet. The page picks them up once per load
  *  (`update_gate_events`, which hands them over and forgets them) and sends
  *  them to /api/native-log as surface 'desktop', where the admin's native log
  *  shows them next to the phones'. A batch the server refuses (signed out,

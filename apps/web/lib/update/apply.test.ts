@@ -25,13 +25,14 @@ import { INITIAL_UPDATE_STATE, useUpdateStore } from '@/stores/useUpdateStore';
  *  starts by itself once the page is back. */
 
 const reload = vi.fn();
-const restartShell = vi.fn(async () => true);
+const installDesktop = vi.fn(async (_note: string | null) => true);
+const downloadDesktop = vi.fn(async () => true);
 const installAndroid = vi.fn(async () => true);
 const downloadAndroid = vi.fn(async () => true);
 const openSettings = vi.fn(async () => true);
 
 function offer(kind: 'web' | 'shell' = 'web', canApply = true) {
-  useUpdateStore.getState().set({ status: 'available', offer: { kind, version: kind === 'web' ? '0.7.44' : '0.4.27', canApply, via: kind === 'web' ? 'reload' : 'restart' } });
+  useUpdateStore.getState().set({ status: 'available', offer: { kind, version: kind === 'web' ? '0.7.44' : '0.4.27', canApply, via: kind === 'web' ? 'reload' : 'desktop' } });
 }
 
 function playing(on: boolean) {
@@ -45,13 +46,14 @@ function setOnline(on: boolean) {
 beforeEach(() => {
   resetUpdateForTests();
   useUpdateStore.setState({ ...INITIAL_UPDATE_STATE });
-  setApplyDepsForTests({ reload, restartShell, installAndroid, downloadAndroid, openInstallSettings: openSettings });
+  setApplyDepsForTests({ reload, installDesktop, downloadDesktop, installAndroid, downloadAndroid, openInstallSettings: openSettings });
   reload.mockClear();
   installAndroid.mockClear();
   downloadAndroid.mockClear();
   openSettings.mockClear();
-  restartShell.mockClear();
-  restartShell.mockImplementation(async () => true);
+  installDesktop.mockClear();
+  installDesktop.mockImplementation(async () => true);
+  downloadDesktop.mockClear();
   playing(false);
   setOnline(true);
 });
@@ -96,7 +98,7 @@ describe('requestUpdate', () => {
     offer('shell', false);
     expect(requestUpdate()).toBe('none');
     expect(reload).not.toHaveBeenCalled();
-    expect(restartShell).not.toHaveBeenCalled();
+    expect(installDesktop).not.toHaveBeenCalled();
   });
 });
 
@@ -116,17 +118,27 @@ describe('updateAtSongEnd', () => {
     expect(takeUpdateResume([{ id: 'a' }, { id: 'b' }])).toEqual({ index: 1, trackId: 'b' });
   });
 
-  it('restarts the desktop app for an app update, with the same note', async () => {
+  it('the desktop app downloads at the tap and installs at the end of the song, with the note', async () => {
     offer('shell');
     playing(true);
-    requestUpdate();
+    expect(requestUpdate()).toBe('after-song');
+    expect(downloadDesktop).toHaveBeenCalledTimes(1);
+    expect(installDesktop).not.toHaveBeenCalled();
     expect(updateAtSongEnd({ index: 2, trackId: 'c' })).toBe(true);
-    await vi.waitFor(() => expect(restartShell).toHaveBeenCalled());
+    await vi.waitFor(() => expect(installDesktop).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(installDesktop.mock.calls[0][0] as string)).toMatchObject({ index: 2, trackId: 'c' });
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('an app that cannot restart itself says so and forgets the note', async () => {
-    restartShell.mockImplementation(async () => false);
+  it('the desktop app installs at once when nothing plays', async () => {
+    offer('shell');
+    expect(requestUpdate()).toBe('now');
+    await vi.waitFor(() => expect(installDesktop).toHaveBeenCalledTimes(1));
+    expect(downloadDesktop).not.toHaveBeenCalled();
+  });
+
+  it('an install that could not start says so and forgets the note', async () => {
+    installDesktop.mockImplementation(async () => false);
     offer('shell');
     expect(await performUpdate({ index: 1, trackId: 'b' })).toBe(false);
     expect(useUpdateStore.getState().applyFailed).toBe(true);

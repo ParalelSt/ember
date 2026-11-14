@@ -21,18 +21,18 @@ import { sanitizeVersion, type DevicePlatform } from '@/lib/versions/label';
 
 export type UpdateKind = 'web' | 'shell';
 
-/** How a tap brings an update in: the page reloads (a web build), the
- *  desktop app restarts into its launch dialog, or the Android app
- *  downloads and installs it. */
-export type UpdateVia = 'reload' | 'restart' | 'android';
+/** How a tap brings an update in: the page reloads (a web build), or the
+ *  desktop or Android app downloads and installs it (from desktop 0.4.27
+ *  and Android 0.4.34). */
+export type UpdateVia = 'reload' | 'desktop' | 'android';
 
 /** What the reminder offers: one update, and whether a tap can apply it. */
 export interface UpdateOffer {
   kind: UpdateKind;
   version: string;
   /** A tap can bring it in from the page: always for the web build and the
-   *  Android app; for the desktop app only from the shell version that can
-   *  restart itself. */
+   *  Android app; for the desktop app only from 0.4.27, the first that
+   *  installs on a tap. */
   canApply: boolean;
   via: UpdateVia;
 }
@@ -44,10 +44,10 @@ export interface UpdateFindings {
   shellLatest: string | null;
 }
 
-/** The first desktop app version with the `update_restart` command
- *  (apps/desktop/src-tauri/src/update.rs). Older ones install only through
- *  their launch dialog: quit and reopen. */
-export const SHELL_RESTART_SINCE = '0.4.27';
+/** The first desktop app that installs an update on a tap (`update_download`
+ *  and `update_install`, apps/desktop/src-tauri/src/update.rs). Older ones
+ *  install only through their launch dialog: quit and reopen. */
+export const SHELL_TAP_SINCE = '0.4.27';
 
 const DESKTOP: readonly DevicePlatform[] = ['windows', 'macos', 'linux'];
 
@@ -55,8 +55,8 @@ export function isDesktopPlatform(platform: DevicePlatform): boolean {
   return DESKTOP.includes(platform);
 }
 
-export function shellCanRestart(shellVersion: string | null): boolean {
-  return !!shellVersion && !isNewer(SHELL_RESTART_SINCE, shellVersion);
+export function shellUpdatesOnTap(shellVersion: string | null): boolean {
+  return !!shellVersion && !isNewer(SHELL_TAP_SINCE, shellVersion);
 }
 
 /** Newer, and both are real versions: a missing or malformed one is never
@@ -68,7 +68,7 @@ export function newer(candidate: string | null, current: string | null): boolean
 }
 
 /** The one update worth a reminder. The app itself first when the page can
- *  install it (the Android app; a desktop app that can restart itself): the
+ *  install it (the Android app; a desktop app from 0.4.27): the
  *  new app loads the new web build too. Else the web build, which a reload
  *  always can; else a desktop app that only a quit and reopen installs.
  *  Null when everything is current. */
@@ -79,11 +79,11 @@ export function pickOffer(
   const shell = newer(found.shellLatest, running.shell) ? sanitizeVersion(found.shellLatest) : null;
   const web = newer(found.webLatest, running.web) ? sanitizeVersion(found.webLatest) : null;
   const android = running.platform === 'android';
-  const restart = !android && shellCanRestart(sanitizeVersion(running.shell));
+  const desktopTap = !android && shellUpdatesOnTap(sanitizeVersion(running.shell));
   if (shell && android) return { kind: 'shell', version: shell, canApply: true, via: 'android' };
-  if (shell && restart) return { kind: 'shell', version: shell, canApply: true, via: 'restart' };
+  if (shell && desktopTap) return { kind: 'shell', version: shell, canApply: true, via: 'desktop' };
   if (web) return { kind: 'web', version: web, canApply: true, via: 'reload' };
-  if (shell) return { kind: 'shell', version: shell, canApply: false, via: 'restart' };
+  if (shell) return { kind: 'shell', version: shell, canApply: false, via: 'desktop' };
   return null;
 }
 

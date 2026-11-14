@@ -25,7 +25,7 @@ describe('updatesLine', () => {
       'Ember 0.7.44 is ready. Updating after this song',
     );
     expect(
-      updatesLine({ ...base, status: 'available', offer: { kind: 'shell', version: '0.4.27', canApply: false, via: 'restart' } }),
+      updatesLine({ ...base, status: 'available', offer: { kind: 'shell', version: '0.4.27', canApply: false, via: 'desktop' } }),
     ).toBe('Ember 0.4.27 is ready. Quit and reopen Ember to install it');
     expect(
       updatesLine({ ...base, status: 'available', applyFailed: true, offer: { kind: 'shell', version: '0.4.34', canApply: true, via: 'android' } }),

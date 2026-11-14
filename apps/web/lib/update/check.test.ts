@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { findUpdates, newer, pickOffer, shellCanRestart } from './check';
+import { findUpdates, newer, pickOffer, shellUpdatesOnTap } from './check';
 
 /** What counts as a newer Ember. The bug: the desktop app kept running the
  *  web build it loaded (0.7.42) after the host moved to 0.7.43, and nothing
@@ -20,12 +20,12 @@ describe('newer', () => {
   });
 });
 
-describe('shellCanRestart', () => {
-  it('is true from the desktop app that has update_restart', () => {
-    expect(shellCanRestart('0.4.26')).toBe(false);
-    expect(shellCanRestart('0.4.27')).toBe(true);
-    expect(shellCanRestart('0.5.0')).toBe(true);
-    expect(shellCanRestart(null)).toBe(false);
+describe('shellUpdatesOnTap', () => {
+  it('is true from the desktop app that installs on a tap (0.4.27)', () => {
+    expect(shellUpdatesOnTap('0.4.26')).toBe(false);
+    expect(shellUpdatesOnTap('0.4.27')).toBe(true);
+    expect(shellUpdatesOnTap('0.5.0')).toBe(true);
+    expect(shellUpdatesOnTap(null)).toBe(false);
   });
 });
 
@@ -44,12 +44,12 @@ describe('pickOffer', () => {
     expect(pickOffer({ webLatest: null, shellLatest: null }, { web: '0.7.43', shell: '0.4.26' })).toBeNull();
   });
 
-  it('puts a desktop app that can restart itself first: the restart brings the web build too', () => {
+  it('puts a desktop app that installs on a tap first: the new app brings the web build too', () => {
     expect(pickOffer({ webLatest: '0.7.44', shellLatest: '0.4.28' }, { web: '0.7.43', shell: '0.4.27' })).toEqual({
       kind: 'shell',
       version: '0.4.28',
       canApply: true,
-      via: 'restart',
+      via: 'desktop',
     });
   });
 
@@ -59,7 +59,7 @@ describe('pickOffer', () => {
       kind: 'shell',
       version: '0.4.27',
       canApply: false,
-      via: 'restart',
+      via: 'desktop',
     });
   });
 

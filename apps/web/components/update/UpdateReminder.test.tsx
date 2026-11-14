@@ -14,7 +14,7 @@ type W = Window & { Capacitor?: unknown; __TAURI_INTERNALS__?: unknown };
 const reload = vi.fn();
 
 function offer(version = '0.7.44', canApply = true) {
-  act(() => useUpdateStore.getState().set({ status: 'available', offer: { kind: 'web', version, canApply, via: canApply ? 'reload' : 'restart' } }));
+  act(() => useUpdateStore.getState().set({ status: 'available', offer: { kind: 'web', version, canApply, via: canApply ? 'reload' : 'desktop' } }));
 }
 
 beforeEach(() => {
@@ -25,7 +25,7 @@ beforeEach(() => {
   resetUpdateReminderForTests();
   useUpdateStore.setState({ ...INITIAL_UPDATE_STATE });
   usePlayerStore.setState({ isPlaying: false });
-  setApplyDepsForTests({ reload, restartShell: async () => true });
+  setApplyDepsForTests({ reload, installDesktop: async () => true });
   reload.mockClear();
 });
 

@@ -82,7 +82,7 @@ function Grab() {
 beforeEach(() => {
   vi.clearAllMocks();
   resetUpdateForTests();
-  setApplyDepsForTests({ reload, restartShell: async () => true });
+  setApplyDepsForTests({ reload, installDesktop: async () => true });
   useUpdateStore.setState({ ...INITIAL_UPDATE_STATE });
   shell.kind = 'web';
   engines.native = engine();

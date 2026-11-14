@@ -15,8 +15,8 @@ export function updatesLine(s: Pick<UpdateState, 'status' | 'offer' | 'pending' 
   const v = s.offer ? ` ${s.offer.version}` : '';
   if (s.applying) return `Updating to Ember${v}`;
   if (s.status === 'checking') return 'Checking for updates…';
-  if (s.offer && s.applyFailed && s.offer.via === 'android') return `Ember${v} is ready. Couldn't update, try again`;
-  if (s.offer && (s.applyFailed || !s.offer.canApply)) return `Ember${v} is ready. Quit and reopen Ember to install it`;
+  if (s.offer && s.applyFailed && s.offer.via !== 'reload') return `Ember${v} is ready. Couldn't update, try again`;
+  if (s.offer && !s.offer.canApply) return `Ember${v} is ready. Quit and reopen Ember to install it`;
   if (s.offer && s.pending) return `Ember${v} is ready. Updating after this song`;
   if (s.offer) return `Ember${v} is ready`;
   if (s.status === 'up-to-date') return 'Ember is up to date';
@@ -56,7 +56,7 @@ export function UpdatesCard() {
 
   const busy = state.status === 'checking' || state.applying;
   const canUpdate =
-    !!state.offer?.canApply && (!state.applyFailed || state.offer.via === 'android') && !state.pending && !state.applying;
+    !!state.offer?.canApply && !state.pending && !state.applying;
   const versions = [
     info.shellVersion ? `${platformName(info.platform)} ${info.shellVersion}` : null,
     info.webVersion ? `web ${info.webVersion}` : null,

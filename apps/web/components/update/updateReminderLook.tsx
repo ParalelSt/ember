@@ -34,11 +34,11 @@ export const REMINDER_WORDING = {
   waiting: 'Updating after this song',
   /** Tapped while offline: it goes in once the host answers again. */
   waitingOnline: 'Updating once back online',
-  /** Going in now (the page reloads, the app restarts). */
+  /** Going in now (the page reloads, the app downloads and installs). */
   applying: 'Updating',
-  /** A desktop app that cannot restart itself: its launch dialog installs
-   *  the update at the next start. */
+  /** A desktop app from before 0.4.27 cannot install on a tap: its launch
+   *  dialog installs the update at the next start. */
   reopen: 'Quit and reopen Ember to update',
-  /** The Android app could not download or install it; a tap tries again. */
+  /** The app could not download or install it; a tap tries again. */
   failed: "Couldn't update",
 } as const;

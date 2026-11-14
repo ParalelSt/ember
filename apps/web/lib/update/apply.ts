@@ -7,6 +7,7 @@ import {
   takeAppResumeNote,
   type AppUpdateState,
 } from '@/lib/appUpdate';
+import { detectShell } from '@/lib/playback/detectShell';
 import { loadDeviceInfo } from '@/lib/versions/device';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useUpdateStore } from '@/stores/useUpdateStore';
@@ -16,7 +17,7 @@ import { findUpdates, pickOffer, type UpdateOffer } from './check';
  *  what is newer). Nothing here ever interrupts a song:
  *
  *   - Nothing playing: a tap updates at once (the page reloads, or the
- *     desktop app restarts, and its launch dialog installs the new one).
+ *     desktop or Android app downloads the new version and installs it).
  *   - A song playing: the update waits for the song to end
  *     ("Updating after this song"). The player calls `updateAtSongEnd` in
  *     the gap before the next song; the next song is noted down
@@ -33,11 +34,17 @@ import { findUpdates, pickOffer, type UpdateOffer } from './check';
  *     player moves on by itself), so the next song showing up is the
  *     moment: it is paused at once and the install starts, and that song
  *     starts again once the new app is open. The download starts at the
- *     tap, so the gap stays short. */
+ *     tap, so the gap stays short.
+ *   - The desktop app itself (from 0.4.27): the page plays through the app's
+ *     engine and sees the song end, so it goes in at `updateAtSongEnd` like
+ *     a web build. The download starts at the tap (`update_download`), the
+ *     install at the end of the song (`update_install`, which ends the app:
+ *     the resume note goes with it, `update_take_resume` hands it back). */
 
 const RESUME_KEY = 'ember.update.resume';
-/** A resume note older than this is from some other day: ignored. A desktop
- *  app restart goes through the launch dialog's countdown and installer. */
+/** A resume note older than this is from some other day: ignored. An app
+ *  install can take a while (a download, an installer, a tap on "Ember
+ *  updated" to come back). */
 export const RESUME_FRESH_MS = 10 * 60 * 1000;
 /** Paused this long while an update waits: nothing is playing, go ahead. A
  *  moment's pause between two songs must not count. */
@@ -66,31 +73,60 @@ function online(): boolean {
 
 export interface ApplyDeps {
   reload: () => void;
-  restartShell: () => Promise<boolean>;
+  installDesktop: (resume: string | null) => Promise<boolean>;
+  downloadDesktop: () => Promise<boolean>;
   installAndroid: (resume: string | null) => Promise<boolean>;
   downloadAndroid: () => Promise<boolean>;
   openInstallSettings: () => Promise<boolean>;
 }
 
-async function restartShellViaTauri(): Promise<boolean> {
+async function tauriInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke(cmd, args);
+}
+
+/** The desktop app installs (and ends): resolves false only when the update
+ *  could not even start (no update, a failed download or signature). */
+async function installDesktopViaTauri(resume: string | null): Promise<boolean> {
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('update_restart');
+    await tauriInvoke('update_install', { resume });
     return true;
   } catch {
     return false;
   }
 }
 
+async function downloadDesktopViaTauri(): Promise<boolean> {
+  try {
+    await tauriInvoke('update_download');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The desktop app's copy of the resume note, once (null in any other app,
+ *  or a desktop app from before 0.4.27). */
+async function takeDesktopResumeNote(): Promise<string | null> {
+  if (detectShell() !== 'tauri') return null;
+  try {
+    const note = await tauriInvoke('update_take_resume');
+    return typeof note === 'string' ? note : null;
+  } catch {
+    return null;
+  }
+}
+
 const defaultDeps: ApplyDeps = {
   reload: () => window.location.reload(),
-  restartShell: restartShellViaTauri,
+  installDesktop: installDesktopViaTauri,
+  downloadDesktop: downloadDesktopViaTauri,
   installAndroid: installAppUpdateWithResume,
   downloadAndroid: downloadAppUpdate,
   openInstallSettings,
 };
 let deps: ApplyDeps = defaultDeps;
-/** Test seam: what "reload" and "restart" do. */
+/** Test seam: what "reload", "install" and "download" do. */
 export function setApplyDepsForTests(d: Partial<ApplyDeps> | null): void {
   deps = d ? { ...defaultDeps, ...d } : defaultDeps;
 }
@@ -132,7 +168,8 @@ export function takeUpdateResume(queue: readonly { id: string }[], now: number =
 /** The Android app's copy of the note (kept by the app through the install,
  *  see installAppUpdateWithResume), once. */
 export async function takeAppUpdateResume(queue: readonly { id: string }[], now: number = Date.now()): Promise<ResumeTarget | null> {
-  return readResumeNote(await takeAppResumeNote(), queue, now);
+  const note = (await takeAppResumeNote()) ?? (await takeDesktopResumeNote());
+  return readResumeNote(note, queue, now);
 }
 
 function readResumeNote(raw: string | null, queue: readonly { id: string }[], now: number): ResumeTarget | null {
@@ -149,7 +186,7 @@ function readResumeNote(raw: string | null, queue: readonly { id: string }[], no
 }
 
 /** Brings the offered update in now. `resume`: the song to start once back.
- *  False when it could not (the desktop app could not restart itself). */
+ *  False when it could not (the app could not download or install it). */
 export async function performUpdate(resume: ResumeTarget | null = null, now: number = Date.now()): Promise<boolean> {
   const store = useUpdateStore.getState();
   const offer = store.offer;
@@ -165,8 +202,8 @@ export async function performUpdate(resume: ResumeTarget | null = null, now: num
     useUpdateStore.getState().set({ applying: false, applyFailed: true });
     return false;
   }
-  if (offer.via === 'restart') {
-    if (await deps.restartShell()) return true;
+  if (offer.via === 'desktop') {
+    if (await deps.installDesktop(resume ? resumeNote(resume, now) : null)) return true;
     clearResume();
     useUpdateStore.getState().set({ applying: false, applyFailed: true });
     return false;
@@ -193,6 +230,7 @@ export function requestUpdate(): UpdateRequest {
   store.set({ pending: true });
   // Fetched now, installed at the end of the song.
   if (offer.via === 'android') void deps.downloadAndroid();
+  if (offer.via === 'desktop') void deps.downloadDesktop();
   return 'after-song';
 }
 

@@ -14,10 +14,9 @@ export interface UpdateState {
   checkedAt: number;
   /** Tapped while a song plays: the update waits for the song to end. */
   pending: boolean;
-  /** The update is going in (the page reloads, or the app restarts). */
+  /** The update is going in (the page reloads, or the app installs it). */
   applying: boolean;
-  /** The app could not restart itself (a desktop app from before
-   *  update_restart): quit and reopen it instead. */
+  /** The app could not download or install it; a tap tries again. */
   applyFailed: boolean;
   set: (patch: Partial<Omit<UpdateState, 'set'>>) => void;
 }

@@ -128,7 +128,7 @@ export function UpdateReminder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, offer, isPlaying, tick]);
 
-  // The app could not restart itself: say how to update instead.
+  // The app could not download or install it: say so (a tap tries again).
   useEffect(() => {
     if (applyFailed && enabled) show();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -138,9 +138,9 @@ export function UpdateReminder() {
 
   const words = applying
     ? REMINDER_WORDING.applying
-    : applyFailed && offer.via === 'android'
+    : applyFailed && offer.via !== 'reload'
       ? REMINDER_WORDING.failed
-      : applyFailed || !offer.canApply
+      : !offer.canApply
       ? REMINDER_WORDING.reopen
       : pending
         ? typeof navigator !== 'undefined' && navigator.onLine === false
@@ -149,7 +149,7 @@ export function UpdateReminder() {
         : REMINDER_WORDING.ready;
 
   const tap = () => {
-    if (!offer.canApply || (applyFailed && offer.via !== 'android')) {
+    if (!offer.canApply) {
       show();
       return;
     }
