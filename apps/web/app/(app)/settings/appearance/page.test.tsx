@@ -164,22 +164,19 @@ describe('Settings > Appearance', () => {
     expect(screen.queryByRole('switch')).toBeNull();
   });
 
-  it('keeps the Apply bar and tabs out of the part that scrolls, which holds every tab panel (F2)', async () => {
+  it('has no scroll box of its own: the page scrolls as a whole and the preview sticks from xl', async () => {
     start();
     await screen.findByTestId('theme-count');
-    const scroll = screen.getByTestId('inspector-scroll');
-    expect(scroll).toHaveClass('xl:min-h-0', 'xl:flex-1', 'xl:overflow-y-auto');
-    expect(scroll).not.toContainElement(screen.getByRole('tablist'));
-    expect(scroll).not.toContainElement(screen.getByTestId('in-use-bar'));
     for (const name of ['Themes', 'Colours']) {
       tab(name);
-      // Keyed on the tab: each tab gets a fresh one, opened at its top.
-      expect(screen.getByTestId('inspector-scroll')).toContainElement(screen.getByRole('tabpanel'));
+      const panel = screen.getByRole('tabpanel');
+      for (let el: HTMLElement | null = panel; el && el !== document.body; el = el.parentElement) {
+        expect(el.className).not.toMatch(/overflow-(y-)?(auto|scroll)/);
+        expect(el.className).not.toMatch(/(^|\s)xl:h-\[/);
+      }
     }
-    // From xl the row is as tall as what is left of the page scroller.
-    expect(screen.getByTestId('appearance-fit').className).toContain(
-      'xl:h-[calc(var(--ember-scroller-h)-var(--appearance-top)-var(--spacing-block))]',
-    );
+    expect(screen.queryByTestId('inspector-scroll')).toBeNull();
+    expect(screen.getByTestId('theme-preview')).toHaveClass('xl:sticky', 'xl:h-128');
   });
 
   it('picking a preset shows it in the preview only; Apply applies and saves it', async () => {

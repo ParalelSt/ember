@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 import { ApplyBar } from '@/components/settings/appearance/ApplyBar';
 import { ColourEditor } from '@/components/settings/appearance/ColourEditor';
 import { InspectorPanel, InspectorTabStrip, type InspectorTab } from '@/components/settings/appearance/InspectorTabs';
 import { ThemeLibrary } from '@/components/settings/appearance/ThemeLibrary';
 import { ThemePreview } from '@/components/settings/appearance/ThemePreview';
-import { useScrollerOffset } from '@/hooks/useScrollerOffset';
 import { useThemeEditor } from '@/hooks/useThemeEditor';
 import { cn } from '@/lib/utils';
 import { derive } from '@/lib/theme/derive';
@@ -22,19 +21,16 @@ import { THEME_CAP } from '@/lib/theme/saved';
  *  The layout: a live preview
  *  of the app next to one panel with two tabs (Themes, Colours). Sharing is
  *  per theme, a switch on each row of My themes (bughunt F3).
- *  Below xl the panel drops under the preview. From xl the two fill what
- *  is left of the window under the heading (bughunt F2: at 1512x830 the
- *  preview's player row and the inspector ran past the player bar): the
- *  preview shrinks to fit (its rows give way, its player row stays), and
- *  the inspector keeps the Apply bar and tabs on top with its list
- *  scrolling on its own. Picking a theme or changing a colour shows only
+ *  Below xl the panel drops under the preview. From xl the two sit side by
+ *  side and the page scrolls as a whole (no scroll box of its own, which
+ *  cut the list off); the preview sticks under the top bar, so it stays in
+ *  sight while a long list scrolls. Picking a theme or changing a colour shows only
  *  in the preview; Apply makes it the theme of the whole app (and saves
  *  it), Back to current drops it. */
 export function AppearanceEditor({ rows }: { rows?: boolean }) {
   const editor = useThemeEditor();
   const [tab, setTab] = useState<InspectorTab>('themes');
   const { selection, active, list, status } = editor;
-  const [fitRef, fitTop] = useScrollerOffset<HTMLDivElement>();
 
   const base = PRESET_BY_ID[selection.base];
   const hint =
@@ -46,21 +42,12 @@ export function AppearanceEditor({ rows }: { rows?: boolean }) {
 
   return (
     <section data-testid="appearance" className="flex flex-col gap-block">
-      {/* --appearance-top: this row's distance from the scroller's top, so
-          from xl its height is the scroller's visible height minus that and
-          a block of air above the player bar. A floor keeps it usable on a
-          very short window (the page scrolls then, as before). */}
-      <div
-        ref={fitRef}
-        data-testid="appearance-fit"
-        style={fitTop === null ? undefined : ({ '--appearance-top': `${fitTop}px` } as CSSProperties)}
-        className="flex flex-col gap-stack xl:h-[calc(var(--ember-scroller-h)-var(--appearance-top)-var(--spacing-block))] xl:min-h-96 xl:flex-row xl:items-start"
-      >
+      <div data-testid="appearance-layout" className="flex flex-col gap-stack xl:flex-row xl:items-start">
         <ThemePreview
           vars={derive(editor.inputs).vars}
-          className="h-96 min-w-0 xl:sticky xl:top-(--ember-topbar-h,0px) xl:h-full xl:max-h-128 xl:flex-1"
+          className="h-96 min-w-0 xl:sticky xl:top-[calc(var(--ember-topbar-h,0px)+var(--spacing-block))] xl:h-128 xl:max-h-[calc(var(--ember-scroller-h,100svh)-var(--ember-topbar-h,0px)-var(--spacing-stack))] xl:flex-1"
         />
-        <div className="flex min-w-0 flex-col gap-block xl:h-full xl:w-96 xl:shrink-0">
+        <div className="flex min-w-0 flex-col gap-block xl:w-96 xl:shrink-0">
           <ApplyBar
             bare={rows}
             dirty={editor.dirty}
@@ -90,15 +77,7 @@ export function AppearanceEditor({ rows }: { rows?: boolean }) {
             </p>
           )}
 
-          {/* From xl the list scrolls here, under the bar and tabs. The
-              inset padding keeps focus rings clear of the clipped edge.
-              Keyed on the tab, so each tab opens at its top rather than at
-              wherever the last one was scrolled to. */}
-          <div
-            key={tab}
-            data-testid="inspector-scroll"
-            className="xl:-mx-inset xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:p-inset"
-          >
+          <div data-testid="inspector-panels">
             <InspectorPanel id="themes" active={tab}>
               <ThemeLibrary
                 shownPreset={selection.kind === 'preset' ? selection.base : null}
