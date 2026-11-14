@@ -256,13 +256,14 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
    seamlessly takes the first's place. --marquee-shift is the negative
    (text width + gap) in px, set inline per-title, so when it has shifted
    that far copy 2 sits exactly where copy 1 started. The empty gap between
-   copies is the little break. Respects reduced-motion. */
+   copies is the little break.
+   NOT switched off by the system's reduced-motion setting (owner,
+   2026-11-14): Windows sets it for everyone with "Animation effects" off
+   (and "Adjust for best performance"), and a long name cut off with no way
+   to read it was the bug. A setting of Ember's own could still stop it. */
 @keyframes ember-marquee-loop {
   from { transform: translateX(0); }
   to   { transform: translateX(var(--marquee-shift, 0)); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ember-marquee-anim { animation: none !important; }
 }
 
 /* Search results arriving: each row fades in a moment after the one above

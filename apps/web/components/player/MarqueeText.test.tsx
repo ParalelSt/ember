@@ -73,3 +73,18 @@ describe('MarqueeText / pace', () => {
     expect(START_DELAY_MS).toBe(1300);
   });
 });
+
+/** Owner, 2026-11-14: long names scroll even with Windows "Animation effects"
+ *  off, which reaches the page as prefers-reduced-motion. The marquee's
+ *  animation must not sit under a reduced-motion rule. */
+describe('MarqueeText / reduced motion', () => {
+  it('no reduced-motion rule switches the marquee off', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const css = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8');
+    const blocks = [...css.matchAll(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/g)].map((m) => m[1]);
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const b of blocks) expect(b).not.toContain('ember-marquee');
+    expect(css).toContain('@keyframes ember-marquee-loop');
+  });
+});
