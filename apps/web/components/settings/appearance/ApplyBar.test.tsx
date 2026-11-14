@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ApplyBar, type ApplyBarProps } from './ApplyBar';
 
 function bar(over: Partial<ApplyBarProps> = {}) {
@@ -22,7 +22,7 @@ describe('ApplyBar, the soft bar', () => {
   it('something to apply: the same text and buttons on a soft block that sticks, no outline', () => {
     const p = bar();
     const el = screen.getByTestId('apply-bar');
-    expect(el).toHaveClass('bg-card', 'rounded-[12px]', 'p-row', 'sticky', 'top-0');
+    expect(el).toHaveClass('bg-card', 'rounded-[12px]', 'p-row', 'sticky', 'top-0', 'md:top-[calc(var(--ember-topbar-h,0px)+var(--spacing-block))]');
     expect(el.className).not.toMatch(/(^|\s)border(-|\s|$)/);
     expect(el).toHaveTextContent('Midnight shows in the preview only.');
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -62,7 +62,7 @@ describe('ApplyBar, bare (desktop Settings rows)', () => {
     const el = screen.getByTestId('apply-bar');
     expect(el).not.toHaveClass('bg-card');
     expect(el).not.toHaveClass('rounded-[12px]');
-    expect(el).toHaveClass('sticky', 'top-0', 'bg-background');
+    expect(el).toHaveClass('sticky', 'top-0', 'md:top-[calc(var(--ember-topbar-h,0px)+var(--spacing-block))]', 'bg-background');
     expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
   });
 
@@ -73,5 +73,43 @@ describe('ApplyBar, bare (desktop Settings rows)', () => {
     expect(el).not.toHaveClass('bg-background');
     expect(el).not.toHaveClass('bg-card');
     expect(el).toHaveTextContent('In use: Ember.');
+  });
+});
+
+describe('ApplyBar keeps one height in every state (layout-shift pass)', () => {
+  const layers = (el: HTMLElement) => [...el.children] as HTMLElement[];
+
+  for (const [state, over] of [
+    ['nothing to apply', { dirty: false }],
+    ['a pick to apply', { dirty: true, edited: false }],
+    ['changes to apply', { dirty: true, edited: true }],
+  ] as const) {
+    it(`${state}: every state's line is laid out in the same cell, only the shown one visible`, () => {
+      bar(over);
+      const el = screen.getByTestId(over.dirty ? 'apply-bar' : 'in-use-bar');
+      expect(el).toHaveClass('grid');
+      const all = layers(el);
+      expect(all).toHaveLength(3);
+      for (const layer of all) expect(layer).toHaveClass('col-start-1', 'row-start-1');
+      const [shown, ...room] = all;
+      expect(shown).not.toHaveClass('invisible');
+      for (const layer of room) {
+        expect(layer).toHaveClass('invisible');
+        expect(layer).toHaveAttribute('aria-hidden', 'true');
+        expect(layer).toHaveAttribute('inert');
+      }
+      // The tallest states are always there: the longest line with both buttons, and the in-use line.
+      expect(room[0]).toHaveTextContent('Your changes to Midnight show in the preview only.');
+      expect(room[0]!.querySelectorAll('button')).toHaveLength(2);
+      expect(room[1]).toHaveTextContent('In use: Ember.');
+    });
+  }
+
+  it('the unseen buttons are out of reach: only the shown ones are buttons to assistive tech', () => {
+    bar({ dirty: false });
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    cleanup();
+    bar({ dirty: true });
+    expect(screen.getAllByRole('button')).toHaveLength(2);
   });
 });

@@ -246,7 +246,7 @@ describe('Settings > Appearance', () => {
     it('rename, duplicate and delete', async () => {
       server.mine = [saved()];
       start({ v: 1, preset: 'ember' });
-      await screen.findByText('Night drive');
+      await screen.findByRole('button', { name: 'Preview Night drive' });
 
       fireEvent.click(screen.getByRole('button', { name: 'Rename Night drive' }));
       const field = screen.getByLabelText('New name for Night drive');
@@ -276,7 +276,7 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
-      await screen.findByText('Night drive');
+      await screen.findByRole('button', { name: 'Preview Night drive' });
       fireEvent.click(screen.getByRole('button', { name: 'Delete Night drive' }));
       fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
       await screen.findByTestId('loose-theme');
@@ -340,7 +340,7 @@ describe('Settings > Appearance', () => {
     it('each of my rows has its own switch, and shared ones carry a Shared tag', async () => {
       server.mine = [saved(), LATE];
       start();
-      await screen.findByText('Night drive');
+      await screen.findByRole('button', { name: 'Preview Night drive' });
       expect(screen.getByTestId('share-explainer')).toHaveTextContent(
         'Shared themes appear for everyone under Shared by others.',
       );
@@ -354,7 +354,7 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t, LATE];
       start(docFromSaved(LATE));
-      await screen.findByText('Night drive');
+      await screen.findByRole('button', { name: 'Preview Night drive' });
 
       fireEvent.click(shareSwitch('Night drive'));
       await waitFor(() => expect(shareSwitch('Night drive')).toHaveAttribute('aria-checked', 'true'));
@@ -380,7 +380,7 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t, LATE];
       start();
-      await screen.findByText('Night drive');
+      await screen.findByRole('button', { name: 'Preview Night drive' });
       fireEvent.click(screen.getByRole('radio', { name: /Midnight/ }));
       expect(applyButton()).toBeEnabled();
 
@@ -395,7 +395,7 @@ describe('Settings > Appearance', () => {
       server.mine = [t];
       server.failUpdate = { status: 500, body: { error: 'boom' } };
       start();
-      await screen.findByText('Night drive');
+      await screen.findByRole('button', { name: 'Preview Night drive' });
 
       fireEvent.click(shareSwitch('Night drive'));
       await waitFor(() => expect(status()).toHaveTextContent('Not shared: check your connection and try again.'));
@@ -424,7 +424,7 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
-      await screen.findByText('Night drive');
+      await screen.findByRole('button', { name: 'Preview Night drive' });
       tab('Colours');
 
       const surfaceBefore = hexField('Surface').value;
@@ -479,7 +479,7 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
-      await screen.findByText('Night drive');
+      await screen.findByRole('button', { name: 'Preview Night drive' });
       tab('Colours');
 
       typeHex('Accent', '#141c2c');
@@ -511,7 +511,7 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
-      await screen.findByText('Night drive');
+      await screen.findByRole('button', { name: 'Preview Night drive' });
       tab('Colours');
       fireEvent.click(screen.getByRole('button', { name: 'Reset to Midnight' }));
       expect(screen.getByTestId('reset-confirm')).toHaveTextContent('Reset every colour to Midnight?');
@@ -537,7 +537,7 @@ describe('Settings > Appearance', () => {
     const t = saved();
     server.mine = [t];
     const { unmount } = start(docFromSaved(t));
-    await screen.findByText('Night drive');
+    await screen.findByRole('button', { name: 'Preview Night drive' });
     tab('Colours');
     typeHex('Accent', '#3aa0ff');
     act(() => unmount());
