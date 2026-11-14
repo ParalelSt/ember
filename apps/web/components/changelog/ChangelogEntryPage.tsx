@@ -40,12 +40,14 @@ interface Props {
   onGo?: (id: string) => void;
   /** "Got it": mark read and return to the list. */
   onGotIt?: () => void;
+  /** The list's page this entry is on (/whats-new?page=N). */
+  listHref?: string;
 }
 
 /** One full changelog entry: sticky back bar (phone) or a heading row with a
  *  back link (desktop), bullets, swipe/arrow-key and dot
  *  navigation, and a "Got it" card. */
-export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props) {
+export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt, listHref = '/whats-new' }: Props) {
   const index = entry ? entries.findIndex((e) => e.id === entry.id) : -1;
   const newer = index > 0 ? entries[index - 1] : undefined;
   const older = index >= 0 ? entries[index + 1] : undefined;
@@ -82,7 +84,7 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props
   };
 
   // Phones only: from md up the top bar has the same button (lib/nav).
-  const back = <BackButton href="/whats-new" label="Back to What's new" testId="changelog-back" className="md:hidden" />;
+  const back = <BackButton href={listHref} label="Back to What's new" testId="changelog-back" className="md:hidden" />;
 
   if (!entry) {
     return (
@@ -121,7 +123,7 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props
         className="hidden min-h-hit items-center gap-row text-xs font-semibold uppercase tracking-widest text-muted-foreground md:flex"
       >
         <Link
-          href="/whats-new"
+          href={listHref}
           data-testid="changelog-back-desktop"
           className="inline-flex items-center gap-cluster font-bold text-foreground transition-colors hover:text-ember"
         >

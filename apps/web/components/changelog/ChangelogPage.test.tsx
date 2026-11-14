@@ -1,7 +1,7 @@
 import { useState, type ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { ChangelogPage, SCOPE_LABEL } from './ChangelogPage';
+import { CHANGELOG_PAGE_SIZE, ChangelogPage, SCOPE_LABEL, clampPage, pageCount, pageOfEntry, whatsNewHref } from './ChangelogPage';
 import { ChangelogEntryPage } from './ChangelogEntryPage';
 import { CHANGELOG_SCOPES, computeNewIds, type ChangelogEntry } from '@/lib/changelog';
 
@@ -263,5 +263,98 @@ describe('ChangelogEntryPage navigation', () => {
     expect(screen.getByText('Seen everything in this update?')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
     expect(onGotIt).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ChangelogPage pages', () => {
+  const many: ChangelogEntry[] = Array.from({ length: 25 }, (_, i) => ({
+    id: `e${i}`,
+    version: `0.${25 - i}.0`,
+    date: '2026-10-01',
+    title: `Update ${i}`,
+    summary: `summary ${i}`,
+    bullets: ['x'],
+  }));
+  const shownTitles = () => screen.getAllByTestId('changelog-entry').map((e) => e.querySelector('.font-semibold')?.textContent);
+  const pager = () => screen.getByRole('navigation', { name: "What's new pages" });
+
+  it('shows ten entries a page, newest first, with Previous, page numbers and Next as chips', () => {
+    expect(CHANGELOG_PAGE_SIZE).toBe(10);
+    render(<ChangelogPage entries={many} newIds={new Set()} {...plain} />);
+    expect(shownTitles()).toEqual(many.slice(0, 10).map((e) => e.title));
+    const nav = pager();
+    const prev = within(nav).getByText('Previous');
+    expect(prev.closest('a')).toBeNull();
+    expect(prev).toHaveAttribute('aria-disabled', 'true');
+    const pages = within(nav).getAllByRole('link', { name: /^Page / });
+    expect(pages.map((a) => a.textContent)).toEqual(['1', '2', '3']);
+    expect(pages.map((a) => a.getAttribute('href'))).toEqual(['/whats-new', '/whats-new?page=2', '/whats-new?page=3']);
+    expect(pages[0]).toHaveAttribute('aria-current', 'page');
+    expect(pages[0]).toHaveClass('rounded-full', 'bg-ember', 'text-ember-foreground');
+    expect(pages[1]).toHaveClass('rounded-full', 'bg-secondary');
+    expect(pages[1]).not.toHaveAttribute('aria-current');
+    expect(within(nav).getByRole('link', { name: /Next/ })).toHaveAttribute('href', '/whats-new?page=2');
+  });
+
+  it('a middle page links both ways; the last page holds the rest and Next is off', () => {
+    const { rerender } = render(<ChangelogPage entries={many} newIds={new Set()} page={2} {...plain} />);
+    expect(shownTitles()).toEqual(many.slice(10, 20).map((e) => e.title));
+    expect(within(pager()).getByRole('link', { name: /Previous/ })).toHaveAttribute('href', '/whats-new');
+    expect(within(pager()).getByRole('link', { name: /Next/ })).toHaveAttribute('href', '/whats-new?page=3');
+    rerender(<ChangelogPage entries={many} newIds={new Set()} page={3} {...plain} />);
+    expect(shownTitles()).toEqual(many.slice(20).map((e) => e.title));
+    expect(within(pager()).queryByRole('link', { name: /Next/ })).toBeNull();
+    expect(within(pager()).getByText('Next')).toHaveAttribute('aria-disabled', 'true');
+    expect(within(pager()).getByRole('link', { name: 'Page 3' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('a page out of range shows the nearest one', () => {
+    render(<ChangelogPage entries={many} newIds={new Set()} page={99} {...plain} />);
+    expect(shownTitles()).toEqual(many.slice(20).map((e) => e.title));
+  });
+
+  it('keeps the New tags on every page and dots the pages that hold one', () => {
+    render(<ChangelogPage entries={many} newIds={new Set(['e1', 'e12'])} page={1} {...plain} />);
+    expect(within(card('Update 1')).getByTestId('new-badge')).toBeInTheDocument();
+    expect(within(pager()).getByRole('link', { name: 'Page 2, has new updates' })).toContainElement(screen.getByTestId('page-new-dot'));
+    expect(within(pager()).getByRole('link', { name: 'Page 3' })).toBeInTheDocument();
+    // The current page shows its own tags, no dot on its number.
+    expect(within(pager()).getByRole('link', { name: 'Page 1, has new updates' }).querySelector('[data-testid="page-new-dot"]')).toBeNull();
+  });
+
+  it('shows only seven page numbers at a time, around the current one', () => {
+    const lots = Array.from({ length: 120 }, (_, i) => ({ ...many[0], id: `x${i}`, title: `T${i}` }));
+    render(<ChangelogPage entries={lots} newIds={new Set()} page={9} {...plain} />);
+    expect(within(pager()).getAllByRole('link', { name: /^Page / }).map((a) => a.textContent)).toEqual(['6', '7', '8', '9', '10', '11', '12']);
+  });
+
+  it('has no pager with ten entries or fewer', () => {
+    render(<ChangelogPage entries={many.slice(0, 10)} newIds={new Set()} {...plain} />);
+    expect(screen.getAllByTestId('changelog-entry')).toHaveLength(10);
+    expect(screen.queryByRole('navigation', { name: "What's new pages" })).toBeNull();
+  });
+
+  it('page helpers: count, the URL param, the URL, and the page an entry is on', () => {
+    expect([0, 1, 10, 11, 25].map(pageCount)).toEqual([1, 1, 1, 2, 3]);
+    expect(clampPage(null, 25)).toBe(1);
+    expect(clampPage('abc', 25)).toBe(1);
+    expect(clampPage('0', 25)).toBe(1);
+    expect(clampPage('-2', 25)).toBe(1);
+    expect(clampPage('2', 25)).toBe(2);
+    expect(clampPage('7', 25)).toBe(3);
+    expect(whatsNewHref(1)).toBe('/whats-new');
+    expect(whatsNewHref(3)).toBe('/whats-new?page=3');
+    expect(pageOfEntry(many, 'e0')).toBe(1);
+    expect(pageOfEntry(many, 'e9')).toBe(1);
+    expect(pageOfEntry(many, 'e10')).toBe(2);
+    expect(pageOfEntry(many, 'e24')).toBe(3);
+    expect(pageOfEntry(many, 'nope')).toBe(1);
+    expect(pageOfEntry(many, undefined)).toBe(1);
+  });
+
+  it("an entry's way back goes to the list's page it is on", () => {
+    render(<ChangelogEntryPage entry={many[12]} entries={many} listHref="/whats-new?page=2" />);
+    expect(screen.getByTestId('changelog-back')).toHaveAttribute('href', '/whats-new?page=2');
+    expect(screen.getByTestId('changelog-back-desktop')).toHaveAttribute('href', '/whats-new?page=2');
   });
 });

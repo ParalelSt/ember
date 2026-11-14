@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: ComponentProps<'a'>) => <a href={href} {...rest}>{children}</a>,
 }));
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn() }) }));
+const search = vi.hoisted(() => ({ params: new URLSearchParams() }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useSearchParams: () => search.params,
+}));
 
 // The real page, hook and store; only the network is faked.
 const updateChangelog = vi.fn();
@@ -21,10 +25,12 @@ const { default: WhatsNewPage } = await import('./page');
 const { default: WhatsNewEntryPage } = await import('./[id]/page');
 const { useChangelogStore } = await import('@/stores/useChangelogStore');
 const { APP_VERSION, CHANGELOG } = await import('@/lib/changelog');
+const { CHANGELOG_PAGE_SIZE } = await import('@/components/changelog/ChangelogPage');
 
 const initial = useChangelogStore.getState();
 
 beforeEach(() => {
+  search.params = new URLSearchParams();
   useChangelogStore.setState({ ...initial, seenVersion: '0.0.1', hideNew: false, loaded: true }, true);
   updateChangelog.mockReset();
   updateChangelog.mockImplementation(async (patch: { seenVersion?: string; hideNew?: boolean; readIds?: string[] }) => ({
@@ -35,10 +41,38 @@ beforeEach(() => {
 });
 
 describe('What\'s new page', () => {
-  it('lists every entry and tags the ones above the seen version', () => {
+  it('lists the newest ten entries and tags the ones above the seen version', () => {
+    expect(CHANGELOG.length).toBeGreaterThan(CHANGELOG_PAGE_SIZE);
     render(<WhatsNewPage />);
-    expect(screen.getAllByTestId('changelog-entry')).toHaveLength(CHANGELOG.length);
-    expect(screen.getAllByTestId('new-badge')).toHaveLength(CHANGELOG.length);
+    const shown = screen.getAllByTestId('changelog-entry');
+    expect(shown).toHaveLength(CHANGELOG_PAGE_SIZE);
+    expect(shown.map((e) => e.getAttribute('data-entry-id'))).toEqual(CHANGELOG.slice(0, CHANGELOG_PAGE_SIZE).map((e) => e.id));
+    expect(screen.getAllByTestId('new-badge')).toHaveLength(CHANGELOG_PAGE_SIZE);
+    const pager = screen.getByRole('navigation', { name: "What's new pages" });
+    expect(within(pager).getByRole('link', { name: /^Page 1/ })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('?page=2 shows the next ten, with their tags', () => {
+    search.params = new URLSearchParams('page=2');
+    render(<WhatsNewPage />);
+    const shown = screen.getAllByTestId('changelog-entry');
+    expect(shown.map((e) => e.getAttribute('data-entry-id'))).toEqual(
+      CHANGELOG.slice(CHANGELOG_PAGE_SIZE, CHANGELOG_PAGE_SIZE * 2).map((e) => e.id),
+    );
+    expect(screen.getAllByTestId('new-badge')).toHaveLength(shown.length);
+    expect(screen.getByRole('link', { name: /^Page 2/ })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('a page past the end shows the last one, and a broken one the first', () => {
+    const last = Math.ceil(CHANGELOG.length / CHANGELOG_PAGE_SIZE);
+    search.params = new URLSearchParams('page=999');
+    const view = render(<WhatsNewPage />);
+    expect(screen.getAllByTestId('changelog-entry').at(-1)).toHaveAttribute('data-entry-id', CHANGELOG.at(-1)!.id);
+    expect(screen.getByRole('link', { name: new RegExp(`^Page ${last}`) })).toHaveAttribute('aria-current', 'page');
+    view.unmount();
+    search.params = new URLSearchParams('page=two');
+    render(<WhatsNewPage />);
+    expect(screen.getAllByTestId('changelog-entry')[0]).toHaveAttribute('data-entry-id', CHANGELOG[0].id);
   });
 
   it('opening the page does not mark anything read', () => {
