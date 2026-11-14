@@ -37,17 +37,15 @@ interface Section {
 /** The menu's sections. Nothing the app sidebar already has: What's new
  *  and Admin live there, and the phone's Library settings are split into
  *  Uploads (Transfer) and Account (Blocked songs). */
-function useSections(): Section[] {
-  return [
-    { id: 'profile', label: 'Account', icon: ArtistIcon, render: () => <AccountSection /> },
-    { id: 'devices', label: 'Devices', icon: DevicesIcon, render: () => <DevicesSection /> },
-    { id: 'appearance', label: 'Appearance', icon: SlidersIcon, wide: true, render: () => <AppearanceEditor rows /> },
-    { id: 'plugins', label: 'Plugins', icon: PluginsIcon, render: () => <PluginsSection /> },
-    { id: 'downloads', label: 'Downloads', icon: DownloadIcon, render: () => <DownloadsSection /> },
-    { id: 'uploads', label: 'Uploads', icon: UploadIcon, render: () => <UploadsSection /> },
-    { id: 'help', label: 'Help', icon: InfoIcon, render: () => <HelpSection /> },
-  ];
-}
+const SECTIONS: Section[] = [
+  { id: 'profile', label: 'Account', icon: ArtistIcon, render: () => <AccountSection /> },
+  { id: 'devices', label: 'Devices', icon: DevicesIcon, render: () => <DevicesSection /> },
+  { id: 'appearance', label: 'Appearance', icon: SlidersIcon, wide: true, render: () => <AppearanceEditor rows /> },
+  { id: 'plugins', label: 'Plugins', icon: PluginsIcon, render: () => <PluginsSection /> },
+  { id: 'downloads', label: 'Downloads', icon: DownloadIcon, render: () => <DownloadsSection /> },
+  { id: 'uploads', label: 'Uploads', icon: UploadIcon, render: () => <UploadsSection /> },
+  { id: 'help', label: 'Help', icon: InfoIcon, render: () => <HelpSection /> },
+];
 
 /** A section's content, every one drawn as rows (rows C). */
 function SectionBody({ section }: { section: Section }) {
@@ -97,15 +95,14 @@ function MenuLayout({ sections, active }: { sections: Section[]; active: Section
 export function DesktopSettings() {
   const path = usePathname() ?? '/settings';
   const router = useRouter();
-  const sections = useSections();
   const segment = path.split('/')[2];
-  const active = sections.find((s) => s.id === segment);
+  const active = SECTIONS.find((s) => s.id === segment);
   const needsSection = !active;
   useEffect(() => {
     if (needsSection) router.replace('/settings/profile');
   }, [needsSection, router]);
 
-  return <MenuLayout sections={sections} active={active ?? sections[0]} />;
+  return <MenuLayout sections={SECTIONS} active={active ?? SECTIONS[0]} />;
 }
 
 /** Settings' frame: desktop (lg and up) gets the menu layout, phones and
