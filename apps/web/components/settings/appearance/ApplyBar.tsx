@@ -15,6 +15,9 @@ export interface ApplyBarProps {
   applying: boolean;
   onApply: () => void;
   onDiscard: () => void;
+  /** Without its card (desktop Settings rows); the page's background keeps
+   *  it readable while it sticks. */
+  bare?: boolean;
 }
 
 /** The inspector's header line, a soft filled block. With nothing to apply it names the theme in
@@ -23,13 +26,15 @@ export interface ApplyBarProps {
  *  either way, so the list under it does not jump when a pick makes it
  *  appear, and it sticks to the top of the page while there is something
  *  to apply, so it stays in reach while the colours scroll. */
-export function ApplyBar({ dirty, name, inUseName, edited, canApply, applying, onApply, onDiscard }: ApplyBarProps) {
+export function ApplyBar({ dirty, name, inUseName, edited, canApply, applying, onApply, onDiscard, bare }: ApplyBarProps) {
   return (
     <div
       data-testid={dirty ? 'apply-bar' : 'in-use-bar'}
       className={cn(
-        'flex min-h-16 flex-wrap items-center gap-row rounded-[12px] bg-card p-row',
+        'flex min-h-16 flex-wrap items-center gap-row',
+        bare ? 'py-row' : 'rounded-[12px] bg-card p-row',
         dirty && 'sticky top-0 z-10',
+        dirty && bare && 'bg-background',
       )}
     >
       {dirty ? (

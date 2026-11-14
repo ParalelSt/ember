@@ -9,6 +9,8 @@ import { formatBytes, formatCount } from '@/lib/format';
 import { ToggleRow } from '@/components/ui/switch';
 
 export const AUTO_CACHE_UNAVAILABLE_TEXT = 'Automatic caching is not available in this browser or app version.';
+export const AUTO_CACHE_DESCRIPTION =
+  'Quietly saves the song you are playing and the next two on this device, on Wi-Fi and mobile data, so the music keeps going if the connection drops.';
 export const AUTO_CACHE_UPDATE_APP_TEXT = 'Automatic caching needs a newer version of the Ember app. Update the app to turn it on.';
 
 /** One switch row, the same shape as the other settings switches. */
@@ -41,10 +43,9 @@ export function SwitchRow({
   );
 }
 
-/** Settings > Downloads: the automatic cache of upcoming songs
- *  (hooks/player/useAutoCache). Both switches are per device. Plain on
- *  purpose; the design can be picked later. */
-export function AutoCacheSettings() {
+/** The automatic cache's switch, totals and Clear, shared by the phone
+ *  rows below and the desktop rows (components/settings/desktop). */
+export function useAutoCacheControls() {
   const enabled = useSettingsStore((s) => s.autoCacheEnabled);
   const setEnabled = useSettingsStore((s) => s.setAutoCacheEnabled);
   const supported = useAutoCacheStore((s) => s.supported);
@@ -73,11 +74,19 @@ export function AutoCacheSettings() {
     }
   };
 
+  return { enabled, setEnabled, supported, needsAppUpdate, stats, clearing, onClear };
+}
+
+/** Settings > Downloads: the automatic cache of upcoming songs
+ *  (hooks/player/useAutoCache). Both switches are per device. Plain on
+ *  purpose; the design can be picked later. */
+export function AutoCacheSettings() {
+  const { enabled, setEnabled, supported, needsAppUpdate, stats, clearing, onClear } = useAutoCacheControls();
   return (
     <div className="flex flex-col gap-row" data-testid="auto-cache-settings">
       <SwitchRow
         name="Cache upcoming songs"
-        description="Quietly saves the song you are playing and the next two on this device, on Wi-Fi and mobile data, so the music keeps going if the connection drops."
+        description={AUTO_CACHE_DESCRIPTION}
         on={enabled}
         disabled={!supported}
         onToggle={() => setEnabled(!enabled)}

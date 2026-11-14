@@ -84,6 +84,7 @@ vi.mock('@/lib/api', () => {
 
 const { api } = await import('@/lib/api');
 const { default: SettingsAppearance } = await import('./page');
+const { AppearanceEditor } = await import('@/components/settings/appearance/AppearanceEditor');
 
 const MIDNIGHT = PRESET_BY_ID.midnight.inputs;
 const NIGHT_DRIVE: ThemeInputs = { ...MIDNIGHT, accent: [0.72, 0.16, 300], accentHover: [0.8, 0.12, 300] };
@@ -551,5 +552,32 @@ describe('Settings > Appearance', () => {
     expect(hexField('Accent').value).toBe('#3aa0ff');
     apply();
     await waitFor(() => expect(api.updateSavedTheme).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('desktop Settings > Appearance as rows', () => {
+  it('has no heading of its own and a bare Apply bar, with the same editor and Apply flow', async () => {
+    server.active = DEFAULT_THEME;
+    useThemeStore.setState({ doc: DEFAULT_THEME, draft: null, userId: 'u1', loaded: true });
+    render(<AppearanceEditor rows />);
+    await screen.findByTestId('theme-count');
+    expect(screen.queryByRole('heading', { name: 'Appearance' })).toBeNull();
+    const inUse = screen.getByTestId('in-use-bar');
+    expect(inUse).not.toHaveClass('bg-card');
+    expect(inUse).not.toHaveClass('rounded-[12px]');
+    expect(screen.getByTestId('theme-preview')).toBeInTheDocument();
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Themes', 'Colours']);
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Presets' })).getByRole('radio', { name: /Midnight/ }));
+    const bar = screen.getByTestId('apply-bar');
+    expect(bar).toHaveClass('sticky', 'bg-background');
+    expect(bar).not.toHaveClass('bg-card');
+    expect(within(bar).getByRole('button', { name: 'Apply' })).toBeEnabled();
+  });
+
+  it('the phone page keeps its heading and the soft card bar', async () => {
+    start();
+    await screen.findByTestId('theme-count');
+    expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument();
+    expect(screen.getByTestId('in-use-bar')).toHaveClass('bg-card', 'rounded-[12px]');
   });
 });

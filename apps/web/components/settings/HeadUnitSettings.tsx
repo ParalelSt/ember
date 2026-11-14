@@ -8,6 +8,11 @@ import { bootStartSupported, getBootStart, isAndroidApp, setBootStart, type Boot
 import { useIsHeadUnit } from '@/hooks/useHeadUnit';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 
+export const CAR_LAYOUT_TEXT =
+  "This device looks like a car head unit: a rail of big buttons on the left, big previous, play and next buttons in the player bar, and swipe the song's cover left or right to skip. Off: the normal layout, with a sidebar of big rows and playlist covers.";
+export const BOOT_START_TEXT =
+  'For a car head unit or a tablet that runs Ember itself: when it starts, Ember picks up your last queue, paused, ready for the play button.';
+export const KEEP_PLAYING_TEXT = 'Plays the last queue straight away when the device starts, instead of waiting paused.';
 export const BOOT_START_UPDATE_APP_TEXT = 'Opening Ember when this device starts needs a newer version of the Ember app.';
 
 const noSubscribe = () => () => {};
@@ -17,10 +22,10 @@ const noOrigin = () => '';
 
 /** "Use Ember on a car head unit": how to get the app onto one (the /apk
  *  address, route app/api/android/latest-apk) and what it needs. */
-export function HeadUnitHelp({ origin }: { origin: string }) {
+export function HeadUnitHelp({ origin, bare }: { origin: string; /** Without its card (desktop rows). */ bare?: boolean }) {
   const apk = `${origin}/apk`;
   return (
-    <div className="rounded-2xl bg-card p-block shadow-soft" data-testid="head-unit-help">
+    <div className={bare ? 'py-block' : 'rounded-2xl bg-card p-block shadow-soft'} data-testid="head-unit-help">
       <div className="font-semibold">Use Ember on a car head unit</div>
       <p className="mt-inset text-sm text-muted-foreground">
         A head unit that runs Android apps can run Ember itself, so the music plays without your phone.
@@ -49,13 +54,9 @@ export function HeadUnitHelp({ origin }: { origin: string }) {
   );
 }
 
-/** Settings > Devices, in the Android app only: using Ember on a device that
- *  runs it by itself, like a car head unit. On a head unit (lib/headUnit),
- *  the car layout's switch (on by default there); everywhere in the app,
- *  "Open Ember when this device starts", and with it "and keep playing"
- *  (both off by default), kept by the app (lib/bootStart). Plain on
- *  purpose, like the other switches. */
-export function HeadUnitSettings() {
+/** Settings > Devices' head unit switches, shared by the phone section
+ *  below and the desktop rows (components/settings/desktop/DevicesSection). */
+export function useHeadUnitSettings() {
   const android = useSyncExternalStore(noSubscribe, isAndroidApp, () => false);
   const supported = useSyncExternalStore(noSubscribe, bootStartSupported, () => false);
   const [settings, setSettings] = useState<BootStartSettings | null>(null);
@@ -76,8 +77,6 @@ export function HeadUnitSettings() {
     };
   }, [supported]);
 
-  if (!android) return null;
-
   const change = async (next: BootStartSettings) => {
     const was = settings;
     setSettings(next);
@@ -92,6 +91,19 @@ export function HeadUnitSettings() {
     }
   };
 
+  return { android, supported, settings, saving, headUnit, origin, carControls, setCarControls, change };
+}
+
+/** Settings > Devices, in the Android app only: using Ember on a device that
+ *  runs it by itself, like a car head unit. On a head unit (lib/headUnit),
+ *  the car layout's switch (on by default there); everywhere in the app,
+ *  "Open Ember when this device starts", and with it "and keep playing"
+ *  (both off by default), kept by the app (lib/bootStart). Plain on
+ *  purpose, like the other switches. */
+export function HeadUnitSettings() {
+  const { android, supported, settings, saving, headUnit, origin, carControls, setCarControls, change } = useHeadUnitSettings();
+  if (!android) return null;
+
   return (
     <section className="mt-section max-w-2xl flex flex-col gap-row" data-testid="head-unit-settings">
       <SectionHeader title="Car head unit" />
@@ -99,7 +111,7 @@ export function HeadUnitSettings() {
       {headUnit && (
         <SwitchRow
           name="Car layout"
-          description="This device looks like a car head unit: a rail of big buttons on the left, big previous, play and next buttons in the player bar, and swipe the song's cover left or right to skip. Off: the normal layout, with a sidebar of big rows and playlist covers."
+          description={CAR_LAYOUT_TEXT}
           on={carControls}
           onToggle={() => setCarControls(!carControls)}
         />
@@ -108,14 +120,14 @@ export function HeadUnitSettings() {
         <>
           <SwitchRow
             name="Open Ember when this device starts"
-            description="For a car head unit or a tablet that runs Ember itself: when it starts, Ember picks up your last queue, paused, ready for the play button."
+            description={BOOT_START_TEXT}
             on={settings?.enabled ?? false}
             disabled={!settings || saving}
             onToggle={() => settings && void change({ ...settings, enabled: !settings.enabled })}
           />
           <SwitchRow
             name="And keep playing"
-            description="Plays the last queue straight away when the device starts, instead of waiting paused."
+            description={KEEP_PLAYING_TEXT}
             on={settings?.keepPlaying ?? false}
             disabled={!settings?.enabled || saving}
             onToggle={() => settings && void change({ ...settings, keepPlaying: !settings.keepPlaying })}

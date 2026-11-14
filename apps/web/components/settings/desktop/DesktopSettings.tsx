@@ -19,13 +19,13 @@ import {
   type Icon,
 } from '@/components/icons';
 import { useSettingsDesktop } from '@/components/settings/useSettingsDesktop';
-import SettingsAppearance from '@/app/(app)/settings/appearance/page';
-import SettingsDevices from '@/app/(app)/settings/devices/page';
-import DownloadsSettingsPage from '@/app/(app)/settings/downloads/page';
-import UploadsPage from '@/app/(app)/settings/uploads/page';
+import { AppearanceEditor } from '@/components/settings/appearance/AppearanceEditor';
 import { cn } from '@/lib/utils';
 import { AccountSection } from './AccountSection';
+import { DevicesSection } from './DevicesSection';
+import { DownloadsSection } from './DownloadsSection';
 import { HelpSection, LibrarySection, PluginsSection } from './RowSections';
+import { UploadsSection } from './UploadsSection';
 
 /** A section of desktop Settings. Its id is its route segment
  *  (/settings/<id>), so links and the back arrow keep working. */
@@ -33,10 +33,8 @@ interface Section {
   id: string;
   label: string;
   icon: Icon;
-  /** Sections with a wide editor of their own (Appearance, Devices). */
+  /** A wide editor of its own (Appearance's preview and inspector). */
   wide?: boolean;
-  /** Pages kept whole (their own cards and controls), not drawn as rows. */
-  embedded?: boolean;
   render: () => ReactNode;
 }
 
@@ -51,12 +49,12 @@ function useSections() {
   const { isAdmin } = useAuth();
   const sections: Section[] = [
     { id: 'profile', label: 'Account', icon: ArtistIcon, render: () => <AccountSection /> },
-    { id: 'devices', label: 'Devices', icon: DevicesIcon, wide: true, embedded: true, render: () => <SettingsDevices /> },
-    { id: 'appearance', label: 'Appearance', icon: SlidersIcon, wide: true, embedded: true, render: () => <SettingsAppearance /> },
+    { id: 'devices', label: 'Devices', icon: DevicesIcon, render: () => <DevicesSection /> },
+    { id: 'appearance', label: 'Appearance', icon: SlidersIcon, wide: true, render: () => <AppearanceEditor rows /> },
     { id: 'plugins', label: 'Plugins', icon: PluginsIcon, render: () => <PluginsSection /> },
     { id: 'library', label: 'Library', icon: LibraryIcon, render: () => <LibrarySection /> },
-    { id: 'downloads', label: 'Downloads', icon: DownloadIcon, embedded: true, render: () => <DownloadsSettingsPage /> },
-    { id: 'uploads', label: 'Uploads', icon: UploadIcon, embedded: true, render: () => <UploadsPage /> },
+    { id: 'downloads', label: 'Downloads', icon: DownloadIcon, render: () => <DownloadsSection /> },
+    { id: 'uploads', label: 'Uploads', icon: UploadIcon, render: () => <UploadsSection /> },
     { id: 'help', label: 'Help', icon: InfoIcon, render: () => <HelpSection /> },
   ];
   const links: OutLink[] = [{ href: '/whats-new', label: "What's new", icon: SparklesIcon }];
@@ -64,17 +62,10 @@ function useSections() {
   return { sections, links };
 }
 
-/** A section's content. Kept pages lose their own first heading, the
- *  layout already shows one. */
+/** A section's content, every one drawn as rows (rows C). */
 function SectionBody({ section }: { section: Section }) {
   return (
-    <div
-      data-settings-section-body={section.id}
-      className={cn(
-        section.wide ? 'max-w-5xl' : 'max-w-3xl',
-        section.embedded && '[&>section:first-child>h2:first-child]:hidden [&>section:first-child>header>h2:first-child]:hidden',
-      )}
-    >
+    <div data-settings-section-body={section.id} className={section.wide ? 'max-w-5xl' : 'max-w-3xl'}>
       {section.render()}
     </div>
   );

@@ -1,51 +1,31 @@
 'use client';
 
-import { useState } from 'react';
-import { toast } from 'sonner';
 import { PlusIcon, UploadIcon } from '@/components/icons';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { EmptyState } from '@/components/page/EmptyState';
-import { useAuth } from '@/components/providers/AuthProvider';
 import { UploadDropZone } from '@/components/uploads/UploadDropZone';
 import { UploadProgressCard } from '@/components/uploads/UploadProgressCard';
 import { MyUploadRow } from '@/components/uploads/MyUploadRow';
-import { EditUploadSheet } from '@/components/uploads/EditUploadSheet';
-import { useIsDesktop } from '@/hooks/useIsDesktop';
-import { useUploadQueue } from '@/hooks/useUploadQueue';
-import { useMyUploadActions, useQueryMyUploads } from '@/hooks/useMyUploads';
+import { UPLOADS_SHARED_TEXT, UploadsDialogs, useUploadsSettings } from '@/components/settings/useUploadsSettings';
 import { formatCount } from '@/lib/format';
-import type { MyUpload } from '@/types/track';
 
-/** Settings > Uploads, library first (the owner's pick, phone and desktop
- *  alike): the header, a red Upload songs bar that opens a compact drop
+/** Settings > Uploads on a phone and narrow windows (desktop draws the
+ *  same as rows, components/settings/desktop/UploadsSection), library
+ *  first: the header, a red Upload songs bar that opens a compact drop
  *  zone, one combined progress card while songs go up, then your own
  *  uploads as compact rows with Edit details and Remove. Everyone's uploads
  *  stay playable as the Uploads collection in Library and Home. */
 export default function UploadsPage() {
-  const { user } = useAuth();
-  const desktop = useIsDesktop();
-  const { queue, items } = useUploadQueue();
-  const { data: uploads = [], isLoading, isError } = useQueryMyUploads();
-  const { remove } = useMyUploadActions();
-  const [dropOpen, setDropOpen] = useState(false);
-  const [editing, setEditing] = useState<MyUpload | null>(null);
-  const [removing, setRemoving] = useState<MyUpload | null>(null);
+  const s = useUploadsSettings();
+  const { user, desktop, queue, items, uploads, isLoading, isError, dropOpen, setDropOpen, setEditing, setRemoving, addFiles } = s;
 
   if (!user) return <EmptyState>Sign in to upload songs</EmptyState>;
-
-  const addFiles = (files: File[]) => {
-    queue.add(files);
-    setDropOpen(false);
-  };
 
   return (
     <section className="flex flex-col gap-block">
       <header>
         <SectionHeader title="Uploads" />
-        <p className="text-meta">
-          Songs you add here are shared with everyone on this server. Only you can edit or remove yours.
-        </p>
+        <p className="text-meta">{UPLOADS_SHARED_TEXT}</p>
       </header>
 
       <button
@@ -97,28 +77,7 @@ export default function UploadsPage() {
         )}
       </div>
 
-      <EditUploadSheet upload={editing} desktop={desktop} onClose={() => setEditing(null)} />
-
-      <ConfirmDialog
-        open={removing !== null}
-        onOpenChange={(o) => !o && setRemoving(null)}
-        title={removing ? `Remove "${removing.title}"?` : ''}
-        description="Removes the song for everyone on the server. This cannot be undone."
-        confirmLabel="Remove"
-        cancelLabel="Keep"
-        variant="destructive"
-        onConfirm={async () => {
-          if (!removing) return;
-          try {
-            await remove.mutateAsync(removing.sourceId);
-            toast.success(`Removed "${removing.title}"`);
-            setRemoving(null);
-          } catch (e) {
-            toast.error(`Couldn't remove: ${(e as Error).message}`);
-            throw e;
-          }
-        }}
-      />
+      <UploadsDialogs s={s} />
     </section>
   );
 }

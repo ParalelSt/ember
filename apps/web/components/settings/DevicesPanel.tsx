@@ -45,7 +45,7 @@ const hereLabel = () => deviceLabel(navigator.userAgent, detectShell());
 
 const KIND_ICON = { computer: LaptopIcon, phone: PhoneIcon, tablet: TabletIcon, car: CarIcon } as const;
 
-function DeviceIcon({ kind, className }: { kind: DeviceKind; className?: string }) {
+export function DeviceIcon({ kind, className }: { kind: DeviceKind; className?: string }) {
   const Icon = KIND_ICON[kind];
   return <Icon className={className} />;
 }
@@ -53,20 +53,9 @@ function DeviceIcon({ kind, className }: { kind: DeviceKind; className?: string 
 const CODE_ERROR = 'Codes are 8 letters and digits, like ABCD-EFGH.';
 const REVOKE_ERROR = "Couldn't sign out everywhere. Try again in a moment.";
 
-/** Settings > Devices (owner's picks, devices1 picker): this device on top,
- *  then the big sign-in card (scan a QR, or type the code: the approve sheet
- *  opens over this page), then the other devices, then the danger zone.
- *
- *  Only what Ember really knows is shown. For this device: what the browser
- *  says it is, and the web build and app versions. For the others: the QR
- *  sign-ins of the last 30 days (label, when, same network or not). There is
- *  no location, last-active time or per-device version anywhere, and no
- *  per-device sign out: a PocketBase session is a token that cannot be ended
- *  on its own, only all of them together (Sign out everywhere).
- *
- *  A device approved a moment ago on this phone (useUiStore.justApproved)
- *  is at the top of Other devices, lit up briefly and marked New. */
-export function DevicesPanel() {
+/** The state and actions of Settings > Devices, shared by the phone panel
+ *  below and the desktop rows (components/settings/desktop/DevicesSection). */
+export function useDevices() {
   const { signOut } = useAuth();
   const canScan = useCanScan();
   const setQrScan = useUiStore((s) => s.setQrScan);
@@ -81,7 +70,6 @@ export function DevicesPanel() {
   const ownId = useSyncExternalStore(noSubscribe, rememberedQrSignIn, () => null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const isDesktop = useIsDesktop();
   const [revoking, setRevoking] = useState(false);
   const [revokeError, setRevokeError] = useState('');
   // The device just approved: kept here for as long as the page is open
@@ -170,7 +158,39 @@ export function DevicesPanel() {
   // is the only way, so it is simply open.
   const showCode = codeOpen || !canScan;
 
-  // The same words and buttons in the desktop dialog and the phone sheet.
+  return {
+    canScan,
+    setQrScan,
+    typed,
+    setTyped,
+    codeOpen,
+    setCodeOpen,
+    codeError,
+    setCodeError,
+    submitCode,
+    showCode,
+    recent,
+    rows,
+    fresh,
+    freshRef,
+    here,
+    hereKind,
+    appVersion,
+    webVersion,
+    confirming,
+    setConfirming,
+    revoking,
+    revokeError,
+    setRevokeError,
+    revokeAll,
+  };
+}
+
+/** "Sign out everywhere?": a dialog in the middle on desktop, a bottom
+ *  sheet on a phone. */
+export function SignOutEverywhereConfirm({ d }: { d: ReturnType<typeof useDevices> }) {
+  const isDesktop = useIsDesktop();
+  const { rows, hereKind, revokeError, revoking, setConfirming, confirming, revokeAll } = d;
   const confirmBody = (
     Title: typeof DialogTitle | typeof SheetTitle,
     Description: typeof DialogDescription | typeof SheetDescription,
@@ -207,6 +227,75 @@ export function DevicesPanel() {
       </div>
     </>
   );
+
+  return (
+    <>
+      {/* Desktop: a dialog in the middle like every other confirm (it used to
+          be this bottom sheet there too, cut off by the screen edge); a
+          phone keeps the sheet. */}
+      {isDesktop ? (
+        <Dialog open={confirming} onOpenChange={(open) => !revoking && setConfirming(open)}>
+          <DialogContent
+            showCloseButton={false}
+            data-testid="sign-out-everywhere-sheet"
+            className="gap-block p-page sm:max-w-lg"
+          >
+            {confirmBody(DialogTitle, DialogDescription)}
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <Sheet open={confirming} onOpenChange={(open) => !revoking && setConfirming(open)}>
+          <SheetContent
+            side="bottom"
+            showCloseButton={false}
+            data-testid="sign-out-everywhere-sheet"
+            className="mx-auto max-h-[85vh] w-full max-w-lg gap-block overflow-y-auto rounded-t-2xl p-page"
+          >
+            {confirmBody(SheetTitle, SheetDescription)}
+          </SheetContent>
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+/** Settings > Devices (owner's picks, devices1 picker): this device on top,
+ *  then the big sign-in card (scan a QR, or type the code: the approve sheet
+ *  opens over this page), then the other devices, then the danger zone.
+ *
+ *  Only what Ember really knows is shown. For this device: what the browser
+ *  says it is, and the web build and app versions. For the others: the QR
+ *  sign-ins of the last 30 days (label, when, same network or not). There is
+ *  no location, last-active time or per-device version anywhere, and no
+ *  per-device sign out: a PocketBase session is a token that cannot be ended
+ *  on its own, only all of them together (Sign out everywhere).
+ *
+ *  A device approved a moment ago on this phone (useUiStore.justApproved)
+ *  is at the top of Other devices, lit up briefly and marked New. */
+export function DevicesPanel() {
+  const d = useDevices();
+  const {
+    canScan,
+    setQrScan,
+    typed,
+    setTyped,
+    codeOpen,
+    setCodeOpen,
+    codeError,
+    setCodeError,
+    submitCode,
+    showCode,
+    recent,
+    rows,
+    fresh,
+    freshRef,
+    here,
+    hereKind,
+    appVersion,
+    webVersion,
+    setConfirming,
+    setRevokeError,
+  } = d;
 
   return (
     <section className="max-w-2xl lg:max-w-5xl">
@@ -380,36 +469,12 @@ export function DevicesPanel() {
       </div>
       </div>
 
-      {/* Desktop: a dialog in the middle like every other confirm (it used to
-          be this bottom sheet there too, cut off by the screen edge); a
-          phone keeps the sheet. */}
-      {isDesktop ? (
-        <Dialog open={confirming} onOpenChange={(open) => !revoking && setConfirming(open)}>
-          <DialogContent
-            showCloseButton={false}
-            data-testid="sign-out-everywhere-sheet"
-            className="gap-block p-page sm:max-w-lg"
-          >
-            {confirmBody(DialogTitle, DialogDescription)}
-          </DialogContent>
-        </Dialog>
-      ) : (
-        <Sheet open={confirming} onOpenChange={(open) => !revoking && setConfirming(open)}>
-          <SheetContent
-            side="bottom"
-            showCloseButton={false}
-            data-testid="sign-out-everywhere-sheet"
-            className="mx-auto max-h-[85vh] w-full max-w-lg gap-block overflow-y-auto rounded-t-2xl p-page"
-          >
-            {confirmBody(SheetTitle, SheetDescription)}
-          </SheetContent>
-        </Sheet>
-      )}
+      <SignOutEverywhereConfirm d={d} />
     </section>
   );
 }
 
-function Pill({ tone, children }: { tone?: 'ember' | 'solid'; children: ReactNode }) {
+export function Pill({ tone, children }: { tone?: 'ember' | 'solid'; children: ReactNode }) {
   return (
     <span
       className={cn(

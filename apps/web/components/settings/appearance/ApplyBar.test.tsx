@@ -55,3 +55,23 @@ describe('ApplyBar, the soft bar', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 });
+
+describe('ApplyBar, bare (desktop Settings rows)', () => {
+  it('drops the card, keeps the text and buttons, and sticks on the page background while there is something to apply', () => {
+    bar({ bare: true });
+    const el = screen.getByTestId('apply-bar');
+    expect(el).not.toHaveClass('bg-card');
+    expect(el).not.toHaveClass('rounded-[12px]');
+    expect(el).toHaveClass('sticky', 'top-0', 'bg-background');
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
+  });
+
+  it('with nothing to apply, neither sticks nor has a background', () => {
+    bar({ bare: true, dirty: false });
+    const el = screen.getByTestId('in-use-bar');
+    expect(el).not.toHaveClass('sticky');
+    expect(el).not.toHaveClass('bg-background');
+    expect(el).not.toHaveClass('bg-card');
+    expect(el).toHaveTextContent('In use: Ember.');
+  });
+});

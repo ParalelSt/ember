@@ -12,11 +12,14 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 }));
 vi.mock('@/components/settings/AppUpdateCard', () => ({ AppUpdateCard: () => null }));
 vi.mock('@/components/settings/BuildStamp', () => ({ BuildStamp: () => null }));
-// The pages kept whole: stand-ins with the heading the layout hides.
-vi.mock('@/app/(app)/settings/appearance/page', () => ({ default: () => <section><h2>Appearance</h2><p>Theme editor</p></section> }));
-vi.mock('@/app/(app)/settings/devices/page', () => ({ default: () => <section><h2>Devices</h2><p>Devices panel</p></section> }));
-vi.mock('@/app/(app)/settings/downloads/page', () => ({ default: () => <section><header><h2>Downloads</h2></header><p>Downloads list</p></section> }));
-vi.mock('@/app/(app)/settings/uploads/page', () => ({ default: () => <section><header><h2>Uploads</h2></header><p>Uploads list</p></section> }));
+// Sections with their own tests (DevicesSection.test, DownloadsSection.test,
+// UploadsSection.test, the appearance page test): stand-ins here.
+vi.mock('@/components/settings/appearance/AppearanceEditor', () => ({
+  AppearanceEditor: ({ rows }: { rows?: boolean }) => <p>Theme editor{rows ? ' as rows' : ''}</p>,
+}));
+vi.mock('./DevicesSection', () => ({ DevicesSection: () => <p>Devices rows</p> }));
+vi.mock('./DownloadsSection', () => ({ DownloadsSection: () => <p>Downloads rows</p> }));
+vi.mock('./UploadsSection', () => ({ UploadsSection: () => <p>Uploads rows</p> }));
 vi.mock('@/components/settings/EqualizerPanel', () => ({ EqualizerPanel: () => <div>Equalizer</div> }));
 vi.mock('@/components/RequestDialog', () => ({ RequestDialog: () => null }));
 vi.mock('@/hooks/useBlockedTracks', () => ({ useBlockedTracks: () => ({ blocked: [], unblock: vi.fn() }) }));
@@ -89,14 +92,21 @@ describe('desktop settings: menu column (layout A, rows C, edit A)', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Account' })).toBeInTheDocument();
   });
 
-  it('shows a kept page under the one heading, its own first heading marked hidden', () => {
-    open('/settings/downloads');
-    expect(screen.getByRole('link', { name: 'Downloads' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByText('Downloads list')).toBeInTheDocument();
-    const body = document.querySelector('[data-settings-section-body="downloads"]')!;
-    expect(body.className).toContain('[&>section:first-child>header>h2:first-child]:hidden');
-    expect(body.className).toContain('max-w-3xl');
-    expect(document.querySelector('[data-settings-section-body="appearance"]')).toBeNull();
+  it.each([
+    ['devices', 'Devices', 'Devices rows', 'max-w-3xl'],
+    ['downloads', 'Downloads', 'Downloads rows', 'max-w-3xl'],
+    ['uploads', 'Uploads', 'Uploads rows', 'max-w-3xl'],
+    ['appearance', 'Appearance', 'Theme editor as rows', 'max-w-5xl'],
+  ])('draws /settings/%s as its rows section under the one heading', (id, label, body, width) => {
+    open(`/settings/${id}`);
+    const nav = screen.getByRole('navigation', { name: 'Settings' });
+    expect(within(nav).getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([label]);
+    expect(screen.getByText(body)).toBeInTheDocument();
+    const section = document.querySelector(`[data-settings-section-body="${id}"]`)!;
+    expect(section).toHaveClass(width);
+    expect(section.className).not.toContain(':hidden');
+    expect(document.querySelectorAll('[data-settings-section-body]')).toHaveLength(1);
   });
 
   it('adds Admin for admins only', () => {

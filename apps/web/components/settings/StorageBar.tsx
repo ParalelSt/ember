@@ -33,11 +33,14 @@ export function StorageBar({
   downloadsBytes,
   cacheBytes,
   canEstimate,
+  bare,
 }: {
   downloadsBytes: number;
   cacheBytes: number;
   /** False in the native shells, where the estimate is not about the device. */
   canEstimate: boolean;
+  /** Without its card, for the desktop rows (no cards there). */
+  bare?: boolean;
 }) {
   const est = useStorageEstimate(canEstimate);
   const m = storageBarModel({
@@ -47,7 +50,7 @@ export function StorageBar({
     usageBytes: est?.usage ?? null,
   });
   return (
-    <div className="rounded-md bg-card px-block py-row" data-testid="storage-bar">
+    <div className={bare ? 'py-block' : 'rounded-md bg-card px-block py-row'} data-testid="storage-bar">
       <div className="flex items-baseline justify-between gap-row">
         <div className="text-2xl font-bold tabular-nums" data-testid="storage-total">
           {formatBytes(m.totalBytes)}
