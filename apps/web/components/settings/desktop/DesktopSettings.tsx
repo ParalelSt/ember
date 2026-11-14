@@ -3,18 +3,14 @@
 import { useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAuth } from '@/components/providers/AuthProvider';
 import { PageTitle } from '@/components/page/PageTitle';
 import {
   ArtistIcon,
   DevicesIcon,
   DownloadIcon,
   InfoIcon,
-  LibraryIcon,
   SettingsIcon as PluginsIcon,
-  ShieldIcon,
   SlidersIcon,
-  SparklesIcon,
   UploadIcon,
   type Icon,
 } from '@/components/icons';
@@ -24,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { AccountSection } from './AccountSection';
 import { DevicesSection } from './DevicesSection';
 import { DownloadsSection } from './DownloadsSection';
-import { HelpSection, LibrarySection, PluginsSection } from './RowSections';
+import { HelpSection, PluginsSection } from './RowSections';
 import { UploadsSection } from './UploadsSection';
 
 /** A section of desktop Settings. Its id is its route segment
@@ -38,28 +34,19 @@ interface Section {
   render: () => ReactNode;
 }
 
-/** Items that open another page instead of a section. */
-interface OutLink {
-  href: string;
-  label: string;
-  icon: Icon;
-}
-
-function useSections() {
-  const { isAdmin } = useAuth();
-  const sections: Section[] = [
+/** The menu's sections. Nothing the app sidebar already has: What's new
+ *  and Admin live there, and the phone's Library settings are split into
+ *  Uploads (Transfer) and Account (Blocked songs). */
+function useSections(): Section[] {
+  return [
     { id: 'profile', label: 'Account', icon: ArtistIcon, render: () => <AccountSection /> },
     { id: 'devices', label: 'Devices', icon: DevicesIcon, render: () => <DevicesSection /> },
     { id: 'appearance', label: 'Appearance', icon: SlidersIcon, wide: true, render: () => <AppearanceEditor rows /> },
     { id: 'plugins', label: 'Plugins', icon: PluginsIcon, render: () => <PluginsSection /> },
-    { id: 'library', label: 'Library', icon: LibraryIcon, render: () => <LibrarySection /> },
     { id: 'downloads', label: 'Downloads', icon: DownloadIcon, render: () => <DownloadsSection /> },
     { id: 'uploads', label: 'Uploads', icon: UploadIcon, render: () => <UploadsSection /> },
     { id: 'help', label: 'Help', icon: InfoIcon, render: () => <HelpSection /> },
   ];
-  const links: OutLink[] = [{ href: '/whats-new', label: "What's new", icon: SparklesIcon }];
-  if (isAdmin) links.push({ href: '/admin', label: 'Admin', icon: ShieldIcon });
-  return { sections, links };
 }
 
 /** A section's content, every one drawn as rows (rows C). */
@@ -86,7 +73,7 @@ function MenuItem({ href, label, icon: Icon, active }: { href: string; label: st
 
 /** Desktop Settings (owner pick: layout A): a slim menu styled like the app
  *  sidebar, the open section beside it under one heading. */
-function MenuLayout({ sections, links, active }: { sections: Section[]; links: OutLink[]; active: Section }) {
+function MenuLayout({ sections, active }: { sections: Section[]; active: Section }) {
   return (
     <div data-settings-layout="menu" className="flex items-start gap-section">
       <div className="w-52 shrink-0">
@@ -94,9 +81,6 @@ function MenuLayout({ sections, links, active }: { sections: Section[]; links: O
         <nav aria-label="Settings" className="flex flex-col gap-inset">
           {sections.map((s) => (
             <MenuItem key={s.id} href={`/settings/${s.id}`} label={s.label} icon={s.icon} active={s.id === active.id} />
-          ))}
-          {links.map((l) => (
-            <MenuItem key={l.href} href={l.href} label={l.label} icon={l.icon} />
           ))}
         </nav>
       </div>
@@ -108,12 +92,12 @@ function MenuLayout({ sections, links, active }: { sections: Section[]; links: O
   );
 }
 
-/** Desktop Settings. /settings itself (or an unknown section) opens
- *  Account. */
+/** Desktop Settings. /settings itself, or a section desktop does not have
+ *  (/settings/library, a phone page), opens Account. */
 export function DesktopSettings() {
   const path = usePathname() ?? '/settings';
   const router = useRouter();
-  const { sections, links } = useSections();
+  const sections = useSections();
   const segment = path.split('/')[2];
   const active = sections.find((s) => s.id === segment);
   const needsSection = !active;
@@ -121,7 +105,7 @@ export function DesktopSettings() {
     if (needsSection) router.replace('/settings/profile');
   }, [needsSection, router]);
 
-  return <MenuLayout sections={sections} links={links} active={active ?? sections[0]} />;
+  return <MenuLayout sections={sections} active={active ?? sections[0]} />;
 }
 
 /** Settings' frame: desktop (lg and up) gets the menu layout, phones and

@@ -9,6 +9,8 @@ vi.mock('next/navigation', () => ({ usePathname: () => state.path, useRouter: ()
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { email: 'mia@example.com' }, name: 'Mia', avatarUrl: '/avatar.png', isAdmin: state.admin }) }));
 vi.mock('@/components/settings/AppUpdateCard', () => ({ AppUpdateCard: () => null }));
 vi.mock('@/components/settings/BuildStamp', () => ({ BuildStamp: () => null }));
+// Desktop Settings opens Account, which lists blocked songs.
+vi.mock('@/hooks/useBlockedTracks', () => ({ useBlockedTracks: () => ({ blocked: [], unblock: vi.fn() }) }));
 import SettingsIndex from '@/app/(app)/settings/page';
 import SettingsLayout from '@/app/(app)/settings/layout';
 function setWidth(width: number) {

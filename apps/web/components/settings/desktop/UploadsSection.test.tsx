@@ -24,6 +24,9 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   ),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...rest }: ComponentProps<'a'>) => <a href={String(href)} {...rest}>{children}</a>,
+}));
 
 const state = vi.hoisted(() => ({
   user: { id: 'owner1' } as { id: string } | null,
@@ -73,6 +76,16 @@ describe('desktop Settings > Uploads as rows', () => {
     expect(rows).toHaveLength(2);
     expect(within(group('Your uploads')).getByText('2 songs')).toBeInTheDocument();
     for (const g of document.querySelectorAll('[data-settings-group]')) expect(g).not.toHaveClass('bg-card');
+  });
+
+  it('Transfer (the phone keeps it under Settings > Library) sits with Upload songs and comes back here', () => {
+    renderSection();
+    const add = group('Add music');
+    expect(within(add).getByText('Transfer from another app')).toBeInTheDocument();
+    expect(within(add).getByTestId('settings-transfer-button')).toHaveAttribute(
+      'href',
+      `/transfer?from=${encodeURIComponent('/settings/uploads')}`,
+    );
   });
 
   it('Upload songs opens and closes the drop zone', () => {

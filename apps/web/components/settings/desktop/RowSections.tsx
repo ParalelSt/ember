@@ -15,9 +15,11 @@ import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
 import { SettingsGroup, SettingsRow, SettingsSwitchRow } from './rows';
 
-/* The desktop row versions of Plugins, Help and Library: the same settings,
- * stores and actions as their pages under app/(app)/settings, drawn as
- * rows. The phone keeps those pages. */
+/* The desktop row versions of Plugins, Help and the phone's Library page
+ * (Transfer and Blocked songs, which desktop shows in Uploads and Account,
+ * so its menu has no second "Library" beside the sidebar's): the same
+ * settings, stores and actions as their pages under app/(app)/settings,
+ * drawn as rows. The phone keeps those pages. */
 
 export function PluginsSection() {
   const desktopPlugins = useDesktopPlugins();
@@ -100,58 +102,66 @@ export function HelpSection() {
   );
 }
 
-const TRANSFER_HREF = `/transfer?from=${encodeURIComponent('/settings/library')}`;
+/** The Transfer page, returning to desktop Settings > Uploads when it is
+ *  done or left. */
+const TRANSFER_HREF = `/transfer?from=${encodeURIComponent('/settings/uploads')}`;
 
-export function LibrarySection() {
+/** Bringing songs liked somewhere else into Ember (the phone has it under
+ *  Settings > Library; desktop keeps it with Upload songs). */
+export function TransferRow() {
+  return (
+    <SettingsRow
+      title="Transfer from another app"
+      description="Bring the songs you liked on Spotify, Apple Music or anywhere else into Ember: a data export, a CSV, a list of songs or a public playlist link."
+      control={
+        <Link href={TRANSFER_HREF} className={cn(buttonVariants({ variant: 'outline' }))} data-testid="settings-transfer-button">
+          <UploadIcon className="size-4" />
+          Transfer
+        </Link>
+      }
+    />
+  );
+}
+
+/** The songs you blocked from radio, mixes and suggestions, to unblock (the
+ *  phone has them under Settings > Library; desktop keeps them in Account). */
+export function BlockedSongsGroup() {
   const { blocked, unblock } = useBlockedTracks();
   return (
-    <div className="flex flex-col gap-section">
-      <SettingsGroup title="Transfer">
+    <SettingsGroup
+      title="Blocked songs"
+      testId="blocked-songs"
+      footer="These never come up in radio, mixes or suggestions. You can still play them yourself. Block a song from its ⋯ menu."
+    >
+      {blocked.length === 0 ? (
         <SettingsRow
-          title="Transfer from another app"
-          description="Bring the songs you liked on Spotify, Apple Music or anywhere else into Ember: a data export, a CSV, a list of songs or a public playlist link."
-          control={
-            <Link href={TRANSFER_HREF} className={cn(buttonVariants({ variant: 'outline' }))} data-testid="settings-transfer-button">
-              <UploadIcon className="size-4" />
-              Transfer
-            </Link>
+          title={
+            <span className="flex items-center gap-cluster font-normal text-muted-foreground">
+              <BlockIcon className="size-4" /> No blocked songs.
+            </span>
           }
         />
-      </SettingsGroup>
-      <SettingsGroup
-        title="Blocked songs"
-        footer="These never come up in radio, mixes or suggestions. You can still play them yourself. Block a song from its ⋯ menu."
-      >
-        {blocked.length === 0 ? (
+      ) : (
+        blocked.map((t) => (
           <SettingsRow
-            title={
-              <span className="flex items-center gap-cluster font-normal text-muted-foreground">
-                <BlockIcon className="size-4" /> No blocked songs.
-              </span>
+            key={t.id}
+            leading={
+              <Artwork src={t.artworkUrl} className="size-10 shrink-0 rounded-md bg-art">
+                <div className="grid size-full place-items-center text-foreground/30">
+                  <MusicIcon className="size-4" />
+                </div>
+              </Artwork>
+            }
+            title={<span className="block truncate text-sm">{t.title}</span>}
+            description={<span className="block truncate text-xs">{t.artist}</span>}
+            control={
+              <Button variant="outline" size="sm" onClick={() => void unblock(t)} aria-label={`Unblock ${t.title}`}>
+                Unblock
+              </Button>
             }
           />
-        ) : (
-          blocked.map((t) => (
-            <SettingsRow
-              key={t.id}
-              leading={
-                <Artwork src={t.artworkUrl} className="size-10 shrink-0 rounded-md bg-art">
-                  <div className="grid size-full place-items-center text-foreground/30">
-                    <MusicIcon className="size-4" />
-                  </div>
-                </Artwork>
-              }
-              title={<span className="block truncate text-sm">{t.title}</span>}
-              description={<span className="block truncate text-xs">{t.artist}</span>}
-              control={
-                <Button variant="outline" size="sm" onClick={() => void unblock(t)} aria-label={`Unblock ${t.title}`}>
-                  Unblock
-                </Button>
-              }
-            />
-          ))
-        )}
-      </SettingsGroup>
-    </div>
+        ))
+      )}
+    </SettingsGroup>
   );
 }

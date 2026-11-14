@@ -8,9 +8,11 @@ import { MyUploadRow } from '@/components/uploads/MyUploadRow';
 import { UPLOADS_SHARED_TEXT, UploadsDialogs, useUploadsSettings } from '@/components/settings/useUploadsSettings';
 import { formatCount } from '@/lib/format';
 import { SettingsGroup, SettingsRow } from './rows';
+import { TransferRow } from './RowSections';
 
 /** Desktop Settings > Uploads as rows: the same queue, list, edit and
- *  remove as the phone page (app/(app)/settings/uploads). */
+ *  remove as the phone page (app/(app)/settings/uploads), and Transfer
+ *  (the phone's Settings > Library) beside Upload songs. */
 export function UploadsSection() {
   const s = useUploadsSettings();
   const { user, queue, items, uploads, isLoading, isError, dropOpen, setDropOpen, setEditing, setRemoving, addFiles } = s;
@@ -42,6 +44,7 @@ export function UploadsSection() {
           </div>
         )}
         <UploadProgressCard items={items} onRetryFailed={queue.retryFailed} onCancelAll={queue.cancelAll} onClear={queue.clear} />
+        <TransferRow />
       </SettingsGroup>
 
       <SettingsGroup

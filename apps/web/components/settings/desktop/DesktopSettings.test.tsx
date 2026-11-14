@@ -27,7 +27,7 @@ vi.mock('@/hooks/useDesktopPlugins', () => ({ useDesktopPlugins: () => true }));
 vi.mock('@/hooks/usePartyEligible', () => ({ usePartyEligible: () => true }));
 import SettingsLayout from '@/app/(app)/settings/layout';
 
-const SECTIONS = ['Account', 'Devices', 'Appearance', 'Plugins', 'Library', 'Downloads', 'Uploads', 'Help'];
+const SECTIONS = ['Account', 'Devices', 'Appearance', 'Plugins', 'Downloads', 'Uploads', 'Help'];
 
 function setWidth(width: number) {
   act(() => {
@@ -57,13 +57,12 @@ describe('desktop settings: menu column (layout A, rows C, edit A)', () => {
     open('/settings/profile');
     expect(document.querySelector('[data-settings-layout="menu"]')).not.toBeNull();
     const nav = screen.getByRole('navigation', { name: 'Settings' });
-    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual([...SECTIONS, "What's new"]);
+    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(SECTIONS);
     const active = within(nav).getByRole('link', { name: 'Account' });
     expect(active).toHaveAttribute('aria-current', 'page');
     expect(active).toHaveClass('bg-ember/14');
     expect(active.querySelector('svg')).toHaveClass('text-ember');
     expect(within(nav).getByRole('link', { name: 'Devices' })).not.toHaveAttribute('aria-current');
-    expect(within(nav).getByRole('link', { name: "What's new" })).toHaveAttribute('href', '/whats-new');
     // Settings once, the section once: no icon header repeating it.
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['Account']);
@@ -109,12 +108,22 @@ describe('desktop settings: menu column (layout A, rows C, edit A)', () => {
     expect(document.querySelectorAll('[data-settings-section-body]')).toHaveLength(1);
   });
 
-  it('adds Admin for admins only', () => {
-    const view = open('/settings/help');
-    expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull();
+  it("has nothing the app sidebar already has: no What's new, Admin or Library, even for admins", () => {
     state.admin = true;
-    view.rerender(<SettingsLayout>Routed page</SettingsLayout>);
-    expect(screen.getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin');
+    open('/settings/help');
+    const nav = screen.getByRole('navigation', { name: 'Settings' });
+    for (const name of ["What's new", 'Admin', 'Library']) expect(within(nav).queryByRole('link', { name })).toBeNull();
+    expect(within(nav).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual([
+      '/settings/profile', '/settings/devices', '/settings/appearance', '/settings/plugins',
+      '/settings/downloads', '/settings/uploads', '/settings/help',
+    ]);
+  });
+
+  it('sends /settings/library (a phone page) to Account, where Blocked songs now are', () => {
+    open('/settings/library');
+    expect(state.replace).toHaveBeenCalledWith('/settings/profile');
+    expect(screen.getByRole('heading', { level: 2, name: 'Account' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Blocked songs' })).toBeInTheDocument();
   });
 
   it('ignores the old design preview URL params and anything stored by it', () => {

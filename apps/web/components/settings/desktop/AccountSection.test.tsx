@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 import { AccountSection } from './AccountSection';
 
@@ -16,10 +16,13 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 const api = vi.hoisted(() => ({ updateProfile: vi.fn(async () => ({ ok: true })), updatePrivacy: vi.fn(), getPrivacy: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const blockedTracks = vi.hoisted(() => ({ blocked: [] as { id: string; title: string; artist: string; artworkUrl: null }[], unblock: vi.fn() }));
+vi.mock('@/hooks/useBlockedTracks', () => ({ useBlockedTracks: () => blockedTracks }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   auth.name = 'Robin';
+  blockedTracks.blocked = [];
   usePrivacyStore.setState({ shareDiscord: false, shareListening: true, loaded: true, failed: false });
 });
 
@@ -67,5 +70,24 @@ describe('the rest of Account', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     expect(auth.signOut).toHaveBeenCalled();
     expect(screen.getByText('Signed in as robin@ember.test')).toBeInTheDocument();
+  });
+});
+
+describe('blocked songs (the phone keeps them under Settings > Library)', () => {
+  it('sit between Privacy and Sign out, and say so when there are none', () => {
+    render(<AccountSection />);
+    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['Profile', 'Privacy', 'Blocked songs']);
+    const group = screen.getByRole('region', { name: 'Blocked songs' });
+    expect(within(group).getByText('No blocked songs.')).toBeInTheDocument();
+    expect(group.compareDocumentPosition(screen.getByRole('button', { name: 'Sign out' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('lists each with Unblock', () => {
+    blockedTracks.blocked = [{ id: 't1', title: 'Loud song', artist: 'Band', artworkUrl: null }];
+    render(<AccountSection />);
+    const group = screen.getByRole('region', { name: 'Blocked songs' });
+    expect(within(group).getByText('Loud song')).toBeInTheDocument();
+    fireEvent.click(within(group).getByRole('button', { name: 'Unblock Loud song' }));
+    expect(blockedTracks.unblock).toHaveBeenCalledWith(blockedTracks.blocked[0]);
   });
 });

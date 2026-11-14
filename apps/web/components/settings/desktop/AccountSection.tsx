@@ -10,6 +10,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 import { api } from '@/lib/api';
 import { SettingsGroup, SettingsRow, SettingsSwitchRow } from './rows';
+import { BlockedSongsGroup } from './RowSections';
 
 const MAX_AVATAR = 5 * 1024 * 1024;
 const NAME_HINT = 'Shown in the sidebar. Leave blank to show your email.';
@@ -205,13 +206,15 @@ function PrivacyRows() {
   );
 }
 
-/** Desktop Settings > Account: profile, privacy and sign out. */
+/** Desktop Settings > Account: profile, privacy, blocked songs (the
+ *  phone's Settings > Library) and sign out. */
 export function AccountSection() {
   const { user, signOut } = useAuth();
   return (
     <div className="flex flex-col gap-section">
       <AutoSaveProfile />
       <PrivacyRows />
+      <BlockedSongsGroup />
       <SettingsGroup>
         <SettingsRow
           title="Sign out"
