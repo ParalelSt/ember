@@ -3,6 +3,7 @@ import { listBlocked, withoutBlocked } from '@/lib/blockedTracks';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { pbQuote } from '@/lib/genres/store';
 import { fromMixRecord, type MixRecord } from '@/lib/mixes/store';
+import { mixKind } from '@/lib/mixes/kinds';
 import { listUnavailableIds } from '@/lib/trackAvailability';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
@@ -25,7 +26,7 @@ export const GET = withRequestLog('mixes/[key]', async (_request: NextRequest, c
     const mix = fromMixRecord(record);
     const [dead, blocked] = await Promise.all([listUnavailableIds(), listBlocked(pb, user.id)]);
     const body: MixPayload = {
-      key: mix.key, title: mix.title, subtitle: mix.subtitle, cover: mix.cover, builtAt: mix.builtAt,
+      key: mix.key, kind: mixKind(mix.key), title: mix.title, subtitle: mix.subtitle, cover: mix.cover, builtAt: mix.builtAt,
       // Never a song this person blocked.
       tracks: withoutBlocked(mix.tracks.filter((t) => !dead.has(t.id)), blocked),
     };

@@ -32,7 +32,7 @@ const state = vi.hoisted(() => ({
   toggle: vi.fn(),
   playCollection: vi.fn(),
   collectionPlaying: null as string | null,
-  mixes: undefined as undefined | { eligible: boolean; building: boolean; mixes: { key: string; title: string; subtitle: string; cover: { artworkUrls: string[]; color: string }; builtAt: string; count: number }[] },
+  mixes: undefined as undefined | { eligible: boolean; building: boolean; mixes: { key: string; kind?: string; title: string; subtitle: string; cover: { artworkUrls: string[]; color: string }; builtAt: string; count: number }[] },
   charts: undefined as undefined | { popular: unknown; genres: { slug: string; title: string; color: string; artworkUrls: string[]; count: number; fetchedAt: string | null; stale: boolean }[] },
 }));
 
@@ -688,6 +688,31 @@ describe('Your mixes on Home', () => {
     render(<HomePage />);
     const row = within(screen.getByRole('region', { name: 'Your mixes' }));
     expect(row.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/mix/pop']);
+  });
+
+  it('shows every kind with its own label, kinds in order, at most twelve', () => {
+    const all = [
+      ...['rock', 'metal', 'punk', 'balkan', 'turbofolk', 'pop', 'house'].map((k) => mixTile(k, k)),
+      { ...mixTile('discover', 'New to you'), kind: 'discover' },
+      { ...mixTile('on-repeat', 'Your top songs'), kind: 'on-repeat' },
+      ...['gojira', 'tool', 'ceca'].map((a) => ({ ...mixTile(`artist-${a}`, a), kind: 'artist' })),
+      { ...mixTile('throwback', 'Back again'), kind: 'throwback' },
+    ];
+    state.mixes = { eligible: true, building: false, mixes: all };
+    render(<HomePage />);
+    const row = within(screen.getByRole('region', { name: 'Your mixes' }));
+    const cards = row.getAllByRole('link').filter((a) => a.hasAttribute('data-mix-card'));
+    expect(cards).toHaveLength(12);
+    const label = (a: HTMLElement) => a.querySelector('[data-mix-label]')?.textContent;
+    expect(label(row.getByRole('link', { name: 'rock Mix' }))).toBe('MIX');
+    expect(label(row.getByRole('link', { name: 'New to you' }))).toBe('DISCOVER');
+    expect(label(row.getByRole('link', { name: 'Your top songs' }))).toBe('ON REPEAT');
+    expect(label(row.getByRole('link', { name: 'gojira Mix' }))).toBe('ARTIST MIX');
+    expect(row.getByRole('link', { name: 'gojira Mix' })).toHaveAttribute('href', '/mix/artist-gojira');
+    // The thirteenth (Throwback) does not fit the row.
+    expect(row.queryByRole('link', { name: 'Back again' })).toBeNull();
+    // A tile without a kind (an older server) reads it from the key.
+    expect(row.getByRole('link', { name: 'New to you' }).getAttribute('data-mix-kind')).toBe('discover');
   });
 
   it('uses the wide row on a desktop', () => {

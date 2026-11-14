@@ -1,5 +1,6 @@
 import { playlistCover, type CollectionIcon, type CollectionRef, type CollectionSummary } from './collections';
 import type { LiveCarlist } from '../types/track';
+import { mixFullTitle } from './mixes/kinds';
 
 /** The phone Home's pure parts: which collections go in the quick grid at
  *  the top, and in what order. No React, so a plain test can import it. */
@@ -39,7 +40,8 @@ export function recentFirst(
   return [playlists[at], ...playlists.slice(0, at), ...playlists.slice(at + 1)];
 }
 
-/** How many of the member's genre mixes take a quick grid slot. */
+/** How many of the member's mixes take a quick grid slot (the first two
+ *  in Home order: style mixes come first). */
 export const QUICK_MIXES = 2;
 
 /** A genre mix as the quick grid needs it (lib/mixesView MixTile). */
@@ -84,7 +86,7 @@ export function quickPicks({
     picks.push({ key: `carlist-${carlist.id}`, title: carlist.name || 'Carlist', href: `/session/${carlist.id}`, src: null, icon: 'car' });
   }
   for (const m of mixes.slice(0, QUICK_MIXES)) {
-    picks.push({ key: `mix-${m.key}`, title: `${m.title} Mix`, href: `/mix/${encodeURIComponent(m.key)}`, src: m.cover.artworkUrls[0] ?? null, icon: null });
+    picks.push({ key: `mix-${m.key}`, title: mixFullTitle(m.key, m.title), href: `/mix/${encodeURIComponent(m.key)}`, src: m.cover.artworkUrls[0] ?? null, icon: null });
   }
   for (const p of recentFirst(playlists, playingPlaylistId)) {
     picks.push({ key: p.pinId, title: p.title, href: p.href, icon: null, ref: p.ref, ...playlistCover(p.artworkUrl, p.trackArtworks) });

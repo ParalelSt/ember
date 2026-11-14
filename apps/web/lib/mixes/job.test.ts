@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { chartTracksFor, createMixJob, LAZY_RETRY_MS, localDay, otherChartArtists, STALE_AFTER_MS, type MixJobDeps, type MixRow, type StoredMix } from './job';
+import { chartTracksFor, createMixJob, LAZY_RETRY_MS, localDay, otherChartArtists, SHORT_KEEP_MS, STALE_AFTER_MS, WEEKLY_STALE_AFTER_MS, type MixJobDeps, type MixRow, type StoredMix } from './job';
+import { MAX_MIXES, mixKind } from './kinds';
+import { songKey } from '../songKey';
 import { createTagger, type ArtistGenre, type GenreStore } from '../genres/tagger';
 import { artistKey } from '../genres/artistKey';
 import type { FamilySlug } from '../genres/taxonomy';
@@ -73,11 +75,12 @@ function world(over: Partial<MixJobDeps> = {}, { plays = [...playsOf(rockSongs, 
 }
 
 describe('buildMember', () => {
-  it('builds a pure mix per family the member plays, heaviest first', async () => {
+  it('builds a pure style mix per family the member plays, heaviest first', async () => {
     const w = world();
     const r = await createMixJob(w.deps).buildMember('u1');
-    expect(r).toMatchObject({ eligible: true, written: ['rock-metal', 'pop'], deleted: [], kept: [] });
-    const rows = [...w.mixes.values()].sort((a, b) => a.position - b.position);
+    expect(r).toMatchObject({ eligible: true, deleted: [], kept: [] });
+    expect(r.written.slice(0, 2)).toEqual(['rock-metal', 'pop']);
+    const rows = [...w.mixes.values()].filter((m) => mixKind(m.key) === 'style').sort((a, b) => a.position - b.position);
     expect(rows.map((m) => [m.key, m.title, m.position])).toEqual([['rock-metal', 'Rock & Metal', 0], ['pop', 'Pop', 1]]);
     for (const m of rows) {
       expect(m.tracks.length).toBeGreaterThanOrEqual(20);
@@ -87,9 +90,9 @@ describe('buildMember', () => {
       expect(m.subtitle).toMatch(/ and more$/);
       expect(m.builtAt).toBe(new Date(NOW).toISOString());
     }
-    // One radio-batch call per mix, four seeds each.
-    expect(w.radioBatch).toHaveBeenCalledTimes(2);
-    expect(w.radioBatch.mock.calls.every((c) => c[0].length === 4)).toBe(true);
+    // The style mixes' radio came first, four seeds each.
+    expect(w.radioBatch.mock.calls[0][0]).toHaveLength(4);
+    expect(w.radioBatch.mock.calls[1][0]).toHaveLength(4);
   });
 
   it('a member under the threshold gets nothing, and loses old rows', async () => {
@@ -106,18 +109,21 @@ describe('buildMember', () => {
     w.mixes.set('oldpop', { id: 'oldpop', user: 'u1', key: 'pop', title: 'Pop', subtitle: '', position: 1, tracks: [], seeds: [], cover: { artworkUrls: [], color: '' }, builtAt: '' });
     const r = await createMixJob(w.deps).buildMember('u1');
     expect(r.deleted).toEqual(['pop']);
-    expect([...w.mixes.values()].map((m) => m.key)).toEqual(['rock-metal']);
+    expect([...w.mixes.values()].map((m) => m.key).filter((k) => mixKind(k) === 'style')).toEqual(['rock-metal']);
   });
 
-  it('a YouTube outage keeps the last mixes as they were', async () => {
+  it('a YouTube outage keeps the last radio mixes as they were', async () => {
     const w = world();
     await createMixJob(w.deps).buildMember('u1');
-    const before = JSON.stringify([...w.mixes.values()]);
+    const radioRows = () => JSON.stringify([...w.mixes.values()].filter((m) => m.key !== 'on-repeat'));
+    const before = radioRows();
     w.deps.radioBatch = vi.fn(async () => { throw new Error('every seed failed'); });
     const warn = vi.fn();
     const r = await createMixJob({ ...w.deps, warn, now: () => NOW + 24 * HOUR }).buildMember('u1');
-    expect(r).toMatchObject({ written: [], kept: ['rock-metal', 'pop'], deleted: [] });
-    expect(JSON.stringify([...w.mixes.values()])).toBe(before);
+    // On repeat needs no radio; everything else stays as it was.
+    expect(r).toMatchObject({ written: ['on-repeat'], deleted: [] });
+    expect(r.kept.slice(0, 3)).toEqual(['rock-metal', 'pop', 'discover']);
+    expect(radioRows()).toBe(before);
     expect(warn).toHaveBeenCalledWith('mixes: radio failed, keeping the last mix', expect.objectContaining({ mix: 'rock-metal' }));
   });
 
@@ -137,6 +143,157 @@ describe('buildMember', () => {
     const seeds = [...w.mixes.values()].map((m) => m.seeds.join());
     await job.buildMember('u1');
     expect([...w.mixes.values()].map((m) => m.seeds.join())).toEqual(seeds);
+  });
+});
+
+describe('every kind', () => {
+  const DAY = 24 * HOUR;
+  const oldBands = ['Old Band A', 'Old Band B', 'Old Band C'];
+  const oldSongs = songsOf(oldBands, 4);
+  const oldPlays = oldSongs.flatMap((track) => Array.from({ length: 4 }, (_, k) => ({ track, playedAt: new Date(NOW - (100 + k) * DAY).toISOString() })));
+  const fullPlays = () => [...playsOf(rockSongs, 2), ...playsOf(popSongs, 1), ...oldPlays];
+  const order = ['style', 'discover', 'on-repeat', 'artist', 'throwback'];
+  const sorted = (mixes: Map<string, MixRow & { id: string }>) => [...mixes.values()].sort((a, b) => a.position - b.position);
+
+  it('lines up style, Discover, On repeat, artist and Throwback mixes, at most twelve, in that order', async () => {
+    const w = world({}, { plays: fullPlays() });
+    const r = await createMixJob(w.deps).buildMember('u1');
+    expect(r.kept).toEqual([]);
+    const rows = sorted(w.mixes);
+    expect(rows.length).toBeLessThanOrEqual(MAX_MIXES);
+    const kinds = rows.map((m) => mixKind(m.key));
+    expect(new Set(kinds)).toEqual(new Set(order));
+    // Kinds never interleave.
+    expect(kinds.map((k) => order.indexOf(k))).toEqual([...kinds.map((k) => order.indexOf(k))].sort((a, b) => a - b));
+    // Two styles leave room: six artist mixes instead of four.
+    expect(kinds.filter((k) => k === 'artist')).toHaveLength(6);
+    expect(rows.map((m) => m.position)).toEqual([0, 1, 10, 20, 30, 31, 32, 33, 34, 35, 40]);
+    expect(rows.find((m) => m.key === 'discover')?.title).toBe('New to you');
+    expect(rows.find((m) => m.key === 'on-repeat')?.title).toBe('Your top songs');
+    expect(rows.find((m) => m.key === 'throwback')?.title).toBe('Back again');
+  });
+
+  it('an artist mix is the artist plus similar artists, the artist capped at twelve and the others at three', async () => {
+    const w = world({}, { plays: fullPlays() });
+    await createMixJob(w.deps).buildMember('u1');
+    const m = w.mixes.get([...w.mixes.keys()].find((id) => w.mixes.get(id)!.key === 'artist-rock-band-0')!)!;
+    expect(m).toMatchObject({ title: 'Rock Band 0' });
+    expect(m.subtitle).toMatch(/^Rock Band 0, .+ and more$/);
+    const counts = new Map<string, number>();
+    for (const t of m.tracks) counts.set(t.artist, (counts.get(t.artist) ?? 0) + 1);
+    expect(counts.get('Rock Band 0')).toBeGreaterThanOrEqual(4);
+    expect(counts.get('Rock Band 0')).toBeLessThanOrEqual(12);
+    for (const [a, n] of counts) if (a !== 'Rock Band 0') expect(n).toBeLessThanOrEqual(3);
+    // Similar artists from the radio, never the other family's leak.
+    expect(m.tracks.some((t) => t.artist.startsWith('New Rock'))).toBe(true);
+    expect(m.tracks.every((t) => family[artistKey(t.artist)] === 'rock-metal')).toBe(true);
+    expect(m.tracks.length).toBeGreaterThanOrEqual(20);
+    expect(m.cover.artworkUrls[0]).toBe(rockSongs.find((t) => t.artist === 'Rock Band 0')!.artworkUrl);
+  });
+
+  it('Discover holds only songs never played or liked, artists new to the member first', async () => {
+    const w = world({}, { plays: fullPlays() });
+    await createMixJob(w.deps).buildMember('u1');
+    const d = sorted(w.mixes).find((m) => m.key === 'discover')!;
+    const heard = new Set([...rockSongs, ...popSongs, ...oldSongs].map(songKey));
+    const mine = new Set([...rockBands, ...popStars, ...oldBands]);
+    expect(d.tracks.length).toBeGreaterThanOrEqual(20);
+    expect(d.tracks.length).toBeLessThanOrEqual(30);
+    expect(d.tracks.some((t) => heard.has(songKey(t)))).toBe(false);
+    expect(d.tracks.some((t) => mine.has(t.artist))).toBe(false);
+    expect(d.seeds.length).toBeGreaterThan(0);
+  });
+
+  it('On repeat is this month\'s most played; Throwback the songs played a lot before but not lately', async () => {
+    const w = world({}, { plays: fullPlays() });
+    await createMixJob(w.deps).buildMember('u1');
+    const rows = sorted(w.mixes);
+    const repeat = rows.find((m) => m.key === 'on-repeat')!;
+    // Rock songs were played twice this month, pop songs once.
+    expect(repeat.tracks.every((t) => rockBands.includes(t.artist))).toBe(true);
+    expect(repeat.tracks.length).toBeGreaterThanOrEqual(10);
+    const back = rows.find((m) => m.key === 'throwback')!;
+    expect(back.tracks.map((t) => t.artist).sort()).toEqual(oldSongs.map((t) => t.artist).sort());
+  });
+
+  it('Discover is built once a week: kept through Sunday, rebuilt on Monday', async () => {
+    let clock = NOW; // Friday 16 October
+    const w = world({ now: () => clock }, { plays: fullPlays() });
+    const job = createMixJob(w.deps);
+    await job.buildMember('u1');
+    const first = sorted(w.mixes).find((m) => m.key === 'discover')!;
+    clock = NOW + 2 * DAY; // Sunday
+    const sunday = await job.buildMember('u1');
+    expect(sunday.kept).toContain('discover');
+    expect(sorted(w.mixes).find((m) => m.key === 'discover')!.builtAt).toBe(first.builtAt);
+    clock = NOW + 3 * DAY; // Monday
+    const monday = await job.buildMember('u1');
+    expect(monday.written).toContain('discover');
+    expect(sorted(w.mixes).find((m) => m.key === 'discover')!.builtAt).toBe(new Date(clock).toISOString());
+  });
+
+  it('a blocked song is left out of every kind', async () => {
+    const blocked = rockSongs[0];
+    const w = world({ loadBlocked: async () => [blocked] }, { plays: fullPlays() });
+    await createMixJob(w.deps).buildMember('u1');
+    expect(w.mixes.size).toBeGreaterThan(5);
+    for (const m of w.mixes.values()) expect(m.tracks.some((t) => songKey(t) === songKey(blocked))).toBe(false);
+  });
+
+  it('a dead song is left out of every kind', async () => {
+    const dead = rockSongs[1];
+    const w = world({ unavailableIds: async () => new Set([dead.id]) }, { plays: fullPlays() });
+    await createMixJob(w.deps).buildMember('u1');
+    for (const m of w.mixes.values()) expect(m.tracks.some((t) => t.id === dead.id)).toBe(false);
+  });
+
+  it('fetches each seed\'s radio once per build, however many mixes share it', async () => {
+    const w = world({}, { plays: fullPlays() });
+    await createMixJob(w.deps).buildMember('u1');
+    const all = w.radioBatch.mock.calls.flatMap((c) => c[0]);
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('a dead or blocked song is never a radio seed', async () => {
+    const dead = rockSongs[0];
+    const blocked = rockSongs[4];
+    const w = world({ unavailableIds: async () => new Set([dead.id]), loadBlocked: async () => [blocked] }, { plays: fullPlays() });
+    await createMixJob(w.deps).buildMember('u1');
+    const seeds = w.radioBatch.mock.calls.flatMap((c) => c[0]);
+    expect(seeds.length).toBeGreaterThan(0);
+    expect(seeds).not.toContain(dead.sourceId);
+    expect(seeds).not.toContain(blocked.sourceId);
+  });
+
+  it('a mix that keeps coming out short is kept a few days, then deleted; an outage never deletes', async () => {
+    let clock = NOW;
+    const w = world({ now: () => clock }, { plays: fullPlays() });
+    const job = createMixJob(w.deps);
+    await job.buildMember('u1');
+    expect([...w.mixes.values()].some((m) => m.key === 'artist-rock-band-0')).toBe(true);
+    // From now on every radio is empty: the radio mixes come out short.
+    w.deps.radioBatch = vi.fn(async (seeds: string[]) => ({ radios: seeds.map((seed) => ({ seed, tracks: [] })), failed: [] }));
+    clock = NOW + DAY;
+    expect((await job.buildMember('u1')).kept).toContain('artist-rock-band-0');
+    clock = NOW + SHORT_KEEP_MS;
+    const r = await job.buildMember('u1');
+    expect(r.deleted).toContain('artist-rock-band-0');
+    expect(r.deleted).toContain('rock-metal');
+    // An outage (every seed failing) keeps them however old.
+    const w2 = world({ now: () => clock }, { plays: fullPlays() });
+    const job2 = createMixJob({ ...w2.deps, now: () => NOW });
+    await job2.buildMember('u1');
+    w2.deps.radioBatch = vi.fn(async () => { throw new Error('every seed failed'); });
+    const r2 = await createMixJob({ ...w2.deps, now: () => NOW + 10 * DAY }).buildMember('u1');
+    expect(r2.deleted).toEqual([]);
+    expect(r2.kept).toContain('artist-rock-band-0');
+  });
+
+  it('a member with too little listening gets no style, artist or Discover mix', async () => {
+    const w = world({}, { plays: playsOf(rockSongs.slice(0, 3), 1) });
+    const r = await createMixJob(w.deps).buildMember('u1');
+    expect(r.written).toEqual([]);
+    expect(w.radioBatch).not.toHaveBeenCalled();
   });
 });
 
@@ -160,7 +317,10 @@ describe('queue and lazy trigger', () => {
     expect(job.isBuilding('u1')).toBe(true);
     expect(job.requestBuild('u1', [])).toBe(true);
     await job.idle();
-    expect(w.radioBatch).toHaveBeenCalledTimes(2);
+    // Built once: one radio call per radio mix.
+    const radioMixes = [...w.mixes.keys()].length - 1;
+    expect(w.radioBatch.mock.calls.length).toBeLessThanOrEqual(radioMixes);
+    expect(w.mixes.size).toBeGreaterThan(2);
     expect(job.isBuilding('u1')).toBe(false);
   });
 
@@ -171,6 +331,18 @@ describe('queue and lazy trigger', () => {
     expect(job.requestBuild('u1', fresh)).toBe(false);
     clock = NOW + STALE_AFTER_MS;
     expect(job.requestBuild('u1', fresh)).toBe(true);
+  });
+
+  it('a Discover row a few days old does not make the mixes stale; past a week and a day it does', () => {
+    let clock = NOW;
+    const job = createMixJob(world({ now: () => clock }).deps);
+    const rows = (discoverAge: number) => [
+      { key: 'rock-metal', builtAt: new Date(clock - 2 * HOUR).toISOString() },
+      { key: 'discover', builtAt: new Date(clock - discoverAge).toISOString() },
+    ];
+    expect(job.requestBuild('u1', rows(3 * 24 * HOUR))).toBe(false);
+    clock += 1;
+    expect(job.requestBuild('u1', rows(WEEKLY_STALE_AFTER_MS))).toBe(true);
   });
 
   it('after a build that made nothing, waits six hours before trying that member again', async () => {

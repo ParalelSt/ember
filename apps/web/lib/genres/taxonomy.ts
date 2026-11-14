@@ -18,13 +18,27 @@ export type FamilySlug =
   | 'jazz-blues'
   | 'classical';
 
-/** The halves a family may split into when someone plays plenty of both. */
-export type SubSlug = 'rock' | 'metal' | 'hiphop' | 'rnb';
+/** The narrower styles a family splits into (docs/mixes.md, "Style
+ *  mixes"). rock, metal, hiphop and rnb are the original halves; the rest
+ *  came with the smaller style mixes. */
+export type SubSlug =
+  | 'rock' | 'metal' | 'punk' | 'indie'
+  | 'kpop' | 'indie-pop'
+  | 'hiphop' | 'rnb'
+  | 'house' | 'techno' | 'dnb' | 'ambient'
+  | 'reggaeton' | 'tropical'
+  | 'turbofolk' | 'balkan-rock' | 'balkan-hiphop' | 'balkan-pop'
+  | 'country' | 'folk'
+  | 'jazz' | 'blues'
+  | 'soundtrack';
 
 export interface SubGenre {
   slug: SubSlug;
   name: string;
   tint: string;
+  /** Tested against every normalized tag of an artist in the family; a tag
+   *  counts for the first sub-genre (in list order) it matches. */
+  match: RegExp;
 }
 
 export interface Family {
@@ -35,7 +49,7 @@ export interface Family {
   tint: string;
   /** Text on `tint`. */
   ink: string;
-  subs?: readonly [SubGenre, SubGenre];
+  subs?: readonly SubGenre[];
 }
 
 const INK = '#141414';
@@ -48,11 +62,23 @@ export const FAMILIES: readonly Family[] = [
     tint: '#f2b8a8',
     ink: INK,
     subs: [
-      { slug: 'rock', name: 'Rock', tint: '#f4c2a1' },
-      { slug: 'metal', name: 'Metal', tint: '#c9c3d6' },
+      { slug: 'metal', name: 'Metal', tint: '#c9c3d6', match: /\b(metal\w*|grindcore|deathcore|thrash|doom|sludge|djent|hard rock)\b/ },
+      { slug: 'punk', name: 'Punk', tint: '#f5d36b', match: /\b(punk|emo|hardcore|ska)\b/ },
+      { slug: 'indie', name: 'Indie', tint: '#b9dfc4', match: /\b(indie|shoegaze|dream pop|post rock|math rock|lo fi)\b/ },
+      { slug: 'rock', name: 'Rock', tint: '#f4c2a1', match: /\b(rock|alternative|grunge|blues rock|psychedelic)\b/ },
     ],
   },
-  { slug: 'pop', name: 'Pop', color: '#c2185b', tint: '#f7c1dc', ink: INK },
+  {
+    slug: 'pop',
+    name: 'Pop',
+    color: '#c2185b',
+    tint: '#f7c1dc',
+    ink: INK,
+    subs: [
+      { slug: 'kpop', name: 'K-Pop', tint: '#ffc8e6', match: /\b(k ?pop|korean|j ?pop|japanese)\b/ },
+      { slug: 'indie-pop', name: 'Indie Pop', tint: '#d7e8b5', match: /\b(indie|bedroom pop|dream pop|art pop|chamber pop)\b/ },
+    ],
+  },
   {
     slug: 'hiphop-rnb',
     name: 'Hip-hop & R&B',
@@ -60,16 +86,79 @@ export const FAMILIES: readonly Family[] = [
     tint: '#d4c4f2',
     ink: INK,
     subs: [
-      { slug: 'hiphop', name: 'Hip-hop', tint: '#cdd3f5' },
-      { slug: 'rnb', name: 'R&B', tint: '#ecc8e8' },
+      { slug: 'hiphop', name: 'Hip-hop', tint: '#cdd3f5', match: /\b(hip ?hop|rap|trap|drill|grime|boom bap)\b/ },
+      { slug: 'rnb', name: 'R&B', tint: '#ecc8e8', match: /\b(r&b|rnb|r and b|soul|funk)\b/ },
     ],
   },
-  { slug: 'electronic', name: 'Electronic', color: '#0b7a8a', tint: '#b5e6ec', ink: INK },
-  { slug: 'latin', name: 'Latin', color: '#d9480f', tint: '#ffd3a8', ink: INK },
-  { slug: 'balkan', name: 'Balkan', color: '#1f5fa8', tint: '#bcd6f5', ink: INK },
-  { slug: 'country-folk', name: 'Country & Folk', color: '#8a5a1c', tint: '#ecd9b0', ink: INK },
-  { slug: 'jazz-blues', name: 'Jazz & Blues', color: '#2d5a3d', tint: '#c3e3c9', ink: INK },
-  { slug: 'classical', name: 'Classical', color: '#5b5b73', tint: '#dcdce8', ink: INK },
+  {
+    slug: 'electronic',
+    name: 'Electronic',
+    color: '#0b7a8a',
+    tint: '#b5e6ec',
+    ink: INK,
+    subs: [
+      { slug: 'dnb', name: 'Drum & Bass', tint: '#c6e9b0', match: /\b(drum and bass|dnb|jungle|dubstep|bass music|liquid)\b/ },
+      { slug: 'techno', name: 'Techno', tint: '#c4cbd6', match: /\b(techno|industrial|hardstyle|trance)\b/ },
+      { slug: 'house', name: 'House', tint: '#ffd9b3', match: /\b(house|disco|garage|edm|dance|big room)\b/ },
+      { slug: 'ambient', name: 'Chill Electronic', tint: '#cfe3f7', match: /\b(ambient|chill\w*|downtempo|idm|lo fi|synthwave|trip hop)\b/ },
+    ],
+  },
+  {
+    slug: 'latin',
+    name: 'Latin',
+    color: '#d9480f',
+    tint: '#ffd3a8',
+    ink: INK,
+    subs: [
+      { slug: 'reggaeton', name: 'Reggaeton', tint: '#ffc2a8', match: /\b(reggaeton|latin trap|dembow|urbano|perreo)\b/ },
+      { slug: 'tropical', name: 'Salsa & Bachata', tint: '#ffe6a3', match: /\b(salsa|bachata|cumbia|merengue|tropical)\b/ },
+    ],
+  },
+  {
+    slug: 'balkan',
+    name: 'Balkan',
+    color: '#1f5fa8',
+    tint: '#bcd6f5',
+    ink: INK,
+    subs: [
+      { slug: 'balkan-hiphop', name: 'Balkan Rap', tint: '#cbc8f2', match: /\b(hip ?hop|rap|trap|drill)\b/ },
+      { slug: 'balkan-rock', name: 'Ex-YU Rock', tint: '#f3c4b5', match: /\b(rock|punk|new wave|metal|grunge)\b/ },
+      { slug: 'turbofolk', name: 'Narodna', tint: '#f6dca0', match: /\b(turbo ?folk|narodn\w*|folk|sevdah\w*|sevdalinka|starogradsk\w*)\b/ },
+      { slug: 'balkan-pop', name: 'Balkan Pop', tint: '#c5e4f0', match: /\b(pop|dance|schlager)\b/ },
+    ],
+  },
+  {
+    slug: 'country-folk',
+    name: 'Country & Folk',
+    color: '#8a5a1c',
+    tint: '#ecd9b0',
+    ink: INK,
+    subs: [
+      { slug: 'country', name: 'Country', tint: '#f0cfa0', match: /\b(country|americana|bluegrass|honky tonk)\b/ },
+      { slug: 'folk', name: 'Folk', tint: '#d6e2bf', match: /\b(folk|singer songwriter|acoustic)\b/ },
+    ],
+  },
+  {
+    slug: 'jazz-blues',
+    name: 'Jazz & Blues',
+    color: '#2d5a3d',
+    tint: '#c3e3c9',
+    ink: INK,
+    subs: [
+      { slug: 'blues', name: 'Blues', tint: '#bfd4ea', match: /\b(blues)\b/ },
+      { slug: 'jazz', name: 'Jazz', tint: '#d8e8b8', match: /\b(jazz|swing|bebop|bossa nova)\b/ },
+    ],
+  },
+  {
+    slug: 'classical',
+    name: 'Classical',
+    color: '#5b5b73',
+    tint: '#dcdce8',
+    ink: INK,
+    subs: [
+      { slug: 'soundtrack', name: 'Soundtracks', tint: '#e3d6f0', match: /\b(soundtrack|score|film|video game|game music)\b/ },
+    ],
+  },
 ];
 
 const FAMILY_BY_SLUG = new Map<string, Family>(FAMILIES.map((f) => [f.slug, f]));
@@ -148,26 +237,26 @@ export function chartsOfFamily(family: FamilySlug): ChartDef[] {
 // ---------------------------------------------------------------------------
 // Raw tags (Last.fm, MusicBrainz) to families.
 
-/** Where one raw tag points: a family, and the half of it when it has one. */
+/** Where one raw tag points: a family. The sub-genre is read separately,
+ *  from all of an artist's tags (subOfTags). */
 export interface TagTarget {
   family: FamilySlug;
-  sub?: SubSlug;
 }
 
 /** Exact tags first (lowercased, "-" and "_" read as spaces). */
 const EXACT: Record<string, TagTarget> = {
-  'rock': { family: 'rock-metal', sub: 'rock' },
-  'alternative': { family: 'rock-metal', sub: 'rock' },
-  'alternative rock': { family: 'rock-metal', sub: 'rock' },
-  'indie': { family: 'rock-metal', sub: 'rock' },
-  'indie rock': { family: 'rock-metal', sub: 'rock' },
-  'punk': { family: 'rock-metal', sub: 'rock' },
-  'grunge': { family: 'rock-metal', sub: 'rock' },
-  'classic rock': { family: 'rock-metal', sub: 'rock' },
-  'hard rock': { family: 'rock-metal', sub: 'metal' },
-  'post grunge': { family: 'rock-metal', sub: 'rock' },
-  'emo': { family: 'rock-metal', sub: 'rock' },
-  'djent': { family: 'rock-metal', sub: 'metal' },
+  'rock': { family: 'rock-metal' },
+  'alternative': { family: 'rock-metal' },
+  'alternative rock': { family: 'rock-metal' },
+  'indie': { family: 'rock-metal' },
+  'indie rock': { family: 'rock-metal' },
+  'punk': { family: 'rock-metal' },
+  'grunge': { family: 'rock-metal' },
+  'classic rock': { family: 'rock-metal' },
+  'hard rock': { family: 'rock-metal' },
+  'post grunge': { family: 'rock-metal' },
+  'emo': { family: 'rock-metal' },
+  'djent': { family: 'rock-metal' },
   'pop': { family: 'pop' },
   'dance pop': { family: 'pop' },
   'synthpop': { family: 'pop' },
@@ -180,17 +269,17 @@ const EXACT: Record<string, TagTarget> = {
   'indie pop': { family: 'pop' },
   'latin pop': { family: 'latin' },
   'balkan pop': { family: 'balkan' },
-  'hip hop': { family: 'hiphop-rnb', sub: 'hiphop' },
-  'hiphop': { family: 'hiphop-rnb', sub: 'hiphop' },
-  'rap': { family: 'hiphop-rnb', sub: 'hiphop' },
-  'trap': { family: 'hiphop-rnb', sub: 'hiphop' },
-  'drill': { family: 'hiphop-rnb', sub: 'hiphop' },
-  'rnb': { family: 'hiphop-rnb', sub: 'rnb' },
-  'r&b': { family: 'hiphop-rnb', sub: 'rnb' },
-  'r and b': { family: 'hiphop-rnb', sub: 'rnb' },
-  'soul': { family: 'hiphop-rnb', sub: 'rnb' },
-  'neo soul': { family: 'hiphop-rnb', sub: 'rnb' },
-  'contemporary r&b': { family: 'hiphop-rnb', sub: 'rnb' },
+  'hip hop': { family: 'hiphop-rnb' },
+  'hiphop': { family: 'hiphop-rnb' },
+  'rap': { family: 'hiphop-rnb' },
+  'trap': { family: 'hiphop-rnb' },
+  'drill': { family: 'hiphop-rnb' },
+  'rnb': { family: 'hiphop-rnb' },
+  'r&b': { family: 'hiphop-rnb' },
+  'r and b': { family: 'hiphop-rnb' },
+  'soul': { family: 'hiphop-rnb' },
+  'neo soul': { family: 'hiphop-rnb' },
+  'contemporary r&b': { family: 'hiphop-rnb' },
   'electronic': { family: 'electronic' },
   'electronica': { family: 'electronic' },
   'edm': { family: 'electronic' },
@@ -244,12 +333,12 @@ const EXACT: Record<string, TagTarget> = {
  *  Balkan rap goes in the Balkan mix). Order matters. */
 const KEYWORDS: readonly [RegExp, TagTarget][] = [
   [/\b(turbo ?folk|narodn\w*|ex ?yu|yugo\w*|serbian|croatian|bosnian|montenegrin|macedonian|sevdah|sevdalinka|balkan)\b/, { family: 'balkan' }],
-  [/\b(metal\w*|grindcore|deathcore|thrash|doom|sludge|djent|hard rock)\b/, { family: 'rock-metal', sub: 'metal' }],
-  [/\b(hip hop|rap|trap|drill|grime|boom bap)\b/, { family: 'hiphop-rnb', sub: 'hiphop' }],
-  [/\b(r&b|rnb|soul|funk)\b/, { family: 'hiphop-rnb', sub: 'rnb' }],
+  [/\b(metal\w*|grindcore|deathcore|thrash|doom|sludge|djent|hard rock)\b/, { family: 'rock-metal' }],
+  [/\b(hip hop|rap|trap|drill|grime|boom bap)\b/, { family: 'hiphop-rnb' }],
+  [/\b(r&b|rnb|soul|funk)\b/, { family: 'hiphop-rnb' }],
   [/\b(reggaeton|latin\w*|bachata|salsa|cumbia|dembow|corridos?)\b/, { family: 'latin' }],
   [/\b(house|techno|trance|edm|dubstep|electro\w*|drum and bass|dnb|ambient|idm|synthwave|hardstyle)\b/, { family: 'electronic' }],
-  [/\b(rock|punk|grunge|shoegaze|post punk|emo)\b/, { family: 'rock-metal', sub: 'rock' }],
+  [/\b(rock|punk|grunge|shoegaze|post punk|emo)\b/, { family: 'rock-metal' }],
   [/\b(pop)\b/, { family: 'pop' }],
   [/\b(country|americana|folk|bluegrass|singer songwriter)\b/, { family: 'country-folk' }],
   [/\b(jazz|blues|swing|bebop)\b/, { family: 'jazz-blues' }],
@@ -288,7 +377,7 @@ export interface TagVerdict {
   /** The primary family and every secondary one, weight relative to the
    *  primary (primary = 1). */
   families: Partial<Record<FamilySlug, number>>;
-  /** The heavier half of the primary family, when its tags say. */
+  /** The primary family's heaviest sub-genre, when its tags say. */
   sub: SubSlug | null;
 }
 
@@ -297,13 +386,10 @@ export interface TagVerdict {
  *  the family whose tags came first (sources list the strongest first). */
 export function classifyTags(tags: readonly RawTag[]): TagVerdict {
   const weight = new Map<FamilySlug, number>();
-  const subWeight = new Map<SubSlug, number>();
   for (const tag of tags) {
     const target = mapTag(tag.name);
     if (!target) continue;
-    const w = Number.isFinite(tag.count) && tag.count > 0 ? tag.count : 1;
-    weight.set(target.family, (weight.get(target.family) ?? 0) + w);
-    if (target.sub) subWeight.set(target.sub, (subWeight.get(target.sub) ?? 0) + w);
+    weight.set(target.family, (weight.get(target.family) ?? 0) + tagWeight(tag));
   }
   let family: FamilySlug | null = null;
   let top = 0;
@@ -318,15 +404,38 @@ export function classifyTags(tags: readonly RawTag[]): TagVerdict {
   for (const [f, w] of weight) {
     if (f === family || w >= top * SECONDARY_SHARE) families[f] = Math.round((w / top) * 1000) / 1000;
   }
-  const subs = familyOf(family)?.subs ?? [];
+  return { family, families, sub: subOfTags(family, tags) };
+}
+
+const tagWeight = (tag: RawTag) => (Number.isFinite(tag.count) && tag.count > 0 ? tag.count : 1);
+
+/** The heaviest sub-genre of `family` the tags name, or null. Every tag
+ *  counts (a Balkan band's plain "rock" tag makes it Ex-YU Rock), each for
+ *  the first sub-genre it matches; ties go to the sub-genre listed first. */
+export function subOfTags(family: FamilySlug | null, tags: readonly RawTag[]): SubSlug | null {
+  const subs = familyOf(family)?.subs;
+  if (!subs?.length) return null;
+  const weight = new Map<SubSlug, number>();
+  for (const tag of tags) {
+    const t = normalizeTag(tag.name);
+    if (!t || t.startsWith('chart:')) continue;
+    const hit = subs.find((s) => s.match.test(t));
+    if (hit) weight.set(hit.slug, (weight.get(hit.slug) ?? 0) + tagWeight(tag));
+  }
   let sub: SubSlug | null = null;
-  let subTop = 0;
+  let top = 0;
   for (const s of subs) {
-    const w = subWeight.get(s.slug) ?? 0;
-    if (w > subTop) {
+    const w = weight.get(s.slug) ?? 0;
+    if (w > top) {
       sub = s.slug;
-      subTop = w;
+      top = w;
     }
   }
-  return { family, families, sub };
+  return sub;
+}
+
+const SUB_SLUGS = new Set<string>(FAMILIES.flatMap((f) => (f.subs ?? []).map((s) => s.slug)));
+
+export function isSubSlug(slug: unknown): slug is SubSlug {
+  return typeof slug === 'string' && SUB_SLUGS.has(slug);
 }

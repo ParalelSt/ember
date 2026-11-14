@@ -70,4 +70,30 @@ describe('/mix/[key]', () => {
     await open('balkan');
     expect(screen.getByText('Mix not found.')).toBeInTheDocument();
   });
+
+  it('an artist mix: "Artist mix" over "Gojira Mix", rebuilt every night', async () => {
+    state.mix = { ...state.mix!, key: 'artist-gojira', kind: 'artist', title: 'Gojira' };
+    await open('artist-gojira');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Gojira Mix');
+    expect(screen.getByText('Artist mix')).toBeInTheDocument();
+    expect(screen.getByTestId('collection-meta').textContent).toBe('3 songs · Rebuilt every night');
+    expect(state.playbackFor).toEqual({ type: 'mix', mixKey: 'artist-gojira', mixTitle: 'Gojira Mix' });
+  });
+
+  it('Discover: "Discover" over "New to you", new every Monday, saved as "New to you mix"', async () => {
+    state.mix = { ...state.mix!, key: 'discover', kind: 'discover', title: 'New to you' };
+    await open('discover');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('New to you');
+    expect(screen.getByText('Discover')).toBeInTheDocument();
+    expect(screen.getByTestId('collection-meta').textContent).toBe('3 songs · New every Monday');
+    fireEvent.click(screen.getByTestId('save-as-playlist'));
+    expect(state.mutate.mock.calls[0][0].name).toMatch(/^New to you mix, \d{1,2} \w{3}$/);
+  });
+
+  it('On repeat and Throwback keep their own names', async () => {
+    state.mix = { ...state.mix!, key: 'throwback', title: 'Back again' };
+    await open('throwback');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Back again');
+    expect(screen.getByText('Throwback')).toBeInTheDocument();
+  });
 });

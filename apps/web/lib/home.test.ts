@@ -48,6 +48,15 @@ describe('quickPicks, phone Recently played and Uploads', () => {
 });
 
 describe('quickPicks', () => {
+  it('names other kinds of mix by their own title', () => {
+    const picks = quickPicks({ liked, playlists: [], carlist: null, mixes: [
+      { key: 'discover', title: 'New to you', cover: { artworkUrls: [] } },
+      { key: 'artist-gojira', title: 'Gojira', cover: { artworkUrls: [] } },
+    ] });
+    expect(picks.map((p) => p.title)).toContain('New to you');
+    expect(picks.map((p) => p.title)).toContain('Gojira Mix');
+  });
+
   it('gives the member\'s top two mixes a slot after Liked songs and a live carlist', () => {
     const mix = (key: string, title: string) => ({ key, title, cover: { artworkUrls: [`/art/${key}.jpg`] } });
     const picks = quickPicks({

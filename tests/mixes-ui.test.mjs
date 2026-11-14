@@ -11,10 +11,13 @@
  *  for them and for the radio's new artists, and a radio fixture that leaks
  *  pop into rock radio. Proves, in a phone-sized browser:
  *   - M1: opening Home starts a build (lazy trigger) and the Your mixes row
- *     turns up with two Radio cards, Rock & Metal first
+ *     turns up: the two style mixes first (Rock & Metal, Pop), then
+ *     Discover, On repeat and artist mixes, each with its own label
  *   - M2: the rock mix has no pop song in it (purity end to end)
  *   - M3: the card opens /mix/rock-metal, "Built today from ..."
- *   - M4: Play starts the mix's first song */
+ *   - M4: Play starts the mix's first song
+ *   - M5: Discover has no song the member played
+ *   - M6: an artist mix opens as "<Artist> Mix" */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -86,8 +89,19 @@ try {
   await page.goto(`${APP_URL}/`);
   const row = page.getByRole('region', { name: 'Your mixes' });
   await row.waitFor({ timeout: 90000 });
-  const cards = await row.locator('[data-mix-card]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
-  check('M1 Your mixes shows two Radio cards, Rock & Metal first', cards.length === 2 && cards[0] === 'Rock & Metal Mix', JSON.stringify(cards));
+  // The build writes one mix after another: wait for it to finish.
+  for (let i = 0; i < 120; i++) {
+    const s = await fetch(`${APP_URL}/api/mixes`, { headers: { cookie } }).then((r) => r.json());
+    if (!s.building) break;
+    await sleep(1000);
+  }
+  await page.reload();
+  await row.waitFor({ timeout: 30000 });
+  const cards = await row.locator('[data-mix-card]').evaluateAll((els) => els.map((e) => [e.getAttribute('aria-label'), e.getAttribute('data-mix-kind'), e.querySelector('[data-mix-label]')?.textContent]));
+  const kinds = cards.map((c) => c[1]);
+  check('M1 Your mixes: Rock & Metal and Pop first, then Discover, On repeat and artist mixes, labelled',
+    cards[0]?.[0] === 'Rock & Metal Mix' && cards[1]?.[0] === 'Pop Mix' && kinds[2] === 'discover' && kinds[3] === 'on-repeat' && kinds.slice(4).every((k) => k === 'artist')
+      && cards.length <= 12 && cards[2]?.[2] === 'DISCOVER' && cards[4]?.[2] === 'ARTIST MIX', JSON.stringify(cards));
 
   const rock = await fetch(`${APP_URL}/api/mixes/rock-metal`, { headers: { cookie } }).then((r) => r.json());
   const pop = new Set([...popActs, ...newPop]);
@@ -103,6 +117,16 @@ try {
   const stream = page.waitForRequest((r) => r.url().includes(`/api/youtube/stream/${first}`), { timeout: 20000 }).then(() => true, () => false);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   check('M4 Play starts the first song', await stream, first);
+
+  const discover = await fetch(`${APP_URL}/api/mixes/discover`, { headers: { cookie } }).then((r) => r.json());
+  const mine = new Set(own.map((o) => `youtube:${o.id}`));
+  check('M5 Discover has only songs the member never played', (discover.tracks?.length ?? 0) >= 20 && !discover.tracks.some((t) => mine.has(t.id)), `${discover.tracks?.length} songs`);
+
+  const artistCard = cards.find((c) => c[1] === 'artist');
+  await page.goto(`${APP_URL}/`);
+  await row.getByRole('link', { name: artistCard?.[0] ?? 'none' }).click();
+  await page.waitForURL('**/mix/artist-*');
+  check('M6 an artist mix opens as "<Artist> Mix"', (await page.getByRole('heading', { level: 1 }).textContent({ timeout: 20000 })) === artistCard?.[0], artistCard?.[0] ?? '');
 } catch (e) {
   check('run', false, e.message);
 } finally {

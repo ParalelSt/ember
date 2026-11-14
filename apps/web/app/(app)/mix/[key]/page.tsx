@@ -13,12 +13,14 @@ import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
 import { useSaveAsPlaylist } from '@/hooks/useSaveAsPlaylist';
 import { snapshotName } from '@/lib/chartsView';
 import { builtLine } from '@/lib/mixesView';
+import { KIND_EYEBROW, mixFullTitle, mixKind, refreshNote } from '@/lib/mixes/kinds';
 import { countLabel } from '@/lib/collections';
 import { formatAddedDate } from '@/lib/format';
 import { topCovers } from '@/lib/genres/covers';
 import type { PlaybackContext } from '@/types/track';
 
-/** One of the member's genre mixes: rebuilt every night from what they
+/** One of the member's mixes (style, artist, Discover, On repeat,
+ *  Throwback): rebuilt every night (Discover every Monday) from what they
  *  play, Play, Shuffle and Save as playlist. */
 export default function MixPage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = use(params);
@@ -32,7 +34,8 @@ export default function MixPage({ params }: { params: Promise<{ key: string }> }
 function MixView({ mixKey }: { mixKey: string }) {
   const { data, isLoading, error, refetch } = useQueryMix(mixKey);
   const tracks = data?.tracks ?? [];
-  const title = data ? `${data.title} Mix` : '';
+  const title = data ? mixFullTitle(mixKey, data.title) : '';
+  const kind = data?.kind ?? mixKind(mixKey);
   const context: PlaybackContext = { type: 'mix', mixKey, mixTitle: title };
   const playback = useCollectionPlayback(tracks, context);
   const trackActions = useTrackActions();
@@ -43,7 +46,7 @@ function MixView({ mixKey }: { mixKey: string }) {
   if (isLoading || !data) return <EmptyState>Loading…</EmptyState>;
 
   const onSave = () => {
-    const name = snapshotName(data.title, 'mix', formatAddedDate(new Date().toISOString()));
+    const name = snapshotName(kind === 'style' || kind === 'artist' ? data.title : title, 'mix', formatAddedDate(new Date().toISOString()));
     save.mutate(
       { name, tracks },
       {
@@ -60,9 +63,9 @@ function MixView({ mixKey }: { mixKey: string }) {
 
   return (
     <GeneratedListPage
-      eyebrow="Mix"
+      eyebrow={KIND_EYEBROW[kind] ?? 'Mix'}
       title={title}
-      meta={[countLabel(tracks.length), 'Rebuilt every night']}
+      meta={[countLabel(tracks.length), refreshNote(mixKey)]}
       belowTitle={<span data-testid="mix-built" className="text-sm text-muted-foreground">{builtLine(data, Date.now())}</span>}
       cover={{ icon: null, fallback: 'card', ...cover }}
       tracks={tracks}

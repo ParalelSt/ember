@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clusterMember, FAMILY_MIN_WEIGHT, MAX_MIXES, MEMBER_MIN_WEIGHT, type ArtistFamily } from './cluster';
+import { clusterMember, FAMILY_MIN_WEIGHT, MAX_STYLE_PLANS, MEMBER_MIN_WEIGHT, SUB_MAX_SHARE, type ArtistFamily } from './cluster';
 import type { SongScore } from './score';
 import { tt } from '@/test-utils/mixTracks';
 import type { FamilySlug, SubSlug } from '../genres/taxonomy';
@@ -35,11 +35,14 @@ describe('clusterMember', () => {
   });
 
   it('a family under FAMILY_MIN_WEIGHT is left out', () => {
-    const songs = [song('A', 10), song('A', 6), song('B', 2), song('C', 1), song('D', 1), song('E', 3)];
+    const songs = [song('A', 10), song('A', 6), song('B', 2), song('C', 1), song('D', 1), song('E', 1.5)];
     const genres = new Map([['a', fam('pop')], ['b', fam('pop')], ['c', fam('jazz-blues')], ['d', fam('jazz-blues')], ['e', fam('jazz-blues')]]);
     const r = clusterMember(songs, genres);
     expect(r.mixes.map((m) => m.key)).toEqual(['pop']);
-    expect(5).toBeLessThan(FAMILY_MIN_WEIGHT);
+    expect(3.5).toBeLessThan(FAMILY_MIN_WEIGHT);
+    // The lower bar: four weight in three songs by two artists is a mix.
+    const low = clusterMember([...songs, song('E', 0.5)], genres);
+    expect(low.mixes.map((m) => m.key)).toEqual(['pop', 'jazz-blues']);
   });
 
   it('splits Rock & Metal only when both halves are mixes on their own', () => {
@@ -76,7 +79,7 @@ describe('clusterMember', () => {
     expect(r.mixes[0].songs.some((s) => s.artistKey === 'untagged')).toBe(false);
   });
 
-  it('orders mixes by weight and keeps at most six', () => {
+  it('orders mixes by weight and keeps at most MAX_STYLE_PLANS', () => {
     const fams: FamilySlug[] = ['rock-metal', 'pop', 'hiphop-rnb', 'electronic', 'latin', 'balkan', 'country-folk', 'jazz-blues'];
     const songs: SongScore[] = [];
     const genres = new Map<string, ArtistFamily>();
@@ -85,7 +88,55 @@ describe('clusterMember', () => {
       songs.push(song(`${f}-a`, 10 - i), song(`${f}-a`, 1), song(`${f}-b`, 1));
     });
     const r = clusterMember(songs, genres);
-    expect(r.mixes).toHaveLength(MAX_MIXES);
-    expect(r.mixes.map((m) => m.key)).toEqual(fams.slice(0, 6));
+    expect(r.mixes).toHaveLength(MAX_STYLE_PLANS);
+    expect(r.mixes.map((m) => m.key)).toEqual(fams.slice(0, MAX_STYLE_PLANS));
+  });
+
+  it('a lone qualifying sub-genre is its own mix next to the family when it is not most of it', () => {
+    const genres = new Map([
+      ['punk1', fam('rock-metal', 'punk')], ['punk2', fam('rock-metal', 'punk')],
+      ['r1', fam('rock-metal', 'rock')], ['r2', fam('rock-metal')], ['r3', fam('rock-metal')],
+    ]);
+    const punk = [song('Punk1', 2), song('Punk1', 1.5), song('Punk2', 1.5)];
+    const other = [song('R1', 2), song('R2', 2), song('R3', 2), song('R1', 1)];
+    const r = clusterMember([...punk, ...other], genres);
+    expect(r.mixes.map((m) => m.key)).toEqual(['rock-metal', 'punk']);
+    expect(r.mixes[1]).toMatchObject({ family: 'rock-metal', sub: 'punk' });
+    // When punk is most of the family, it is just the family mix.
+    const mostly = clusterMember([...punk, ...punk.map((x) => ({ ...x, key: `${x.key}2` })), song('R1', 0.5), song('R2', 0.5)], genres);
+    expect(mostly.mixes[0].weight * SUB_MAX_SHARE).toBeLessThan(10);
+    expect(mostly.mixes.map((m) => m.key)).toEqual(['rock-metal']);
+  });
+
+  it('several sub-genres plus the family mix when the rest still qualifies (Balkan by style)', () => {
+    const genres = new Map<string, ArtistFamily>([
+      ['ceca', fam('balkan', 'turbofolk')], ['saban', fam('balkan', 'turbofolk')],
+      ['riblja', fam('balkan', 'balkan-rock')], ['ekv', fam('balkan', 'balkan-rock')],
+      ['x1', fam('balkan')], ['x2', fam('balkan')],
+    ]);
+    const songs = [
+      song('Ceca', 3), song('Ceca', 2), song('Saban', 2),
+      song('Riblja', 3), song('Riblja', 2), song('EKV', 2),
+      song('X1', 2), song('X1', 2), song('X2', 2),
+    ];
+    const r = clusterMember(songs, genres);
+    expect(r.mixes.map((m) => m.key)).toEqual(['balkan', 'balkan-rock', 'turbofolk']);
+    // The family mix holds every Balkan song; each style only its own.
+    expect(r.mixes[0].songs).toHaveLength(9);
+    expect(r.mixes.find((m) => m.key === 'turbofolk')?.artists.sort()).toEqual(['ceca', 'saban']);
+  });
+
+  it('variety: every family gets its first mix before any family gets a second', () => {
+    const genres = new Map<string, ArtistFamily>([
+      ['m1', fam('rock-metal', 'metal')], ['m2', fam('rock-metal', 'metal')],
+      ['p1', fam('rock-metal', 'punk')], ['p2', fam('rock-metal', 'punk')],
+      ['i1', fam('rock-metal', 'indie')], ['i2', fam('rock-metal', 'indie')],
+      ['j1', fam('jazz-blues')], ['j2', fam('jazz-blues')],
+    ]);
+    const heavy = (a: string, b: string) => [song(a, 5), song(a, 4), song(b, 4)];
+    const songs = [...heavy('M1', 'M2'), ...heavy('P1', 'P2'), ...heavy('I1', 'I2'), song('J1', 2), song('J1', 1), song('J2', 1.5)];
+    const r = clusterMember(songs, genres);
+    // Rock & Metal splits three ways with nothing left over: no family mix.
+    expect(r.mixes.map((m) => m.key)).toEqual(['indie', 'jazz-blues', 'metal', 'punk']);
   });
 });

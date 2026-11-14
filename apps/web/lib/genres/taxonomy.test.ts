@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHARTS, classifyTags, FAMILIES, familyOf, mapTag, mixLook, normalizeTag, parentFamilyOf } from './taxonomy';
+import { CHARTS, classifyTags, FAMILIES, familyOf, isSubSlug, mapTag, mixLook, normalizeTag, parentFamilyOf, subOfTags } from './taxonomy';
 
 describe('taxonomy table', () => {
   it('has nine families, each with a strong and a light colour', () => {
@@ -29,7 +29,7 @@ describe('taxonomy table', () => {
 describe('mapTag', () => {
   it('normalizes case, hyphens and spacing', () => {
     expect(normalizeTag('  Hip-Hop ')).toBe('hip hop');
-    expect(mapTag('Hip-Hop')).toEqual({ family: 'hiphop-rnb', sub: 'hiphop' });
+    expect(mapTag('Hip-Hop')).toEqual({ family: 'hiphop-rnb' });
     expect(mapTag('K-Pop')).toEqual({ family: 'pop' });
   });
 
@@ -46,13 +46,13 @@ describe('mapTag', () => {
   });
 
   it('reads longer tags by keyword, metal before rock and folk', () => {
-    expect(mapTag('melodic death metal')).toEqual({ family: 'rock-metal', sub: 'metal' });
-    expect(mapTag('folk metal')).toEqual({ family: 'rock-metal', sub: 'metal' });
-    expect(mapTag('progressive rock')).toEqual({ family: 'rock-metal', sub: 'rock' });
+    expect(mapTag('melodic death metal')).toEqual({ family: 'rock-metal' });
+    expect(mapTag('folk metal')).toEqual({ family: 'rock-metal' });
+    expect(mapTag('progressive rock')).toEqual({ family: 'rock-metal' });
     expect(mapTag('deep house')).toEqual({ family: 'electronic' });
     expect(mapTag('electropop')).toEqual({ family: 'pop' });
     expect(mapTag('latin pop')).toEqual({ family: 'latin' });
-    expect(mapTag('neo-soul')).toEqual({ family: 'hiphop-rnb', sub: 'rnb' });
+    expect(mapTag('neo-soul')).toEqual({ family: 'hiphop-rnb' });
     expect(mapTag('film score')).toEqual({ family: 'classical' });
   });
 });
@@ -100,5 +100,56 @@ describe('classifyTags', () => {
 
   it('counts a tag without a count as 1, and breaks ties by first seen', () => {
     expect(classifyTags([{ name: 'jazz', count: 0 }, { name: 'rock', count: Number.NaN }]).family).toBe('jazz-blues');
+  });
+});
+
+describe('sub-genres (style mixes)', () => {
+  it('every sub-genre slug is unique, short, URL-safe and never a family slug', () => {
+    const slugs = FAMILIES.flatMap((f) => (f.subs ?? []).map((s) => s.slug));
+    expect(new Set(slugs).size).toBe(slugs.length);
+    for (const s of slugs) {
+      expect(s).toMatch(/^[a-z0-9-]{1,20}$/);
+      expect(familyOf(s)).toBeNull();
+      expect(isSubSlug(s)).toBe(true);
+      expect(mixLook(s).family).not.toBeNull();
+    }
+    for (const reserved of ['discover', 'on-repeat', 'throwback']) expect(slugs).not.toContain(reserved);
+    expect(isSubSlug('nope')).toBe(false);
+  });
+
+  it('keeps the original halves: Rock and Metal, Hip-hop and R&B', () => {
+    expect(subOfTags('rock-metal', [{ name: 'metal', count: 100 }, { name: 'rock', count: 30 }])).toBe('metal');
+    expect(subOfTags('rock-metal', [{ name: 'hard rock', count: 10 }])).toBe('metal');
+    expect(subOfTags('rock-metal', [{ name: 'classic rock', count: 10 }, { name: 'alternative', count: 5 }])).toBe('rock');
+    expect(subOfTags('hiphop-rnb', [{ name: 'neo-soul', count: 10 }, { name: 'rap', count: 5 }])).toBe('rnb');
+  });
+
+  it('reads the narrower styles from the tags', () => {
+    expect(subOfTags('rock-metal', [{ name: 'pop punk', count: 80 }, { name: 'rock', count: 50 }])).toBe('punk');
+    expect(subOfTags('rock-metal', [{ name: 'indie rock', count: 90 }, { name: 'rock', count: 40 }])).toBe('indie');
+    expect(subOfTags('electronic', [{ name: 'deep house', count: 70 }, { name: 'electronic', count: 100 }])).toBe('house');
+    expect(subOfTags('electronic', [{ name: 'drum and bass', count: 70 }])).toBe('dnb');
+    expect(subOfTags('pop', [{ name: 'k-pop', count: 100 }, { name: 'pop', count: 100 }])).toBe('kpop');
+    expect(subOfTags('latin', [{ name: 'reggaeton', count: 100 }])).toBe('reggaeton');
+    expect(subOfTags('country-folk', [{ name: 'singer-songwriter', count: 100 }])).toBe('folk');
+    expect(subOfTags('jazz-blues', [{ name: 'delta blues', count: 100 }])).toBe('blues');
+    expect(subOfTags('classical', [{ name: 'soundtrack', count: 100 }])).toBe('soundtrack');
+  });
+
+  it('splits Balkan by style: a plain style tag counts once the family is Balkan', () => {
+    expect(subOfTags('balkan', [{ name: 'turbo folk', count: 100 }, { name: 'serbian', count: 70 }, { name: 'pop', count: 40 }])).toBe('turbofolk');
+    expect(subOfTags('balkan', [{ name: 'serbian', count: 100 }, { name: 'rock', count: 60 }, { name: 'new wave', count: 30 }])).toBe('balkan-rock');
+    expect(subOfTags('balkan', [{ name: 'serbian rap', count: 100 }])).toBe('balkan-hiphop');
+    expect(subOfTags('balkan', [{ name: 'serbian', count: 100 }])).toBeNull();
+  });
+
+  it('no family, a chart prior or nothing matching is no sub-genre', () => {
+    expect(subOfTags(null, [{ name: 'rock', count: 1 }])).toBeNull();
+    expect(subOfTags('rock-metal', [{ name: 'chart:hard-rock-metal', count: 1 }])).toBeNull();
+    expect(subOfTags('pop', [{ name: 'pop', count: 100 }])).toBeNull();
+  });
+
+  it('classifyTags reports the sub-genre with the family', () => {
+    expect(classifyTags([{ name: 'electronic', count: 100 }, { name: 'techno', count: 60 }])).toMatchObject({ family: 'electronic', sub: 'techno' });
   });
 });

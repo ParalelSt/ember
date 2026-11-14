@@ -7,6 +7,7 @@ import { listUnavailableIds } from '@/lib/trackAvailability';
 import { chartsCache } from '@/lib/charts';
 import { genreTagger } from '@/lib/genres/instance';
 import { pbQuote } from '@/lib/genres/store';
+import { listBlocked } from '@/lib/blockedTracks';
 import type { Track } from '@/types/track';
 import { createMixJob, type MixJob } from './job';
 import { pbMixStore } from './store';
@@ -62,6 +63,9 @@ export function mixJob(): MixJob {
         batch: 500,
       });
       return rows.map((r) => mapTrackRow(r.expand?.track ?? null)).filter((t): t is Track => !!t);
+    },
+    async loadBlocked(userId) {
+      return listBlocked(await client(), userId);
     },
     ensureTags: (refs, opts) => genreTagger().ensureTagsCounted(refs, opts),
     radioBatch: (seeds, limit) => fetchRadioBatch(seeds, limit),

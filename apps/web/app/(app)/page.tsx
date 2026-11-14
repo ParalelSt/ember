@@ -43,7 +43,8 @@ import {
 import { playlistCover } from '@/lib/collections';
 import { publicName } from '@/lib/collab';
 import { ChartTile } from '@/components/charts/ChartTile';
-import { CHART_INK, mixLook } from '@/lib/genres/taxonomy';
+import { CHART_INK } from '@/lib/genres/taxonomy';
+import { kindLook, mixKind, MAX_MIXES } from '@/lib/mixes/kinds';
 import { MixCard } from '@/components/mixes/MixCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { POPULAR_COLOR, POPULAR_SLUG, tileCovers } from '@/lib/chartsView';
@@ -207,17 +208,19 @@ export default function HomePage() {
     }
     if (key === 'mixes') {
       return (
-        <RowShelf key={key} title="Your mixes" variant={isDesktop ? 'desktop' : 'phone'} phoneTileClassName="w-[172px]" layout={gridLayout}>
+        <RowShelf key={key} title="Your mixes" variant={isDesktop ? 'desktop' : 'phone'} phoneTileClassName="w-[172px]" layout={gridLayout} limit={MAX_MIXES}>
           {mixes.map((m) => {
-            const look = mixLook(m.key);
+            const kind = m.kind ?? mixKind(m.key);
+            const look = kindLook(m.key, m.cover.color);
             return (
               <MixCard
                 key={m.key}
+                kind={kind}
                 title={m.title}
                 subtitle={m.subtitle}
                 href={`/mix/${encodeURIComponent(m.key)}`}
                 artworkUrls={m.cover.artworkUrls}
-                color={m.cover.color || look.tint}
+                color={look.color}
                 ink={look.ink}
                 variant={isDesktop ? 'desktop' : 'phone'}
               />
