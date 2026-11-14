@@ -50,51 +50,87 @@ function Arrival({ delayMs, children }: { delayMs: number; children: ReactNode }
   );
 }
 
+/** A desktop artist row: the same box as a song row (TrackRow's list
+ *  density), so the two read as one list. */
+export const ARTIST_ROW =
+  'grid w-full min-w-0 items-center gap-3 rounded-md py-2 transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
 /** The Artists section: up to three, round pictures, each opening its
  *  artist page. A phone shows them side by side as circles; a desktop
  *  window (`rows`, the owner's desktop pick) lists them as rows, a round
- *  picture with the name and "Artist" and an arrow, above the songs. */
-export function SearchArtists({ artists, layout = 'grid' }: { artists: SearchArtist[]; layout?: 'grid' | 'rows' }) {
+ *  picture with the name and "Artist" and an arrow, above the songs.
+ *
+ *  A desktop row is built like the song rows under it (TrackRow, list
+ *  density): the same grid, gap, padding, radius and hover, so its
+ *  background spans the whole row with the arrow inside, the picture lines
+ *  up with the song covers and the arrow with the songs' last button.
+ *  `playColumn`: the songs have their play button column on the left (the
+ *  search page; the overlay's songs play from the right). */
+export function SearchArtists({
+  artists,
+  layout = 'grid',
+  playColumn = false,
+}: {
+  artists: SearchArtist[];
+  layout?: 'grid' | 'rows';
+  playColumn?: boolean;
+}) {
   const rows = layout === 'rows';
   return (
     <section aria-label="Artists" data-testid="search-artists" data-layout={layout} className="py-cluster">
       <h3 className="px-row pb-inset text-xs font-semibold uppercase tracking-wider text-muted-foreground">Artists</h3>
       <div className={rows ? 'flex flex-col' : 'grid grid-cols-3 gap-inset'}>
-        {artists.map((a) => (
-          <Link
-            key={a.id}
-            href={`/artist/${encodeURIComponent(a.id)}`}
-            className={
-              rows
-                ? 'flex min-w-0 items-center gap-row rounded-md py-cluster transition-colors hover:bg-card'
-                : 'flex min-w-0 flex-col items-center gap-inset rounded-md p-cluster text-center transition-colors hover:bg-card'
-            }
-          >
-            <Artwork
-              src={a.artworkUrl}
-              alt=""
-              shape="round"
-              loading="lazy"
-              className={cn('grid shrink-0 place-items-center bg-art text-foreground/30', rows ? 'size-art-xs' : 'size-16')}
+        {artists.map((a) =>
+          rows ? (
+            <Link
+              key={a.id}
+              href={`/artist/${encodeURIComponent(a.id)}`}
+              data-testid="search-artist-row"
+              className={cn(
+                ARTIST_ROW,
+                playColumn ? 'grid-cols-[minmax(0,1fr)_auto] @3xl:grid-cols-[40px_minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)_auto]',
+              )}
             >
-              <ArtistIcon className={rows ? 'h-5 w-5' : 'h-6 w-6'} />
-            </Artwork>
-            {rows ? (
-              <>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-sm font-medium">{a.name}</span>
-                  <span className="text-xs text-muted-foreground">Artist</span>
+              {playColumn && <span aria-hidden className="hidden size-8 @3xl:block" />}
+              <span className="flex min-w-0 items-center gap-3">
+                <Artwork
+                  src={a.artworkUrl}
+                  alt=""
+                  shape="round"
+                  loading="lazy"
+                  className="grid size-art-xs shrink-0 place-items-center bg-art text-foreground/30"
+                >
+                  <ArtistIcon className="h-5 w-5" />
+                </Artwork>
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-sm font-semibold">{a.name}</span>
+                  <span className="truncate text-xs text-muted-foreground">Artist</span>
                 </span>
-                <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-              </>
-            ) : (
-              <>
-                <span className="w-full truncate text-sm font-semibold">{a.name}</span>
-                <span className="text-xs text-muted-foreground">Artist</span>
-              </>
-            )}
-          </Link>
-        ))}
+              </span>
+              <span aria-hidden data-testid="search-artist-arrow" className="grid size-8 place-items-center text-muted-foreground">
+                <ChevronRightIcon className="h-4 w-4" />
+              </span>
+            </Link>
+          ) : (
+            <Link
+              key={a.id}
+              href={`/artist/${encodeURIComponent(a.id)}`}
+              className="flex min-w-0 flex-col items-center gap-inset rounded-md p-cluster text-center transition-colors hover:bg-card"
+            >
+              <Artwork
+                src={a.artworkUrl}
+                alt=""
+                shape="round"
+                loading="lazy"
+                className="grid size-16 shrink-0 place-items-center bg-art text-foreground/30"
+              >
+                <ArtistIcon className="h-6 w-6" />
+              </Artwork>
+              <span className="w-full truncate text-sm font-semibold">{a.name}</span>
+              <span className="text-xs text-muted-foreground">Artist</span>
+            </Link>
+          ),
+        )}
       </div>
     </section>
   );
@@ -141,7 +177,7 @@ export function SearchResults({
         if (row.kind === 'artists') {
           return (
             <Arrival key={row.key} delayMs={delayFor(i)}>
-              <SearchArtists artists={row.artists} layout={desktop ? 'rows' : 'grid'} />
+              <SearchArtists artists={row.artists} layout={desktop ? 'rows' : 'grid'} playColumn={!trailingPlayControl} />
             </Arrival>
           );
         }

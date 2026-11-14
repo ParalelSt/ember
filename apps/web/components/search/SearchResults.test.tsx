@@ -138,6 +138,51 @@ describe('SearchResults: the Artists section', () => {
     expect(within(links[1]).getByText('Demetori Tribute')).toBeInTheDocument();
   });
 
+  it('desktop: an artist row is boxed like the song rows, the arrow inside it at the right (owner report)', () => {
+    renderResults(buildSearchView('demetori', parts({ uploads: [], artists, songs: [t('a1')], videos: [] })), 'desktop');
+    const link = screen.getAllByTestId('search-artist-row')[0];
+    const song = screen.getByTestId('track-row');
+    // The same box: grid, gap, padding, radius and hover as a song row.
+    for (const c of ['grid', 'items-center', 'gap-3', 'py-2', 'rounded-md', 'hover:bg-card', 'transition-colors']) {
+      expect(link, c).toHaveClass(c);
+      expect(song, c).toHaveClass(c);
+    }
+    expect(link).toHaveClass('w-full', 'min-w-0');
+    // Two columns, like the overlay's song rows (they play from the right):
+    // the picture and name, then the arrow in a button-sized cell.
+    expect(link.className).toContain('grid-cols-[minmax(0,1fr)_auto]');
+    expect(link.className).not.toContain('40px');
+    const arrow = within(link).getByTestId('search-artist-arrow');
+    expect(arrow).toHaveClass('size-8', 'place-items-center');
+    expect(arrow.querySelector('.phosphor-caret-right')).not.toBeNull();
+    expect(link.lastElementChild).toBe(arrow);
+    expect(within(link).getByText('Demetori')).toHaveClass('truncate', 'font-semibold');
+  });
+
+  it('desktop search page: the songs have a play column on the left, and the artist rows keep it too', () => {
+    const view = buildSearchView('demetori', parts({ uploads: [], artists, songs: [t('a1')], videos: [] }));
+    render(
+      <SearchResults
+        view={view}
+        platform="desktop"
+        context={{ type: 'search', query: 'demetori' }}
+        trailingPlayControl={false}
+        currentId={null}
+        isPlaying={false}
+        likedIds={new Set()}
+        onPlay={vi.fn()}
+        onToggle={vi.fn()}
+      />,
+    );
+    const link = screen.getAllByTestId('search-artist-row')[0];
+    expect(link.className).toContain('@3xl:grid-cols-[40px_minmax(0,1fr)_auto]');
+    expect(screen.getByTestId('track-row').className).toContain('@3xl:grid-cols-[40px_');
+    const spacer = link.firstElementChild as HTMLElement;
+    expect(spacer).toHaveAttribute('aria-hidden');
+    expect(spacer).toHaveClass('hidden', '@3xl:block', 'size-8');
+    expect(link.lastElementChild).toBe(within(link).getByTestId('search-artist-arrow'));
+  });
+
   it('phone: the artists stay side by side as circles, with no arrow', () => {
     renderResults(buildSearchView('demetori', parts({ uploads: [], artists, songs: [t('a1')], videos: [] })), 'phone');
     const section = screen.getByTestId('search-artists');
