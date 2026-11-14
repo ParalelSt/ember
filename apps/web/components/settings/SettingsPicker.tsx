@@ -2,7 +2,6 @@
 
 import { useSyncExternalStore, type CSSProperties } from 'react';
 import Link from 'next/link';
-import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Avatar } from '@/components/primitives/Avatar';
 import { ADMIN_SECTIONS } from '@/components/admin/sections';
@@ -55,7 +54,7 @@ export function SettingsIcon({ icon: Icon, hue }: Pick<Row, 'icon' | 'hue'>) {
   return <span aria-hidden style={{ '--settings-icon-hue': hue } as CSSProperties} className={`grid size-9 shrink-0 place-items-center rounded-md ${styles.icon}`}><Icon className="size-5" /></span>;
 }
 
-export function SettingsPicker({ activePath }: { activePath?: string }) {
+export function SettingsPicker() {
   const { user, name, avatarUrl } = useAuth();
   const groups = useSettingsGroups();
   return (
@@ -74,7 +73,7 @@ export function SettingsPicker({ activePath }: { activePath?: string }) {
           <ul aria-label={group.name} className="overflow-hidden rounded-lg bg-card divide-y divide-border">
             {group.rows.map(({ href, label, icon, hue, value }) => (
               <li key={href}>
-                <Link href={href} aria-current={activePath && (activePath === href || activePath.startsWith(`${href}/`)) ? 'page' : undefined} className={cn('flex min-h-14 items-center gap-row px-block py-row transition-colors hover:bg-muted/50', activePath && (activePath === href || activePath.startsWith(`${href}/`)) && 'bg-muted text-foreground')}>
+                <Link href={href} className="flex min-h-14 items-center gap-row px-block py-row transition-colors hover:bg-muted/50">
                   <SettingsIcon icon={icon} hue={hue} />
                   <span className="min-w-0 flex-1">
                     <span data-settings-label className="block text-sm font-semibold">{label}</span>

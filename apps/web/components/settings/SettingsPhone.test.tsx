@@ -67,10 +67,10 @@ it.each(['profile', 'appearance', 'library', 'downloads', 'uploads', 'plugins', 
   expect(back).toHaveClass('md:hidden');
   expect(within(back.parentElement!).getByRole('heading')).toHaveTextContent(new RegExp(section, 'i'));
   expect(screen.getByLabelText('Existing content')).toHaveValue('preserved');
-  expect(screen.getByRole('navigation')).toHaveClass('hidden', 'lg:block');
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
 });
 it('preserves desktop redirect and has no phone home there', () => {
-  setWidth(1280); render(<SettingsIndex />);
+  setWidth(1280); render(<SettingsLayout><SettingsIndex /></SettingsLayout>);
   expect(state.replace).toHaveBeenCalledWith('/settings/profile');
   expect(screen.queryByRole('list', { name: 'Account' })).not.toBeInTheDocument();
 });
@@ -101,22 +101,18 @@ it('uses the detected device label and omits unrecognized devices', () => {
   ua.mockRestore();
 });
 
-it('keeps the desktop picker out of the phone layout', () => {
+it('keeps the desktop menu out of the phone layout', () => {
   state.path = '/settings/appearance';
   render(<SettingsLayout>Appearance controls</SettingsLayout>);
-  const nav = screen.getByRole('navigation');
-  expect(nav).toHaveClass('hidden', 'lg:block');
-  expect(within(nav).queryByRole('list')).not.toBeInTheDocument();
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Account' })).not.toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Back to Settings' })).toBeInTheDocument();
 });
 
 it.each([900, 1023])('keeps the grouped home and section bar at %ipx', width => {
   setWidth(width);
   const view = render(<SettingsLayout><SettingsIndex /></SettingsLayout>);
-  const nav = screen.getByRole('navigation', { name: 'Settings' });
-  expect(nav).toHaveClass('hidden', 'lg:block');
-  expect(nav.parentElement).toHaveClass('flex-col', 'lg:flex-row');
-  expect(within(nav).queryByRole('list')).not.toBeInTheDocument();
+  expect(screen.queryByRole('navigation', { name: 'Settings' })).not.toBeInTheDocument();
   expect(screen.getByRole('list', { name: 'Account' })).toBeInTheDocument();
   expect(state.replace).not.toHaveBeenCalled();
   state.path = '/settings/profile';
@@ -126,7 +122,6 @@ it.each([900, 1023])('keeps the grouped home and section bar at %ipx', width => 
   expect(back.parentElement).toHaveClass('lg:hidden');
   expect(within(back.parentElement!).getByRole('heading', { name: 'Profile' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { level: 2, name: 'Profile' })).not.toBeInTheDocument();
-  expect(within(nav).queryByRole('list')).not.toBeInTheDocument();
 });
 
 it.each([1024, 1280])('hands %ipx to the desktop layouts and comes back on resizing', width => {
@@ -141,5 +136,5 @@ it.each([1024, 1280])('hands %ipx to the desktop layouts and comes back on resiz
   expect(document.querySelector('[data-settings-layout]')).toBeNull();
   expect(screen.getByText('Profile form')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Back to Settings' })).toBeInTheDocument();
-  expect(screen.getByRole('navigation', { name: 'Settings' })).toHaveClass('hidden', 'lg:block');
+  expect(screen.queryByRole('navigation', { name: 'Settings' })).not.toBeInTheDocument();
 });

@@ -1,37 +1,39 @@
 'use client';
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import type { RowsVariant } from './DesignPreview';
 
-/** How desktop Settings draws its rows (owner picks one, see DesignPreview):
- *  A: plain rows with thin lines between them, like the song lists.
- *  B: each group in one soft rounded card.
- *  C: no lines, more room between rows. */
-const RowsContext = createContext<RowsVariant>('C');
+/** Desktop Settings rows (owner pick: rows C): no lines and no cards, more
+ *  room between rows. */
 
-export function SettingsRowsProvider({ value, children }: { value: RowsVariant; children: ReactNode }) {
-  return <RowsContext.Provider value={value}>{children}</RowsContext.Provider>;
-}
-
-export const useRowsVariant = () => useContext(RowsContext);
-
-/** A group of rows under a small grey title. */
-export function SettingsGroup({ title, children, footer }: { title?: string; children: ReactNode; footer?: ReactNode }) {
-  const rows = useRowsVariant();
+/** A group of rows under a small grey title. `aside` sits at the title's
+ *  right (a count, a small button). */
+export function SettingsGroup({
+  title,
+  aside,
+  children,
+  footer,
+  testId,
+}: {
+  title?: string;
+  aside?: ReactNode;
+  children: ReactNode;
+  footer?: ReactNode;
+  testId?: string;
+}) {
+  const id = useId();
   return (
-    <section className={cn('flex flex-col', rows === 'C' ? 'gap-cluster' : 'gap-inset')}>
-      {title && <h3 className="text-eyebrow font-semibold">{title}</h3>}
-      <div
-        data-settings-group
-        data-rows-style={rows}
-        className={cn(
-          rows === 'A' && 'divide-y divide-border border-b border-border',
-          rows === 'B' && 'divide-y divide-border rounded-lg bg-card px-block',
-          rows === 'C' && 'flex flex-col gap-cluster',
-        )}
-      >
+    <section className="flex flex-col gap-cluster" data-testid={testId} aria-labelledby={title ? id : undefined}>
+      {title && (
+        <div className="flex items-baseline justify-between gap-row">
+          <h3 id={id} className="text-eyebrow font-semibold">
+            {title}
+          </h3>
+          {aside}
+        </div>
+      )}
+      <div data-settings-group className="flex flex-col gap-cluster">
         {children}
       </div>
       {footer && <p className="text-xs text-muted-foreground">{footer}</p>}
@@ -56,9 +58,8 @@ export function SettingsRow({
   children?: ReactNode;
   className?: string;
 }) {
-  const rows = useRowsVariant();
   return (
-    <div data-settings-row className={cn('flex items-center gap-block', rows === 'C' ? 'py-block' : 'py-row', className)}>
+    <div data-settings-row className={cn('flex items-center gap-block py-block', className)}>
       {leading}
       <div className="min-w-0 flex-1">
         <div className="font-semibold">{title}</div>

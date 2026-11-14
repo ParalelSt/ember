@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { SettingsTabs } from '@/components/settings/SettingsTabs';
 import { SettingsHeader, SettingsContent } from '@/components/settings/SettingsHeader';
 import { BuildStamp } from '@/components/settings/BuildStamp';
 import { AppUpdateCard } from '@/components/settings/AppUpdateCard';
@@ -8,17 +7,13 @@ import { SettingsFrame } from '@/components/settings/desktop/DesktopSettings';
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div>
-      {/* Desktop (lg and up) draws its own layout variants (components/
+      {/* Desktop (lg and up) draws its own menu layout (components/
           settings/desktop); phones and narrow windows keep this one. */}
       <SettingsFrame
         phone={
           <>
             <SettingsHeader />
-            {/* Start two columns at lg: the app sidebar leaves too little room at md. */}
-            <div className="flex flex-col lg:flex-row gap-stack lg:gap-section">
-              <SettingsTabs />
-              <SettingsContent>{children}</SettingsContent>
-            </div>
+            <SettingsContent>{children}</SettingsContent>
           </>
         }
       />

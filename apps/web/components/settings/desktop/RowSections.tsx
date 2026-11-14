@@ -13,7 +13,7 @@ import { usePartyEligible } from '@/hooks/usePartyEligible';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
-import { SettingsGroup, SettingsRow, SettingsSwitchRow, useRowsVariant } from './rows';
+import { SettingsGroup, SettingsRow, SettingsSwitchRow } from './rows';
 
 /* The desktop row versions of Plugins, Help and Library: the same settings,
  * stores and actions as their pages under app/(app)/settings, drawn as
@@ -22,7 +22,6 @@ import { SettingsGroup, SettingsRow, SettingsSwitchRow, useRowsVariant } from '.
 export function PluginsSection() {
   const desktopPlugins = useDesktopPlugins();
   const partyEligible = usePartyEligible();
-  const rows = useRowsVariant();
   const s = useSettingsStore();
   return (
     <SettingsGroup title="Plugins" footer="Optional add-ons that layer on top of the player. More to come.">
@@ -32,7 +31,7 @@ export function PluginsSection() {
         checked={s.normalizeVolume}
         onCheckedChange={(v) => void s.setNormalizeVolume(v)}
       />
-      <EqualizerPanel className={rows === 'C' ? 'py-block' : 'py-row'} />
+      <EqualizerPanel className="py-block" />
       {desktopPlugins && partyEligible && (
         <SettingsSwitchRow
           title="Party-size volume slider"
