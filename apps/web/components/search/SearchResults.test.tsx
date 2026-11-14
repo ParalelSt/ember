@@ -143,10 +143,14 @@ describe('SearchResults: the Artists section', () => {
     const link = screen.getAllByTestId('search-artist-row')[0];
     const song = screen.getByTestId('track-row');
     // The same box: grid, gap, padding, radius and hover as a song row.
-    for (const c of ['grid', 'items-center', 'gap-3', 'py-2', 'rounded-md', 'hover:bg-card', 'transition-colors']) {
+    for (const c of ['grid', 'items-center', 'rounded-md', 'hover:bg-card', 'transition-colors']) {
       expect(link, c).toHaveClass(c);
       expect(song, c).toHaveClass(c);
     }
+    // Same 12px gap and 8px padding: the song row still spells them raw
+    // (gap-3 py-2, under its lint baseline), the artist row uses the tokens.
+    expect(link).toHaveClass('gap-row', 'py-cluster');
+    expect(song).toHaveClass('gap-3', 'py-2');
     expect(link).toHaveClass('w-full', 'min-w-0');
     // Two columns, like the overlay's song rows (they play from the right):
     // the picture and name, then the arrow in a button-sized cell.

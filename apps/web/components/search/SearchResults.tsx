@@ -53,7 +53,7 @@ function Arrival({ delayMs, children }: { delayMs: number; children: ReactNode }
 /** A desktop artist row: the same box as a song row (TrackRow's list
  *  density), so the two read as one list. */
 export const ARTIST_ROW =
-  'grid w-full min-w-0 items-center gap-3 rounded-md py-2 transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+  'grid w-full min-w-0 items-center gap-row rounded-md py-cluster transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 /** The Artists section: up to three, round pictures, each opening its
  *  artist page. A phone shows them side by side as circles; a desktop
@@ -92,7 +92,7 @@ export function SearchArtists({
               )}
             >
               {playColumn && <span aria-hidden className="hidden size-8 @3xl:block" />}
-              <span className="flex min-w-0 items-center gap-3">
+              <span className="flex min-w-0 items-center gap-row">
                 <Artwork
                   src={a.artworkUrl}
                   alt=""
