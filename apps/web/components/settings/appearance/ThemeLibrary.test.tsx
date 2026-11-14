@@ -12,6 +12,7 @@ const THEIRS = { id: 'their1', name: 'Cold brew', inputs: PRESETS[2].inputs, own
 
 function library(over: Partial<ComponentProps<typeof ThemeLibrary>> = {}) {
   const props = {
+    view: 'presets',
     shownPreset: 'ember',
     shownThemeId: null,
     inUsePreset: 'ember',
@@ -90,7 +91,7 @@ describe('ThemeLibrary, preview cards', () => {
 
   it('a long name truncates inside its column instead of widening it', () => {
     const name = 'A very long theme name that will not fit';
-    library({ mine: [{ ...MINE, name }] });
+    library({ view: 'mine', mine: [{ ...MINE, name }] });
     expect(screen.getByText(name)).toHaveClass('truncate');
     expect(screen.getByText(name).closest('[data-testid="my-theme"]')).toHaveClass('min-w-0');
   });
@@ -100,7 +101,7 @@ describe('ThemeLibrary, my themes as cards', () => {
   const card = () => screen.getByTestId('my-theme');
 
   it('sit in the same grid and keep Preview, share, rename, duplicate and delete', () => {
-    const p = library();
+    const p = library({ view: 'mine' });
     expect(card().parentElement).toHaveClass('grid', 'grid-cols-2');
     fireEvent.click(within(card()).getByRole('button', { name: 'Preview Night drive' }));
     expect(p.onUse).toHaveBeenCalledWith('mine1');
@@ -111,14 +112,14 @@ describe('ThemeLibrary, my themes as cards', () => {
   });
 
   it('the one the preview shows is ember and pressed', () => {
-    library({ shownPreset: null, shownThemeId: 'mine1' });
+    library({ view: 'mine', shownPreset: null, shownThemeId: 'mine1' });
     expect(card()).toHaveClass('border-ember', 'bg-ember/10');
     expect(within(card()).getByRole('button', { name: 'Preview Night drive' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(card()).getByTestId('theme-selected')).toBeInTheDocument();
   });
 
   it('renaming takes the whole row, saves, and comes back', async () => {
-    const p = library();
+    const p = library({ view: 'mine' });
     fireEvent.click(within(card()).getByRole('button', { name: 'Rename Night drive' }));
     expect(card()).toHaveClass('col-span-2');
     fireEvent.change(screen.getByRole('textbox', { name: 'New name for Night drive' }), { target: { value: 'Late' } });
@@ -128,7 +129,7 @@ describe('ThemeLibrary, my themes as cards', () => {
   });
 
   it('a rename that fails says why and stays open', async () => {
-    library({ onRename: vi.fn().mockResolvedValue('That name is taken') });
+    library({ view: 'mine', onRename: vi.fn().mockResolvedValue('That name is taken') });
     fireEvent.click(within(card()).getByRole('button', { name: 'Rename Night drive' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('That name is taken')).toBeInTheDocument();
@@ -136,7 +137,7 @@ describe('ThemeLibrary, my themes as cards', () => {
   });
 
   it('deleting asks first, on the whole row; Keep backs out', () => {
-    const p = library();
+    const p = library({ view: 'mine' });
     fireEvent.click(within(card()).getByRole('button', { name: 'Delete Night drive' }));
     expect(card()).toHaveClass('col-span-2');
     expect(card()).toHaveTextContent('Delete Night drive?');
@@ -148,12 +149,12 @@ describe('ThemeLibrary, my themes as cards', () => {
   });
 
   it('at the cap Duplicate is off', () => {
-    library({ cap: 1 });
+    library({ view: 'mine', cap: 1 });
     expect(within(card()).getByRole('button', { name: 'Duplicate Night drive' })).toBeDisabled();
   });
 
   it('on a phone the switch has its own line, so the hit boxes never leave the column', () => {
-    library();
+    library({ view: 'mine' });
     const sw = within(card()).getByRole('switch');
     const rename = within(card()).getByRole('button', { name: 'Rename Night drive' });
     expect(sw.parentElement).not.toBe(rename.parentElement);
@@ -164,7 +165,7 @@ describe('ThemeLibrary, my themes as cards', () => {
 
 describe('ThemeLibrary, other people’s themes as cards', () => {
   it('sit in the grid and keep Copy and Preview', () => {
-    const p = library();
+    const p = library({ view: 'shared' });
     const card = screen.getByTestId('shared-theme');
     expect(card.parentElement).toHaveClass('grid', 'grid-cols-2');
     expect(card).toHaveTextContent('by Luka');
@@ -175,9 +176,60 @@ describe('ThemeLibrary, other people’s themes as cards', () => {
   });
 
   it('the one showing is ember and its button says so', () => {
-    library({ shownPreset: null, shownThemeId: 'their1' });
+    library({ view: 'shared', shownPreset: null, shownThemeId: 'their1' });
     const card = screen.getByTestId('shared-theme');
     expect(card).toHaveClass('border-ember');
     expect(within(card).getByRole('button', { name: 'Preview Cold brew' })).toHaveTextContent('Showing');
+  });
+});
+
+describe('ThemeLibrary, one list per tab', () => {
+  it('each view shows only its own list', () => {
+    library({ view: 'presets' });
+    expect(screen.getByRole('radiogroup', { name: 'Presets' })).toBeInTheDocument();
+    expect(screen.queryByTestId('my-theme')).toBeNull();
+    expect(screen.queryByTestId('shared-theme')).toBeNull();
+  });
+
+  it('My themes: its count, the New theme button and its own cards only', () => {
+    library({ view: 'mine' });
+    expect(screen.getByTestId('theme-count')).toHaveTextContent('1 of 20');
+    expect(screen.getAllByTestId('my-theme')).toHaveLength(1);
+    expect(screen.queryByRole('radiogroup', { name: 'Presets' })).toBeNull();
+    expect(screen.queryByTestId('shared-theme')).toBeNull();
+  });
+
+  it('Shared: other people\'s cards only, with a line on what they are', () => {
+    library({ view: 'shared' });
+    expect(screen.getAllByTestId('shared-theme')).toHaveLength(1);
+    expect(screen.getByRole('region', { name: 'Shared by others' })).toHaveTextContent('Themes other people shared.');
+    expect(screen.queryByTestId('my-theme')).toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: 'Presets' })).toBeNull();
+  });
+});
+
+describe('ThemeLibrary, the New theme button', () => {
+  it('says New theme with no plus, an outline button like Settings\' others, in the My themes header', () => {
+    const p = library({ view: 'mine' });
+    const button = screen.getByRole('button', { name: 'New theme' });
+    expect(button).toHaveTextContent(/^New theme$/);
+    expect(button.querySelector('svg')).toBeNull();
+    expect(button).toHaveAttribute('data-slot', 'button');
+    expect(button.className).toContain('border-border');
+    // In the header, beside the count.
+    expect(button.parentElement).toContainElement(screen.getByTestId('theme-count'));
+    fireEvent.click(button);
+    expect(p.onNew).toHaveBeenCalled();
+  });
+
+  it('is off while the list loads and at the cap', () => {
+    library({ view: 'mine', mine: null });
+    expect(screen.getByRole('button', { name: 'New theme' })).toBeDisabled();
+  });
+
+  it('is off at the cap, and the tab says why', () => {
+    library({ view: 'mine', cap: 1 });
+    expect(screen.getByRole('button', { name: 'New theme' })).toBeDisabled();
+    expect(screen.getByText('That is the most you can keep (1). Delete one to make room.')).toBeInTheDocument();
   });
 });

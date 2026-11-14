@@ -118,6 +118,11 @@ function start(doc: ThemeDoc = DEFAULT_THEME) {
 }
 
 const tab = (name: string) => fireEvent.click(screen.getByRole('tab', { name }));
+/** The lists have arrived (nothing on the Presets tab waits for them). */
+async function loaded() {
+  await waitFor(() => expect(api.listThemes).toHaveBeenCalled());
+  await act(async () => {});
+}
 const swatch = (label: string) => screen.getByRole('button', { name: new RegExp(`^${label}(, auto)?$`) });
 /** A colour's hex field: only the selected swatch has its controls up. */
 const hexField = (label: string) => {
@@ -150,24 +155,61 @@ afterEach(() => {
 });
 
 describe('Settings > Appearance', () => {
-  it('shows the preview and two tabs, Themes first; there is no Share tab (F3)', async () => {
+  it('shows the preview and four tabs, Presets first, each with only its own content; no Share tab (F3)', async () => {
+    server.mine = [saved()];
+    server.shared = [LUKA];
     start();
     expect(screen.getByTestId('theme-preview')).toBeInTheDocument();
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Themes', 'Colours']);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Presets', 'My themes', 'Shared', 'Colours']);
+    expect(screen.getByRole('tab', { name: 'Presets' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByRole('tab', { name: 'Share' })).toBeNull();
+    await loaded();
+
+    // Presets: the five presets and nothing else.
     expect(screen.getByRole('radiogroup', { name: 'Presets' })).toBeInTheDocument();
-    expect(await screen.findByTestId('theme-count')).toHaveTextContent('0 of 20');
+    expect(screen.queryByTestId('my-theme')).toBeNull();
+    expect(screen.queryByTestId('shared-theme')).toBeNull();
+    expect(screen.queryByTestId('theme-count')).toBeNull();
+
+    tab('My themes');
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    expect(screen.getByTestId('theme-count')).toHaveTextContent('1 of 20');
+    expect(screen.getAllByTestId('my-theme')).toHaveLength(1);
+    expect(screen.queryByRole('radiogroup', { name: 'Presets' })).toBeNull();
+    expect(screen.queryByTestId('shared-theme')).toBeNull();
+
+    tab('Shared');
+    expect(screen.getAllByTestId('shared-theme')).toHaveLength(1);
+    expect(screen.queryByTestId('my-theme')).toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: 'Presets' })).toBeNull();
 
     tab('Colours');
     expect(screen.getAllByTestId('colour-swatch')).toHaveLength(8);
     expect(screen.getAllByTestId('colour-row')).toHaveLength(1);
     expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.queryByTestId('theme-library')).toBeNull();
+  });
+
+  it('the preview follows every tab: a pick in My themes or Shared shows there too', async () => {
+    server.mine = [saved()];
+    server.shared = [LUKA];
+    start();
+    await loaded();
+    tab('My themes');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview Night drive' }));
+    expect(previewVar('--ember')).toBe(formatOklch(NIGHT_DRIVE.accent));
+    tab('Shared');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview Cold brew' }));
+    expect(previewVar('--background')).toBe(formatOklch(LUKA.inputs.background));
+    tab('Colours');
+    expect(screen.getByTestId('theme-preview')).toBeInTheDocument();
+    expect(previewVar('--background')).toBe(formatOklch(LUKA.inputs.background));
   });
 
   it('has no scroll box of its own: the page scrolls as a whole and the preview sticks from xl', async () => {
     start();
-    await screen.findByTestId('theme-count');
-    for (const name of ['Themes', 'Colours']) {
+    await loaded();
+    for (const name of ['Presets', 'My themes', 'Shared', 'Colours']) {
       tab(name);
       const panel = screen.getByRole('tabpanel');
       for (let el: HTMLElement | null = panel; el && el !== document.body; el = el.parentElement) {
@@ -181,7 +223,7 @@ describe('Settings > Appearance', () => {
 
   it('picking a preset shows it in the preview only; Apply applies and saves it', async () => {
     start();
-    await screen.findByTestId('theme-count');
+    await loaded();
     expect(screen.queryByTestId('apply-bar')).toBeNull();
     expect(screen.getByTestId('in-use-bar')).toHaveTextContent('In use: Ember.');
 
@@ -208,7 +250,7 @@ describe('Settings > Appearance', () => {
 
   it('Back to current puts the preview back on the theme in use', async () => {
     start({ v: 1, preset: 'forest' });
-    await screen.findByTestId('theme-count');
+    await loaded();
     fireEvent.click(screen.getByRole('radio', { name: /Mono/ }));
     tab('Colours');
     typeHex('Accent', '#3aa0ff');
@@ -225,15 +267,18 @@ describe('Settings > Appearance', () => {
   describe('My themes', () => {
     it('New saves a copy of what is showing, shows it in the preview and opens Colours', async () => {
       start({ v: 1, preset: 'forest' });
-      await screen.findByTestId('theme-count');
-      fireEvent.click(screen.getByRole('button', { name: /New/ }));
+      await loaded();
+      tab('My themes');
+      const button = screen.getByRole('button', { name: 'New theme' });
+      expect(button.querySelector('svg')).toBeNull();
+      fireEvent.click(button);
       await waitFor(() => expect(screen.getByRole('tab', { name: 'Colours' })).toHaveAttribute('aria-selected', 'true'));
       expect(api.createTheme).toHaveBeenCalledWith({ name: 'New theme', base: 'forest', inputs: PRESET_BY_ID.forest.inputs });
       const made = server.mine[0]!;
       // Saved to the list, not put in use: that is Apply's job.
       expect(useThemeStore.getState().doc).toEqual({ v: 1, preset: 'forest' });
       expect(api.setTheme).not.toHaveBeenCalled();
-      tab('Themes');
+      tab('My themes');
       expect(screen.getByTestId('theme-count')).toHaveTextContent('1 of 20');
       expect(screen.getByRole('button', { name: 'Preview New theme' })).toHaveAttribute('aria-pressed', 'true');
       apply();
@@ -243,7 +288,8 @@ describe('Settings > Appearance', () => {
     it('rename, duplicate and delete', async () => {
       server.mine = [saved()];
       start({ v: 1, preset: 'ember' });
-      await screen.findByRole('button', { name: 'Preview Night drive' });
+      tab('My themes');
+      await screen.findByText('Night drive');
 
       fireEvent.click(screen.getByRole('button', { name: 'Rename Night drive' }));
       const field = screen.getByLabelText('New name for Night drive');
@@ -273,6 +319,7 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
+      tab('My themes');
       await screen.findByRole('button', { name: 'Preview Night drive' });
       fireEvent.click(screen.getByRole('button', { name: 'Delete Night drive' }));
       fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
@@ -285,8 +332,9 @@ describe('Settings > Appearance', () => {
     it('at the cap: New is off and the page says why; a refused save says so too', async () => {
       server.mine = Array.from({ length: 20 }, (_, i) => saved({ id: `mine${String(i).padStart(11, '0')}`, name: `T${i}` }));
       start();
+      tab('My themes');
       expect(await screen.findByTestId('theme-count')).toHaveTextContent('20 of 20');
-      expect(screen.getByRole('button', { name: /New/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'New theme' })).toBeDisabled();
       expect(screen.getByText(/That is the most you can keep \(20\)/)).toBeInTheDocument();
 
       // Applying an edited preset would make a 21st theme: refused, in plain words.
@@ -302,6 +350,7 @@ describe('Settings > Appearance', () => {
     it('lists them by name, Preview shows one, Apply puts it in use, Copy makes one of mine', async () => {
       server.shared = [LUKA];
       start();
+      tab('Shared');
       const row = (await screen.findByText('Cold brew')).closest('[data-testid="shared-theme"]') as HTMLElement;
       expect(within(row).getByText('by Luka')).toBeInTheDocument();
 
@@ -320,11 +369,12 @@ describe('Settings > Appearance', () => {
       tab('Colours');
       expect(screen.getByTestId('read-only-note')).toHaveTextContent('Shared by Luka. Only Luka can change it.');
       expect(hexField('Background')).toHaveAttribute('readonly');
-      tab('Themes');
+      tab('Shared');
 
       fireEvent.click(screen.getByRole('button', { name: 'Copy Cold brew to my themes' }));
       expect(await screen.findByText('Copied to My themes as Cold brew copy.')).toBeInTheDocument();
       expect(api.duplicateTheme).toHaveBeenCalledWith(LUKA.id);
+      tab('My themes');
       expect(screen.getByTestId('theme-count')).toHaveTextContent('1 of 20');
     });
   });
@@ -337,9 +387,10 @@ describe('Settings > Appearance', () => {
     it('each of my rows has its own switch, and shared ones carry a Shared tag', async () => {
       server.mine = [saved(), LATE];
       start();
-      await screen.findByRole('button', { name: 'Preview Night drive' });
+      tab('My themes');
+      await screen.findByText('Night drive');
       expect(screen.getByTestId('share-explainer')).toHaveTextContent(
-        'Shared themes appear for everyone under Shared by others.',
+        'Switch Share on and a theme shows for everyone under Shared.',
       );
       expect(shareSwitch('Night drive')).toHaveAttribute('aria-checked', 'false');
       expect(shareSwitch('Late shift')).toHaveAttribute('aria-checked', 'true');
@@ -351,7 +402,8 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t, LATE];
       start(docFromSaved(LATE));
-      await screen.findByRole('button', { name: 'Preview Night drive' });
+      tab('My themes');
+      await screen.findByText('Night drive');
 
       fireEvent.click(shareSwitch('Night drive'));
       await waitFor(() => expect(shareSwitch('Night drive')).toHaveAttribute('aria-checked', 'true'));
@@ -377,9 +429,10 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t, LATE];
       start();
-      await screen.findByRole('button', { name: 'Preview Night drive' });
+      await loaded();
       fireEvent.click(screen.getByRole('radio', { name: /Midnight/ }));
       expect(applyButton()).toBeEnabled();
+      tab('My themes');
 
       fireEvent.click(shareSwitch('Night drive'));
       await waitFor(() => expect(shareSwitch('Night drive')).toHaveAttribute('aria-checked', 'true'));
@@ -392,7 +445,8 @@ describe('Settings > Appearance', () => {
       server.mine = [t];
       server.failUpdate = { status: 500, body: { error: 'boom' } };
       start();
-      await screen.findByRole('button', { name: 'Preview Night drive' });
+      tab('My themes');
+      await screen.findByText('Night drive');
 
       fireEvent.click(shareSwitch('Night drive'));
       await waitFor(() => expect(status()).toHaveTextContent('Not shared: check your connection and try again.'));
@@ -406,10 +460,13 @@ describe('Settings > Appearance', () => {
       server.mine = [saved()];
       server.shared = [LUKA];
       start();
-      await screen.findByText('Cold brew');
-      expect(screen.getAllByRole('switch')).toHaveLength(1);
+      await loaded();
       const presets = screen.getByRole('radiogroup', { name: 'Presets' });
       expect(within(presets).queryByRole('switch')).toBeNull();
+      tab('My themes');
+      expect(screen.getAllByRole('switch')).toHaveLength(1);
+      tab('Shared');
+      await screen.findByText('Cold brew');
       const others = screen.getByRole('region', { name: 'Shared by others' });
       expect(within(others).queryByRole('switch')).toBeNull();
       expect(screen.queryByRole('switch', { name: /Cold brew/ })).toBeNull();
@@ -421,7 +478,7 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
-      await screen.findByRole('button', { name: 'Preview Night drive' });
+      await loaded();
       tab('Colours');
 
       const surfaceBefore = hexField('Surface').value;
@@ -457,7 +514,7 @@ describe('Settings > Appearance', () => {
 
     it('a preset edit is saved as a new theme of mine on Apply, not before', async () => {
       start({ v: 1, preset: 'midnight' });
-      await screen.findByTestId('theme-count');
+      await loaded();
       tab('Colours');
       expect(screen.getByText('Change a colour and apply it, and it is saved as a new theme in My themes.')).toBeInTheDocument();
       typeHex('Accent', '#3aa0ff');
@@ -476,7 +533,7 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
-      await screen.findByRole('button', { name: 'Preview Night drive' });
+      await loaded();
       tab('Colours');
 
       typeHex('Accent', '#141c2c');
@@ -508,7 +565,7 @@ describe('Settings > Appearance', () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
-      await screen.findByRole('button', { name: 'Preview Night drive' });
+      await loaded();
       tab('Colours');
       fireEvent.click(screen.getByRole('button', { name: 'Reset to Midnight' }));
       expect(screen.getByTestId('reset-confirm')).toHaveTextContent('Reset every colour to Midnight?');
@@ -521,7 +578,7 @@ describe('Settings > Appearance', () => {
 
     it('an invalid hex is refused in plain words and changes nothing', async () => {
       start({ v: 1, preset: 'ember' });
-      await screen.findByTestId('theme-count');
+      await loaded();
       tab('Colours');
       const before = hexField('Text').value;
       typeHex('Text', 'purple');
@@ -534,7 +591,7 @@ describe('Settings > Appearance', () => {
     const t = saved();
     server.mine = [t];
     const { unmount } = start(docFromSaved(t));
-    await screen.findByRole('button', { name: 'Preview Night drive' });
+    await loaded();
     tab('Colours');
     typeHex('Accent', '#3aa0ff');
     act(() => unmount());
@@ -557,13 +614,13 @@ describe('desktop Settings > Appearance as rows', () => {
     server.active = DEFAULT_THEME;
     useThemeStore.setState({ doc: DEFAULT_THEME, draft: null, userId: 'u1', loaded: true });
     render(<AppearanceEditor rows />);
-    await screen.findByTestId('theme-count');
+    await loaded();
     expect(screen.queryByRole('heading', { name: 'Appearance' })).toBeNull();
     const inUse = screen.getByTestId('in-use-bar');
     expect(inUse).not.toHaveClass('bg-card');
     expect(inUse).not.toHaveClass('rounded-[12px]');
     expect(screen.getByTestId('theme-preview')).toBeInTheDocument();
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Themes', 'Colours']);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Presets', 'My themes', 'Shared', 'Colours']);
     fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Presets' })).getByRole('radio', { name: /Midnight/ }));
     const bar = screen.getByTestId('apply-bar');
     expect(bar).toHaveClass('sticky', 'bg-background');
@@ -573,7 +630,7 @@ describe('desktop Settings > Appearance as rows', () => {
 
   it('the phone page has no heading of its own either (its header shows Appearance once) and keeps the soft card bar', async () => {
     start();
-    await screen.findByTestId('theme-count');
+    await loaded();
     expect(screen.queryByRole('heading')).toBeNull();
     expect(screen.queryByText('Appearance')).toBeNull();
     expect(screen.getByTestId('in-use-bar')).toHaveClass('bg-card', 'rounded-[12px]');

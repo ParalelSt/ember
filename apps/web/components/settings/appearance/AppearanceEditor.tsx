@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ApplyBar } from '@/components/settings/appearance/ApplyBar';
 import { ColourEditor } from '@/components/settings/appearance/ColourEditor';
 import { InspectorPanel, InspectorTabStrip, type InspectorTab } from '@/components/settings/appearance/InspectorTabs';
-import { ThemeLibrary } from '@/components/settings/appearance/ThemeLibrary';
+import { ThemeLibrary, type LibraryView } from '@/components/settings/appearance/ThemeLibrary';
 import { ThemePreview } from '@/components/settings/appearance/ThemePreview';
 import { useThemeEditor } from '@/hooks/useThemeEditor';
 import { cn } from '@/lib/utils';
@@ -18,18 +18,18 @@ import { THEME_CAP } from '@/lib/theme/saved';
  *  passes `rows`: the Apply bar drawn as a row, without its card, like the
  *  other sections. Neither draws a heading here: the phone page's header
  *  and the desktop menu layout each show one already.
- *  The layout: a live preview
- *  of the app next to one panel with two tabs (Themes, Colours). Sharing is
- *  per theme, a switch on each row of My themes (bughunt F3).
- *  Below xl the panel drops under the preview. From xl the two sit side by
- *  side and the page scrolls as a whole (no scroll box of its own, which
- *  cut the list off); the preview sticks under the top bar, so it stays in
- *  sight while a long list scrolls. Picking a theme or changing a colour shows only
- *  in the preview; Apply makes it the theme of the whole app (and saves
- *  it), Back to current drops it. */
+ *  The layout: a live preview of the app next to one panel with four tabs
+ *  (Presets, My themes, Shared, Colours), each showing only its own list or
+ *  the colour editor. Sharing is per theme, a switch on each card of My
+ *  themes (bughunt F3). Below xl the panel drops under the preview. From xl
+ *  the two sit side by side and the page scrolls as a whole; the preview
+ *  sticks under the top bar, so it stays in sight while a long list
+ *  scrolls. Picking a theme or changing a colour shows only in the preview;
+ *  Apply makes it the theme of the whole app (and saves it), Back to
+ *  current drops it. */
 export function AppearanceEditor({ rows }: { rows?: boolean }) {
   const editor = useThemeEditor();
-  const [tab, setTab] = useState<InspectorTab>('themes');
+  const [tab, setTab] = useState<InspectorTab>('presets');
   const { selection, active, list, status } = editor;
 
   const base = PRESET_BY_ID[selection.base];
@@ -39,6 +39,32 @@ export function AppearanceEditor({ rows }: { rows?: boolean }) {
       : selection.kind === 'loose'
         ? `Change a colour and apply it, and ${selection.name} is saved to My themes.`
         : null;
+
+  const library = (view: LibraryView) => (
+    <ThemeLibrary
+      view={view}
+      shownPreset={selection.kind === 'preset' ? selection.base : null}
+      shownThemeId={selection.kind === 'mine' || selection.kind === 'others' ? selection.key : null}
+      inUsePreset={active.kind === 'preset' ? active.base : null}
+      inUseThemeId={active.kind === 'mine' || active.kind === 'others' ? active.key : null}
+      mine={list?.mine ?? null}
+      shared={list?.shared ?? null}
+      cap={list?.cap ?? THEME_CAP}
+      loadFailed={editor.loadFailed}
+      looseName={active.kind === 'loose' ? active.name : null}
+      onPickPreset={editor.pickPreset}
+      onUse={editor.use}
+      onNew={() => {
+        void editor.create().then((made) => made && setTab('colours'));
+      }}
+      onRename={editor.rename}
+      onDuplicate={(id) => void editor.duplicate(id)}
+      onDelete={(id) => void editor.remove(id)}
+      onCopyShared={(id) => void editor.copyShared(id)}
+      sharing={editor.sharing}
+      onShare={(id, shared) => void editor.setShared(id, shared)}
+    />
+  );
 
   return (
     <section data-testid="appearance" className="flex flex-col gap-block">
@@ -78,29 +104,14 @@ export function AppearanceEditor({ rows }: { rows?: boolean }) {
           )}
 
           <div data-testid="inspector-panels">
-            <InspectorPanel id="themes" active={tab}>
-              <ThemeLibrary
-                shownPreset={selection.kind === 'preset' ? selection.base : null}
-                shownThemeId={selection.kind === 'mine' || selection.kind === 'others' ? selection.key : null}
-                inUsePreset={active.kind === 'preset' ? active.base : null}
-                inUseThemeId={active.kind === 'mine' || active.kind === 'others' ? active.key : null}
-                mine={list?.mine ?? null}
-                shared={list?.shared ?? null}
-                cap={list?.cap ?? THEME_CAP}
-                loadFailed={editor.loadFailed}
-                looseName={active.kind === 'loose' ? active.name : null}
-                onPickPreset={editor.pickPreset}
-                onUse={editor.use}
-                onNew={() => {
-                  void editor.create().then((made) => made && setTab('colours'));
-                }}
-                onRename={editor.rename}
-                onDuplicate={(id) => void editor.duplicate(id)}
-                onDelete={(id) => void editor.remove(id)}
-                onCopyShared={(id) => void editor.copyShared(id)}
-                sharing={editor.sharing}
-                onShare={(id, shared) => void editor.setShared(id, shared)}
-              />
+            <InspectorPanel id="presets" active={tab}>
+              {library('presets')}
+            </InspectorPanel>
+            <InspectorPanel id="mine" active={tab}>
+              {library('mine')}
+            </InspectorPanel>
+            <InspectorPanel id="shared" active={tab}>
+              {library('shared')}
             </InspectorPanel>
 
             <InspectorPanel id="colours" active={tab}>
@@ -120,7 +131,6 @@ export function AppearanceEditor({ rows }: { rows?: boolean }) {
                 onCopy={selection.kind === 'others' ? () => void editor.copyShared(selection.key) : undefined}
               />
             </InspectorPanel>
-
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { CheckIcon, CopyIcon, EditIcon, PlusIcon, TrashIcon } from '@/components/icons';
+import { CheckIcon, CopyIcon, EditIcon, TrashIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ThemeSwatch } from '@/components/settings/appearance/ThemeSwatch';
@@ -25,7 +25,12 @@ const cardState = (active: boolean) =>
 const WIDE = 'col-span-2 flex-row flex-wrap items-center';
 const FOCUS = 'outline-none focus-visible:ring-3 focus-visible:ring-ring/50';
 
+/** The three lists, one per tab of the inspector (the fourth is Colours). */
+export type LibraryView = 'presets' | 'mine' | 'shared';
+
 export interface ThemeLibraryProps {
+  /** Which list this tab shows. */
+  view: LibraryView;
   /** The preset the preview shows, when no saved theme is. */
   shownPreset: PresetId | null;
   /** The saved theme the preview shows (mine or shared). */
@@ -57,135 +62,157 @@ export interface ThemeLibraryProps {
   onShare: (id: string, shared: boolean) => void;
 }
 
-/** The Themes tab: the five presets, my saved themes (new, rename,
- *  duplicate, delete, share, with the count against the cap) and everyone
- *  else's shared themes (preview, or copy into mine). Each of mine has its
- *  own share switch (bughunt F3); presets and other people's themes have
- *  none. Each is a card with a preview of its colours; the one the preview
+/** One list of themes, as cards: the five presets, my saved themes (new,
+ *  rename, duplicate, delete, share, with the count against the cap) or
+ *  everyone else's shared themes (preview, or copy into mine). Each of mine
+ *  has its own share switch (bughunt F3); presets and other people's themes
+ *  have none. Each card has a preview of its colours; the one the preview
  *  shows is ember; the one in use says "In use". Props in, callbacks out. */
 export function ThemeLibrary(props: ThemeLibraryProps) {
-  const { shownPreset, shownThemeId, inUsePreset, inUseThemeId, mine, shared, cap, loadFailed, looseName } = props;
-  const full = mine !== null && mine.length >= cap;
-
   return (
-    <div data-testid="theme-library" className="flex flex-col gap-stack">
+    <div data-testid="theme-library" data-view={props.view} className="flex flex-col gap-stack">
+      {props.view === 'presets' ? <PresetList {...props} /> : props.view === 'mine' ? <MyThemes {...props} /> : <SharedThemes {...props} />}
+    </div>
+  );
+}
+
+function PresetList({ shownPreset, inUsePreset, onPickPreset }: ThemeLibraryProps) {
+  return (
+    <div role="radiogroup" aria-label="Presets" className={GRID}>
+      {PRESETS.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          role="radio"
+          aria-checked={p.id === shownPreset}
+          data-preset={p.id}
+          title={p.description}
+          onClick={() => onPickPreset(p.id)}
+          className={cn(CARD, FOCUS, 'text-left', cardState(p.id === shownPreset))}
+        >
+          <Preview inputs={p.inputs} selected={p.id === shownPreset} />
+          <CardName name={p.name} selected={p.id === shownPreset}>
+            {p.id === inUsePreset && <InUse />}
+          </CardName>
+          <span className="line-clamp-2 text-xs text-muted-foreground">{p.description}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MyThemes(props: ThemeLibraryProps) {
+  const { mine, cap, loadFailed, looseName, shownThemeId, inUseThemeId } = props;
+  const full = mine !== null && mine.length >= cap;
+  return (
+    <section aria-label="My themes" className="flex flex-col gap-block">
+      <div className="flex min-h-hit items-center justify-between gap-row">
+        {/* The count's line is there while the list loads, empty. */}
+        <p className="text-sm text-muted-foreground">
+          {mine && (
+            <span data-testid="theme-count">
+              {mine.length} of {cap}
+            </span>
+          )}
+        </p>
+        <Button variant="outline" onClick={props.onNew} disabled={mine === null || full}>
+          New theme
+        </Button>
+      </div>
       {looseName && (
         <p data-testid="loose-theme" className="text-sm text-muted-foreground">
           In use: <span className="font-medium text-foreground">{looseName}</span>, kept after its original went
           away. Change a colour and apply it to save it to My themes.
         </p>
       )}
-
-      <div role="radiogroup" aria-label="Presets" className="flex flex-col gap-inset">
-        <div className="text-eyebrow mb-inset">Presets</div>
+      <p data-testid="share-explainer" className="text-xs text-muted-foreground">
+        Switch Share on and a theme shows for everyone under Shared.
+      </p>
+      {full && (
+        <p className="text-xs text-muted-foreground">
+          That is the most you can keep ({cap}). Delete one to make room.
+        </p>
+      )}
+      {mine === null ? (
+        loadFailed ? (
+          <p className="text-sm text-muted-foreground">Could not load your themes.</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Loading your themes.</p>
+        )
+      ) : mine.length === 0 ? (
+        <p className="text-sm text-muted-foreground">None yet. Change a colour and apply it, or press New theme, to make one.</p>
+      ) : (
         <div className={GRID}>
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              role="radio"
-              aria-checked={p.id === shownPreset}
-              data-preset={p.id}
-              title={p.description}
-              onClick={() => props.onPickPreset(p.id)}
-              className={cn(CARD, FOCUS, 'text-left', cardState(p.id === shownPreset))}
-            >
-              <Preview inputs={p.inputs} selected={p.id === shownPreset} />
-              <CardName name={p.name} selected={p.id === shownPreset}>
-                {p.id === inUsePreset && <InUse />}
-              </CardName>
-              <span className="line-clamp-2 text-xs text-muted-foreground">{p.description}</span>
-            </button>
+          {mine.map((t) => (
+            <MyThemeCard
+              key={t.id}
+              theme={t}
+              active={t.id === shownThemeId}
+              inUse={t.id === inUseThemeId}
+              onUse={() => props.onUse(t.id)}
+              onRename={(name) => props.onRename(t.id, name)}
+              onDuplicate={() => props.onDuplicate(t.id)}
+              onDelete={() => props.onDelete(t.id)}
+              canDuplicate={!full}
+              sharing={props.sharing?.has(t.id) ?? false}
+              onShare={(on) => props.onShare(t.id, on)}
+            />
           ))}
         </div>
-      </div>
+      )}
+    </section>
+  );
+}
 
-      <section aria-label="My themes" className="flex flex-col gap-inset">
-        <div className="mb-inset flex items-center justify-between gap-row">
-          <div className="text-eyebrow">
-            My themes
-            {mine && (
-              <span data-testid="theme-count" className="ml-cluster normal-case tracking-normal">
-                {mine.length} of {cap}
-              </span>
-            )}
-          </div>
-          <Button size="xs" variant="outline" onClick={props.onNew} disabled={mine === null || full} className="gap-inset">
-            <PlusIcon className="h-3 w-3" />
-            New
-          </Button>
-        </div>
-        <p data-testid="share-explainer" className="text-xs text-muted-foreground">
-          Shared themes appear for everyone under Shared by others.
-        </p>
-        {full && (
-          <p className="text-xs text-muted-foreground">
-            That is the most you can keep ({cap}). Delete one to make room.
-          </p>
-        )}
-        {mine === null ? (
-          <p className="text-sm text-muted-foreground">{loadFailed ? 'Could not load your themes.' : 'Loading your themes.'}</p>
-        ) : mine.length === 0 ? (
-          <p className="text-sm text-muted-foreground">None yet. Change a colour and apply it, or press New, to make one.</p>
+function SharedThemes(props: ThemeLibraryProps) {
+  const { mine, shared, cap, loadFailed, shownThemeId, inUseThemeId } = props;
+  const full = mine !== null && mine.length >= cap;
+  return (
+    <section aria-label="Shared by others" className="flex flex-col gap-block">
+      <p className="text-xs text-muted-foreground">
+        Themes other people shared. Preview one, or copy it to My themes to change its colours.
+      </p>
+      {shared === null ? (
+        loadFailed ? (
+          <p className="text-sm text-muted-foreground">Could not load shared themes.</p>
         ) : (
-          <div className={GRID}>
-            {mine.map((t) => (
-              <MyThemeCard
-                key={t.id}
-                theme={t}
-                active={t.id === shownThemeId}
-                inUse={t.id === inUseThemeId}
-                onUse={() => props.onUse(t.id)}
-                onRename={(name) => props.onRename(t.id, name)}
-                onDuplicate={() => props.onDuplicate(t.id)}
-                onDelete={() => props.onDelete(t.id)}
-                canDuplicate={!full}
-                sharing={props.sharing?.has(t.id) ?? false}
-                onShare={(on) => props.onShare(t.id, on)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section aria-label="Shared by others" className="flex flex-col gap-inset">
-        <div className="text-eyebrow mb-inset">Shared by others</div>
-        {shared === null ? null : shared.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nobody has shared a theme yet.</p>
-        ) : (
-          <div className={GRID}>
-            {shared.map((t) => (
-              <div key={t.id} data-testid="shared-theme" className={cn(CARD, cardState(t.id === shownThemeId))}>
-                <Preview inputs={t.inputs} selected={t.id === shownThemeId} />
-                <CardName name={t.name} selected={t.id === shownThemeId}>
-                  {t.id === inUseThemeId && <InUse />}
-                </CardName>
-                <div className="truncate text-xs text-muted-foreground">by {t.ownerName}</div>
-                <div className="mt-auto flex flex-wrap items-center gap-inset">
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => props.onCopyShared(t.id)}
-                    disabled={full}
-                    aria-label={`Copy ${t.name} to my themes`}
-                  >
-                    Copy
-                  </Button>
-                  <Button
-                    size="xs"
-                    onClick={() => props.onUse(t.id)}
-                    disabled={t.id === shownThemeId}
-                    aria-label={`Preview ${t.name}`}
-                  >
-                    {t.id === shownThemeId ? 'Showing' : 'Preview'}
-                  </Button>
-                </div>
+          <p className="text-sm text-muted-foreground">Loading shared themes.</p>
+        )
+      ) : shared.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nobody has shared a theme yet.</p>
+      ) : (
+        <div className={GRID}>
+          {shared.map((t) => (
+            <div key={t.id} data-testid="shared-theme" className={cn(CARD, cardState(t.id === shownThemeId))}>
+              <Preview inputs={t.inputs} selected={t.id === shownThemeId} />
+              <CardName name={t.name} selected={t.id === shownThemeId}>
+                {t.id === inUseThemeId && <InUse />}
+              </CardName>
+              <div className="truncate text-xs text-muted-foreground">by {t.ownerName}</div>
+              <div className="mt-auto flex flex-wrap items-center gap-inset">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => props.onCopyShared(t.id)}
+                  disabled={full}
+                  aria-label={`Copy ${t.name} to my themes`}
+                >
+                  Copy
+                </Button>
+                <Button
+                  size="xs"
+                  onClick={() => props.onUse(t.id)}
+                  disabled={t.id === shownThemeId}
+                  aria-label={`Preview ${t.name}`}
+                >
+                  {t.id === shownThemeId ? 'Showing' : 'Preview'}
+                </Button>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
