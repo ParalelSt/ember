@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import SettingsProfile from './page';
 
 const auth = vi.hoisted(() => ({
@@ -19,6 +19,8 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 const api = vi.hoisted(() => ({ updateProfile: vi.fn(async () => ({})) }));
 vi.mock('@/lib/api', () => ({ api }));
 vi.mock('@/components/settings/PrivacyToggles', () => ({ PrivacyToggles: () => null }));
+const blocking = vi.hoisted(() => ({ blocked: [] as { id: string; title: string; artist: string; artworkUrl: null }[], unblock: vi.fn(async () => {}) }));
+vi.mock('@/hooks/useBlockedTracks', () => ({ useBlockedTracks: () => ({ blocked: blocking.blocked, unblock: blocking.unblock }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 beforeEach(() => {
@@ -91,5 +93,22 @@ describe('SettingsProfile name, opened before the account is known', () => {
     expect(screen.queryByText('Account')).toBeNull();
     fireEvent.click(row);
     expect(auth.signOut).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SettingsProfile blocked songs (moved from Library)', () => {
+  it('says there are none', () => {
+    blocking.blocked = [];
+    render(<SettingsProfile />);
+    expect(within(screen.getByTestId('blocked-songs')).getByText('No blocked songs.')).toBeInTheDocument();
+  });
+  it('lists blocked songs with an Unblock button', () => {
+    const song = { id: 'youtube:a', title: 'Bad Song', artist: 'Someone', artworkUrl: null };
+    blocking.blocked = [song];
+    render(<SettingsProfile />);
+    const list = screen.getByTestId('blocked-songs');
+    expect(within(list).getByText('Bad Song')).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole('button', { name: 'Unblock Bad Song' }));
+    expect(blocking.unblock).toHaveBeenCalledWith(song);
   });
 });

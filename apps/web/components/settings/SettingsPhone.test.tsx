@@ -28,11 +28,13 @@ beforeEach(() => {
 });
 it('opens the picker groups and routes without redirecting phones', () => {
   render(<SettingsIndex />);
-  for (const [group, labels] of Object.entries({ Account: ['Profile', 'Devices'], App: ['Appearance', 'Plugins', 'Help', "What's new"], Music: ['Library', 'Downloads', 'Uploads'] })) {
+  for (const [group, labels] of Object.entries({ Account: ['Profile', 'Devices'], App: ['Appearance', 'Plugins', 'Help'], Music: ['Downloads', 'Uploads'] })) {
     expect(within(screen.getByRole('list', { name: group })).getAllByRole('link').map(a => a.querySelector('[data-settings-label]')?.textContent)).toEqual(labels);
   }
   expect(screen.getByRole('link', { name: 'Uploads' })).toHaveAttribute('href', '/settings/uploads');
-  expect(screen.getByRole('link', { name: "What's new" })).toHaveAttribute('href', '/whats-new');
+  // Nothing the drawer or bottom nav already has.
+  expect(screen.queryByRole('link', { name: "What's new" })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Library' })).not.toBeInTheDocument();
   expect(state.replace).not.toHaveBeenCalled();
 });
 it('shows the profile card and Edit link', () => {
@@ -45,20 +47,19 @@ it('shows the profile card and Edit link', () => {
 it('shows real values only, including hydrated zero and custom theme names', () => {
   render(<SettingsIndex />);
   expect(screen.getByRole('link', { name: 'Appearance Forest' })).toBeInTheDocument();
-  for (const name of ['Downloads', 'Plugins', 'Library', 'Help']) expect(screen.getByRole('link', { name }).querySelector('[data-settings-value]')).toBeNull();
+  for (const name of ['Downloads', 'Plugins', 'Help']) expect(screen.getByRole('link', { name }).querySelector('[data-settings-value]')).toBeNull();
   act(() => { useOfflineStore.setState({ hydrated: true, totalBytes: 1048576 }); useThemeStore.setState({ doc: { v: 1, preset: 'ember', name: 'My theme' } }); });
   expect(screen.getByRole('link', { name: /Downloads 1.*MB/ })).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Appearance My theme' })).toBeInTheDocument();
   act(() => useOfflineStore.setState({ totalBytes: 0 }));
   expect(screen.getByRole('link', { name: /Downloads 0/ })).toBeInTheDocument();
 });
-it('only shows admin routes for admins', () => {
-  const { rerender } = render(<SettingsIndex />);
+it('has no Admin group, even for admins (the drawer links /admin)', () => {
+  state.admin = true; render(<SettingsIndex />);
   expect(screen.queryByRole('list', { name: 'Admin' })).not.toBeInTheDocument();
-  state.admin = true; rerender(<SettingsIndex />);
-  expect(within(screen.getByRole('list', { name: 'Admin' })).getAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['/admin/users', '/admin/invites', '/admin/tracks', '/admin/pranks', '/admin/backups', '/admin/car']);
+  expect(document.querySelector('a[href^="/admin"]')).toBeNull();
 });
-it.each(['profile', 'appearance', 'library', 'downloads', 'uploads', 'plugins', 'devices', 'help'])('frames %s without changing its content', section => {
+it.each(['profile', 'appearance', 'downloads', 'uploads', 'plugins', 'devices', 'help'])('frames %s without changing its content', section => {
   state.path = `/settings/${section}`;
   render(<SettingsLayout><input aria-label="Existing content" defaultValue="preserved" /></SettingsLayout>);
   const back = screen.getByRole('link', { name: 'Back to Settings' });

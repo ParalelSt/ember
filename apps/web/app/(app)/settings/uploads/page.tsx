@@ -7,6 +7,7 @@ import { UploadDropZone } from '@/components/uploads/UploadDropZone';
 import { UploadProgressCard } from '@/components/uploads/UploadProgressCard';
 import { MyUploadRow } from '@/components/uploads/MyUploadRow';
 import { UPLOADS_SHARED_TEXT, UploadsDialogs, useUploadsSettings } from '@/components/settings/useUploadsSettings';
+import { TransferCard } from '@/components/settings/PhoneLibraryCards';
 import { formatCount } from '@/lib/format';
 
 /** Settings > Uploads on a phone and narrow windows (desktop draws the
@@ -50,6 +51,8 @@ export default function UploadsPage() {
         onCancelAll={queue.cancelAll}
         onClear={queue.clear}
       />
+
+      <TransferCard />
 
       <div className="flex flex-col gap-cluster">
         <div className="flex items-baseline justify-between gap-row">

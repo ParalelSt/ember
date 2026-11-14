@@ -33,6 +33,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   ),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: ComponentProps<'a'>) => <a href={href} {...rest}>{children}</a> }));
 
 const state = vi.hoisted(() => ({
   desktop: false,
@@ -103,6 +104,13 @@ function choose(row: HTMLElement, name: RegExp) {
 }
 
 describe('Settings > Uploads layout', () => {
+  it('has Transfer from another app (moved from Library), returning to Uploads', () => {
+    state.uploads = [];
+    renderPage();
+    expect(screen.getByText('Transfer from another app')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-transfer-button')).toHaveAttribute('href', `/transfer?from=${encodeURIComponent('/settings/uploads')}`);
+  });
+
   it('puts the header, then the Upload songs bar, then Your uploads', async () => {
     renderPage();
     expect(screen.getByRole('heading', { name: 'Uploads' })).toBeInTheDocument();

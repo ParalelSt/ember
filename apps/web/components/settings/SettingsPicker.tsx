@@ -4,8 +4,7 @@ import { useSyncExternalStore, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Avatar } from '@/components/primitives/Avatar';
-import { ADMIN_SECTIONS } from '@/components/admin/sections';
-import { ArtistIcon, SlidersIcon, LibraryIcon, DownloadIcon, UploadIcon, SettingsIcon as PluginsIcon, DevicesIcon, InfoIcon, SparklesIcon, ChevronRightIcon, type Icon } from '@/components/icons';
+import { ArtistIcon, SlidersIcon, DownloadIcon, UploadIcon, SettingsIcon as PluginsIcon, DevicesIcon, InfoIcon, ChevronRightIcon, type Icon } from '@/components/icons';
 import { useThemeStore } from '@/stores/useThemeStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { PRESET_BY_ID } from '@/lib/theme/presets';
@@ -24,7 +23,6 @@ const deviceSnapshot = () => {
 const serverDevice = () => undefined;
 
 export function useSettingsGroups() {
-  const { isAdmin } = useAuth();
   const theme = useThemeStore(s => s.doc);
   const hydrated = useOfflineStore(s => s.hydrated);
   const bytes = useOfflineStore(s => s.totalBytes);
@@ -38,15 +36,12 @@ export function useSettingsGroups() {
       { href: '/settings/appearance', label: 'Appearance', icon: SlidersIcon, hue: 8, value: theme.name || (theme.custom ? undefined : PRESET_BY_ID[theme.preset].name) },
       { href: '/settings/plugins', label: 'Plugins', icon: PluginsIcon, hue: 285 },
       { href: '/settings/help', label: 'Help', icon: InfoIcon, hue: 180 },
-      { href: '/whats-new', label: "What's new", icon: SparklesIcon, hue: 8 },
     ] },
     { name: 'Music', rows: [
-      { href: '/settings/library', label: 'Library', icon: LibraryIcon, hue: 200 },
       { href: '/settings/downloads', label: 'Downloads', icon: DownloadIcon, hue: 150, value: hydrated ? formatBytes(bytes) : undefined },
       { href: '/settings/uploads', label: 'Uploads', icon: UploadIcon, hue: 40 },
     ] },
   ];
-  if (isAdmin) groups.push({ name: 'Admin', rows: ADMIN_SECTIONS.map((row, index) => ({ ...row, hue: [330, 55, 210, 300, 100, 20][index] })) });
   return groups;
 }
 

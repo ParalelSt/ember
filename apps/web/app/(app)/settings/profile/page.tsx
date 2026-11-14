@@ -9,6 +9,7 @@ import { LogOutIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { PrivacyToggles } from '@/components/settings/PrivacyToggles';
 import { Avatar } from '@/components/primitives/Avatar';
+import { BlockedSongsCard } from '@/components/settings/PhoneLibraryCards';
 import { api } from '@/lib/api';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
@@ -120,6 +121,10 @@ export default function SettingsProfile() {
     </form>
 
       <PrivacyToggles />
+
+      <div className="mt-stack">
+        <BlockedSongsCard />
+      </div>
 
       <div className="mt-12 overflow-hidden rounded-md bg-card">
         <button

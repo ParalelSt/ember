@@ -26,7 +26,7 @@ export function SettingsHeader() {
  * their cards keep their content and layout intact. */
 export function SettingsContent({ children }: { children: ReactNode }) {
   const path = usePathname();
-  const plain = ['/settings/profile', '/settings/library', '/settings/help'].includes(path);
+  const plain = ['/settings/profile', '/settings/help'].includes(path);
   return <div className="min-w-0 flex-1 lg:max-w-3xl">
     <div className={plain ? 'flex-1 min-w-0 max-lg:rounded-lg max-lg:bg-card max-lg:p-block' : 'flex-1 min-w-0'}>{children}</div>
   </div>;
