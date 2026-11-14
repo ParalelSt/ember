@@ -5,11 +5,10 @@
 // (rodio + stream-download) is exposed over the `audio_*` invoke commands and
 // emits `audio:*` events back to the webview.
 //
-// Launch order: logging, then the launch gate (src/gate.rs) on the bundled
-// gate page, which may update the app before anything else runs; only then
+// Launch order: logging, the launch history (src/gate.rs), the window, then
 // the audio engine, media controls, output router and the server page
-// (`start_app`). A release that crashes during audio init can still be
-// replaced by the next one this way.
+// (`start_app`). There is no launch gate and no update check at launch any
+// more (owner, 2026-11-14): updates start from a tap on the page (src/update.rs).
 
 mod applog;
 mod connect;
@@ -59,25 +58,6 @@ pub fn run() {
         // uncaught exceptions, rejected promises, and the status of every
         // /api and /pb request (which is what you need when login fails).
         .append_invoke_initialization_script(APP_LOG_SCRIPT)
-        // The launch gate installs only while its window is the focused one
-        // (src/gate.rs): alt-tabbing to a game opens the app instead.
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Focused(focused) = event {
-                if window.label() == "main" {
-                    if let Some(gate) = window.try_state::<Arc<gate::Gate>>() {
-                        gate.focus(*focused);
-                    }
-                }
-            }
-        })
-        // The first page load after the gate means this launch worked.
-        .on_page_load(|webview, payload| {
-            if payload.event() == tauri::webview::PageLoadEvent::Finished {
-                if let Some(gate) = webview.try_state::<Arc<gate::Gate>>() {
-                    gate.page_loaded();
-                }
-            }
-        })
         .setup(move |app| {
             // The auto cache of upcoming songs (cache.rs). Opened here because
             // the OS cache dir comes from the app's path resolver. A failure
@@ -110,33 +90,24 @@ pub fn run() {
             };
             app.manage(cache);
 
-            // The launch history (src/gate.rs): how the last launches went.
+            // The launch history (src/gate.rs): the version that ran last, so
+            // the first launch after an update reports it.
             let data_dir = app.path().app_local_data_dir().ok();
             let version = app.package_info().version.to_string();
             let prev = data_dir.as_deref().map(gate::load_history).unwrap_or_default();
-            let (history, mode, updated_from) = gate::on_launch(&prev, &version);
+            let (history, updated_from) = gate::on_launch(&prev, &version);
             if let Some(dir) = &data_dir {
                 if let Err(e) = gate::store_history(dir, &history) {
                     applog::write_line(log_path.as_ref(), "WARN", &format!("launch history not written: {e}"));
                 }
             }
-            let launch_gate = Arc::new(gate::Gate::new(data_dir, history, log_path.clone()));
-            app.manage(launch_gate.clone());
+            let launch = Arc::new(gate::Gate::new(data_dir, log_path.clone()));
+            app.manage(launch.clone());
             if let Some(from) = updated_from {
-                launch_gate.event("update.gate.done", serde_json::json!({ "from": from, "to": version }));
+                launch.event("update.gate.done", serde_json::json!({ "from": from, "to": version }));
             }
 
-            // EMBER_NO_UPDATE=1 opts out of every update check (CI's smoke
-            // test, which shouldn't reach the network). Without a remote
-            // server there is nothing to ask.
-            let server = connect::server_url(app.config());
-            let no_update = std::env::var("EMBER_NO_UPDATE").as_deref() == Ok("1");
-            if mode == gate::LaunchMode::SkipGate {
-                applog::write_line(log_path.as_ref(), "WARN", "the last launches died in the launch gate: opening without it");
-                launch_gate.event("update.gate.skipped", serde_json::json!({ "reason": "failed-twice" }));
-            }
-            let gated = server.is_some() && !no_update && mode != gate::LaunchMode::SkipGate;
-            create_main_window(app, gated)?;
+            create_main_window(app)?;
 
             // The window's background and title bar on the last theme the
             // page reported, before the remote page arrives, so a dark theme
@@ -151,32 +122,11 @@ pub fn run() {
                 ),
             }
 
-            let enter_handle = app.handle().clone();
-            let enter_log = log_path.clone();
-            let enter: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-                let handle = enter_handle.clone();
-                let log = enter_log.clone();
-                let main_handle = handle.clone();
-                if let Err(e) = handle.run_on_main_thread(move || start_app(&main_handle, log, gated, no_update)) {
-                    applog::write_line(enter_log.as_ref(), "ERROR", &format!("could not start the app after the launch gate: {e}"));
-                }
-            });
-            match server {
-                Some(server) if gated => {
-                    applog::write_line(log_path.as_ref(), "INFO", "launch gate: checking for an update");
-                    let background = app
-                        .path()
-                        .app_config_dir()
-                        .ok()
-                        .and_then(|dir| theme::load_theme(&dir))
-                        .map(|t| t.background);
-                    let run = gate::GateRun { server, version, recovery: mode == gate::LaunchMode::Recovery, background, enter_app: enter };
-                    tauri::async_runtime::spawn(gate::run(app.handle().clone(), launch_gate, run));
-                }
-                _ => {
-                    launch_gate.take_entry();
-                    enter();
-                }
+            let handle = app.handle().clone();
+            let start_log = log_path.clone();
+            let main_handle = handle.clone();
+            if let Err(e) = handle.run_on_main_thread(move || start_app(&main_handle, start_log)) {
+                applog::write_line(log_path.as_ref(), "ERROR", &format!("could not start the app: {e}"));
             }
 
             // Devtools: right-click → Inspect Element works in release too when
@@ -226,56 +176,33 @@ pub fn run() {
             speech::speech_abort,
             theme::theme_apply,
             connect::connect_retry,
-            gate::gate_state,
-            gate::gate_not_now,
-            gate::gate_update_now,
-            gate::gate_quit,
             gate::update_gate_events,
-            update::update_restart,
+            update::update_download,
+            update::update_install,
+            update::update_take_resume,
             external::open_external,
         ])
         .build(app_context())
         .expect("error while running Ember desktop")
-        .run(|app, event| {
-            // Quitting before the page loaded is not a crash: the launch
-            // history must not count it as one (src/gate.rs).
-            if let tauri::RunEvent::Exit = event {
-                if let Some(gate) = app.try_state::<Arc<gate::Gate>>() {
-                    if gate.history().stage != gate::Stage::Ready {
-                        gate.mark(gate::Stage::Clean);
-                    }
-                }
-            }
-        });
+        .run(|_app, _event| {});
 }
 
-/// The main window. tauri.conf.json declares it with `create: false` so it
-/// can start on the bundled gate page (offline/gate.html) when the launch
-/// gate runs; its configured URL (the server) stays where connect.rs and
-/// scripts/set-url.mjs read it.
-fn create_main_window(app: &tauri::App, gated: bool) -> tauri::Result<()> {
-    let Some(mut conf) = app.config().app.windows.iter().find(|w| w.label == "main").cloned() else {
+/// The main window, on the server. tauri.conf.json declares it with
+/// `create: false` (from the launch gate's time, when it could start on a
+/// bundled page) and its URL stays where connect.rs and scripts/set-url.mjs
+/// read it.
+fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let Some(conf) = app.config().app.windows.iter().find(|w| w.label == "main").cloned() else {
         return Ok(());
     };
-    if gated {
-        conf.url = tauri::WebviewUrl::App(PathBuf::from(GATE_PAGE));
-    }
     tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?.build()?;
     Ok(())
 }
 
-/// The bundled page the window shows while the launch gate runs.
-pub(crate) const GATE_PAGE: &str = "gate.html";
-
-/// Everything that used to run at launch before the window showed the
-/// server: the audio engine, media controls, the output router, the speech
-/// probe, then the server page itself and the background update check. Runs
-/// once, on the main thread, when the launch gate lets the app in (`gated`:
-/// the window is on the gate page and must go to the server).
-fn start_app(app: &tauri::AppHandle, log_path: Option<PathBuf>, gated: bool, no_update: bool) {
-    let launch_gate = app.state::<Arc<gate::Gate>>().inner().clone();
-    launch_gate.mark(gate::Stage::Gated);
-
+/// Everything that runs once the window exists: the audio engine, media
+/// controls, the output router, the speech probe, then the server watch.
+/// Runs once, on the main thread.
+fn start_app(app: &tauri::AppHandle, log_path: Option<PathBuf>) {
     // A missing audio device must not stop the app from starting: the window
     // still opens and the webview falls back to web audio.
     let engine = match audio::AudioEngine::new() {
@@ -357,13 +284,6 @@ fn start_app(app: &tauri::AppHandle, log_path: Option<PathBuf>, gated: bool, no_
     });
 
     if let Some(w) = app.get_webview_window("main") {
-        if gated {
-            if let Some(server) = connect::server_url(app.config()) {
-                if let Err(e) = w.navigate(server) {
-                    applog::write_line(log_path.as_ref(), "WARN", &format!("could not open the server after the launch gate: {e}"));
-                }
-            }
-        }
         // Log the URL the window is ACTUALLY loading, read back from the
         // window itself. This used to log option_env!("EMBER_APP_URL"),
         // which is a COMPILE-time variable, unset during the CI build, so
@@ -380,19 +300,6 @@ fn start_app(app: &tauri::AppHandle, log_path: Option<PathBuf>, gated: bool, no_
     // yet): the window then shows a Retry page instead of staying
     // dead. See connect.rs.
     tauri::async_runtime::spawn(connect::watch(app.clone(), log_path.clone()));
-
-    // Check for a new desktop build in the background and keep it for the
-    // next launch's dialog. Never installs, never blocks, and a failure is
-    // logged rather than surfaced, see update.rs. Skipped when the gate
-    // already downloads it.
-    if !no_update && !launch_gate.downloading.load(std::sync::atomic::Ordering::SeqCst) {
-        let update_handle = app.clone();
-        let update_log = log_path.clone();
-        tauri::async_runtime::spawn(async move {
-            update::check_on_startup(update_handle, update_log).await;
-        });
-    }
-    launch_gate.app_started();
 }
 
 /// Injected into the webview before page scripts run.
@@ -507,9 +414,6 @@ mod version_tests;
 
 #[cfg(test)]
 mod launch_order_tests {
-    // The launch gate (src/gate.rs) must run before anything that can crash
-    // a release at launch, so a broken release can still be replaced by the
-    // next one (the macOS 26.6 cpal crash killed the app in AudioEngine::new).
     const LIB: &str = include_str!("lib.rs");
 
     fn body_of(name: &str) -> &'static str {
@@ -521,48 +425,39 @@ mod launch_order_tests {
     }
 
     #[test]
-    fn the_audio_engine_and_media_controls_start_only_after_the_gate() {
-        let run = body_of("run");
+    fn the_audio_engine_and_media_controls_start_in_start_app() {
         let needle = ["AudioEngine", "::new()"].concat();
-        assert!(!run.contains(&needle), "run() must not start the audio engine before the gate");
-        assert!(!run.contains("init_media_controls"), "run() must not start media controls before the gate");
         let start = body_of("start_app");
         assert!(start.contains(&needle));
         assert!(start.contains("init_media_controls"));
         assert!(start.contains("connect::watch"));
-        assert!(start.contains("update::check_on_startup"));
     }
 
+    /// Owner, 2026-11-14: no launch gate, no update check at launch, no
+    /// required updates. The window opens on the server; updates start from
+    /// a tap on the page.
     #[test]
-    fn the_main_window_is_made_by_the_app_so_it_can_start_on_the_gate_page() {
-        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).expect("conf");
-        let main = conf["app"]["windows"].as_array().unwrap().iter().find(|w| w["label"] == "main").expect("main window");
-        assert_eq!(main["create"], false, "tauri.conf.json: the main window must not be created before the gate decides its page");
-        assert!(body_of("create_main_window").contains("GATE_PAGE"));
-    }
-
-    #[test]
-    fn ember_no_update_and_a_broken_gate_open_without_it() {
+    fn the_app_opens_on_the_server_with_no_launch_gate() {
         let run = body_of("run");
-        assert!(run.contains("EMBER_NO_UPDATE"));
-        assert!(run.contains("!no_update && mode != gate::LaunchMode::SkipGate"));
+        assert!(run.contains("create_main_window(app)?"));
+        assert!(!LIB.contains(&["GATE", "_PAGE"].concat()));
+        assert!(!LIB.contains(&["gate::", "run("].concat()));
+        let gone = ["update::check", "_on_startup"].concat();
+        assert!(!LIB.contains(&gone), "no background update check");
+        assert!(!std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/offline/gate.html")).exists());
     }
 
     #[test]
-    fn the_gate_commands_are_registered_and_allowed() {
+    fn the_update_commands_are_registered_and_allowed() {
         let allowed = include_str!("../permissions/app-commands.toml");
-        for cmd in ["gate_state", "gate_not_now", "gate_update_now", "gate_quit", "update_gate_events"] {
-            assert!(LIB.contains(&format!("gate::{cmd}")), "{cmd} not registered");
-            assert!(allowed.contains(&format!("\"{cmd}\"")), "{cmd} not allowed");
+        for cmd in ["gate::update_gate_events", "update::update_download", "update::update_install", "update::update_take_resume"] {
+            assert!(LIB.contains(cmd), "{cmd} not registered");
+            let name = cmd.split("::").last().unwrap();
+            assert!(allowed.contains(&format!("\"{name}\"")), "{name} not allowed");
         }
-    }
-    /// The page's update tap restarts the app (apps/web/lib/update/apply.ts
-    /// calls it from shell 0.4.27 on, SHELL_RESTART_SINCE).
-    #[test]
-    fn the_update_restart_command_is_registered_and_allowed() {
-        let allowed = include_str!("../permissions/app-commands.toml");
-        assert!(LIB.contains("update::update_restart"));
-        assert!(allowed.contains("\"update_restart\""));
+        for gone in ["gate_state", "gate_not_now", "gate_update_now", "gate_quit", "update_restart"] {
+            assert!(!allowed.contains(&format!("\"{gone}\"")), "{gone} is still allowed");
+        }
     }
 }
 
