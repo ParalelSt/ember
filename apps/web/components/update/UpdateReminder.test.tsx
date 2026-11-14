@@ -10,7 +10,7 @@ import { INITIAL_UPDATE_STATE, useUpdateStore } from '@/stores/useUpdateStore';
 /** The reminder at the top: "[0.7.44] New version", a few seconds, then
  *  gone; once per app start; a tap waits for the song to end. */
 
-type W = Window & { Capacitor?: unknown };
+type W = Window & { Capacitor?: unknown; __TAURI_INTERNALS__?: unknown };
 const reload = vi.fn();
 
 function offer(version = '0.7.44', canApply = true) {
@@ -18,6 +18,8 @@ function offer(version = '0.7.44', canApply = true) {
 }
 
 beforeEach(() => {
+  // The desktop app (detectShell: Tauri).
+  (window as W).__TAURI_INTERNALS__ = { invoke: vi.fn(async () => null) };
   vi.useFakeTimers();
   resetUpdateForTests();
   resetUpdateReminderForTests();
@@ -30,6 +32,38 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   delete (window as W).Capacitor;
+  delete (window as W).__TAURI_INTERNALS__;
+});
+
+describe('where the reminder runs', () => {
+  it('never in a plain browser tab: a reload there is always the newest web', () => {
+    delete (window as W).__TAURI_INTERNALS__;
+    render(<UpdateReminder />);
+    offer();
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+  });
+
+  it('never in the iPhone app', () => {
+    delete (window as W).__TAURI_INTERNALS__;
+    (window as W).Capacitor = { isNativePlatform: () => true, getPlatform: () => 'ios', Plugins: {} };
+    render(<UpdateReminder />);
+    offer();
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+  });
+
+  it('in the Android app', () => {
+    delete (window as W).__TAURI_INTERNALS__;
+    (window as W).Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: {} };
+    render(<UpdateReminder />);
+    offer();
+    expect(screen.getByTestId('update-reminder')).toBeInTheDocument();
+  });
+
+  it('in the desktop app', () => {
+    render(<UpdateReminder />);
+    offer();
+    expect(screen.getByTestId('update-reminder')).toBeInTheDocument();
+  });
 });
 
 describe('UpdateReminder', () => {
@@ -103,8 +137,9 @@ describe('UpdateReminder', () => {
     try {
       render(<UpdateReminder />);
       expect(f).not.toHaveBeenCalled();
+      // 15 s, then the app's own version (asked of the shell, within 1.5 s).
       await act(async () => {
-        vi.advanceTimersByTime(15_000);
+        await vi.advanceTimersByTimeAsync(17_000);
       });
       expect(f).toHaveBeenCalledWith('/api/version', expect.objectContaining({ cache: 'no-store' }));
     } finally {

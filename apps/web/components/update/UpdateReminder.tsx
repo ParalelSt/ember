@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { detectShell } from '@/lib/playback/detectShell';
 import { detectDevicePlatform } from '@/lib/versions/device';
 import { appUpdateWaitsForTap, subscribeAppUpdate } from '@/lib/appUpdate';
 import { checkForUpdates, noteAppUpdateState, requestUpdate, watchPendingUpdate } from '@/lib/update/apply';
@@ -27,11 +28,14 @@ export function resetUpdateReminderForTests(): void {
   shown.clear();
 }
 
-/** Where the reminder runs: everywhere. An Android app from before 0.4.34
- *  still has its own pill for its own updates (AppUpdatePill); the reminder
- *  then only says when the web build is newer. */
-function reminderPlatform(): boolean {
-  return typeof window !== 'undefined';
+/** Where the reminder runs: inside the desktop app and the Android app
+ *  only (owner, 2026-11-14). A browser tab is on the newest web build after
+ *  any reload, and the iPhone app cannot update itself. An Android app from
+ *  before 0.4.34 keeps its own pill for its own updates (AppUpdatePill); the
+ *  reminder there only says when the web build is newer. */
+export function reminderPlatform(): boolean {
+  if (typeof window === 'undefined') return false;
+  return detectShell() === 'tauri' || detectDevicePlatform() === 'android';
 }
 
 /** A newer Ember, said briefly at the top: "[0.7.44] New version". It slides
