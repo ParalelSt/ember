@@ -118,6 +118,20 @@ SDK is 33 MB: Android keeps native libraries uncompressed. `RECORD_AUDIO` comes
 from Ember's own voice search; everything else the SDK asks for, for voice and
 sign-in, is removed in `AndroidManifest.xml`.
 
+**Diagnostics.** A phone has no logcat to read, so a test build can trace every
+step of the card (the switch, the player, the SDK's start, its own log, each
+update's answer) through the player log:
+
+```bash
+EMBER_DISCORD_DIAG=1 DISCORD_APP_ID=your-app-id npm run test-apk -- feat/x --server https://ember.example.ts.net --version 0.4.34-presence1 --out /path/EmberTest.apk
+```
+
+The lines reach the server the app points at (`POST /api/native-log`) as event
+`discord.diag`, category `native`, once the app is signed in: an admin sees
+them on Admin, Car and Android Auto (`/api/admin/native-log`), and the host has
+them in `logs/errors-YYYY-MM-DD.jsonl`. Without the flag nothing is traced and
+the SDK's own log is not even asked for.
+
 ## Building the macOS app
 
 ```bash
