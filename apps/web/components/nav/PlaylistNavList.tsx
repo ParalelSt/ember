@@ -80,7 +80,7 @@ export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen,
   const hold = useHold((id) => onTogglePin?.(id));
   return (
     <>
-      {!authed && <div className="text-sm text-sidebar-foreground/55 px-3 py-2">Sign in to create</div>}
+      {!authed && <div className="text-sm text-sidebar-foreground/55 px-row py-cluster">Sign in to create</div>}
       {items.map((p) => (
         <Link
           key={p.id}
