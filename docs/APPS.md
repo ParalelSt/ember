@@ -123,7 +123,7 @@ step of the card (the switch, the player, the SDK's start, its own log, each
 update's answer) through the player log:
 
 ```bash
-EMBER_DISCORD_DIAG=1 DISCORD_APP_ID=your-app-id npm run test-apk -- feat/x --server https://ember.example.ts.net --version 0.4.34-presence1 --out /path/EmberTest.apk
+EMBER_DISCORD_DIAG=1 DISCORD_APP_ID=your-app-id npm run test-apk -- feat/x --server https://ember.example.ts.net --version 0.4.34-presence1 --code 100 --out /path/EmberTest.apk
 ```
 
 The lines reach the server the app points at (`POST /api/native-log`) as event

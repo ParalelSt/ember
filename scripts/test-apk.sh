@@ -10,7 +10,9 @@
 #   scripts/test-apk.sh HEAD --port 3050        # a different sandbox server
 #   scripts/test-apk.sh HEAD --server http://192.168.1.50:3000
 #   scripts/test-apk.sh HEAD --server https://ember.x.ts.net \
-#       --version 0.4.34-presence1 --out /tmp/EmberTest.apk   # a file, no LAN
+#       --version 0.4.34-presence1 --code 100 --out /tmp/EmberTest.apk
+#                                     # a file, no LAN; --code above any Ember
+#                                     # Test already on the phone
 #
 # EMBER_DISCORD_DIAG=1 and DISCORD_APP_ID in the environment reach the build
 # (docs/APPS.md, "Discord status (Android app)").
@@ -26,14 +28,16 @@ PORT=3072
 SERVER=""
 SERVE_PORT=8780
 VERSION=""
+CODE=""
 OUT_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --port) PORT="$2"; shift 2 ;;
     --server) SERVER="$2"; shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
+    --code) CODE="$2"; shift 2 ;;
     --out) OUT_FILE="$2"; shift 2 ;;
-    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     *) REF="$1"; shift ;;
   esac
 done
@@ -83,6 +87,10 @@ perl -pi -e 's/const val PACKAGE = "app\.ember\.music"/const val PACKAGE = "app.
   "$A/src/main/java/app/ember/music/UpdateRules.kt"
 if [ -n "$VERSION" ]; then
   VERSION="$VERSION" perl -pi -e 's/versionName "[^"]*"/versionName "$ENV{VERSION}"/' "$A/build.gradle"
+fi
+if [ -n "$CODE" ]; then
+  [[ "$CODE" =~ ^[0-9]+$ ]] || { echo "✗ --code must be a number."; exit 1; }
+  CODE="$CODE" perl -pi -e 's/versionCode \d+/versionCode $ENV{CODE}/' "$A/build.gradle"
 fi
 
 bash "$WT/apps/mobile/scripts/build-apk.sh" "$SERVER"
