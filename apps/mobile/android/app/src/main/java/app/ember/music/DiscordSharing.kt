@@ -11,7 +11,8 @@ import java.util.concurrent.CopyOnWriteArrayList
  *  froze), and it must know whether sharing is allowed without asking one. The
  *  page sets it through EmberDiscord (apps/web/lib/androidDiscord.ts). Off
  *  until the page has said otherwise, the same way the page's own store errs
- *  toward silence.
+ *  toward silence; a test build made with EMBER_DISCORD_DEFAULT_ON=1 starts
+ *  on instead, for a server whose page cannot send it yet.
  *
  *  Also where the service hears that the app's activity has appeared, which
  *  the SDK needs (DiscordRules.status). */
@@ -24,7 +25,10 @@ object DiscordSharing {
 
     fun prefs(context: Context): SharedPreferences = context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
-    fun load(prefs: SharedPreferences): Boolean = prefs.getBoolean(SHARE_KEY, false)
+    /** What a switch the page never set reads as (the build's choice; tests set it). */
+    @Volatile internal var defaultOn: Boolean = BuildConfig.DISCORD_DEFAULT_ON
+
+    fun load(prefs: SharedPreferences): Boolean = prefs.getBoolean(SHARE_KEY, defaultOn)
 
     fun save(context: Context, enabled: Boolean) {
         val p = prefs(context)

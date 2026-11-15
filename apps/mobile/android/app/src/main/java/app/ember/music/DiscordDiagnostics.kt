@@ -56,7 +56,7 @@ object DiscordDiagnostics {
     private fun appStarted(context: Context) {
         val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
         val prefs = DiscordSharing.prefs(context)
-        val stored = if (prefs.contains(DiscordSharing.SHARE_KEY)) DiscordSharing.load(prefs).toString() else "never set (reads as off)"
+        val stored = if (prefs.contains(DiscordSharing.SHARE_KEY)) DiscordSharing.load(prefs).toString() else "never set (reads as ${if (DiscordSharing.load(prefs)) "on" else "off"})"
         add("app started: ${context.packageName} $version, api ${Build.VERSION.SDK_INT}, ${Build.MANUFACTURER} ${Build.MODEL}")
         add("stored discord switch at startup: $stored")
     }

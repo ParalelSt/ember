@@ -123,7 +123,7 @@ step of the card (the switch, the player, the SDK's start, its own log, each
 update's answer) through the player log:
 
 ```bash
-EMBER_DISCORD_DIAG=1 DISCORD_APP_ID=your-app-id npm run test-apk -- feat/x --server https://ember.example.ts.net --version 0.4.34-presence1 --code 100 --out /path/EmberTest.apk
+EMBER_DISCORD_DIAG=1 EMBER_DISCORD_DEFAULT_ON=1 DISCORD_APP_ID=your-app-id npm run test-apk -- feat/x --server https://ember.example.ts.net --version 0.4.34-presence1 --code 100 --out /path/EmberTest.apk
 ```
 
 The lines reach the server the app points at (`POST /api/native-log`) as event
@@ -132,6 +132,11 @@ them on Admin, Car and Android Auto (`/api/admin/native-log`), and the host has
 them in `logs/errors-YYYY-MM-DD.jsonl`. Without the flag nothing is traced and
 the SDK's own log is not even asked for. Over adb the same lines are under
 the logcat tag `EmberDiscordDiag`.
+
+A server whose page predates `lib/androidDiscord.ts` never sends the switch, so
+the card would stay off. For a test build against such a server add
+`EMBER_DISCORD_DEFAULT_ON=1`: the switch then starts on until a page turns it
+off.
 
 ## Building the macOS app
 

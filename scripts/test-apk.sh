@@ -14,7 +14,8 @@
 #                                     # a file, no LAN; --code above any Ember
 #                                     # Test already on the phone
 #
-# EMBER_DISCORD_DIAG=1 and DISCORD_APP_ID in the environment reach the build
+# EMBER_DISCORD_DIAG=1, EMBER_DISCORD_DEFAULT_ON=1 and DISCORD_APP_ID in the
+# environment reach the build
 # (docs/APPS.md, "Discord status (Android app)").
 #
 # The build happens in its own worktree (spotify-clone-wt/test-apk), so the
@@ -37,7 +38,7 @@ while [ $# -gt 0 ]; do
     --version) VERSION="$2"; shift 2 ;;
     --code) CODE="$2"; shift 2 ;;
     --out) OUT_FILE="$2"; shift 2 ;;
-    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
     *) REF="$1"; shift ;;
   esac
 done

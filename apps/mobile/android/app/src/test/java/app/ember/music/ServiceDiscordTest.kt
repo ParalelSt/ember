@@ -7,6 +7,7 @@ import androidx.media3.session.MediaSession
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -130,6 +131,24 @@ class ServiceDiscordTest {
         idle()
         assertTrue(engine.updates.isEmpty())
         assertEquals(0, engine.clears)
+    }
+
+    @Test fun `a test build that starts on publishes before any page has spoken, and the page's no still wins`() {
+        DiscordSharing.defaultOn = true
+        try {
+            val player = start().onGetSession(own).player
+            player.setMediaItems(listOf(song("a", "First")))
+            player.prepare()
+            player.play()
+            idle()
+            assertEquals("First", engine.updates.last().details)
+            DiscordSharing.save(app, false)
+            idle()
+            assertTrue(engine.clears > 0)
+            assertFalse(DiscordSharing.load(DiscordSharing.prefs(app)))
+        } finally {
+            DiscordSharing.defaultOn = false
+        }
     }
 
     @Test fun `the page flipping the switch clears the card at once, and flipping it back restores it`() {

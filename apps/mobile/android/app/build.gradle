@@ -17,7 +17,10 @@ if (!discordAppId.matches('[0-9]*')) throw new GradleException('DISCORD_APP_ID m
 // A test build's trace of the card's every step, through the player log as
 // "discord.diag" (DiscordDiagnostics.kt). Off unless asked for.
 def discordDiag = (System.getenv('EMBER_DISCORD_DIAG') ?: findProperty('EMBER_DISCORD_DIAG') ?: '').toString().trim() == '1'
-logger.lifecycle("Discord presence: ${hasDiscordSdk ? 'SDK' : 'no SDK, compiled out'}, ${discordAppId ? 'app id set' : 'no app id'}${discordDiag ? ', diagnostics on' : ''}")
+// A test build against a server whose page predates the switch's plugin
+// (lib/androidDiscord.ts): the card is on until a page says otherwise.
+def discordDefaultOn = (System.getenv('EMBER_DISCORD_DEFAULT_ON') ?: findProperty('EMBER_DISCORD_DEFAULT_ON') ?: '').toString().trim() == '1'
+logger.lifecycle("Discord presence: ${hasDiscordSdk ? 'SDK' : 'no SDK, compiled out'}, ${discordAppId ? 'app id set' : 'no app id'}${discordDiag ? ', diagnostics on' : ''}${discordDefaultOn ? ', on by default' : ''}")
 
 android {
     namespace "app.ember.music"
@@ -61,6 +64,7 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField 'String', 'DISCORD_APP_ID', "\"${discordAppId}\""
         buildConfigField 'boolean', 'DISCORD_DIAG', discordDiag ? 'true' : 'false'
+        buildConfigField 'boolean', 'DISCORD_DEFAULT_ON', discordDefaultOn ? 'true' : 'false'
         if (hasDiscordSdk) {
             externalNativeBuild {
                 cmake { arguments '-DANDROID_STL=c++_static' }
