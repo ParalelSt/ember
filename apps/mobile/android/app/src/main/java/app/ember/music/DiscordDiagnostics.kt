@@ -2,6 +2,7 @@ package app.ember.music
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -19,6 +20,7 @@ import java.util.concurrent.TimeUnit
  *  playback, and sends from one background thread. */
 object DiscordDiagnostics {
     const val EVENT = "discord.diag"
+    const val TAG = "EmberDiscordDiag"
     private const val QUEUE_MAX = 300
     private const val TICK_MS = 8_000L
     private const val PER_TICK = 25
@@ -110,7 +112,9 @@ object DiscordDiagnostics {
     fun add(message: String) {
         if (!enabled) return
         runCatching {
-            synchronized(this) { queue.add("[$run#${++seq}] $message") }
+            val line = synchronized(this) { "[$run#${++seq}] $message".also { queue.add(it) } }
+            // Also for adb, on the emulator or a phone on a cable.
+            Log.i(TAG, line)
         }
     }
 

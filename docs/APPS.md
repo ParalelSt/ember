@@ -130,7 +130,8 @@ The lines reach the server the app points at (`POST /api/native-log`) as event
 `discord.diag`, category `native`, once the app is signed in: an admin sees
 them on Admin, Car and Android Auto (`/api/admin/native-log`), and the host has
 them in `logs/errors-YYYY-MM-DD.jsonl`. Without the flag nothing is traced and
-the SDK's own log is not even asked for.
+the SDK's own log is not even asked for. Over adb the same lines are under
+the logcat tag `EmberDiscordDiag`.
 
 ## Building the macOS app
 
