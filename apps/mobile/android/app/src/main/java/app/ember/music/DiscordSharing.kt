@@ -29,7 +29,11 @@ object DiscordSharing {
     fun save(context: Context, enabled: Boolean) {
         val p = prefs(context)
         // The page repeats itself on every load: no change, nothing to do.
-        if (p.contains(SHARE_KEY) && load(p) == enabled) return
+        if (p.contains(SHARE_KEY) && load(p) == enabled) {
+            DiscordDiagnostics.add("setSharing($enabled): unchanged, already stored")
+            return
+        }
+        DiscordDiagnostics.add("setSharing($enabled): saved (was ${if (p.contains(SHARE_KEY)) load(p).toString() else "never set"})")
         p.edit().putBoolean(SHARE_KEY, enabled).commit()
         notifyListeners()
     }
@@ -42,6 +46,8 @@ object DiscordSharing {
     @JvmStatic
     fun activityCreated(created: Activity) {
         activity = WeakReference(created)
+        DiscordDiagnostics.init(created)
+        DiscordDiagnostics.add("activity created: ${created.javaClass.simpleName}")
         runCatching { DiscordEngines.activityCreated(created) }
         notifyListeners()
     }

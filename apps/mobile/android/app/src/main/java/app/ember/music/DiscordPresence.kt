@@ -61,24 +61,41 @@ class DiscordPresence(
     /** Something changed: the song, playing or not, the playhead, the switch. */
     fun refresh() {
         if (released || off) return
-        val card = if (sharing()) current() else null
+        val on = sharing()
+        val card = if (on) current() else null
+        traceChanged(
+            when {
+                !on -> "refresh: nothing sent, the Discord switch is off"
+                card == null -> "refresh: nothing to show (no track or paused), card cleared"
+                else -> "refresh: sharing on, track ${card.key}"
+            },
+        )
         if (card != null) {
             when (val status = engine.status()) {
                 is DiscordStatus.Off -> {
+                    traceChanged("status Off: ${status.why}")
                     off = true
                     say("off", "info", "discord: presence off: ${status.why}")
                     return
                 }
                 is DiscordStatus.Waiting -> {
+                    traceChanged("status Waiting: ${status.why}")
                     say("waiting", "info", "discord: ${status.why}")
                     return
                 }
-                DiscordStatus.Ready -> {}
+                DiscordStatus.Ready -> traceChanged("status Ready")
             }
         } else {
             cancelRetry()
         }
         act(throttle.offer(card, now()))
+    }
+
+    private var lastTrace: String? = null
+    private fun traceChanged(text: String) {
+        if (text == lastTrace) return
+        lastTrace = text
+        trace(text)
     }
 
     /** Something outside may have changed what Discord can do (the app opened:
@@ -144,7 +161,7 @@ class DiscordPresence(
         awaited = 0
         answerTimer?.invoke(); answerTimer = null
         if (ok) {
-            trace("sent")
+            trace("update result: ok")
             backoff.reset()
             if (said != null) {
                 said = null
@@ -209,5 +226,6 @@ internal fun discordCardOf(player: Player, baseUrl: String, nowMs: Long): Presen
  *  bug report. */
 internal fun discordLog(level: String, message: String) {
     if (level == "warn") Log.w(NativeDiscordEngine.TAG, message) else Log.i(NativeDiscordEngine.TAG, message)
+    DiscordDiagnostics.add(message)
     NativeLog.emit(level, "service", message)
 }

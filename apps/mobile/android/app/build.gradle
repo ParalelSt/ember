@@ -14,7 +14,10 @@ def hasDiscordSdk = discordAar.isFile()
 // Like the desktop build: the id is baked in at build time; none, no card.
 def discordAppId = (System.getenv('DISCORD_APP_ID') ?: findProperty('DISCORD_APP_ID') ?: '').toString().trim()
 if (!discordAppId.matches('[0-9]*')) throw new GradleException('DISCORD_APP_ID must be digits')
-logger.lifecycle("Discord presence: ${hasDiscordSdk ? 'SDK' : 'no SDK, compiled out'}, ${discordAppId ? 'app id set' : 'no app id'}")
+// A test build's trace of the card's every step, through the player log as
+// "discord.diag" (DiscordDiagnostics.kt). Off unless asked for.
+def discordDiag = (System.getenv('EMBER_DISCORD_DIAG') ?: findProperty('EMBER_DISCORD_DIAG') ?: '').toString().trim() == '1'
+logger.lifecycle("Discord presence: ${hasDiscordSdk ? 'SDK' : 'no SDK, compiled out'}, ${discordAppId ? 'app id set' : 'no app id'}${discordDiag ? ', diagnostics on' : ''}")
 
 android {
     namespace "app.ember.music"
@@ -57,6 +60,7 @@ android {
         versionName "0.4.34"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField 'String', 'DISCORD_APP_ID', "\"${discordAppId}\""
+        buildConfigField 'boolean', 'DISCORD_DIAG', discordDiag ? 'true' : 'false'
         if (hasDiscordSdk) {
             externalNativeBuild {
                 cmake { arguments '-DANDROID_STL=c++_static' }

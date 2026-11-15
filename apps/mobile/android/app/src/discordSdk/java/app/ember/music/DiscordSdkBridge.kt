@@ -26,7 +26,8 @@ object DiscordSdkBridge {
 
     fun attach(activity: Activity) = DiscordSocialSdkInit.setEngineActivity(activity)
 
-    fun create(appId: Long): Boolean = nativeCreate(appId)
+    /** [verbose]: the SDK's own log comes back through [pump] as "L\t" lines. */
+    fun create(appId: Long, verbose: Boolean): Boolean = nativeCreate(appId, verbose)
 
     fun update(token: Long, details: ByteArray, state: ByteArray?, largeText: ByteArray, largeImage: ByteArray?, startMs: Long, endMs: Long) =
         nativeUpdate(token, details, state, largeText, largeImage, startMs, endMs)
@@ -37,7 +38,7 @@ object DiscordSdkBridge {
      *  (DiscordRules.parseResult). */
     fun pump(): Array<String>? = nativePump()
 
-    private external fun nativeCreate(appId: Long): Boolean
+    private external fun nativeCreate(appId: Long, verbose: Boolean): Boolean
     private external fun nativeUpdate(token: Long, details: ByteArray, state: ByteArray?, largeText: ByteArray, largeImage: ByteArray?, startMs: Long, endMs: Long)
     private external fun nativeClear()
     private external fun nativePump(): Array<String>?

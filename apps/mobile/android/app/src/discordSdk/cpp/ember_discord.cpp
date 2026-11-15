@@ -43,9 +43,18 @@ std::string ascii(const std::string& text) {
 }  // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_ember_music_DiscordSdkBridge_nativeCreate(JNIEnv*, jobject, jlong app_id) {
+Java_app_ember_music_DiscordSdkBridge_nativeCreate(JNIEnv*, jobject, jlong app_id, jboolean verbose) {
     if (client) return JNI_TRUE;
     client = std::make_unique<discordpp::Client>();
+    // A diagnostics build only (DiscordDiagnostics): the SDK's own log, kept
+    // for the pump like the update answers ("L" lines).
+    if (verbose) client->AddLogCallback(
+        [](std::string message, discordpp::LoggingSeverity severity) {
+            std::lock_guard<std::mutex> hold(answers_lock);
+            if (answers.size() >= 200) return;
+            answers.push_back("L\t[" + std::to_string(static_cast<int>(severity)) + "] " + ascii(message));
+        },
+        discordpp::LoggingSeverity::Info);
     client->SetApplicationId(static_cast<uint64_t>(app_id));
     return JNI_TRUE;
 }

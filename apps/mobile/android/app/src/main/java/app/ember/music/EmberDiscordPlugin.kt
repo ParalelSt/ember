@@ -12,8 +12,13 @@ import com.getcapacitor.annotation.CapacitorPlugin
  *  as stored. */
 @CapacitorPlugin(name = "EmberDiscord")
 class EmberDiscordPlugin : Plugin() {
+    override fun load() {
+        DiscordDiagnostics.add("EmberDiscord plugin loaded")
+    }
+
     @PluginMethod
     fun setSharing(call: PluginCall) {
+        DiscordDiagnostics.add("setSharing called by the page, enabled=${call.getBoolean("enabled")}")
         val enabled = call.getBoolean("enabled") ?: return call.reject("enabled is required", "bad-args")
         runCatching { DiscordSharing.save(context, enabled) }
             .onSuccess { call.resolve(JSObject().put("enabled", enabled)) }

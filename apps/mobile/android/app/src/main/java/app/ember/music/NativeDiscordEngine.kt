@@ -80,6 +80,9 @@ class NativeDiscordEngine(private val appId: Long?, private val androidSdk: Int)
             }
             latestToken = token
             latestDone = done
+            DiscordDiagnostics.add("engine update dispatched, token $token")
+            // Debug: keep pumping a while so the SDK's answer and log lines arrive.
+            if (DiscordDiagnostics.enabled) settleUntil = SystemClock.uptimeMillis() + SETTLE_MS
             val sent = runCatching {
                 DiscordSdkBridge.update(
                     token,
@@ -93,6 +96,7 @@ class NativeDiscordEngine(private val appId: Long?, private val androidSdk: Int)
             }
             sent.exceptionOrNull()?.let { e ->
                 latestDone = null
+                DiscordDiagnostics.add("update call threw: ${e.message}")
                 main.post { done(false, "update failed: ${e.message}", false) }
             }
             schedulePump()
@@ -102,7 +106,7 @@ class NativeDiscordEngine(private val appId: Long?, private val androidSdk: Int)
     override fun clear() {
         worker.post {
             if (native != Native.READY) return@post
-            runCatching { DiscordSdkBridge.clear() }.onFailure { Log.w(TAG, "clear failed: ${it.message}") }
+            runCatching { DiscordSdkBridge.clear() }.onFailure { Log.w(TAG, "clear failed: ${it.message}"); DiscordDiagnostics.add("clear failed: ${it.message}") }
             settleUntil = SystemClock.uptimeMillis() + SETTLE_MS
             schedulePump()
         }
@@ -111,6 +115,7 @@ class NativeDiscordEngine(private val appId: Long?, private val androidSdk: Int)
     override fun setPumping(on: Boolean) {
         worker.post {
             pumpWanted = on
+            if (!on && DiscordDiagnostics.enabled) settleUntil = SystemClock.uptimeMillis() + SETTLE_MS
             if (on) schedulePump()
         }
     }
@@ -119,6 +124,7 @@ class NativeDiscordEngine(private val appId: Long?, private val androidSdk: Int)
     private fun ensureNative(): Boolean {
         if (native != Native.NOT_STARTED) return native == Native.READY
         val id = appId
+        DiscordDiagnostics.add("engine start: app id ${if (id == null) "none" else "set"}, sdk in build ${DiscordSdkBridge.PRESENT}")
         val reason = when {
             id == null -> "this build has no Discord app id"
             !DiscordSdkBridge.load() -> "the Discord library would not load: ${DiscordSdkBridge.loadError}"
@@ -131,11 +137,12 @@ class NativeDiscordEngine(private val appId: Long?, private val androidSdk: Int)
                     failure = "no activity to hand to the SDK"
                     return false
                 }
-                val created = runCatching { DiscordSdkBridge.create(id) }
+                val created = runCatching { DiscordSdkBridge.create(id, DiscordDiagnostics.enabled) }
                 if (created.getOrDefault(false)) null else "the Discord client would not start: ${created.exceptionOrNull()?.message}"
             }
         }
         native = if (reason == null) Native.READY else Native.FAILED
+        DiscordDiagnostics.add(if (reason == null) "sdk client started" else "sdk start failed: $reason")
         failure = reason.orEmpty()
         return reason == null
     }
@@ -154,8 +161,8 @@ class NativeDiscordEngine(private val appId: Long?, private val androidSdk: Int)
 
     private fun attach(activity: Activity) {
         runCatching { DiscordSdkBridge.attach(activity) }
-            .onSuccess { attached = true }
-            .onFailure { Log.w(TAG, "attach failed: ${it.message}") }
+            .onSuccess { attached = true; DiscordDiagnostics.add("sdk attach ok") }
+            .onFailure { Log.w(TAG, "attach failed: ${it.message}"); DiscordDiagnostics.add("attach failed: ${it.message}") }
     }
 
     private fun schedulePump() {
@@ -168,10 +175,15 @@ class NativeDiscordEngine(private val appId: Long?, private val androidSdk: Int)
         pumpScheduled = false
         if (native != Native.READY) return
         val lines = runCatching { DiscordSdkBridge.pump() }
-            .onFailure { Log.w(TAG, "callbacks failed: ${it.message}") }
+            .onFailure { Log.w(TAG, "callbacks failed: ${it.message}"); DiscordDiagnostics.add("callbacks failed: ${it.message}") }
             .getOrNull()
         lines?.forEach { line ->
+            if (line.startsWith("L\t")) {
+                DiscordDiagnostics.add("sdk: " + line.substring(2))
+                return@forEach
+            }
             val result = DiscordRules.parseResult(line) ?: return@forEach
+            DiscordDiagnostics.add("update result code: token ${result.token} ok=${result.ok} text=${result.error}")
             val done = latestDone
             if (result.token == latestToken && done != null) {
                 latestDone = null

@@ -13,7 +13,7 @@ object DiscordSdkBridge {
 
     fun load(): Boolean = false
     fun attach(activity: Activity) {}
-    fun create(appId: Long): Boolean = false
+    fun create(appId: Long, verbose: Boolean): Boolean = false
     fun update(token: Long, details: ByteArray, state: ByteArray?, largeText: ByteArray, largeImage: ByteArray?, startMs: Long, endMs: Long) {}
     fun clear() {}
     fun pump(): Array<String>? = null
