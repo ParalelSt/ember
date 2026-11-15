@@ -1,3 +1,10 @@
+# 0.7.45: Show what you play on Discord (Android) (android 0.4.35)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Run ./update.sh as usual. Nothing new is needed in
+.env.local. New apps: Android 0.4.35 (versionCode 40). Unchanged: iOS 0.4.26,
+Windows 0.4.27, macOS 0.4.27, Linux 0.4.27. Tags: `android-v0.4.35`.
+
 # 0.7.44: Updates on your terms (android 0.4.34, ios 0.4.26, windows, macos, linux 0.4.27)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
