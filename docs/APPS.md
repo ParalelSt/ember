@@ -111,7 +111,9 @@ native code: Gradle compiles `src/discordStub` instead of `src/discordSdk`, and
 the switch does nothing. Without `DISCORD_APP_ID` the card is off too, one line
 in the log. **CI has neither yet**, so a release APK has no card until CI gets a
 private way to fetch the SDK (a private store, not this repo, and not a public
-artifact) and the Android build step gets `DISCORD_APP_ID`.
+artifact) and the Android build step gets `DISCORD_APP_ID`. Until then every
+Android release swaps its APK by hand, see "Android release with the Discord
+SDK (manual swap)" below.
 
 **What it adds.** About 36 MB to the APK with all four CPU types, of which the
 SDK is 33 MB: Android keeps native libraries uncompressed. `RECORD_AUDIO` comes
@@ -137,6 +139,83 @@ A server whose page predates `lib/androidDiscord.ts` never sends the switch, so
 the card would stay off. For a test build against such a server add
 `EMBER_DISCORD_DEFAULT_ON=1`: the switch then starts on until a page turns it
 off.
+
+### Android release with the Discord SDK (manual swap)
+
+CI builds the `android-vX.Y.Z` release without the SDK, so the APK it publishes
+has no card. Until CI can fetch the SDK, rebuild that release on the Mac that
+has `~/.ember-tools/discord-sdk` and the release key `~/.ember-signing`, and
+replace the one asset. First done for 0.4.35 (2026-11-15).
+
+What the phones depend on: one asset named `Ember-vX.Y.Z-android.apk`
+(`lib/androidUpdate.ts` matches that name). The feed reads its size, GitHub's
+`sha256:` digest and its asset id from the GitHub API; there is no checksum or
+`latest.json` file to update. The replacement must be the same package
+(`app.ember.music`), the same versionName/versionCode as the tag, and signed
+with the Ember key (certificate SHA-256 `86cd2eec…fdcf490`), or phones cannot
+install it as an update.
+
+1. **Wait for CI**, then keep its APK as a backup:
+
+   ```bash
+   gh run list -R ParalelSt/ember -L 5            # the android-vX.Y.Z run
+   gh run watch <run-id> -R ParalelSt/ember --exit-status
+   gh release download android-vX.Y.Z -R ParalelSt/ember -p '*.apk' -D ~/ember-ci-apk-backup/X.Y.Z
+   ```
+
+2. **Build** in a worktree of the release commit (its `node_modules` are links;
+   never `npm install` there). Same steps as CI, plus the SDK and app id:
+
+   ```bash
+   cd apps/mobile
+   export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+   export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+   EMBER_APP_URL="$(gh variable get EMBER_APP_URL -R ParalelSt/ember)" \
+     node ../../node_modules/@capacitor/cli/bin/capacitor sync android
+   cd android
+   # The release key, the way CI writes it (gitignored; the password never prints).
+   ( umask 077; P="$(cat ~/.ember-signing/keystore-password.txt)"
+     printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=ember\nkeyPassword=%s\n' \
+       "$HOME/.ember-signing/ember-release.keystore" "$P" "$P" > keystore.properties )
+   unset EMBER_DISCORD_DIAG EMBER_DISCORD_DEFAULT_ON
+   DISCORD_APP_ID="$(gh variable get DISCORD_APP_ID -R ParalelSt/ember)" ./gradlew clean assembleRelease
+   rm keystore.properties
+   cp app/build/outputs/apk/release/app-release.apk ~/ember-local-apk/Ember-vX.Y.Z-android.apk
+   ```
+
+   The Gradle log must say `Discord presence: SDK, app id set` and nothing
+   about diagnostics or "on by default".
+
+3. **Check it** against the CI APK (`BT=$ANDROID_HOME/build-tools/34.0.0`):
+
+   ```bash
+   $BT/apksigner verify --print-certs <apk>   # same signer SHA-256 as the CI APK
+   $BT/aapt2 dump badging <apk> | head -1     # app.ember.music, versionCode, versionName
+   unzip -l <apk> | grep 'lib/.*discord'      # libdiscord_partner_sdk.so + libember_discord.so, 4 ABIs
+   ```
+
+   `app/build/generated/source/buildConfig/release/app/ember/music/BuildConfig.java`
+   must have `DISCORD_DIAG = false` and `DISCORD_DEFAULT_ON = false`. Apart from
+   `lib/`, the file list and `aapt2 dump permissions` match the CI APK. It is
+   about 36 MB bigger (the SDK).
+
+4. **Swap** it (same file name, so the asset keeps its name):
+
+   ```bash
+   gh release upload android-vX.Y.Z ~/ember-local-apk/Ember-vX.Y.Z-android.apk --clobber -R ParalelSt/ember
+   ```
+
+5. **Verify**: download it back and compare `shasum -a 256` with the local file;
+   `gh api repos/ParalelSt/ember/releases/tags/android-vX.Y.Z -q '.assets[]|.name,.size,.digest'`
+   shows the new size and digest. The asset gets a new id, which the host's
+   feed picks up within its 5 minute release cache:
+   `curl "https://ember.tailf4de41.ts.net/api/android/update?version=<previous>"`
+   must offer X.Y.Z with the new `size`, `sha256` and `/api/android/apk/<new id>`.
+   On the emulator, `adb install -r` over the previous release must succeed
+   (same key). With the switch on and a song playing, logcat shows
+   `nativeloader: Load ...libdiscord_partner_sdk.so ... ok` and `EmberDiscord`
+   lines; without the Discord app installed it ends at "cannot reach Discord",
+   which is expected.
 
 ## Building the macOS app
 
