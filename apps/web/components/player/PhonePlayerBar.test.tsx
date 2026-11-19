@@ -34,6 +34,7 @@ function setup() {
     onToggle: vi.fn(),
     onSeek: vi.fn(),
     onNext: vi.fn(),
+    onPrev: vi.fn(),
     onOpen: vi.fn(),
   };
   const view = render(
@@ -137,7 +138,7 @@ describe('PhonePlayerBar', () => {
 
   it('shows Play while paused', () => {
     render(
-      <PhonePlayerBar track={TRACK} playing={false} duration={264} onToggle={vi.fn()} onSeek={vi.fn()} onNext={vi.fn()} onOpen={vi.fn()} />,
+      <PhonePlayerBar track={TRACK} playing={false} duration={264} onToggle={vi.fn()} onSeek={vi.fn()} onNext={vi.fn()} onPrev={vi.fn()} onOpen={vi.fn()} />,
     );
     const play = screen.getByRole('button', { name: 'Play' });
     expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
@@ -238,5 +239,72 @@ describe('PhonePlayerBar offline', () => {
     expect(screen.getByText(TRACK.artist)).toBeInTheDocument();
     expect(screen.queryByRole('status')).toBeNull();
     useAutoCacheStore.setState({ online: true });
+  });
+});
+
+describe('PhonePlayerBar swipe to skip', () => {
+  const swipe = (el: HTMLElement, dx: number, dy = 0) => {
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: 200, clientY: 100 });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: 200 + dx, clientY: 100 + dy });
+    fireEvent.pointerUp(el, { pointerId: 1, clientX: 200 + dx, clientY: 100 + dy });
+  };
+
+  it('swipe left goes to the next song, right to the previous', () => {
+    const { onNext, onPrev } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    swipe(row, -90);
+    expect(onNext).toHaveBeenCalledTimes(1);
+    expect(onPrev).not.toHaveBeenCalled();
+    swipe(row, 90);
+    expect(onPrev).toHaveBeenCalledTimes(1);
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('a short or mostly vertical move does neither', () => {
+    const { onNext, onPrev } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    swipe(row, -20);
+    swipe(row, 60, 80);
+    swipe(row, 0, 150);
+    expect(onNext).not.toHaveBeenCalled();
+    expect(onPrev).not.toHaveBeenCalled();
+  });
+
+  it('a tap still opens Now Playing; a swipe does not', () => {
+    const { onOpen } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    fireEvent.click(screen.getByTestId('phone-player-title-row'));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    swipe(screen.getByTestId('phone-player-title-row'), -90);
+    fireEvent.click(screen.getByTestId('phone-player-title-row'));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    fireEvent.click(row);
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it('the bar follows the finger, then springs back', () => {
+    setup();
+    const row = screen.getByTestId('phone-player-row');
+    fireEvent.pointerDown(row, { pointerId: 1, clientX: 200, clientY: 100 });
+    fireEvent.pointerMove(row, { pointerId: 1, clientX: 150, clientY: 100 });
+    expect(row.style.transform).toBe('translateX(-50px)');
+    fireEvent.pointerUp(row, { pointerId: 1, clientX: 150, clientY: 100 });
+    expect(row.style.transform).toBe('');
+  });
+
+  it('does not follow under prefers-reduced-motion, but still skips', () => {
+    const orig = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {} })) as never;
+    try {
+      const { onNext } = setup();
+      const row = screen.getByTestId('phone-player-row');
+      fireEvent.pointerDown(row, { pointerId: 1, clientX: 200, clientY: 100 });
+      fireEvent.pointerMove(row, { pointerId: 1, clientX: 150, clientY: 100 });
+      expect(row.style.transform).toBe('');
+      fireEvent.pointerUp(row, { pointerId: 1, clientX: 100, clientY: 100 });
+      expect(onNext).toHaveBeenCalledTimes(1);
+    } finally {
+      window.matchMedia = orig;
+    }
   });
 });

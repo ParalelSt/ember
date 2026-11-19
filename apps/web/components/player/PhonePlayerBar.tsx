@@ -4,6 +4,7 @@ import type { MouseEvent } from 'react';
 import { MarqueeText } from '@/components/player/MarqueeText';
 import { PlayheadSeekBar } from '@/components/player/SeekBar';
 import { UnplayableMessage, useUnplayableMessage } from '@/components/player/UnplayableMessage';
+import { useSwipeSkip } from '@/hooks/player/useSwipeSkip';
 import { Artwork } from '@/components/primitives/Artwork';
 import { Button } from '@/components/ui/button';
 import { NextIcon, PauseIcon, PlayIcon } from '@/components/icons';
@@ -54,6 +55,8 @@ export interface PhonePlayerBarProps {
   onToggle: () => void;
   onSeek: (sec: number) => void;
   onNext: () => void;
+  /** A swipe right on the bar. */
+  onPrev: () => void;
   /** Opens the full-screen view: a tap anywhere on the row except the two
    *  buttons. Previous and the queue live there. */
   onOpen: () => void;
@@ -83,6 +86,7 @@ export function PhonePlayerBar({
   onToggle,
   onSeek,
   onNext,
+  onPrev,
   onOpen,
   onRetry,
   onOpenQueue,
@@ -93,6 +97,9 @@ export function PhonePlayerBar({
   // A song that could not play: the bar says so in place of the song for a
   // few seconds (or until the listener acts, when the music stopped).
   const unplayable = useUnplayableMessage();
+  // Swipe the bar left for the next song, right for the one before; the bar
+  // follows the finger and springs back.
+  const swipe = useSwipeSkip({ onNext, onPrev, enabled: true, follow: true });
 
   // The whole row opens the full-screen view, except the buttons: pressing
   // play must only play, and next only skip.
@@ -106,6 +113,7 @@ export function PhonePlayerBar({
       <div
         data-testid="phone-player-row"
         onClick={openUnlessButton}
+        {...swipe}
         className="flex cursor-pointer items-center gap-block pl-block pr-block pt-row pb-cluster"
       >
         {unplayable ? (

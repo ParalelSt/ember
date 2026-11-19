@@ -112,7 +112,7 @@ function renderOverlay(
       <SearchOverlayContainer />
       {withPlayer && (
         <PhonePlayerBar track={makeTrack({ title: 'Currently playing' })} playing duration={191}
-          onToggle={playback.toggle} onNext={playback.next} onOpen={playback.open} onSeek={playback.seek} />
+          onToggle={playback.toggle} onNext={playback.next} onPrev={vi.fn()} onOpen={playback.open} onSeek={playback.seek} />
       )}
     </QueryClientProvider>,
   );

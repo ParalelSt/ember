@@ -21,7 +21,7 @@ const n = (title: string, over: Partial<UnplayableNotice> = {}): UnplayableNotic
 });
 
 function renderBar() {
-  const h = { onToggle: vi.fn(), onSeek: vi.fn(), onNext: vi.fn(), onOpen: vi.fn(), onRetry: vi.fn(), onOpenQueue: vi.fn() };
+  const h = { onToggle: vi.fn(), onSeek: vi.fn(), onNext: vi.fn(), onPrev: vi.fn(), onOpen: vi.fn(), onRetry: vi.fn(), onOpenQueue: vi.fn() };
   render(
     <>
       <UnplayableAnnouncer />

@@ -109,6 +109,7 @@ export function PlayerBar() {
           onToggle={toggle}
           onSeek={seek}
           onNext={next}
+          onPrev={prev}
           onOpen={() => openNowPlaying(true)}
           onRetry={retry}
           onOpenQueue={() => setQueueOpen(true)}
