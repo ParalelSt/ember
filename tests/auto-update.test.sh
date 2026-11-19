@@ -130,6 +130,21 @@ kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null; echo "$HOLDER" >"$HOST/l
 run_auto
 check "dead owner's lock: update run" ran
 
+# 6b a run killed after its pull (or the machine went down mid-update): HEAD
+# is already at origin/main, Ember may be stopped, and only the lock it left
+# says so. Run update.sh again rather than "nothing new".
+new_world; push_new; git -C "$HOST" pull -q --ff-only origin main
+sleep 0 & DEAD=$!; wait "$DEAD"
+mkdir -p "$HOST/logs/.update.lock"; echo "$DEAD" >"$HOST/logs/.update.lock/pid"
+run_auto
+check "killed after the pull: update run again" ran
+check "killed after the pull: exit 0" test "$RC" = 0
+check "killed after the pull: says the last update did not finish" out_has "did not finish"
+check "killed after the pull: nothing reported" posts_are 0
+# update.sh takes the lock over and removes it when it is done.
+rm -rf "$HOST/logs/.update.lock" "$RAN"; run_auto
+check "and then, up to date with no lock: quiet again" bash -c '! [ -s "'"$RAN"'" ] && [ "'"$RC"'" = 0 ] && [ -z "'"$OUT"'" ]'
+
 # 7 origin is SSH and fails: public URL tried, refused with the fix named
 new_world; push_new; git -C "$HOST" remote set-url origin "ssh://git@127.0.0.1:1/x/ember.git"; run_auto
 check "ssh origin: update not run" bash -c '! [ -s "'"$RAN"'" ]'
@@ -171,6 +186,13 @@ check "no systemd or tmux: says why" out_has "could not be restarted"
 printf '#!/bin/sh\nexit 0\n' >"$BIN/tmux"; chmod +x "$BIN/tmux"
 OUT="$(env -u EMBER_AUTO_UPDATE_SKIP_RELAUNCH_CHECK PATH="$BIN" "$(command -v bash)" "$HOST/auto-update.sh" 2>&1)"; RC=$?
 check "tmux present: update run" ran
+# ...and with no tmux but an enabled ember.service that is stopped (an
+# update died half way and left it so): systemd brings Ember back.
+new_world; push_new
+rm -f "$BIN/tmux"
+printf '#!/bin/sh\ncase "$2" in is-enabled) exit 0 ;; esac\nexit 1\n' >"$BIN/systemctl"; chmod +x "$BIN/systemctl"
+OUT="$(env -u EMBER_AUTO_UPDATE_SKIP_RELAUNCH_CHECK PATH="$BIN" "$(command -v bash)" "$HOST/auto-update.sh" 2>&1)"; RC=$?
+check "enabled but stopped unit, no tmux: update run" ran
 
 # 10b a manual ./update.sh refuses while another update holds the lock
 if command -v lsof >/dev/null 2>&1; then
