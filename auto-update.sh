@@ -34,7 +34,6 @@ STATE="$ROOT/logs/.auto-update-reported"
 NPM_FILES="package-lock.json apps/web/package-lock.json"
 
 mkdir -p "$ROOT/logs"
-: >"$LOG"
 say() { echo "$*" | tee -a "$LOG"; }
 
 # Another update (this timer's earlier run, or ./update.sh by hand) running:
@@ -48,6 +47,8 @@ if [ -d "$LOCK" ]; then
     exit 0
   fi
 fi
+# Only now: the running update above is still writing its output to this log.
+: >"$LOG"
 
 # refuse REASON COMMIT: say why (already in the log), tell Discord once, exit 1.
 refuse() {

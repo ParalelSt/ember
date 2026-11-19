@@ -120,8 +120,10 @@ check "local commit: refused and reported" bash -c '[ "'"$RC"'" = 1 ] && [ "$(wc
 # 6 lock held by a live process: skipped; a dead owner's lock does not block
 new_world; push_new
 mkdir -p "$HOST/logs/.update.lock"; sleep 60 & HOLDER=$!; echo "$HOLDER" >"$HOST/logs/.update.lock/pid"
+echo "the running update's output" >"$HOST/logs/auto-update.log"
 run_auto
 check "lock held: update not run" bash -c '! [ -s "'"$RAN"'" ]'
+check "lock held: the running update's log is left alone" grep -q "the running update's output" "$HOST/logs/auto-update.log"
 check "lock held: exit 0, says skipping" bash -c '[ "'"$RC"'" = 0 ]'
 check "lock held: skip message" out_has "skipping"
 kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null; echo "$HOLDER" >"$HOST/logs/.update.lock/pid"
