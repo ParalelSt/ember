@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useLikeToggle } from './useLikeToggle';
+import { useLikeRule, useLikeToggle } from './useLikeToggle';
 import type { Track } from '@/types/track';
 
 const auth = vi.hoisted(() => ({ user: { id: 'u1' } as { id: string } | null }));
@@ -36,7 +36,7 @@ function makeTrack(over: Partial<Track> = {}): Track {
 }
 
 const likedTrack = makeTrack();
-// Same song, different upload: a variant that must count as liked.
+// Same title and artist, different upload: a look-alike that is NOT liked.
 const variant = makeTrack({
   id: 'youtube:b2',
   sourceId: 'b2',
@@ -61,20 +61,26 @@ beforeEach(() => {
 });
 
 describe('useLikeToggle', () => {
-  it('counts a variant of a liked song as liked', async () => {
+  it('does not count a look-alike variant as liked', async () => {
     const { result } = setup(variant);
-    await waitFor(() => expect(result.current.liked).toBe(true));
+    await waitFor(() => expect(api.listLikes).toHaveBeenCalled());
+    expect(result.current.liked).toBe(false);
   });
 
-  it('unlikes the existing entry when a variant is toggled', async () => {
-    const { result } = setup(variant);
+  it('counts the exact liked id as liked and unlikes exactly it', async () => {
+    const { result } = setup(likedTrack);
     await waitFor(() => expect(result.current.liked).toBe(true));
-
     await act(async () => { result.current.toggle(); });
-    // The liked entry is the one removed, not the variant on screen, so a
-    // song never ends up liked twice.
     await waitFor(() => expect(api.unlike).toHaveBeenCalledWith(likedTrack.id));
     expect(api.like).not.toHaveBeenCalled();
+  });
+
+  it('likes a look-alike variant as its own track', async () => {
+    const { result } = setup(variant);
+    await waitFor(() => expect(api.listLikes).toHaveBeenCalled());
+    await act(async () => { result.current.toggle(); });
+    await waitFor(() => expect(api.like).toHaveBeenCalledWith(variant));
+    expect(api.unlike).not.toHaveBeenCalled();
   });
 
   it('likes a track with no liked variant', async () => {
@@ -104,6 +110,44 @@ describe('useLikeToggle', () => {
     await act(async () => { result.current.toggle(); });
     expect(toast.message).toHaveBeenCalledWith('Sign in to like tracks', expect.anything());
     expect(api.like).not.toHaveBeenCalled();
+    expect(api.unlike).not.toHaveBeenCalled();
+  });
+});
+
+
+function tr(id: string, title: string): Track {
+  return makeTrack({ id, sourceId: id.split(':').pop()!, title, artist: 'Artist' });
+}
+const slowed = tr('youtube:slow', 'maldito movimiento (Slowed)');
+const superSlowed = tr('youtube:super', 'maldito movimiento (Super Slowed)');
+const plain = tr('youtube:plain', 'Song');
+const official = tr('youtube:vid', 'Song (Official Video)');
+
+describe('the like rule is exact track id only', () => {
+  beforeEach(() => { api.listLikes.mockResolvedValue({ tracks: [slowed, plain] }); });
+
+  it('lights the heart for the exact liked id', async () => {
+    const { result } = renderHook(() => useLikeToggle(slowed), { wrapper });
+    await waitFor(() => expect(result.current.liked).toBe(true));
+  });
+
+  it('does not light "(Super Slowed)" when "(Slowed)" is liked', async () => {
+    const { result } = renderHook(() => ({ a: useLikeToggle(slowed), b: useLikeToggle(superSlowed) }), { wrapper });
+    await waitFor(() => expect(result.current.a.liked).toBe(true));
+    expect(result.current.b.liked).toBe(false);
+  });
+
+  it('does not light "Song (Official Video)" when "Song" is liked', async () => {
+    const { result } = renderHook(() => ({ a: useLikeToggle(plain), b: useLikeToggle(official) }), { wrapper });
+    await waitFor(() => expect(result.current.a.liked).toBe(true));
+    expect(result.current.b.liked).toBe(false);
+  });
+
+  it('toggling an unliked look-alike adds that track and removes nothing', async () => {
+    const { result } = renderHook(() => useLikeRule(), { wrapper });
+    await waitFor(() => expect(result.current.likedIds.size).toBe(2));
+    await act(async () => { result.current.toggle(superSlowed); });
+    await waitFor(() => expect(api.like).toHaveBeenCalledWith(superSlowed));
     expect(api.unlike).not.toHaveBeenCalled();
   });
 });

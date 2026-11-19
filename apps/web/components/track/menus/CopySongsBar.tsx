@@ -82,7 +82,7 @@ export function CopySongsBar({ source, selecting, picked, onClear, onDone }: Cop
     playlists.map((p) => p.id),
     pickerOpen,
   );
-  const likedPlan = planCopy(picked, liked);
+  const likedPlan = planCopy(picked, liked, true);
   const count = picked.length;
 
   if (!selecting && !result) return null;
@@ -362,8 +362,9 @@ function DestinationList({
 
 /** "2 already there, 3 to add", or "All 5 already there". */
 function counts(picked: Track[], destination: Track[], word: 'there' | 'liked'): { note: string; all: boolean } {
-  const already = alreadyCount(picked, destination);
-  const toAdd = planCopy(picked, destination).add.length;
+  const exact = word === 'liked';
+  const already = alreadyCount(picked, destination, exact);
+  const toAdd = planCopy(picked, destination, exact).add.length;
   if (picked.length > 0 && toAdd === 0) {
     return { note: already === 1 ? `Already ${word}` : `All ${already} already ${word}`, all: true };
   }

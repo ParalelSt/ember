@@ -7,7 +7,7 @@ import type { TrackActions } from '@/components/track/TrackList';
 import { Artwork } from '@/components/primitives/Artwork';
 import { EmptyState } from '@/components/page/EmptyState';
 import { ArtistIcon } from '@/components/icons';
-import { songKey } from '@/lib/songKey';
+import { canonicalId } from '@/lib/trackIdentity';
 import { songPageHref } from '@/lib/songPage';
 import type { SearchArtist } from '@/lib/search/types';
 import type { SearchView } from '@/lib/search/view';
@@ -136,7 +136,7 @@ export function SearchResults({
               density="list"
               active={currentId === t.id}
               playing={isPlaying}
-              liked={onLike ? likedIds.has(t.id) || likedIds.has(songKey(t)) : undefined}
+              liked={onLike ? likedIds.has(canonicalId(t.id)) : undefined}
               artworkSrc={artworkSrcFor?.(t) ?? undefined}
               onPlay={() => onPlay(t, view.tracks, context)}
               onToggle={onToggle}

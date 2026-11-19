@@ -59,6 +59,7 @@ const pl = (id: string, name: string): Playlist => ({ id, name, created_at: '', 
 
 beforeEach(() => {
   desktop = true;
+  // The Official Video upload has another id, so it is not an exact like of Harbor Lights.
   liked = [SLOW, t('youtube:harborv', 'Harbor Lights (Official Video)', 'Coastline - Topic')];
   playlists = [pl('src', 'Road trip'), pl('gym', 'Gym'), pl('dad', 'For Dad')];
   lists = new Map([
@@ -109,7 +110,7 @@ describe('CopySongsBar', () => {
     expect(ids).toEqual(['new', 'liked', 'gym', 'dad']);
     expect(notes()).toEqual({
       new: 'With these 4 songs',
-      liked: '2 already liked, 2 to add',
+      liked: '1 already liked, 3 to add',
       gym: '1 already there, 3 to add',
       // A different "Home": not a duplicate.
       dad: '0 already there, 4 to add',
@@ -155,8 +156,8 @@ describe('CopySongsBar', () => {
     fireEvent.click(list.getByText('Liked songs'));
     const warning = await screen.findByTestId('copy-liked-confirm');
     expect(warning).toHaveTextContent('Adding songs to Liked songs likes every one of them');
-    expect(warning).toHaveTextContent('2 are already liked, so 2 songs get a new like.');
-    expect(within(warning).getByTestId('copy-liked-yes')).toHaveTextContent('Like 2 songs');
+    expect(warning).toHaveTextContent('1 is already liked, so 3 songs get a new like.');
+    expect(within(warning).getByTestId('copy-liked-yes')).toHaveTextContent('Like 3 songs');
     expect(bulkLike).not.toHaveBeenCalled();
     fireEvent.click(within(warning).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByTestId('copy-liked-confirm')).toBeNull());

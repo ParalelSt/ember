@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { TrackRow } from './TrackRow';
 import { EmptyState } from '@/components/page/EmptyState';
-import { songKey } from '@/lib/songKey';
+import { canonicalId } from '@/lib/trackIdentity';
 import type { PlaybackContext, PlaylistPerson, Track } from '@/types/track';
 
 /** What a page has to hand a track list: who is playing, what is liked, and
@@ -104,7 +104,7 @@ export function TrackList({
           active={currentId === t.id}
           playing={isPlaying}
           // The set carries ids and song keys, so this covers variants too.
-          liked={onLike ? likedIds.has(t.id) || likedIds.has(songKey(t)) : undefined}
+          liked={onLike ? likedIds.has(canonicalId(t.id)) : undefined}
           artworkSrc={artworkSrcFor?.(t) ?? undefined}
           onPlay={() => onPlay(t, tracks, context)}
           onToggle={onToggle}

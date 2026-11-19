@@ -218,3 +218,15 @@ describe('sortTracks', () => {
     expect(isSortState(null)).toBe(false);
   });
 });
+
+describe('exact (Liked songs) copies', () => {
+  it('only the very same track id (canonical) counts as already liked', () => {
+    const slowed = t('youtube:a', 'Maldito Movimiento (Slowed)', 'Artist');
+    const superSlowed = t('youtube:b', 'Maldito Movimiento (Super Slowed)', 'Artist');
+    const official = t('youtube:c', 'Song (Official Video)', 'Artist');
+    const plain = t('youtube:d', 'Song', 'Artist');
+    expect(planCopy([superSlowed, plain], [slowed, official], true).add).toEqual([superSlowed, plain]);
+    expect(planCopy([slowed], [slowed], true).skipped.map((s) => s.reason)).toEqual(['same-track']);
+    expect(planCopy([t('youtube:youtube:a', 'x', 'y')], [slowed], true).add).toEqual([]);
+  });
+});
