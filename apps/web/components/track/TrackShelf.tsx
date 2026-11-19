@@ -36,6 +36,9 @@ interface Props {
   /** 'row' and 'desktop-row' only: how many tiles the row holds; default
    *  RowShelf's ROW_MAX. */
   limit?: number;
+  /** 'desktop-row' only: see RowShelf (the design preview's Show all). */
+  fullListHref?: string;
+  rowKey?: string;
 }
 
 // When the desktop lyrics panel is open, main shrinks by ~max(40vw, 28rem).
@@ -77,7 +80,7 @@ function useShelfColumns(lyricsOpen: boolean) {
 
 /** Presentational only: one horizontal shelf of track cards, with an
  *  optional "Show all" link, or the fullscreen grid of every card. */
-export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, lyricsOpen = false, fullscreen, layout = 'grid', limit }: Props) {
+export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, lyricsOpen = false, fullscreen, layout = 'grid', limit, fullListHref, rowKey }: Props) {
   const gridCols = gridColsClass(lyricsOpen ? 'lyrics' : 'default');
   const { gridRef, count: rowCount, style: gridStyle } = useShelfColumns(lyricsOpen);
   const hasTracks = !!tracks && tracks.length > 0;
@@ -109,6 +112,8 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
         showAllHref={loadingRow ? undefined : showAllHref}
         variant={layout === 'desktop-row' ? 'desktop' : 'phone'}
         limit={limit}
+        fullListHref={fullListHref}
+        rowKey={rowKey}
       >
         {loadingRow
           ? Array.from({ length: layout === 'desktop-row' ? 6 : 3 }).map((_, i) => (
