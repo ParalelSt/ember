@@ -34,6 +34,8 @@ export interface SearchOverlayProps {
   /** Focusing or typing in the in-page box opens the panel. Unused by the
    *  sheet, whose box only exists while it is already open. */
   onOpen: () => void;
+  /** Enter in the box with a non-blank query: go to the full results page. */
+  onSubmit?: (query: string) => void;
   variant: SearchOverlayVariant;
   q: string;
   onQChange: (value: string) => void;
@@ -66,6 +68,7 @@ export function SearchOverlay({
   open,
   onClose,
   onOpen,
+  onSubmit,
   variant,
   q,
   onQChange,
@@ -154,6 +157,16 @@ export function SearchOverlay({
           onQChange(e.target.value);
         }}
         onFocus={isSheet ? undefined : onOpen}
+        // Escape closes the panel but leaves the caret in the box, so no
+        // focus event fires when it is clicked again: reopen on the click.
+        onClick={isSheet ? undefined : onOpen}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+          const query = q.trim();
+          if (!query) return;
+          e.preventDefault();
+          onSubmit?.(query);
+        }}
         placeholder="What do you want to listen to?"
         aria-label="Search"
         className={cn(

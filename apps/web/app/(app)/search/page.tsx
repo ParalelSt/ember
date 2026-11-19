@@ -1,5 +1,6 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackRow } from '@/components/track/TrackRow';
@@ -17,6 +18,9 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
 
 export default function SearchPage() {
+  // The overlay's Enter key lands here with the query as ?q=; it is the
+  // initial value, so the page opens already searching.
+  const initialQ = useSearchParams()?.get('q') ?? '';
   const {
     q,
     setQ,
@@ -32,7 +36,7 @@ export default function SearchPage() {
     rateLimited,
     searchFailed,
     onPlay,
-  } = useSearchQuery();
+  } = useSearchQuery(initialQ);
   const isDesktop = useIsDesktop();
 
   const recents = !debouncedQ && recentTracks.length > 0 ? (
