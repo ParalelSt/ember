@@ -194,7 +194,7 @@ new_host() {
     cd "$TMP/seed" || exit 1
     git init -q . && git checkout -q -b main && git add -A &&
       git -c user.email=t@ember.test -c user.name=t commit -q -m v1 &&
-      git init -q --bare "$ORIGIN" && git remote add origin "$ORIGIN" && git push -q origin main &&
+      git init -q --bare -b main "$ORIGIN" && git remote add origin "$ORIGIN" && git push -q origin main &&
       git clone -q "$ORIGIN" "$HOST"
   ) >"$TMP/git.out" 2>&1 || { echo "FAIL  test git setup"; cat "$TMP/git.out"; exit 1; }
   V1="$(git -C "$HOST" rev-parse HEAD)"
@@ -532,6 +532,37 @@ check "the stamp matches it too" file_is "$HOST/.node_modules.stamp" "$(git -C "
 check "the build cache was kept for the build" file_is "$HOST/apps/web/.next/cache/webpack" warm
 check "nothing set aside is left behind" no_aside_left
 check "the checkout is clean" clean_checkout
+stop_ember
+
+# ── 6. far behind: more new commits than update.sh lists ───────────────
+# It lists the first 20. Through `| head -20` that ended update.sh with
+# SIGPIPE (exit 141) before it pulled anything, on every run, once a host
+# was more than 20 commits behind. 3000 commits make the pipe overflow
+# every time, so the old line fails here deterministically.
+echo "── many new commits"
+new_host
+PATH="$TMP/bin:$BASE_PATH"
+{
+  for i in $(seq 1 3000); do
+    printf 'commit refs/heads/main\ncommitter t <t@ember.test> %d +0000\ndata 7\nmany %02d\n' $((1700000000 + i)) $((i % 100))
+    [ "$i" = 1 ] && printf 'from refs/heads/main^0\n'
+    printf '\n'
+  done
+} | git -C "$TMP/seed" fast-import --quiet && git -C "$TMP/seed" push -q origin main
+V3="$(git -C "$ORIGIN" rev-parse main)"
+run_update --check
+check "far behind, --check: finishes" update_returned 20
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "it counts every new commit" file_has "$TMP/update.out" "3001 new commit(s)"
+check "it lists 20 of them" [ "$(grep -c '^    ' "$TMP/update.out")" = 20 ]
+start_ember
+run_update
+check "far behind: update.sh finishes" update_returned 60
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "the update was applied" head_is "$V3"
+check "the new version is served" wait_until 20 served "$WEB_PORT" "$(git -C "$HOST" rev-parse --short "$V3")"
 stop_ember
 
 echo

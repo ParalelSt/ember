@@ -333,7 +333,11 @@ if [ "$LOCAL" = "$REMOTE" ]; then
   [ "$MODE" = "check" ] && exit 0
 else
   echo "  $(git rev-list --count HEAD..origin/main) new commit(s):"
-  git log --oneline --no-decorate HEAD..origin/main | head -20 | sed 's/^/    /'
+  # git's own -20, not `| head -20`: head exits after 20 lines, git log then
+  # dies of SIGPIPE writing the rest, and pipefail + set -e ended update.sh
+  # right here (exit 141, nothing updated) whenever the host was more than
+  # 20 commits behind.
+  git log --oneline --no-decorate -20 HEAD..origin/main | sed 's/^/    /'
 fi
 
 if [ "$MODE" = "check" ]; then
