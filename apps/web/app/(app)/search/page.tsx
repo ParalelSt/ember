@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -37,6 +38,14 @@ export default function SearchPage() {
     searchFailed,
     onPlay,
   } = useSearchQuery(initialQ);
+  // Enter in the phone sheet while already here changes ?q= without a remount:
+  // follow it. Typing in this page's own box never touches the URL.
+  const lastQ = useRef(initialQ);
+  useEffect(() => {
+    if (initialQ === lastQ.current) return;
+    lastQ.current = initialQ;
+    setQ(initialQ);
+  }, [initialQ, setQ]);
   const isDesktop = useIsDesktop();
 
   const recents = !debouncedQ && recentTracks.length > 0 ? (
