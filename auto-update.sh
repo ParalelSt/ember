@@ -16,7 +16,7 @@
 #
 # A refusal, or an update.sh that fails, is posted to Discord ONCE per reason
 # and commit (scripts/crash-report.mjs, the webhook the host already has for
-# crash reports), not every 5 minutes. Output of the last run: logs/auto-update.log.
+# crash reports), not at every check. Output of the last run: logs/auto-update.log.
 #
 # Test-only overrides: EMBER_UPDATE_CMD (instead of ./update.sh),
 # EMBER_PUBLIC_URL, EMBER_AUTO_UPDATE_SKIP_RELAUNCH_CHECK=1.

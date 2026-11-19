@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # One-time: makes this Ember host update itself. A systemd USER timer checks
-# GitHub 2 minutes after boot and then every 5 minutes, and runs ./update.sh
+# GitHub at 12:00 and 19:00 (and 2 minutes after boot, which also finishes an
+# update a reboot cut short), and runs ./update.sh
 # (through auto-update.sh) when main has new commits. No sudo needed, except
 # possibly once for `loginctl enable-linger` (so it runs with nobody logged in).
 #
@@ -89,11 +90,14 @@ KillMode=process
 UNIT
 cat >"$TIMER" <<UNIT
 [Unit]
-Description=Check GitHub for Ember updates every 5 minutes
+Description=Check GitHub for Ember updates at 12:00 and 19:00
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=5min
+# Twice a day, the server's local time. Persistent: a check missed while the
+# machine was off runs when it is back.
+OnCalendar=*-*-* 12:00:00
+OnCalendar=*-*-* 19:00:00
 Persistent=true
 
 [Install]

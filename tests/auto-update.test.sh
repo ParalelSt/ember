@@ -227,7 +227,7 @@ run_install() { OUT="$(XDG_CONFIG_HOME="$H/.config" PATH="$TMP/fakebin:$PATH" ba
 run_install
 U="$H/.config/systemd/user"
 check "installer: exit 0" test "$RC" = 0
-check "installer: timer 2min after boot, every 5min" bash -c 'grep -q "OnBootSec=2min" "'"$U"'/ember-auto-update.timer" && grep -q "OnUnitActiveSec=5min" "'"$U"'/ember-auto-update.timer"'
+check "installer: timer 2min after boot, then 12:00 and 19:00" bash -c 'T="'"$U"'/ember-auto-update.timer"; grep -q "OnBootSec=2min" "$T" && grep -qx "OnCalendar=\*-\*-\* 12:00:00" "$T" && grep -qx "OnCalendar=\*-\*-\* 19:00:00" "$T" && ! grep -q "OnUnitActiveSec" "$T"'
 check "installer: service PATH has node dir" grep -q "Environment=PATH=$(dirname "$(command -v node)")" "$U/ember-auto-update.service"
 check "installer: service runs auto-update.sh" grep -q "auto-update.sh" "$U/ember-auto-update.service"
 check "installer: timer enabled and lingering on" bash -c 'grep -q "enable --now ember-auto-update.timer" "'"$TMP"'/ctl.log" && grep -q "loginctl enable-linger" "'"$TMP"'/ctl.log"'
