@@ -16,6 +16,8 @@ const state = vi.hoisted(() => ({
   /** The seed Home asked recommendations for. */
   seed: undefined as string | undefined,
   focus: null as string | null,
+  /** More of the URL's query (the design preview's ?homerows=, ?row=). */
+  query: '',
   desktop: false,
   history: [] as Track[],
   liked: [] as Track[],
@@ -37,7 +39,8 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(state.focus ? `focus=${state.focus}` : ''),
+  useSearchParams: () => new URLSearchParams([state.focus ? `focus=${state.focus}` : '', state.query].filter(Boolean).join('&')),
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
 }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => state.desktop }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1', name: 'Aron' } }) }));
@@ -111,9 +114,11 @@ const headings = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   Object.assign(state, {
     seed: undefined,
     focus: null,
+    query: '',
     desktop: false,
     history: makeTracks('hist', 4),
     liked: makeTracks('like', 3),
@@ -833,5 +838,74 @@ describe('Home filters lay tile rows out as a grid on a phone, and Charts on des
     fireEvent.click(chip('Mixes'));
     expect(rowList('Your mixes')).toHaveClass('flex', 'overflow-x-auto');
     expect(rowList('Your mixes')).not.toHaveClass('grid');
+  });
+});
+
+describe('the ?homerows design preview on a desktop', () => {
+  beforeEach(() => {
+    state.desktop = true;
+    state.history = makeTracks('hist', 12);
+    state.mixes = { eligible: true, building: false, mixes: [mixTile('rock', 'Rock'), mixTile('metal', 'Metal')] };
+  });
+  const nav = (name: string) => screen.getByRole('region', { name }).getAttribute('data-row-nav');
+
+  it('is today\'s rows with no param and nothing saved', () => {
+    render(<HomePage />);
+    expect(nav('Recently played')).toBe('today');
+    expect(nav('Your mixes')).toBe('today');
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+  });
+
+  it('?homerows=a gives every row header arrows and Show all where a whole list exists', () => {
+    state.query = 'homerows=a';
+    render(<HomePage />);
+    for (const name of ['Recently played', 'Your mixes', 'Popular now', 'Your playlists']) expect(nav(name)).toBe('a');
+    const showAll = (name: string) => within(screen.getByRole('region', { name })).queryByRole('link', { name: 'Show all' });
+    expect(showAll('Recently played')).toHaveAttribute('href', '/library/recent');
+    expect(showAll('Your playlists')).toHaveAttribute('href', '/library');
+    expect(showAll('Because you played "hist song 0"')).toHaveAttribute('href', '/?focus=recommended');
+    expect(showAll('Your mixes')).toBeNull();
+    expect(showAll('Popular now')).toBeNull();
+  });
+
+  it('remembers the pick: a saved b applies with no param', () => {
+    window.localStorage.setItem('ember.design.homerows', 'b');
+    render(<HomePage />);
+    expect(nav('Recently played')).toBe('b');
+  });
+
+  it('?homerows=d makes every row a line of cards with Show more, no sideways scroll', () => {
+    state.query = 'homerows=d';
+    render(<HomePage />);
+    expect(nav('Recently played')).toBe('d');
+    expect(document.querySelector('[data-row-shelf="wide"]')).toBeNull();
+  });
+
+  it('?homerows=c&row=history is the full grid of Recently played, alone on the page', () => {
+    state.query = 'homerows=c&row=history';
+    render(<HomePage />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Recently played' })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Recently played' })).getAllByRole('listitem')).toHaveLength(12);
+    expect(screen.queryByRole('region', { name: 'Your mixes' })).toBeNull();
+    expect(screen.queryByRole('toolbar', { name: 'Filter Home' })).toBeNull();
+  });
+
+  it('ignores ?row= for a row Home does not have, or outside variant c', () => {
+    state.query = 'homerows=c&row=nope';
+    const { unmount } = render(<HomePage />);
+    expect(nav('Recently played')).toBe('c');
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    unmount();
+    state.query = 'homerows=a&row=history';
+    render(<HomePage />);
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+  });
+
+  it('leaves the phone Home as it is', () => {
+    state.desktop = false;
+    state.query = 'homerows=a';
+    render(<HomePage />);
+    expect(document.querySelector('[data-row-nav]')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Scroll / })).toBeNull();
   });
 });
