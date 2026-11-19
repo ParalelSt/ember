@@ -251,7 +251,7 @@ function tileKey(tile: ReactNode, i: number) {
  *  the fades, each press a screen of whole cards. */
 function WideScrollRow({ title, showAllHref, fullListHref, action, tiles, className, variant }: WideRowProps & { variant: 'today' | 'a' | 'b' }) {
   const rowRef = useRef<HTMLDivElement>(null);
-  const [ends, setEnds] = useState({ canLeft: false, canRight: false });
+  const [ends, setEnds] = useState({ canLeft: false, canRight: false, cutLeft: false, cutRight: false });
   const count = tiles.length;
   // Mouse drag scrolls the row; the click that ends a drag opens nothing.
   useDragScroll(rowRef);
@@ -277,8 +277,23 @@ function WideScrollRow({ title, showAllHref, fullListHref, action, tiles, classN
     const el = rowRef.current;
     if (!el) return;
     const update = () => {
-      const next = rowEnds(el.scrollLeft, el.clientWidth, el.scrollWidth);
-      setEnds((prev) => (prev.canLeft === next.canLeft && prev.canRight === next.canRight ? prev : next));
+      const { canLeft, canRight } = rowEnds(el.scrollLeft, el.clientWidth, el.scrollWidth);
+      // A and B fade an edge only where a card is cut there: after an
+      // arrow press the row rests on a card edge, and that whole card
+      // should not look cut off.
+      let cutLeft = canLeft;
+      let cutRight = canRight;
+      if (variant !== 'today' && (canLeft || canRight)) {
+        const boxes = itemBoxes(el);
+        const view = el.scrollLeft + el.clientWidth;
+        cutLeft = canLeft && !boxes.some((b) => Math.abs(b.left - el.scrollLeft) <= 1);
+        cutRight = canRight && !boxes.some((b) => Math.abs(b.left + b.width - view) <= 1);
+      }
+      setEnds((prev) =>
+        prev.canLeft === canLeft && prev.canRight === canRight && prev.cutLeft === cutLeft && prev.cutRight === cutRight
+          ? prev
+          : { canLeft, canRight, cutLeft, cutRight },
+      );
     };
     update();
     el.addEventListener('scroll', update, { passive: true });
@@ -288,7 +303,7 @@ function WideScrollRow({ title, showAllHref, fullListHref, action, tiles, classN
       el.removeEventListener('scroll', update);
       ro?.disconnect();
     };
-  }, [count]);
+  }, [count, variant]);
   const move = (dir: -1 | 1) => {
     const el = rowRef.current;
     if (!el) return;
@@ -336,8 +351,8 @@ function WideScrollRow({ title, showAllHref, fullListHref, action, tiles, classN
           </>
         ) : (
           <>
-            <FadeHint dir={-1} shown={ends.canLeft} />
-            <FadeHint dir={1} shown={ends.canRight} />
+            <FadeHint dir={-1} shown={ends.cutLeft} />
+            <FadeHint dir={1} shown={ends.cutRight} />
           </>
         )}
         {variant === 'b' && movable ? (

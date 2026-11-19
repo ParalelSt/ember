@@ -137,6 +137,19 @@ describe.each([
     expect(fade).toHaveClass('pointer-events-none');
   });
 
+  it('fades an edge only where a card is cut there, so a whole card at rest is never dimmed', () => {
+    shelf({ variant }, 10);
+    const list = wideRow();
+    const fade = (side: string) => document.querySelector(`[data-row-fade="${side}"]`)!;
+    // At 588 card 3 sits flush at the left; card 6 (1176..1356) is cut at 1288.
+    layout(list, { client: 700, left: 588 });
+    expect(fade('left')).not.toHaveAttribute('data-shown');
+    expect(fade('right')).toHaveAttribute('data-shown');
+    // Half way into card 3, the left edge is cut.
+    layout(list, { client: 700, left: 650 });
+    expect(fade('left')).toHaveAttribute('data-shown');
+  });
+
   it('links Show all to the row\'s whole list where it has one', () => {
     const { unmount } = shelf({ variant }, 10, { fullListHref: '/library/recent' });
     expect(screen.getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/library/recent');
