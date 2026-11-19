@@ -301,9 +301,11 @@ describe('NowPlaying: the More sheet', () => {
     expect(share.shareTrack).toHaveBeenCalledWith(TRACK);
   });
 
-  it('Up next opens the queue sheet over the player', () => {
+  it('Queue in the ⋯ menu opens the queue sheet over the player', () => {
     render(<NowPlaying />);
     openMore();
+    expect(row('queue')).toHaveTextContent('Queue');
+    expect(row('queue')).not.toHaveTextContent('Up next');
     fireEvent.click(row('queue'));
     expect(screen.getByTestId('queue-sheet')).toBeInTheDocument();
     expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);

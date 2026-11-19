@@ -78,7 +78,7 @@ export function NowPlaying() {
   const isPlaylist = context?.type === 'playlist';
   const title = contextTitle(context);
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
-  // The queue ("Up next" under the controls): the phone bar has no queue
+  // The queue ("Queue" in the ⋯ menu): the phone bar has no queue
   // button of its own, so this is where phones reach it. The sheet portals
   // above this view.
   const [queueOpen, setQueueOpen] = useState(false);
@@ -230,7 +230,7 @@ export function NowPlaying() {
   const canAdd = !!(current && user && !isUnavailable(current) && !live);
   const items: MoreItem[] = [];
   if (canAdd) items.push({ key: 'add', label: 'Add to playlist', Icon: ListPlusIcon, onSelect: () => setAddOpen(true) });
-  if (current) items.push({ key: 'queue', label: 'Up next', Icon: QueueIcon, onSelect: () => setQueueOpen(true) });
+  if (current) items.push({ key: 'queue', label: 'Queue', Icon: QueueIcon, onSelect: () => setQueueOpen(true) });
   if (current && tabsEnabled && !live) items.push({ key: 'tabs', label: 'Guitar tabs', Icon: TabsIcon, onSelect: openTabs });
   if (eqAvailable) {
     items.push({ key: 'eq', label: 'Equalizer', detail: eqOn ? 'On' : 'Off', Icon: EqualizerIcon, lit: eqOn, onSelect: () => setEqOpen(true) });
