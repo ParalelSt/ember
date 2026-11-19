@@ -452,6 +452,19 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
     expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
   });
 
+  it('draws a music note on a song tile with no cover art, never a bare black box', () => {
+    state.history = [{ ...makeTracks('hist', 1)[0], artworkUrl: 'https://i.ytimg.com/vi/x/hq.jpg' }, ...makeTracks('bare', 2)];
+    render(<HomePage />);
+    const row = within(screen.getByRole('region', { name: 'Recently played' }));
+    const [withArt, ...bare] = row.getAllByRole('listitem');
+    expect(within(withArt).queryByTestId('tile-art-fallback')).toBeNull();
+    expect(withArt.querySelector('img')).not.toBeNull();
+    for (const item of bare) {
+      expect(within(item).getByTestId('tile-art-fallback')).toBeInTheDocument();
+      expect(item.querySelector('img')).toBeNull();
+    }
+  });
+
   it('uses the full width: no bleed past the gutter and the content cap lifted', () => {
     const { container } = render(<HomePage />);
     expect(container.querySelector('[data-home-wide]')).not.toBeNull();

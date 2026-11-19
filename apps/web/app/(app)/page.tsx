@@ -48,6 +48,12 @@ import { kindLook, mixKind, MAX_MIXES } from '@/lib/mixes/kinds';
 import { MixCard } from '@/components/mixes/MixCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { POPULAR_COLOR, POPULAR_SLUG, tileCovers } from '@/lib/chartsView';
+import { MusicIcon } from '@/components/icons';
+
+/** A song with no cover art (an upload without one, a track whose source
+ *  gave none) gets a music note in its box, not a bare black square that
+ *  reads as a broken, empty card. */
+const TILE_ART_FALLBACK = <MusicIcon className="size-10" data-testid="tile-art-fallback" />;
 
 interface Section {
   key: string;
@@ -80,6 +86,7 @@ export default function HomePage() {
         variant={variant}
         // Rows of songs read "Song · <artist>", Spotify's Recents tiles.
         kind={variant === 'card' ? undefined : 'Song'}
+        artworkFallback={TILE_ART_FALLBACK}
         active={active}
         playing={isPlaying}
         // Same rule the card used to own: re-tapping the current track
