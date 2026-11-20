@@ -26,10 +26,10 @@ export function pickQuickGridVariant(param: string | null | undefined, saved: st
 }
 
 /** How many tiles show in the one row, and whether the rest sit behind a
- *  menu. `fit` is how many tiles fit the width (2 on a phone). Variant b
- *  gives its last slot to the square button, so it shows one tile fewer
- *  than fit; the menu appears only when not everything fits. */
+ *  menu. `fit` is how many tiles fit the width (2 on a phone). The
+ *  desktop b square takes extra width (counted by the caller); the menu appears only when not everything fits. */
 export function quickGridSlots(total: number, fit: number, variant: 'a' | 'b' | 'c'): { visible: number; overflow: boolean } {
   if (total <= fit) return { visible: total, overflow: false };
-  return { visible: variant === 'b' ? Math.max(1, fit - 1) : fit, overflow: true };
+  void variant;
+  return { visible: fit, overflow: true };
 }

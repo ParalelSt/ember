@@ -240,7 +240,6 @@ function OneRowQuickGrid({ items, design, variant, onPlay, isPlaying }: Pick<Qui
   const slots = quickGridSlots(items.length, fit, design);
   const { overflow } = slots;
   let visible = slots.visible;
-  // placeholder = quickGridSlots(items.length, fit, design);
   // Variant b: the square takes a slot's width, so count what fits beside it.
   if (desktop && design === 'b' && overflow) visible = fits(width - SQUARE - gap);
   const shown = items.slice(0, visible);
