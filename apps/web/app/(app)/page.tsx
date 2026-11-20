@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useQuickGridVariant } from '@/hooks/useQuickGridVariant';
+import { QUICK_GRID_PARAM } from '@/lib/quickGrid';
 import { TrackShelf } from '@/components/track/TrackShelf';
 import { TrackCard } from '@/components/track/TrackCard';
 import {
@@ -60,6 +62,7 @@ interface Section {
 export default function HomePage() {
   const search = useSearchParams();
   const focus = search.get('focus');
+  const quickDesign = useQuickGridVariant(search.get(QUICK_GRID_PARAM));
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   // The shelves are presentational, so the page reads the lyrics flag and
   // renders the cards (with their playback state) itself.
@@ -309,7 +312,7 @@ export default function HomePage() {
       ) : !isDesktop ? (
         <div>
           {chips.length > 1 && <HomeChips chips={chips} active={view.filter} onChange={setFilter} />}
-          {view.quickGrid && <QuickGrid items={quick} />}
+          {view.quickGrid && <QuickGrid items={quick} design={quickDesign} />}
           {view.rows.map(renderRow)}
         </div>
       ) : (
@@ -317,7 +320,7 @@ export default function HomePage() {
         // "full" pick): the desktop Home uses the whole main area.
         <div data-home-wide>
           {chips.length > 1 && <HomeChips variant="desktop" chips={chips} active={view.filter} onChange={setFilter} />}
-          {view.quickGrid && <QuickGrid variant="desktop" items={quick} onPlay={playQuick} isPlaying={quickPlaying} />}
+          {view.quickGrid && <QuickGrid variant="desktop" design={quickDesign} items={quick} onPlay={playQuick} isPlaying={quickPlaying} />}
           {view.rows.map(renderRow)}
         </div>
       )}
