@@ -167,8 +167,8 @@ export default function HomePage() {
   const quick = quickPicks({
     liked: system.find((c) => c.ref.kind === 'liked'),
     // Phone only (desktop styles are not chosen): each shows once it has songs.
-    recent: (!isDesktop || quickDesign !== 'today') && history.length > 0 ? system.find((c) => c.ref.kind === 'recent') : undefined,
-    uploads: (!isDesktop || quickDesign !== 'today') && uploads.length > 0 ? system.find((c) => c.ref.kind === 'uploads') : undefined,
+    recent: !isDesktop && history.length > 0 ? system.find((c) => c.ref.kind === 'recent') : undefined,
+    uploads: !isDesktop && uploads.length > 0 ? system.find((c) => c.ref.kind === 'uploads') : undefined,
     playlists,
     carlist,
     playingPlaylistId,
