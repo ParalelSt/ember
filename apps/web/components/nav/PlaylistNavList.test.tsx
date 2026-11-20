@@ -160,3 +160,8 @@ describe('PlaylistNavList covers', () => {
     }
   });
 });
+
+it('uses standard row padding for the signed-out message', () => {
+  render(<PlaylistNavList authed={false} items={[]} />);
+  expect(screen.getByText('Sign in to create')).toHaveClass('px-row', 'py-cluster');
+});

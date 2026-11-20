@@ -292,6 +292,8 @@ class EmberPlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        DiscordDiagnostics.init(this)
+        DiscordDiagnostics.add("EmberPlaybackService onCreate")
         val baseUrl = ServerConfig.baseUrl(this)
         api = ServerApi(baseUrl) { CookieManager.getInstance().getCookie(baseUrl) }
         health = ConnectionHealth(
@@ -375,6 +377,67 @@ class EmberPlaybackService : MediaLibraryService() {
         player.addListener(buttonWatch)
         refreshButtons()
         watchForUpdates()
+        startDiscord(baseUrl)
+    }
+
+    // ── Discord (DiscordPresence) ───────────────────────────────────────
+
+    private lateinit var discord: DiscordPresence
+    /** Internal for tests, whose timers run on a clock of their own. */
+    internal var discordClock: () -> Long = System::currentTimeMillis
+    private val discordWatch = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = discordRefresh()
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = discordRefresh()
+        override fun onPlaybackStateChanged(playbackState: Int) = discordRefresh()
+        // Ready again after buffering: the bar has been running ahead.
+        override fun onIsPlayingChanged(isPlaying: Boolean) = discordRefresh()
+        // The stream said how long the song really is.
+        override fun onTimelineChanged(timeline: Timeline, reason: Int) = discordRefresh()
+        override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) discordRefresh()
+        }
+    }
+    /** The switch or the activity changed, on whichever thread did that. */
+    private val discordChange: () -> Unit = {
+        handler.post {
+            if (::discord.isInitialized) {
+                DiscordDiagnostics.environment(this, DiscordSharing.load(DiscordSharing.prefs(this)))
+                discord.retryNow()
+            }
+        }
+    }
+
+    private fun discordRefresh() {
+        if (DiscordDiagnostics.enabled) runCatching {
+            val item = active.currentMediaItem
+            DiscordDiagnostics.addIfChanged(
+                "player -> presence: title=${item?.mediaMetadata?.title}, artist=${item?.mediaMetadata?.artist}, " +
+                    "playWhenReady=${active.playWhenReady}, state=${active.playbackState}",
+            )
+        }
+        if (::discord.isInitialized) discord.refresh()
+    }
+
+    private fun startDiscord(baseUrl: String) {
+        val prefs = DiscordSharing.prefs(this)
+        DiscordDiagnostics.init(this)
+        DiscordDiagnostics.environment(this, DiscordSharing.load(prefs))
+        discord = DiscordPresence(
+            engine = DiscordEngines.shared(),
+            sharing = { DiscordSharing.load(prefs) },
+            current = { discordCardOf(active, baseUrl, discordClock()) },
+            now = { discordClock() },
+            later = { ms, task ->
+                val r = Runnable(task)
+                handler.postDelayed(r, ms)
+                ({ handler.removeCallbacks(r) })
+            },
+            log = ::discordLog,
+            trace = { Log.d(NativeDiscordEngine.TAG, it); DiscordDiagnostics.add(it) },
+        )
+        player.addListener(discordWatch)
+        DiscordSharing.addListener(discordChange)
+        discord.refresh()
     }
 
     // ── App updates (AppUpdater) ────────────────────────────────────────
@@ -439,6 +502,7 @@ class EmberPlaybackService : MediaLibraryService() {
                 .put("sdk", android.os.Build.VERSION.SDK_INT)
                 .put("app", AppVersion.name(this).orEmpty()),
         )
+        DiscordDiagnostics.attachLog(playbackLog) { !CookieManager.getInstance().getCookie(baseUrl).isNullOrBlank() }
         playWatch = PlayWatch(playbackLog, delay, caller = {
             if (::session.isInitialized) session.controllerForCurrentRequest?.packageName else null
         }, online = ::online, local = { id -> offline.audioFileFor(id).exists() || MediaCache.isFullyCached(cache, id) })
@@ -665,6 +729,7 @@ class EmberPlaybackService : MediaLibraryService() {
         queue.addListener(buttonWatch)
         // Music on the TV is music too: the updater waits for it as well.
         queue.addListener(presenceWatch)
+        queue.addListener(discordWatch)
         val switch = CastSwitch(
             player, queue, baseUrl,
             whenApplied = queue::afterPending,
@@ -678,6 +743,7 @@ class EmberPlaybackService : MediaLibraryService() {
             activeHistory = if (p === queue) castHistory else history
             publishExtras()
             refreshButtons()
+            discordRefresh()
         }
         cast.setSessionAvailabilityListener(object : SessionAvailabilityListener {
             override fun onCastSessionAvailable() {
@@ -1049,6 +1115,9 @@ class EmberPlaybackService : MediaLibraryService() {
         AppUpdater.removeListener(updateListener)
         UpdatePresence.setPlaying(false)
         UpdatePresence.setCar(false)
+        DiscordSharing.removeListener(discordChange)
+        if (::discord.isInitialized) discord.release()
+        DiscordDiagnostics.detachLog(playbackLog)
         playbackLog.info("service.stop", "player service stopped")
         playbackLog.flush()
         logTimer.shutdownNow()

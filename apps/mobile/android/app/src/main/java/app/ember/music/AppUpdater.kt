@@ -95,6 +95,11 @@ object AppUpdater {
     const val TAG = "EmberUpdate"
     private const val PREFS = "ember.update"
     private const val KEY_LAST_CHECK = "lastCheck"
+    /** The page's note of the song to start once the new version opens
+     *  (apps/web/lib/update/apply.ts). Kept here, written at once: the
+     *  install ends this process within a moment, sooner than the WebView
+     *  writes its own storage to disk. */
+    private const val KEY_RESUME = "resumeNote"
     private const val KEY_READY_VERSION = "readyVersion"
     private const val KEY_READY_CODE = "readyCode"
     private const val KEY_READY_PATH = "readyPath"
@@ -116,7 +121,10 @@ object AppUpdater {
     internal const val PHONE_BLOCKED_ERROR = "Your phone's security check stopped the update"
 
     enum class Status(val wire: String) {
-        IDLE("idle"), CHECKING("checking"), UP_TO_DATE("up-to-date"), DOWNLOADING("downloading"),
+        IDLE("idle"), CHECKING("checking"), UP_TO_DATE("up-to-date"),
+        /** A newer version is out and nothing is downloaded: the page's
+         *  reminder offers it, and only a tap fetches it (owner, 2026-11-13). */
+        AVAILABLE("available"), DOWNLOADING("downloading"),
         READY("ready"), INSTALLING("installing"), FAILED("failed"),
     }
 
@@ -130,6 +138,8 @@ object AppUpdater {
     internal var clock: () -> Long = System::currentTimeMillis
     /** Tests: the log to use in place of the server's. */
     private var testLog: PlaybackLog? = null
+    /** Tests: the server to ask in place of capacitor.config.json's. */
+    private var testBaseUrl: String? = null
     @Volatile private var initialized = false
     private val logIo = Executors.newSingleThreadExecutor()
     private val logTimer = Executors.newSingleThreadScheduledExecutor()
@@ -147,6 +157,9 @@ object AppUpdater {
     @Volatile private var error: String? = null
     @Volatile private var waiting: String? = null
     @Volatile private var ready: Ready? = null
+    /** The person tapped Update before the download: install as soon as it
+     *  is in (updateNow). */
+    @Volatile private var installAfterDownload = false
     /** A check or an install commit is under way (one at a time). */
     private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
     /** Looks at the session while INSTALLING (checkInstall). */
@@ -164,11 +177,6 @@ object AppUpdater {
     @Volatile private var sessionId: Int? = null
     /** KEY_ACTIVITY_AT, in memory. */
     @Volatile private var activityAt = 0L
-    /** The launch gate asked for the install and evaluate(true) has not run
-     *  for it yet. States published meanwhile (onStart's and refresh()'s
-     *  re-evaluation, still "ready") say so, so the gate does not read them
-     *  as the install having failed. */
-    @Volatile private var gatePending = false
     private var activity: WeakReference<Activity>? = null
     private var lastDecision: UpdateRules.Decision? = null
 
@@ -177,7 +185,7 @@ object AppUpdater {
         if (initialized) return
         initialized = true
         app = context.applicationContext
-        baseUrl = ServerConfig.baseUrl(app)
+        baseUrl = testBaseUrl ?: ServerConfig.baseUrl(app)
         log = testLog ?: buildLog()
         restore()
         UpdatePresence.onChange = { main.post { evaluate(false) } }
@@ -188,16 +196,17 @@ object AppUpdater {
     /** Tests: forget everything, so the next init() starts like a new
      *  process on the test's Application, with [log] and [work]. */
     @Synchronized
-    internal fun resetForTest(log: PlaybackLog?, work: java.util.concurrent.Executor, clock: () -> Long = System::currentTimeMillis) {
+    internal fun resetForTest(log: PlaybackLog?, work: java.util.concurrent.Executor, baseUrl: String? = null, clock: () -> Long = System::currentTimeMillis) {
         initialized = false
         testLog = log
+        testBaseUrl = baseUrl
         this.work = work
         this.clock = clock
         status = Status.IDLE
         latest = null; progress = null; error = null; waiting = null; ready = null
         busy.set(false)
         pendingConfirm = null; autoBlocked = false; goneSince = 0L
-        installStartedAt = 0L; sessionId = null; activityAt = 0L; gatePending = false
+        installStartedAt = 0L; sessionId = null; activityAt = 0L; installAfterDownload = false
         activity = null; lastDecision = null
         listeners.clear()
         main.removeCallbacksAndMessages(null)
@@ -208,39 +217,12 @@ object AppUpdater {
     /** The version of the downloaded, verified APK that waits, if any. */
     fun readyVersion(): String? = ready?.takeIf { it.file.exists() }?.version
 
-    /** The launch gate asks for the notification permission before
-     *  installFromGate: states published meanwhile are from before the
-     *  install too. Released when the gate goes away without installing. */
-    fun holdForGate() { gatePending = true }
-    fun releaseGateHold() { gatePending = false }
-
     /** A version refused for good (UpdateRules.isPermanent), if any. */
     fun rejectedVersion(): String? = prefs().getString(KEY_REJECTED, null)
 
-    /** The launch gate's countdown ended, or the person pressed "Update
-     *  now" (LaunchGateActivity): install the waiting APK now, as a tap on
-     *  Install would. The person is looking at the gate and chose it, so the
-     *  "never while on screen" rule does not apply; the car and the install
-     *  permission still do (UpdateRules.decide). False when nothing waits. */
-    fun installFromGate(a: Activity): Boolean {
-        if (readyVersion() == null) return false
-        gatePending = true
-        attachActivity(a)
-        UpdatePresence.setForeground(true)
-        var tries = 0
-        main.post(object : Runnable {
-            override fun run() {
-                // The check that downloaded it may still be finishing.
-                if (busy.get() && tries++ < 50) { main.postDelayed(this, 200); return }
-                gatePending = false
-                tap()
-            }
-        })
-        return true
-    }
-
-    /** The launch gate's telemetry ("update.gate.*"), through the same log
-     *  as the updater's own. */
+    /** Update telemetry outside the updater itself ("update.gate.*": the
+     *  first start after an update, the relaunch notice), through the same
+     *  log as the updater's own. */
     fun gateEvent(event: String, message: String, data: JSONObject? = null, level: String = "info") {
         if (!::log.isInitialized) return
         log.log(level, event, message, data)
@@ -267,7 +249,6 @@ object AppUpdater {
         o.put("checkedAt", prefs().getLong(KEY_LAST_CHECK, 0L))
         o.put("needsPermission", !canInstall())
         o.put("silent", silentLikely())
-        if (gatePending) o.put("gatePending", true)
         return o
     }
 
@@ -375,14 +356,17 @@ object AppUpdater {
         else main.post { evaluate(false) }
     }
 
-    /** Ask the server, download what is newer, then see whether it may
-     *  install. [done] runs when all of that has finished (the job's end). */
-    fun check(manual: Boolean, reason: String, done: (() -> Unit)? = null) {
+    /** Ask the server what is newest. Only with [download] (a tap on
+     *  Update) is a newer version fetched; otherwise it
+     *  is only announced (Status.AVAILABLE), and nothing downloads or
+     *  installs until the person taps (owner, 2026-11-13). [done] runs when
+     *  all of that has finished (the job's end). */
+    fun check(manual: Boolean, reason: String, download: Boolean = false, done: (() -> Unit)? = null) {
         if (!UpdateRules.backgroundCheckAllowed(app.packageName, manual)) { done?.let { main.post(it) }; return }
         if (status == Status.INSTALLING || !busy.compareAndSet(false, true)) { done?.let { main.post(it) }; return }
         work.execute {
             try {
-                runCheck(manual, reason)
+                runCheck(manual, reason, download)
             } catch (e: Exception) {
                 Log.w(TAG, "update check failed", e)
                 log.warn("update.failed", "update check failed: ${e.message}", JSONObject().put("reason", reason))
@@ -393,13 +377,17 @@ object AppUpdater {
                 }
             } finally {
                 busy.set(false)
-                main.post { evaluate(false) }
+                // A tap waited for this download: install now that it is in.
+                val installAfter = installAfterDownload && ready != null
+                if (installAfterDownload && ready == null) installAfterDownload = false
+                if (installAfter) { installAfterDownload = false; main.post { installNow() } }
+                else main.post { evaluate(false) }
                 done?.let { main.post(it) }
             }
         }
     }
 
-    private fun runCheck(manual: Boolean, reason: String) {
+    private fun runCheck(manual: Boolean, reason: String, download: Boolean) {
         if (status == Status.INSTALLING) return
         val net = netFacts()
         if (!UpdateRules.canDownload(net)) {
@@ -431,6 +419,10 @@ object AppUpdater {
         if (UpdateRules.skipRejected(prefs().getString(KEY_REJECTED, null), feed.version, manual)) {
             log.info("update.skip", "update ${feed.version} was refused before, not downloading again")
             set(Status.FAILED, latest = feed.version, error = "This update can't be installed over this app")
+            return
+        }
+        if (!download) {
+            set(Status.AVAILABLE, latest = feed.version)
             return
         }
         download(feed)
@@ -521,8 +513,45 @@ object AppUpdater {
         main.post { tap() }
     }
 
-    /** Main thread. A person asked for the install (Install, or the gate's
-     *  Update now). A session that is still alive is reused, never
+    /** The page's Update (its reminder pill or Settings), sent between songs
+     *  or with nothing playing: install the downloaded update, or download
+     *  it first and then install. */
+    fun updateNow() {
+        if (readyVersion() != null) { installNow(); return }
+        installAfterDownload = true
+        fetchWhenFree()
+    }
+
+    /** Keeps the page's resume note through the install (KEY_RESUME). */
+    fun keepResume(note: String?) {
+        if (note.isNullOrBlank() || note.length > 2000) return
+        prefs().edit().putString(KEY_RESUME, note).commit()
+    }
+
+    /** The resume note, once: the new version's page asks for it at start. */
+    fun takeResume(): String? {
+        val note = prefs().getString(KEY_RESUME, null) ?: return null
+        prefs().edit().remove(KEY_RESUME).commit()
+        return note
+    }
+
+    /** The page's Update while a song plays: fetch it now, install later
+     *  (updateNow, at the end of the song). */
+    fun downloadNow() {
+        if (readyVersion() != null) { publish(); return }
+        fetchWhenFree()
+    }
+
+    /** A download the person asked for, once a check already under way (the
+     *  app-start one) is done: started meanwhile, it would be dropped. */
+    private fun fetchWhenFree(tries: Int = 0) {
+        if (status == Status.DOWNLOADING) return
+        if (busy.get() && tries < 100) { main.postDelayed({ fetchWhenFree(tries + 1) }, 300); return }
+        check(manual = true, reason = "tap", download = true)
+    }
+
+    /** Main thread. A person asked for the install (Update in the page). A
+     *  session that is still alive is reused, never
      *  abandoned (UpdateRules.onTap). */
     private fun tap() {
         autoBlocked = false
@@ -668,8 +697,7 @@ object AppUpdater {
      *  Protect's check, however long the person takes; only when it is gone
      *  with no answer, or showed no sign of life for
      *  UpdateRules.INSTALL_BACKSTOP_MS, does the install end
-     *  (UpdateRules.unstickNow). The same for the gate, the pill and
-     *  Settings. */
+     *  (UpdateRules.unstickNow). The same for the pill and Settings. */
     private fun checkInstall() {
         main.removeCallbacks(watch)
         if (status != Status.INSTALLING) return

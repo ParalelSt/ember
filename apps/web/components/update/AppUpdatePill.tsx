@@ -13,16 +13,19 @@ export const SWIPE_DISMISS_PX = 80;
 /** The Android app's update, as a rounded card floating under the top bar:
  *  a progress ring around the icon while it downloads, an Install button
  *  when it is ready, and a small "Allow / Later" card when Android needs the
- *  install permission. Shows only in the Android app, only while there is
- *  something to say. Swipe it sideways (or tap the X) to put it away until
- *  the state changes. Lives in the app shell, over every page. */
+ *  install permission. Shows only in an Android app from before 0.4.34 (one
+ *  that fetches updates by itself), only while there is something to say.
+ *  Swipe it sideways (or tap the X) to put it away until the state changes.
+ *  Lives in the app shell, over every page. */
 export function AppUpdatePill() {
-  const { available, state } = useAppUpdate();
+  const { available, state, waitsForTap } = useAppUpdate();
   // Put away for this state: a new state (the download finishing) shows again.
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [dx, setDx] = useState(0);
   const touch = useRef<{ x: number; y: number; swiping: boolean } | null>(null);
-  if (!available) return null;
+  // An app that waits for a tap has the update reminder instead
+  // (components/update/UpdateReminder).
+  if (!available || waitsForTap) return null;
   const pill = updatePill(state);
   if (!pill) return null;
   const key = `${state.status}:${state.waiting}:${state.latest}`;

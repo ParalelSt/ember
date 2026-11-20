@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackRow } from '@/components/track/TrackRow';
@@ -20,6 +21,9 @@ const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
 
 export default function SearchPage() {
   const fieldRef = useRef<HTMLDivElement>(null);
+  // The overlay's Enter key lands here with the query as ?q=; it is the
+  // initial value, so the page opens already searching.
+  const initialQ = useSearchParams()?.get('q') ?? '';
   const {
     q,
     setQ,
@@ -35,7 +39,15 @@ export default function SearchPage() {
     rateLimited,
     searchFailed,
     onPlay,
-  } = useSearchQuery();
+  } = useSearchQuery(initialQ);
+  // Enter in the phone sheet while already here changes ?q= without a remount:
+  // follow it. Typing in this page's own box never touches the URL.
+  const lastQ = useRef(initialQ);
+  useEffect(() => {
+    if (initialQ === lastQ.current) return;
+    lastQ.current = initialQ;
+    setQ(initialQ);
+  }, [initialQ, setQ]);
   const isDesktop = useIsDesktop();
 
   const recents = !debouncedQ && recentTracks.length > 0 ? (

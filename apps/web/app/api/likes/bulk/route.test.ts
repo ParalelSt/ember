@@ -137,15 +137,12 @@ describe('POST /api/likes/bulk', () => {
     expect(likes.filter((l) => l.user === 'u2')).toHaveLength(1);
   });
 
-  it('skips a song already liked and a liked variant of it', async () => {
+  it('skips only the exact song already liked: a look-alike of a liked song is its own like', async () => {
     const res = await POST(request({ tracks: [SLOW, HARBOR, NORTH], confirmed: true }), {});
     const body = await res.json();
-    expect(body.added).toBe(1);
-    expect(body.skipped.map((s: { id: string; reason: string }) => [s.id, s.reason])).toEqual([
-      ['youtube:slow', 'same-track'],
-      ['youtube:harbor', 'other-version'],
-    ]);
-    expect(mine()).toHaveLength(3);
+    expect(body.added).toBe(2);
+    expect(body.skipped.map((s: { id: string; reason: string }) => [s.id, s.reason])).toEqual([['youtube:slow', 'same-track']]);
+    expect(mine()).toHaveLength(4);
   });
 
   it('likes both artist-less uploads that share a title, and both "Home"s', async () => {
@@ -162,11 +159,12 @@ describe('POST /api/likes/bulk', () => {
   it('puts the batch on top in the picked order, as origin user', async () => {
     const before = Date.now();
     await POST(request({ tracks: [NORTH, OTHER, HARBOR, t('youtube:x', 'Xylo', 'Y')], confirmed: true }), {});
-    const fresh = mine().filter((l) => ['youtube:north', 'youtube:other', 'youtube:x'].includes(l.track));
+    const fresh = mine().filter((l) => ['youtube:north', 'youtube:other', 'youtube:harbor', 'youtube:x'].includes(l.track));
     expect(fresh.every((l) => l.origin === 'user')).toBe(true);
     // Newest first, as GET /api/likes sorts: the picked order.
     const newestFirst = [...mine()].sort((a, b) => b.liked_at.localeCompare(a.liked_at)).map((l) => l.track);
-    expect(newestFirst.slice(0, 3)).toEqual(['youtube:north', 'youtube:other', 'youtube:x']);
+    // HARBOR is a look-alike of a liked song, so it is liked too, in place.
+    expect(newestFirst.slice(0, 4)).toEqual(['youtube:north', 'youtube:other', 'youtube:harbor', 'youtube:x']);
     expect(Date.parse(fresh[0].liked_at)).toBeGreaterThanOrEqual(before - 5);
   });
 

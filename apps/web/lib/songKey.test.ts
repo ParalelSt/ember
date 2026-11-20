@@ -185,3 +185,39 @@ describe('songKey: two songs that only share a title are not the same song', () 
     expect(songKey({ title: 'Home', artist: '' })).toBe(songKey({ title: 'Home', artist: '' }));
   });
 });
+
+// Bug report 2026-11-19 (Windows 0.4.27): liking "maldito movimiento" and its
+// "(Slowed)" lit the heart on "(Super Slowed)" too, and "QUÉ DICES? (Ultra
+// Slowed)" showed as liked next to the plain "(Slowed)". Stronger slowed/sped
+// cuts and reverb cuts are their own recordings.
+describe('songKey: slowed and sped up intensities are different recordings', () => {
+  const artist = 'DJ ORBITAL';
+  const slowed = track({ id: 'youtube:s', title: 'maldito movimiento (Slowed)', artist });
+  const titles = [
+    'maldito movimiento (Super Slowed)',
+    'maldito movimiento (Ultra Slowed)',
+    'maldito movimiento (Slowed + Reverb)',
+    'maldito movimiento (Extra Slowed)',
+  ];
+
+  it.each(titles)('"%s" is not the liked "(Slowed)"', (title) => {
+    const other = track({ id: 'youtube:o', title, artist });
+    expect(songKey(other)).not.toBe(songKey(slowed));
+    expect(findLikedVariant(other, [slowed])).toBeNull();
+  });
+
+  it('super sped up is not sped up', () => {
+    const sped = track({ id: 'youtube:a', title: 'Song (Sped Up)', artist });
+    const superSped = track({ id: 'youtube:b', title: 'Song (Super Sped Up)', artist });
+    expect(findLikedVariant(superSped, [sped])).toBeNull();
+  });
+
+  it('the same cut spelled differently still matches', () => {
+    const a = track({ id: 'youtube:a', title: 'Song (Super Slowed)', artist });
+    const b = track({ id: 'youtube:b', title: 'Song [super slowed] (Official Audio)', artist });
+    expect(songKey(b)).toBe(songKey(a));
+    const r1 = track({ id: 'youtube:c', title: 'Song (Slowed + Reverb)', artist });
+    const r2 = track({ id: 'youtube:d', title: 'Song (slowed and reverb)', artist });
+    expect(songKey(r2)).toBe(songKey(r1));
+  });
+});

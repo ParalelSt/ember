@@ -16,7 +16,11 @@ vi.mock('next/link', () => ({
 
 const pathname = vi.hoisted(() => ({ value: '/' }));
 const desktop = vi.hoisted(() => ({ value: true }));
-vi.mock('next/navigation', () => ({ usePathname: () => pathname.value }));
+const push = vi.hoisted(() => vi.fn());
+vi.mock('next/navigation', () => ({
+  usePathname: () => pathname.value,
+  useRouter: () => ({ push }),
+}));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
 import { PhonePlayerBar } from '@/components/player/PhonePlayerBar';
@@ -178,6 +182,38 @@ describe('SearchOverlayContainer', () => {
     renderOverlay();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(useUiStore.getState().searchOpen).toBe(false);
+  });
+
+  it('Enter opens the full results page for the query and closes the panel', () => {
+    renderOverlay();
+    const input = screen.getByPlaceholderText('What do you want to listen to?');
+    fireEvent.change(input, { target: { value: 'daft punk & co' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(push).toHaveBeenCalledWith('/search?q=daft%20punk%20%26%20co');
+    expect(useUiStore.getState().searchOpen).toBe(false);
+  });
+
+  it('Enter with an empty or blank query does nothing', () => {
+    renderOverlay();
+    const input = screen.getByPlaceholderText('What do you want to listen to?');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(push).not.toHaveBeenCalled();
+    expect(useUiStore.getState().searchOpen).toBe(true);
+  });
+
+  it('clicking the box again reopens the suggestions after Escape closed them', () => {
+    renderOverlay();
+    const input = screen.getByPlaceholderText('What do you want to listen to?');
+    fireEvent.change(input, { target: { value: 'daft' } });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(panel()).toBeNull();
+
+    fireEvent.click(input);
+    expect(panel()).toBeInTheDocument();
   });
 
   it('shows the offline line, and no error, when offline', () => {

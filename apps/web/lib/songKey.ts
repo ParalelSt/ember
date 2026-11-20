@@ -4,8 +4,8 @@ import { variantMarkers } from '@/lib/import/score';
 /** A normalized identity for a song, ignoring version noise, so "Blinding
  *  Lights", "Blinding Lights (Official Video)", "Blinding Lights (Live)" and
  *  "Blinding Lights [Lyrics]" all collapse to the same key. Used to keep radio
- *  from queueing a different *version* of what's already playing/queued, and
- *  to make the "liked" heart show the same across variants of a song.
+ *  from queueing a different *version* of what's already playing/queued.
+ *  NOT used for likes: a heart matches the exact track id only.
  *
  *  "Noise" and "version" are different things: (Official Video), [Lyrics],
  *  remaster, feat./ft. spelling, and punctuation don't change which recording
@@ -36,10 +36,9 @@ export function songKey(track: Pick<Track, 'title' | 'artist'> & { id?: string }
   return `${title}::${variant}::${artist}`;
 }
 
-/** Returns the liked-list entry that matches `track` (same id or same
- *  normalized songKey), or null. Use to drive the heart UI and target the
- *  right row when toggling, clicking unlike on a variant operates on the
- *  existing liked entry rather than adding a second one. */
+/** Returns the entry of `list` that matches `track` (same id or same
+ *  normalized songKey), or null. Only the playlist duplicate rule
+ *  (lib/playlistCopy.ts) uses it now; likes match by exact id. */
 export function findLikedVariant(track: Track | null | undefined, liked: Track[]): Track | null {
   if (!track) return null;
   const direct = liked.find((t) => t.id === track.id);

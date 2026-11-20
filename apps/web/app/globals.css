@@ -276,13 +276,14 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
    seamlessly takes the first's place. --marquee-shift is the negative
    (text width + gap) in px, set inline per-title, so when it has shifted
    that far copy 2 sits exactly where copy 1 started. The empty gap between
-   copies is the little break. Respects reduced-motion. */
+   copies is the little break.
+   NOT switched off by the system's reduced-motion setting (owner,
+   2026-11-14): Windows sets it for everyone with "Animation effects" off
+   (and "Adjust for best performance"), and a long name cut off with no way
+   to read it was the bug. A setting of Ember's own could still stop it. */
 @keyframes ember-marquee-loop {
   from { transform: translateX(0); }
   to   { transform: translateX(var(--marquee-shift, 0)); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ember-marquee-anim { animation: none !important; }
 }
 
 /* Search results arriving: each row fades in a moment after the one above
@@ -499,6 +500,43 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
 }
 @media (prefers-reduced-motion: reduce) {
   .lyrics-backdrop { transition: none; }
+}
+
+/* The update reminder (components/update/UpdateReminder.tsx, its shape and
+   words in updateReminderLook.tsx). Owner's picks 2026-11-13: a dark pill,
+   a soft orange outline with a faint haze, the version in a solid orange
+   chip. The same in every theme on purpose: it has to stand out from the
+   app's own notices. It slides down in under the top bar and back up out;
+   under reduced motion it simply appears and goes. */
+:root {
+  --update-pill-bg: #141d23;
+  --update-pill-fg: #f4efe9;
+  --update-pill-accent: #ff8a3d;
+  --update-pill-chip-fg: #0b1216;
+  --update-pill-glow: 0 0 0 1.5px var(--update-pill-accent), 0 0 8px rgb(255 138 61 / 0.22);
+}
+.ember-update-pill {
+  background: var(--update-pill-bg);
+  color: var(--update-pill-fg);
+  box-shadow: var(--update-pill-glow);
+}
+.ember-update-chip {
+  background: var(--update-pill-accent);
+  color: var(--update-pill-chip-fg);
+}
+@keyframes ember-update-in {
+  from { transform: translateY(-140%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@keyframes ember-update-out {
+  from { transform: translateY(0); opacity: 1; }
+  to   { transform: translateY(-140%); opacity: 0; }
+}
+.ember-update-in { animation: ember-update-in 320ms cubic-bezier(.2,.8,.2,1) both; }
+.ember-update-out { animation: ember-update-out 260ms ease-in both; }
+@media (prefers-reduced-motion: reduce) {
+  .ember-update-in,
+  .ember-update-out { animation: none !important; }
 }
 
 /* The Windows app's own show-password eye (Edge WebView2) is dark grey on

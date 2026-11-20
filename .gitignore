@@ -137,3 +137,11 @@ tests/phone-bar-sizes-ui.test.mjs
 .release-logs/
 .release-notes.md
 .shots/
+
+# Discord's Social SDK: its licence forbids redistributing it and this repo is
+# public. It lives outside the tree (docs/APPS.md); these guard against a copy.
+discord_partner_sdk*.aar
+libdiscord_partner_sdk*
+discordpp.h
+cdiscord.h
+discord_social_sdk/

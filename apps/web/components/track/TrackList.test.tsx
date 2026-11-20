@@ -2,7 +2,6 @@ import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { TrackList, type TrackActions } from './TrackList';
-import { songKey } from '@/lib/songKey';
 import type { Track } from '@/types/track';
 
 vi.mock('next/link', () => ({
@@ -94,17 +93,20 @@ describe('TrackList', () => {
     expect(screen.queryByRole('button', { name: /like/i })).toBeNull();
   });
 
-  it('fills the heart for liked ids and for liked variants', () => {
+  it('fills the heart only for liked ids, not for a look-alike with the same title', () => {
     const onLike = vi.fn();
-    // The set holds ids plus song keys; a2's key stands in for a liked
-    // variant of that song under a different id.
-    const likedIds = new Set(['youtube:a1', songKey(tracks[1])]);
-    render(<TrackList tracks={tracks} {...actions({ likedIds, onLike })} />);
-    expect(screen.getAllByRole('button', { name: 'Unlike' })).toHaveLength(2);
-    expect(screen.getAllByRole('button', { name: 'Like' })).toHaveLength(1);
+    const twin = makeTrack({ id: 'youtube:z9', sourceId: 'z9', title: 'Midnight Drive (Super Slowed)' });
+    const list = [tracks[0], twin, tracks[2]];
+    const likedIds = new Set(['youtube:a1', 'youtube:a2']);
+    render(<TrackList tracks={list} {...actions({ likedIds, onLike })} />);
+    expect(screen.getAllByRole('button', { name: 'Unlike' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Like' })).toHaveLength(2);
+  });
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Like' })[0]);
-    expect(onLike).toHaveBeenCalledWith(tracks[2]);
+  it('fills the heart for a doubled-prefix id whose canonical form is liked', () => {
+    const doubled = makeTrack({ id: 'youtube:youtube:a1' });
+    render(<TrackList tracks={[doubled]} {...actions({ likedIds: new Set(['youtube:a1']), onLike: vi.fn() })} />);
+    expect(screen.getAllByRole('button', { name: 'Unlike' })).toHaveLength(1);
   });
 
   it('passes the row id to onRemove and renders the trailing slot', () => {

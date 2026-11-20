@@ -82,6 +82,11 @@ const VARIANTS: Variant[] = [
   { re: /\bkaraoke\b/, label: 'karaoke version' },
   { re: /\bsped[\s-]*up\b/, label: 'sped up version' },
   { re: /\bslowed(?:\s*(?:\+|and)?\s*reverb)?\b/, label: 'slowed version' },
+  // A stronger cut is its own recording: "(Super Slowed)" is not "(Slowed)"
+  // (bug report 2026-11-19, the heart lit on both). Such titles carry both
+  // markers, so they never match the plain cut.
+  { re: /\b(?:super|ultra|extra|very|hyper|mega)[\s-]*(?:slowed|sped[\s-]*up)\b/, label: 'stronger version' },
+  { re: /\breverb\b/, label: 'reverb version' },
   { re: /\binstrumental\b/, label: 'instrumental' },
   { re: /\bnightcore\b/, label: 'nightcore version' },
   { re: /\bdemo\b/, label: 'demo' },

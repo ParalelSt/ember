@@ -31,6 +31,8 @@ vi.mock('@/stores/useThemeStore', () => ({
 }));
 vi.mock('@/lib/logger/client', () => ({ logger: { error: vi.fn(), breadcrumb: vi.fn(), warn: vi.fn() } }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/library' }));
+const android = vi.hoisted(() => ({ setAndroidDiscordSharing: vi.fn() }));
+vi.mock('@/lib/androidDiscord', () => android);
 
 const { AuthProvider, useAuth } = await import('./AuthProvider');
 
@@ -67,6 +69,20 @@ describe('AuthProvider sign-out', () => {
     expect(s).toMatchObject({ volume: 0.6, loopMode: 'all', muted: true });
     const saved = JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}') as { state?: { queue?: unknown[] } };
     expect(saved.state?.queue).toEqual([]);
+  });
+
+  it('turns the Android app\'s Discord switch off: it lives on the phone and acts with no page open', async () => {
+    let signOut: (() => Promise<void>) | null = null;
+    function Grab() {
+      signOut = useAuth().signOut;
+      return null;
+    }
+    render(<AuthProvider initialUser={user}><Grab /></AuthProvider>);
+    expect(android.setAndroidDiscordSharing).not.toHaveBeenCalled();
+    await act(async () => {
+      await signOut!();
+    });
+    expect(android.setAndroidDiscordSharing).toHaveBeenCalledWith(false);
   });
 
   it('tells the player, so the Android app\'s native player stops and drops the queue too', async () => {

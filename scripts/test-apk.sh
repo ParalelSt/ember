@@ -9,6 +9,14 @@
 #   scripts/test-apk.sh ui/info-changes         # another branch
 #   scripts/test-apk.sh HEAD --port 3050        # a different sandbox server
 #   scripts/test-apk.sh HEAD --server http://192.168.1.50:3000
+#   scripts/test-apk.sh HEAD --server https://ember.x.ts.net \
+#       --version 0.4.34-presence1 --code 100 --out /tmp/EmberTest.apk
+#                                     # a file, no LAN; --code above any Ember
+#                                     # Test already on the phone
+#
+# EMBER_DISCORD_DIAG=1, EMBER_DISCORD_DEFAULT_ON=1 and DISCORD_APP_ID in the
+# environment reach the build
+# (docs/APPS.md, "Discord status (Android app)").
 #
 # The build happens in its own worktree (spotify-clone-wt/test-apk), so the
 # branch you are on stays as it is. The test-only edits are made there and
@@ -20,11 +28,17 @@ REF="HEAD"
 PORT=3072
 SERVER=""
 SERVE_PORT=8780
+VERSION=""
+CODE=""
+OUT_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --port) PORT="$2"; shift 2 ;;
     --server) SERVER="$2"; shift 2 ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    --version) VERSION="$2"; shift 2 ;;
+    --code) CODE="$2"; shift 2 ;;
+    --out) OUT_FILE="$2"; shift 2 ;;
+    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
     *) REF="$1"; shift ;;
   esac
 done
@@ -34,9 +48,15 @@ MAIN="$(cd "$HERE" && cd "$(git rev-parse --git-common-dir)/.." && pwd)"
 WT="$(dirname "$MAIN")/spotify-clone-wt/test-apk"
 OUT="$HOME/.ember-test-apk"
 
-IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
-[ -n "$IP" ] || { echo "✗ No LAN address found (Wi-Fi off?)."; exit 1; }
-[ -n "$SERVER" ] || SERVER="http://$IP:$PORT"
+IP=""
+if [ -z "$OUT_FILE" ]; then
+  IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+  [ -n "$IP" ] || { echo "✗ No LAN address found (Wi-Fi off?)."; exit 1; }
+fi
+if [ -z "$SERVER" ]; then
+  [ -n "$IP" ] || { echo "✗ --out needs --server: there is no LAN sandbox to point at."; exit 1; }
+  SERVER="http://$IP:$PORT"
+fi
 
 if ! curl -s -o /dev/null -m 5 "$SERVER"; then
   echo "✗ Nothing answers at $SERVER. Start the sandbox server first (SINK=1 ...)."
@@ -66,8 +86,23 @@ perl -pi -e 's/>Ember</>Ember Test</g' "$A/src/main/res/values/strings.xml"
 perl -pi -e 's/#FFFFFF/#2563EB/' "$A/src/main/res/values/ic_launcher_background.xml"
 perl -pi -e 's/const val PACKAGE = "app\.ember\.music"/const val PACKAGE = "app.ember.music.test"/' \
   "$A/src/main/java/app/ember/music/UpdateRules.kt"
+if [ -n "$VERSION" ]; then
+  VERSION="$VERSION" perl -pi -e 's/versionName "[^"]*"/versionName "$ENV{VERSION}"/' "$A/build.gradle"
+fi
+if [ -n "$CODE" ]; then
+  [[ "$CODE" =~ ^[0-9]+$ ]] || { echo "✗ --code must be a number."; exit 1; }
+  CODE="$CODE" perl -pi -e 's/versionCode \d+/versionCode $ENV{CODE}/' "$A/build.gradle"
+fi
 
 bash "$WT/apps/mobile/scripts/build-apk.sh" "$SERVER"
+
+if [ -n "$OUT_FILE" ]; then
+  mkdir -p "$(dirname "$OUT_FILE")"
+  cp "$A/build/outputs/apk/debug/app-debug.apk" "$OUT_FILE"
+  echo
+  echo "✓ Ember Test ($SERVER): $OUT_FILE"
+  exit 0
+fi
 
 mkdir -p "$OUT"
 cp "$A/build/outputs/apk/debug/app-debug.apk" "$OUT/EmberTest.apk"

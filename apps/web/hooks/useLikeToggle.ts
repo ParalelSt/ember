@@ -4,38 +4,37 @@ import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
-import { findLikedVariant, songKey } from '@/lib/songKey';
+import { canonicalId } from '@/lib/trackIdentity';
 import type { Track } from '@/types/track';
 
 export interface LikeRule {
-  /** Ids AND song keys of the liked list: a track is "liked" when its own id
-   *  is liked or when any variant of the same song is (album / video / live
-   *  versions). Lists need the whole set at once. */
+  /** Canonical ids (canonicalId) of the liked list. A track is "liked" only
+   *  when its own exact id is in here, never because a look-alike (another
+   *  upload, a "(Slowed)" cut) is. Test with `likedIds.has(canonicalId(id))`.
+   *  Lists need the whole set at once. */
   likedIds: Set<string>;
-  /** The liked entry matching this track, or null. */
+  /** The liked entry with this track's id, or null. */
   likedEntry: (track: Track | null | undefined) => Track | null;
-  /** Like the track, or unlike whichever variant of it is already liked. */
+  /** Like exactly this track, or unlike exactly this track. */
   toggle: (track: Track | null | undefined) => void;
 }
 
-/** The "1 like per song across variants" rule, in one place: which entry a
- *  heart reflects and which entry a toggle operates on. `useLikeToggle` (one
- *  track) and `useTrackActions` (a list) are both built on it. */
+/** The like rule, in one place: a heart is lit only for the exact track id
+ *  that was liked. A different id is a different song as far as likes go,
+ *  whatever its title and artist say. `useLikeToggle` (one track) and
+ *  `useTrackActions` (a list) are both built on it. */
 export function useLikeRule(): LikeRule {
   const { user } = useAuth();
   const { data: liked = [] } = useQueryLikes();
   const toggleLike = useExecuteToggleLike();
 
-  const likedIds = useMemo(() => {
-    const keys = new Set<string>();
-    for (const t of liked) {
-      keys.add(t.id);
-      keys.add(songKey(t));
-    }
-    return keys;
-  }, [liked]);
+  const likedIds = useMemo(() => new Set(liked.map((t) => canonicalId(t.id))), [liked]);
 
-  const likedEntry = (track: Track | null | undefined) => findLikedVariant(track, liked);
+  const likedEntry = (track: Track | null | undefined) => {
+    if (!track) return null;
+    const id = canonicalId(track.id);
+    return liked.find((t) => canonicalId(t.id) === id) ?? null;
+  };
 
   const toggle = (track: Track | null | undefined) => {
     if (!track) return;
@@ -43,9 +42,9 @@ export function useLikeRule(): LikeRule {
       toast.message('Sign in to like tracks', { description: 'Liking saves songs to your library.' });
       return;
     }
-    // If a variant of this song is already liked, toggle THAT entry: keeps
-    // "1 like per song" across album / music-video / live versions.
-    const existing = findLikedVariant(track, liked);
+    // Only an entry with this very id counts, so liking a variant adds that
+    // track and unliking it never removes a different one.
+    const existing = likedEntry(track);
     toggleLike.mutate({ track: existing ?? track, wasLiked: !!existing });
   };
 

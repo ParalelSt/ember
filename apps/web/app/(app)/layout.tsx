@@ -17,6 +17,7 @@ import { SearchOverlayContainer } from '@/components/search/SearchOverlayContain
 import { SessionHostBridge } from '@/components/session/SessionHostBridge';
 import { TransferStatus } from '@/components/import/TransferStatus';
 import { AppUpdatePill } from '@/components/update/AppUpdatePill';
+import { UpdateReminder } from '@/components/update/UpdateReminder';
 import { QrScanHost } from '@/components/auth/QrScanHost';
 import { DeviceVersionReporter } from '@/components/DeviceVersionReporter';
 import { ApproveSheetHost } from '@/components/auth/ApproveSheetHost';
@@ -149,6 +150,10 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
             {/* The Android app's update (downloading, ready, tap to install);
                 nothing anywhere else. */}
             <AppUpdatePill />
+            {/* A newer Ember (web build or desktop app), said briefly under
+                the top bar; a tap updates once the song ends. Not in the
+                Android app, which has the pill above. */}
+            <UpdateReminder />
           </div>
           {/* Bound phone search above playback, including when a result
               starts the first song and the player enters the layout. */}

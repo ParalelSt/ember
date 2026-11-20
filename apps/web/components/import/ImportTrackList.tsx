@@ -5,7 +5,7 @@ import { Artwork } from '@/components/primitives/Artwork';
 import { MusicIcon } from '@/components/icons';
 import { StatusPill } from '@/components/import/parts';
 import { formatTime } from '@/lib/format';
-import { songKey } from '@/lib/songKey';
+import { canonicalId } from '@/lib/trackIdentity';
 import type { ImportRow } from '@/lib/import/rows';
 import type { ImportItem } from '@/lib/import/types';
 import type { PlaybackContext, Track } from '@/types/track';
@@ -140,7 +140,7 @@ export function ImportTrackList({
             showRank
             active={currentId === t.id}
             playing={isPlaying}
-            liked={onLike ? likedIds.has(t.id) || likedIds.has(songKey(t)) : undefined}
+            liked={onLike ? likedIds.has(canonicalId(t.id)) : undefined}
             artworkSrc={artworkSrcFor?.(t) ?? undefined}
             artworkFallback={<MusicIcon className="h-4 w-4" />}
             onPlay={() => onPlay(t, tracks, context)}

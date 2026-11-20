@@ -207,3 +207,23 @@ test('an Android release is never signed with a throwaway debug key', () => {
   assert.doesNotThrow(run);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("a release APK has no Discord diagnostics and the Discord switch starts off", () => {
+  // app/build.gradle turns these on only for "1" from the environment or a
+  // -P property: test builds (scripts/test-apk.sh). A release that had them
+  // would send a trace of every song through the player log, and show
+  // everyone's song on Discord before they turned it on in Settings.
+  const text = fs.readFileSync(WORKFLOW, 'utf8');
+  for (const name of ['EMBER_DISCORD_DIAG', 'EMBER_DISCORD_DEFAULT_ON']) {
+    assert.doesNotMatch(text, new RegExp(name), `${name} must never reach a release build`);
+  }
+  const gradle = fs.readFileSync(path.join(ROOT, 'apps/mobile/android/app/build.gradle'), 'utf8');
+  for (const [flag, field] of [['EMBER_DISCORD_DIAG', 'DISCORD_DIAG'], ['EMBER_DISCORD_DEFAULT_ON', 'DISCORD_DEFAULT_ON']]) {
+    assert.match(gradle, new RegExp(`System\\.getenv\\('${flag}'\\) \\?: findProperty\\('${flag}'\\) \\?: ''\\)\\.toString\\(\\)\\.trim\\(\\) == '1'`), `${flag}: on only when asked for`);
+    assert.match(gradle, new RegExp(`buildConfigField 'boolean', '${field}', \\w+ \\? 'true' : 'false'`));
+  }
+  for (const file of ['apps/mobile/android/gradle.properties', 'apps/mobile/android/app/gradle.properties']) {
+    const p = path.join(ROOT, file);
+    if (fs.existsSync(p)) assert.doesNotMatch(fs.readFileSync(p, 'utf8'), /EMBER_DISCORD_(DIAG|DEFAULT_ON)/, file);
+  }
+});

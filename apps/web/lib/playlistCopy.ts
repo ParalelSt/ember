@@ -1,4 +1,5 @@
 import { findLikedVariant } from '@/lib/songKey';
+import { canonicalId } from '@/lib/trackIdentity';
 import type { Track } from '@/types/track';
 
 /** Copying songs between playlists: how a collection sorts, and which picked
@@ -117,30 +118,34 @@ export interface CopyPlan {
   skipped: Skipped[];
 }
 
-/** The duplicate rule, the same one the Liked hearts use
- *  (`findLikedVariant`): a song is already in `destination` when a track
+/** The duplicate rule for playlists (`findLikedVariant`): a song is already in `destination` when a track
  *  there has the same id, or the same `songKey`. A songKey needs the same
  *  title AND the same artist AND the same version markers (live, remix,
  *  instrumental...), with a non-Latin title or artist kept as written, and
  *  a song with no artist keys on its own id. So two different songs called
  *  "Home" are never duplicates, and "Blinding Lights (Official Video)" is
  *  the same song as "Blinding Lights". */
-export function alreadyThere(track: Track, destination: Track[]): Track | null {
+export function alreadyThere(track: Track, destination: Track[], exact = false): Track | null {
+  if (exact) {
+    // Liked songs: only the very same track counts, like the heart does.
+    const id = canonicalId(track.id);
+    return destination.find((t) => canonicalId(t.id) === id) ?? null;
+  }
   return findLikedVariant(track, destination);
 }
 
 /** What copying `picked` into `destination` does: every song not already
  *  there goes in once, in the picked order. */
-export function planCopy(picked: Track[], destination: Track[]): CopyPlan {
+export function planCopy(picked: Track[], destination: Track[], exact = false): CopyPlan {
   const add: Track[] = [];
   const skipped: Skipped[] = [];
   for (const track of picked) {
-    const existing = alreadyThere(track, destination);
+    const existing = alreadyThere(track, destination, exact);
     if (existing) {
       skipped.push({ track, existing, reason: existing.id === track.id ? 'same-track' : 'other-version' });
       continue;
     }
-    const twin = alreadyThere(track, add);
+    const twin = alreadyThere(track, add, exact);
     if (twin) {
       skipped.push({ track, existing: twin, reason: 'picked-twice' });
       continue;
@@ -152,8 +157,8 @@ export function planCopy(picked: Track[], destination: Track[]): CopyPlan {
 
 /** How many of the picked songs a destination already has (a song picked
  *  twice is not "there"). */
-export function alreadyCount(picked: Track[], destination: Track[]): number {
-  return planCopy(picked, destination).skipped.filter((s) => s.reason !== 'picked-twice').length;
+export function alreadyCount(picked: Track[], destination: Track[], exact = false): number {
+  return planCopy(picked, destination, exact).skipped.filter((s) => s.reason !== 'picked-twice').length;
 }
 
 /** One skipped song as the bulk routes answer it. */

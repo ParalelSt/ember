@@ -78,6 +78,7 @@ import { musicLevel } from '@/lib/pranks/mix';
 import { isLiveTrack } from '@/lib/radio/station';
 import { PrankReceiver } from './PrankReceiver';
 import { UnplayableAnnouncer } from './UnplayableMessage';
+import { setPlaybackElsewhereProbe, setUpdatePause, takeAppUpdateResume, takeUpdateResume, updateAtSongEnd, type ResumeTarget } from '@/lib/update/apply';
 
 interface PlayerControls {
   current: Track | null;
@@ -308,6 +309,44 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const localEngine = useCallback(() => localBackendRef.current ?? backendRef.current, []);
 
   const userInteracted = useRef(false);
+  const playAtRef = useRef<((i: number) => void) | null>(null);
+  // Back from an update that waited for a song to end (lib/update/apply.ts):
+  // the song that came next starts by itself, from its beginning. Declared
+  // before the engine starts, so the store is in place before anything
+  // loads; the engine's first load then plays it (userInteracted).
+  // The Android app keeps its own copy of the note through the install (the
+  // install ends the app before the WebView writes its storage to disk): it
+  // arrives a moment later, and that song starts once the engine is up.
+  const [appResume, setAppResume] = useState<ResumeTarget | null>(null);
+  useEffect(() => {
+    const st = usePlayerStore.getState();
+    const resume = takeUpdateResume(st.queue);
+    if (resume) {
+      usePlayerStore.setState({ index: resume.index, position: 0 });
+      userInteracted.current = true;
+      logger.breadcrumb('playback', 'resumed after an update', { trackId: resume.trackId });
+      return;
+    }
+    let live = true;
+    void takeAppUpdateResume(st.queue).then((r) => {
+      if (live && r) setAppResume(r);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  // Music the page's reload cannot stop (the Android app's own player,
+  // another device this one controls) does not hold an update back.
+  useEffect(() => {
+    setPlaybackElsewhereProbe(() => ownsQueue(backendKindRef, controllingRef));
+    // The Android app's install between songs pauses the song that just
+    // started, so it does not play on for a moment under the installer.
+    setUpdatePause(() => backendRef.current?.pause());
+    return () => {
+      setPlaybackElsewhereProbe(null);
+      setUpdatePause(null);
+    };
+  }, []);
   const notifierRef = useRef<UnplayableNotifier | null>(null);
   /** Say why these songs did not play (see createNotifier). */
   const announce = useCallback((notices: UnplayableNotice[], opts?: { away?: boolean }) => {
@@ -565,6 +604,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           });
           handleError();
           return;
+        }
+        // An update waiting for this song to end (lib/update/apply.ts): it
+        // goes in now, in the gap, and the song that comes next (this one
+        // again under repeat) starts once the page is back. Nothing loads
+        // here meanwhile.
+        if (cur) {
+          const again = repeatsCurrent({ queue: state.queue, index: state.index, loopMode: state.loopMode, context: state.context, baseCount: state.baseCount });
+          const move = again ? { index: state.index } : nextIndex({ queue: state.queue, index: state.index, loopMode: state.loopMode, context: state.context, baseCount: state.baseCount });
+          const to = move ? nextPlayable(state.queue, move.index, 1, state.loopMode === 'all').index : -1;
+          const resume = to >= 0 && state.queue[to] ? { index: to, trackId: state.queue[to].id } : null;
+          if (updateAtSongEnd(resume)) {
+            logger.breadcrumb('playback', 'update at song end', { trackId: cur.id, next: resume?.trackId ?? null });
+            return;
+          }
         }
         // Loop-one, or loop-all over a single song: the same song again,
         // from the audio already loaded. Going through next() here loaded
@@ -1753,6 +1806,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // same transition.
   }, [announce, loadAndPlay, setPlayed]);
 
+  // The Android app's resume note (above), once the engine is up.
+  useEffect(() => {
+    if (!backendReady || !appResume) return;
+    setAppResume(null);
+    const st = usePlayerStore.getState();
+    if (st.queue[appResume.index]?.id !== appResume.trackId) return;
+    logger.breadcrumb('playback', 'resumed after an app update', { trackId: appResume.trackId });
+    playAtRef.current?.(appResume.index);
+  }, [backendReady, appResume]);
+
   const playAt = useCallback((i: number) => {
     userInteracted.current = true;
     const st = usePlayerStore.getState();
@@ -1767,6 +1830,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // here), exactly like Next does.
     goTo(i, 1);
   }, [goTo]);
+
+  useEffect(() => {
+    playAtRef.current = playAt;
+  }, [playAt]);
 
   useKeyboardShortcuts({ backendRef });
 

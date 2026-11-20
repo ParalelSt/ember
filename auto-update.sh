@@ -16,7 +16,7 @@
 #
 # A refusal, or an update.sh that fails, is posted to Discord ONCE per reason
 # and commit (scripts/crash-report.mjs, the webhook the host already has for
-# crash reports), not every 5 minutes. Output of the last run: logs/auto-update.log.
+# crash reports), not at every check. Output of the last run: logs/auto-update.log.
 #
 # Test-only overrides: EMBER_UPDATE_CMD (instead of ./update.sh),
 # EMBER_PUBLIC_URL, EMBER_AUTO_UPDATE_SKIP_RELAUNCH_CHECK=1.
@@ -34,12 +34,12 @@ STATE="$ROOT/logs/.auto-update-reported"
 NPM_FILES="package-lock.json apps/web/package-lock.json"
 
 mkdir -p "$ROOT/logs"
-: >"$LOG"
 say() { echo "$*" | tee -a "$LOG"; }
 
 # Another update (this timer's earlier run, or ./update.sh by hand) running:
 # skip, quietly. update.sh takes the lock itself, so a race between the two
 # ends with one of them refusing.
+RESUME=0
 if [ -d "$LOCK" ]; then
   owner="$(tr -dc '0-9' 2>/dev/null <"$LOCK/pid" || true)"
   if [ -z "$(find "$LOCK" -maxdepth 0 -mmin +60 2>/dev/null)" ] \
@@ -47,7 +47,13 @@ if [ -d "$LOCK" ]; then
     echo "Another update is running; skipping."
     exit 0
   fi
+  # Left behind by an update that is gone: killed, or the machine went down
+  # half way. It may have pulled already and stopped Ember for the install or
+  # the build, so "nothing new on GitHub" no longer means nothing to do.
+  RESUME=1
 fi
+# Only now: the running update above is still writing its output to this log.
+: >"$LOG"
 
 # refuse REASON COMMIT: say why (already in the log), tell Discord once, exit 1.
 refuse() {
@@ -93,7 +99,7 @@ else
 fi
 
 local_rev="$(git rev-parse HEAD)"
-if [ "$local_rev" = "$remote_rev" ]; then
+if [ "$local_rev" = "$remote_rev" ] && [ "$RESUME" != 1 ]; then
   rm -f "$STATE"
   exit 0
 fi
@@ -129,7 +135,8 @@ if [ "${EMBER_AUTO_UPDATE_SKIP_RELAUNCH_CHECK:-0}" != 1 ]; then
   relaunch=""
   if command -v systemctl >/dev/null 2>&1 \
      && { systemctl --user is-active --quiet ember.service 2>/dev/null \
-          || systemctl --user is-failed --quiet ember.service 2>/dev/null; }; then
+          || systemctl --user is-failed --quiet ember.service 2>/dev/null \
+          || systemctl --user is-enabled --quiet ember.service 2>/dev/null; }; then
     relaunch="systemd"
   elif command -v tmux >/dev/null 2>&1; then
     relaunch="tmux"
@@ -141,7 +148,11 @@ if [ "${EMBER_AUTO_UPDATE_SKIP_RELAUNCH_CHECK:-0}" != 1 ]; then
   fi
 fi
 
-say "New commits on origin/main ($(git rev-parse --short "$local_rev") -> $(git rev-parse --short "$remote_rev")); updating."
+if [ "$local_rev" = "$remote_rev" ]; then
+  say "The last update did not finish (it left logs/.update.lock behind); running it again."
+else
+  say "New commits on origin/main ($(git rev-parse --short "$local_rev") -> $(git rev-parse --short "$remote_rev")); updating."
+fi
 # From a timer there is no terminal; make sure a stray TMUX/STY (a hand run
 # inside tmux) does not send Ember to the foreground of a window.
 unset TMUX STY

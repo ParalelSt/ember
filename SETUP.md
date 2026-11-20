@@ -322,8 +322,8 @@ to do so.
 
 ### Automatic updates (optional)
 
-Ember can update itself: every 5 minutes (and 2 minutes after the machine boots)
-it checks GitHub, and when `main` has new commits it runs `./update.sh` for you.
+Ember can update itself: twice a day, at 12:00 and 19:00 server time (and 2
+minutes after the machine boots), it checks GitHub, and when `main` has new commits it runs `./update.sh` for you.
 Needs Ember to run under systemd (see above) or tmux, so it can be started again
 afterwards. No sudo, except maybe once to let it run while you are logged out.
 
@@ -349,7 +349,7 @@ It never runs together with a manual `./update.sh`: the second one waits or says
 It will not update when you edited a tracked file or committed on the host, and
 says so instead. Only `package-lock.json` (which npm rewrites) is put back by
 itself. When an update is refused or fails, it posts the reason and the end of
-the output to the crash-report Discord channel, once, not every 5 minutes. To fix
+the output to the crash-report Discord channel, once, not at every check. To fix
 a refusal, undo the edit (`git checkout -- <file>`); the next check picks it up.
 
 ---

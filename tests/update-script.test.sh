@@ -142,6 +142,7 @@ echo "systemctl $*" >>"$FAKE_LOG"
 case "$1" in
   is-active) [ -f "$FAKE_SYSTEMD_ACTIVE" ]; exit ;;
   is-failed) [ -f "$FAKE_SYSTEMD_FAILED" ]; exit ;;
+  is-enabled) [ -f "$FAKE_SYSTEMD_ENABLED" ]; exit ;;
   reset-failed) rm -f "$FAKE_SYSTEMD_LIMITED" "$FAKE_SYSTEMD_FAILED"; exit 0 ;;
   start|restart)
     if [ -f "$FAKE_SYSTEMD_LIMITED" ]; then
@@ -169,7 +170,7 @@ export DISCORD_CRASH_WEBHOOK_URL="http://127.0.0.1:${SINK_PORT}/hook"
 unset DISCORD_BUG_REPORT_WEBHOOK_URL TMUX STY
 export WATCHDOG_BACKOFF="0 0 0" WATCHDOG_MAX_CRASHES=3 WATCHDOG_WINDOW=60 SKIP_YTDLP_UPGRADE=1
 export FAKE_LOG="$TMP/fake.log" FAKE_TMUX_SESSION="$TMP/tmux.session" FAKE_TMUX_OUT="$TMP/tmux.out"
-export FAKE_SYSTEMD_ACTIVE="$TMP/systemd.active" FAKE_SYSTEMD_LIMITED="$TMP/systemd.limited" FAKE_SYSTEMD_FAILED="$TMP/systemd.failed"
+export FAKE_SYSTEMD_ACTIVE="$TMP/systemd.active" FAKE_SYSTEMD_LIMITED="$TMP/systemd.limited" FAKE_SYSTEMD_FAILED="$TMP/systemd.failed" FAKE_SYSTEMD_ENABLED="$TMP/systemd.enabled"
 BASE_PATH="$PATH"
 
 HOST="$TMP/host"
@@ -181,7 +182,7 @@ new_host() {
   pkill -f "$TMP/host" 2>/dev/null
   pkill -f "$TMP/serve.mjs" 2>/dev/null
   sleep 0.3
-  rm -rf "$HOST" "$ORIGIN" "$TMP/seed" "$FAKE_TMUX_SESSION" "$FAKE_SYSTEMD_ACTIVE" "$FAKE_SYSTEMD_LIMITED" "$FAKE_SYSTEMD_FAILED" "$FAKE_LOG.building"
+  rm -rf "$HOST" "$ORIGIN" "$TMP/seed" "$FAKE_TMUX_SESSION" "$FAKE_SYSTEMD_ACTIVE" "$FAKE_SYSTEMD_LIMITED" "$FAKE_SYSTEMD_FAILED" "$FAKE_SYSTEMD_ENABLED" "$FAKE_LOG.building"
   : >"$FAKE_LOG"; : >"$FAKE_TMUX_OUT"; : >"$POSTS"
   mkdir -p "$TMP/seed/scripts" "$TMP/seed/apps/web"
   cp "$REPO/start-static.sh" "$REPO/update.sh" "$TMP/seed/"
@@ -194,7 +195,7 @@ new_host() {
     cd "$TMP/seed" || exit 1
     git init -q . && git checkout -q -b main && git add -A &&
       git -c user.email=t@ember.test -c user.name=t commit -q -m v1 &&
-      git init -q --bare "$ORIGIN" && git remote add origin "$ORIGIN" && git push -q origin main &&
+      git init -q --bare -b main "$ORIGIN" && git remote add origin "$ORIGIN" && git push -q origin main &&
       git clone -q "$ORIGIN" "$HOST"
   ) >"$TMP/git.out" 2>&1 || { echo "FAIL  test git setup"; cat "$TMP/git.out"; exit 1; }
   V1="$(git -C "$HOST" rev-parse HEAD)"
@@ -429,6 +430,34 @@ check "not in tmux" file_lacks "$FAKE_LOG" "tmux new"
 check "Ember serves the new version" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
 stop_ember
 
+# Enabled but stopped (inactive, not failed): an update that was killed half
+# way, or the machine going down mid-update, leaves the unit like that, with
+# Ember down. Run again from the timer (no TMUX), update.sh used to bring
+# Ember up in tmux, beside the unit the host boots with. It goes back
+# through systemd.
+new_host
+PATH="$TMP/bin:$BASE_PATH"
+FAKE_UNIT_EXEC="$(unit_command)"
+touch "$FAKE_SYSTEMD_ENABLED"
+run_update
+check "an enabled, stopped unit: update.sh finishes" update_returned 40
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "it starts Ember through systemd" file_has "$FAKE_LOG" "systemctl --user start ember"
+check "not in tmux" file_lacks "$FAKE_LOG" "tmux new"
+check "Ember serves the new version" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
+stop_ember
+
+# ...and run inside tmux (the owner by hand), it stays in that window, as before.
+new_host
+PATH="$TMP/bin:$BASE_PATH"
+FAKE_UNIT_EXEC="$(unit_command)"
+touch "$FAKE_SYSTEMD_ENABLED"
+TMUX="/tmp/fake-tmux-socket,1,0" run_update
+check "an enabled, stopped unit, inside tmux: update.sh stays here" wait_until 40 watchdog_is_update
+check "and does not start the unit" file_lacks "$FAKE_LOG" "systemctl --user start ember"
+stop_ember
+
 # The unit failed for a reason of its own (its PATH names a node an nvm
 # upgrade removed, a wrong WorkingDirectory): starting it again fails again.
 # update.sh used to bring Ember up in tmux then; it must not leave the host
@@ -532,6 +561,37 @@ check "the stamp matches it too" file_is "$HOST/.node_modules.stamp" "$(git -C "
 check "the build cache was kept for the build" file_is "$HOST/apps/web/.next/cache/webpack" warm
 check "nothing set aside is left behind" no_aside_left
 check "the checkout is clean" clean_checkout
+stop_ember
+
+# ── 6. far behind: more new commits than update.sh lists ───────────────
+# It lists the first 20. Through `| head -20` that ended update.sh with
+# SIGPIPE (exit 141) before it pulled anything, on every run, once a host
+# was more than 20 commits behind. 3000 commits make the pipe overflow
+# every time, so the old line fails here deterministically.
+echo "── many new commits"
+new_host
+PATH="$TMP/bin:$BASE_PATH"
+{
+  for i in $(seq 1 3000); do
+    printf 'commit refs/heads/main\ncommitter t <t@ember.test> %d +0000\ndata 7\nmany %02d\n' $((1700000000 + i)) $((i % 100))
+    [ "$i" = 1 ] && printf 'from refs/heads/main^0\n'
+    printf '\n'
+  done
+} | git -C "$TMP/seed" fast-import --quiet && git -C "$TMP/seed" push -q origin main
+V3="$(git -C "$ORIGIN" rev-parse main)"
+run_update --check
+check "far behind, --check: finishes" update_returned 20
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "it counts every new commit" file_has "$TMP/update.out" "3001 new commit(s)"
+check "it lists 20 of them" [ "$(grep -c '^    ' "$TMP/update.out")" = 20 ]
+start_ember
+run_update
+check "far behind: update.sh finishes" update_returned 60
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "the update was applied" head_is "$V3"
+check "the new version is served" wait_until 20 served "$WEB_PORT" "$(git -C "$HOST" rev-parse --short "$V3")"
 stop_ember
 
 echo

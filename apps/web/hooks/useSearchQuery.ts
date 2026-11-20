@@ -48,9 +48,9 @@ export async function* failWhenNothingFound(chunks: AsyncIterable<SearchChunk>):
  *  (they are two different chrome around the same query). Keep every string
  *  here exactly as the page originally had it: the page and the overlay
  *  tests both assert on it. */
-export function useSearchQuery() {
-  const [q, setQ] = useState('');
-  const [debouncedQ, setDebouncedQ] = useState('');
+export function useSearchQuery(initialQ = '') {
+  const [q, setQ] = useState(initialQ);
+  const [debouncedQ, setDebouncedQ] = useState(initialQ);
   const isOnline = useOnline();
   const trackActions = useTrackActions();
 

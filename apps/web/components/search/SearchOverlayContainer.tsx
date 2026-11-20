@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { SearchNoResults } from '@/components/search/SearchNoResults';
 import { TrackRow } from '@/components/track/TrackRow';
 import { TrackMenu, renderTrackMenu } from '@/components/track/menus/TrackMenu';
@@ -32,6 +32,14 @@ export function SearchOverlayContainer({ leading }: { leading?: ReactNode } = {}
   const close = useCallback(() => setOpen(false), [setOpen]);
   const openNow = useCallback(() => setOpen(true), [setOpen]);
   const pathname = usePathname();
+  const router = useRouter();
+  const submit = useCallback(
+    (query: string) => {
+      setOpen(false);
+      router.push(`/search?q=${encodeURIComponent(query)}`);
+    },
+    [setOpen, router],
+  );
   const isDesktop = useIsDesktop();
   // /search is the search UI in its own right, with its own box: a second
   // identical box above it would be nonsense. The route stays for deep
@@ -190,6 +198,7 @@ export function SearchOverlayContainer({ leading }: { leading?: ReactNode } = {}
       open={open}
       onClose={close}
       onOpen={openNow}
+      onSubmit={submit}
       variant={isDesktop ? 'dropdown' : 'sheet'}
       q={q}
       onQChange={setQ}

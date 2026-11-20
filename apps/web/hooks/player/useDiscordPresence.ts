@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { setAndroidDiscordSharing } from '@/lib/androidDiscord';
 import { useStationSong } from '@/hooks/player/useStationSong';
 import { publishDiscordPresence } from '@/lib/discordPresence';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
@@ -27,7 +28,9 @@ interface Seen {
 }
 
 /** Discord rich presence. The desktop app talks to the user's OWN Discord;
- *  web/phone falls back to the server route (host's Discord only).
+ *  the Android app's player service does too, by itself, and only takes the
+ *  switch from here; web and iPhone fall back to the server route (host's
+ *  Discord only).
  *
  *  Publishes on a track change, on play/pause, and on a seek. Never on a
  *  normal playhead tick: the provider re-renders several times a second
@@ -145,4 +148,13 @@ export function useDiscordPresence({
     // Only the song: the rest have their own publishes above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [songKey, track?.id]);
+
+  // The Android app keeps the switch on disk for when no page is open. Only
+  // the account's real answer goes there: until it loads the store says "off"
+  // whatever the account says, and a failed load (no connection) knows nothing
+  // new, so neither may overwrite it.
+  const privacyLoaded = usePrivacyStore((st) => st.loaded);
+  useEffect(() => {
+    if (privacyLoaded) setAndroidDiscordSharing(shareDiscord);
+  }, [privacyLoaded, shareDiscord]);
 }

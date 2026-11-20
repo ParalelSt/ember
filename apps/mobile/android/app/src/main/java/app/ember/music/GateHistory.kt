@@ -11,55 +11,37 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import org.json.JSONObject
 
-/** The launch gate's memory between launches (GateRules.History), in
- *  SharedPreferences: how far the last launches got, so two that died after
- *  the gate make a recovery launch and two that died in it skip it once. The
- *  gate writes STARTING and GATED; EmberActivity writes READY on its first
- *  page load. Also when the gate last handed an APK to Android, for the
- *  "Ember updated" notification. */
+/** Between launches, in SharedPreferences: the version that ran last (so
+ *  the first start after an update can say so, "update.gate.done"), and when
+ *  an install the person asked for began, for the "Ember updated"
+ *  notification. The launch gate that once kept launch stages here is gone
+ *  (LaunchGateActivity). */
 object GateHistory {
     private const val PREFS = "ember.launch"
-    private const val KEY_STAGE = "stage"
-    private const val KEY_IN_GATE = "failedInGate"
-    private const val KEY_AFTER_GATE = "failedAfterGate"
     private const val KEY_LAST_VERSION = "lastVersion"
     private const val KEY_INSTALL_AT = "gateInstallAt"
 
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun load(c: Context): GateRules.History {
+    /** The version an update replaced since the last start, or null; this
+     *  start's version is kept for the next one. */
+    fun updatedFrom(c: Context): String? {
+        val now = AppVersion.name(c) ?: return null
         val p = prefs(c)
-        val stage = runCatching { GateRules.Stage.valueOf(p.getString(KEY_STAGE, null) ?: "CLEAN") }.getOrDefault(GateRules.Stage.CLEAN)
-        return GateRules.History(stage, p.getInt(KEY_IN_GATE, 0), p.getInt(KEY_AFTER_GATE, 0), p.getString(KEY_LAST_VERSION, null))
+        val last = p.getString(KEY_LAST_VERSION, null)
+        if (last != now) p.edit().putString(KEY_LAST_VERSION, now).commit()
+        return wasUpdated(last, now)
     }
 
-    fun store(c: Context, h: GateRules.History) {
-        // commit, not apply: the point is to survive the process dying.
-        prefs(c).edit()
-            .putString(KEY_STAGE, h.stage.name)
-            .putInt(KEY_IN_GATE, h.failedInGate)
-            .putInt(KEY_AFTER_GATE, h.failedAfterGate)
-            .putString(KEY_LAST_VERSION, h.lastVersion)
-            .commit()
-    }
-
-    /** A gated launch begins. */
-    fun start(c: Context): GateRules.Launch {
-        val launch = GateRules.onLaunch(load(c), AppVersion.name(c))
-        store(c, launch.history)
-        return launch
-    }
-
-    @JvmStatic
-    fun mark(c: Context, stage: GateRules.Stage) {
-        runCatching { store(c, GateRules.reached(load(c), stage)) }
-    }
+    /** [last] when [now] is newer than it. */
+    fun wasUpdated(last: String?, now: String?): String? =
+        last?.takeIf { now != null && UpdateRules.isNewer(now, it) }
 
     fun installStarted(c: Context, now: Long = System.currentTimeMillis()) {
         prefs(c).edit().putLong(KEY_INSTALL_AT, now).commit()
     }
 
-    /** When the gate last started an install, and forget it. */
+    /** When an install the person asked for last began, and forget it. */
     fun takeInstallAt(c: Context): Long {
         val p = prefs(c)
         val at = p.getLong(KEY_INSTALL_AT, 0L)
@@ -67,14 +49,14 @@ object GateHistory {
         return at
     }
 
-    /** Whether an update that just went in came from the gate, recently
-     *  enough that the person is waiting for Ember to come back. */
+    /** Whether an update that just went in was asked for recently enough
+     *  that the person is waiting for Ember to come back. */
     fun relaunchNoticeDue(now: Long, installAt: Long): Boolean =
         installAt > 0 && now >= installAt && now - installAt <= 10 * 60 * 1000L
 }
 
 /** Android does not reopen an app that updated itself. After an update the
- *  person started (the launch gate, or Install in the page), the new version
+ *  person started (a tap on Update in the page), the new version
  *  opens itself again where Android allows it (before Android 10); from 10
  *  on an app may not open a window from the background, so it posts "Ember
  *  updated, tap to open" (S3), for which the install asked for the

@@ -13,6 +13,9 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+const searchParams = vi.hoisted(() => ({ value: new URLSearchParams() }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => searchParams.value }));
+
 vi.mock('@/lib/useOnline', () => ({ useOnline: () => true }));
 
 vi.mock('@/hooks/useVoiceSearch', () => ({
@@ -95,10 +98,35 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   recents.tracks = [];
+  searchParams.value = new URLSearchParams();
   api.search.mockResolvedValue({ tracks: [] });
 });
 
 describe('SearchPage', () => {
+  it('prefills from ?q=, landed on from the overlay Enter key', async () => {
+    searchParams.value = new URLSearchParams({ q: 'daft punk' });
+    const track = makeTrack({ id: 'youtube:dp', sourceId: 'dp', title: 'One More Time' });
+    api.search.mockResolvedValue({ tracks: [track] });
+    renderPage();
+
+    expect(screen.getByPlaceholderText('What do you want to listen to?')).toHaveValue('daft punk');
+    expect((await screen.findAllByText('One More Time'))[0]).toBeInTheDocument();
+  });
+
+  it('follows a new ?q= while already on the page (phone sheet Enter)', async () => {
+    searchParams.value = new URLSearchParams({ q: 'daft punk' });
+    const { rerender } = renderPage();
+    const box = screen.getByPlaceholderText('What do you want to listen to?');
+    expect(box).toHaveValue('daft punk');
+    searchParams.value = new URLSearchParams({ q: 'air' });
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <SearchPage />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByPlaceholderText('What do you want to listen to?')).toHaveValue('air');
+  });
+
   it('[bughunt W07] shows real tracks under Trending instead of an empty state', async () => {
     const track = makeTrack({ id: 'youtube:trend', sourceId: 'trend', title: 'Chart Topper' });
     api.search.mockResolvedValue({ tracks: [track] });

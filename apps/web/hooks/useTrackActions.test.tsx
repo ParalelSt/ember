@@ -3,7 +3,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useTrackActions } from './useTrackActions';
-import { songKey } from '@/lib/songKey';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import type { Track } from '@/types/track';
 
@@ -46,7 +45,7 @@ function makeTrack(over: Partial<Track> = {}): Track {
 }
 
 const likedTrack = makeTrack();
-// Same song, different upload: a variant that must count as liked.
+// Same title and artist, different upload: a look-alike that is NOT liked.
 const variant = makeTrack({
   id: 'youtube:b2',
   sourceId: 'b2',
@@ -92,29 +91,44 @@ describe('useTrackActions', () => {
     expect(result.current.currentId).toBeNull();
   });
 
-  it('puts both the liked id and its song key in likedIds, so variants count as liked', async () => {
+  it('puts only the liked ids in likedIds, never a look-alike key', async () => {
     const { result } = setup();
-    await waitFor(() => expect(result.current.likedIds.size).toBe(2));
+    await waitFor(() => expect(result.current.likedIds.size).toBe(1));
     expect(result.current.likedIds.has(likedTrack.id)).toBe(true);
-    expect(result.current.likedIds.has(songKey(variant))).toBe(true);
     expect(result.current.likedIds.has(variant.id)).toBe(false);
   });
 
-  it('unlikes the existing entry when a variant of a liked song is toggled', async () => {
+  it('likes a look-alike variant as its own track and never unlikes the other', async () => {
     const { result } = setup();
-    await waitFor(() => expect(result.current.likedIds.size).toBe(2));
+    await waitFor(() => expect(result.current.likedIds.size).toBe(1));
 
     await act(async () => { result.current.onLike(variant); });
-    // The liked entry is the one that gets removed, not the variant that
-    // was clicked, so a song never ends up liked twice.
+    await waitFor(() => expect(api.like).toHaveBeenCalledWith(variant));
+    expect(api.unlike).not.toHaveBeenCalled();
+  });
+
+  it('unlikes exactly the track toggled when its own id is liked', async () => {
+    const { result } = setup();
+    await waitFor(() => expect(result.current.likedIds.size).toBe(1));
+
+    await act(async () => { result.current.onLike(likedTrack); });
     await waitFor(() => expect(api.unlike).toHaveBeenCalledWith(likedTrack.id));
     expect(api.like).not.toHaveBeenCalled();
+  });
+
+  it('treats a doubled youtube: prefix as the same id as the liked one', async () => {
+    const { result } = setup();
+    await waitFor(() => expect(result.current.likedIds.size).toBe(1));
+    expect(result.current.likedIds.has('youtube:a1')).toBe(true);
+
+    await act(async () => { result.current.onLike(makeTrack({ id: 'youtube:youtube:a1' })); });
+    await waitFor(() => expect(api.unlike).toHaveBeenCalledWith(likedTrack.id));
   });
 
   it('likes a track that has no liked variant yet', async () => {
     const other = makeTrack({ id: 'youtube:c3', sourceId: 'c3', title: 'Second Wind' });
     const { result } = setup();
-    await waitFor(() => expect(result.current.likedIds.size).toBe(2));
+    await waitFor(() => expect(result.current.likedIds.size).toBe(1));
 
     await act(async () => { result.current.onLike(other); });
     await waitFor(() => expect(api.like).toHaveBeenCalledWith(other));

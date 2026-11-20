@@ -2,6 +2,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { api } from '@/lib/api';
+import { androidOwnsDiscord } from '@/lib/androidDiscord';
 import { detectShell } from '@/lib/playback/detectShell';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 import type { Track } from '@/types/track';
@@ -9,8 +10,11 @@ import type { Track } from '@/types/track';
 /** Publish "now playing" to Discord.
  *
  *  Desktop app → the LOCAL Discord client, so each listener's own profile
- *  shows what they're playing. Everywhere else → the server route, which can
- *  only reach the host's Discord (browsers have no way to do presence).
+ *  shows what they're playing. Android app → nothing from here: its player
+ *  service publishes the card to the Discord app on the phone, page or no
+ *  page, and only hears the switch (setAndroidDiscordSharing). Everywhere else
+ *  → the server route, which can only reach the host's Discord (browsers have
+ *  no way to do presence).
  *  camelCase args are converted to the Rust command's snake_case by Tauri.
  *
  *  The card has a time bar, so the playhead travels with every update: a seek
@@ -21,6 +25,8 @@ export function publishDiscordPresence(
   positionSec = 0,
   durationSec = 0,
 ): void {
+  if (androidOwnsDiscord()) return;
+
   // Honour the user's Discord switch. The desktop app writes to the LOCAL
   // Discord client, so nothing server-side can stop it, this check is the
   // only thing standing between "hidden" and broadcasting. When sharing is

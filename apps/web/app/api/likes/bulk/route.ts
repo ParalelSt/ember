@@ -12,7 +12,7 @@ import type { Track } from '@/types/track';
  *  to the "this likes every one of them" warning, so a stray call can never
  *  skip it. Likes are only ever written for the signed-in member. The
  *  server re-runs lib/playlistCopy's `planCopy` against their likes, so a
- *  song already liked (or another upload of it) is skipped. The new likes
+ *  song already liked (the exact same track, not a look-alike) is skipped. The new likes
  *  land on top of Liked songs, in the picked order. Answers
  *  `{ added, skipped }`. */
 export const POST = withRequestLog('likes/bulk', async (request: NextRequest) => {
@@ -35,7 +35,7 @@ export const POST = withRequestLog('likes/bulk', async (request: NextRequest) =>
     // that repeats one still in flight (same method and path): off for
     // this request's own client.
     pb.autoCancellation(false);
-    const plan = planCopy(parsed.tracks, liked);
+    const plan = planCopy(parsed.tracks, liked, true);
     // The first picked song gets the newest time, so the batch reads in the
     // picked order at the top of Liked songs (newest first).
     const now = Date.now();

@@ -187,6 +187,14 @@ elif [ "$HERE" != 1 ] && command -v systemctl >/dev/null 2>&1 \
   UNIT_FAILED=1
 elif [ -n "${TMUX:-}" ] || [ -n "${STY:-}" ] || [ "$HERE" = 1 ]; then
   RELAUNCH="here"
+elif command -v systemctl >/dev/null 2>&1 \
+   && systemctl --user is-enabled --quiet "$SYSTEMD_UNIT" 2>/dev/null; then
+  # Enabled but stopped (inactive): the unit still boots Ember here, and an
+  # update that died half way (killed, the machine went down) left it
+  # stopped. Started through systemd, like a failed unit, with the same
+  # fallback to tmux if it will not start.
+  RELAUNCH="systemd"
+  UNIT_FAILED=1
 else
   RELAUNCH="tmux"
 fi
@@ -333,7 +341,11 @@ if [ "$LOCAL" = "$REMOTE" ]; then
   [ "$MODE" = "check" ] && exit 0
 else
   echo "  $(git rev-list --count HEAD..origin/main) new commit(s):"
-  git log --oneline --no-decorate HEAD..origin/main | head -20 | sed 's/^/    /'
+  # git's own -20, not `| head -20`: head exits after 20 lines, git log then
+  # dies of SIGPIPE writing the rest, and pipefail + set -e ended update.sh
+  # right here (exit 141, nothing updated) whenever the host was more than
+  # 20 commits behind.
+  git log --oneline --no-decorate -20 HEAD..origin/main | sed 's/^/    /'
 fi
 
 if [ "$MODE" = "check" ]; then

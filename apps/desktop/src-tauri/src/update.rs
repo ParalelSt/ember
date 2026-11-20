@@ -1,26 +1,25 @@
-//! Desktop auto-update.
+//! Desktop updates, started by the person (owner, 2026-11-14).
 //!
-//! The app asks the Ember server whether a newer build exists. The server
-//! answers from the GitHub Release (it holds the token; the app never does)
-//! and streams the installer back. Every update is signed with the updater
-//! key, and Tauri refuses anything that doesn't verify against the pubkey
-//! baked into tauri.conf.json, so a compromised server still can't push a
-//! malicious build.
+//! The page offers a newer Ember with its reminder pill and Settings' Updates
+//! card (apps/web/lib/update/apply.ts). Nothing here runs by itself: there is
+//! no background download and no launch dialog. A tap:
 //!
-//! Failures are deliberately quiet. A user who launched Ember wants music,
-//! not a dialog about a failed update check: the server may be down, offline,
-//! or mid-restart, and none of that should interrupt playback.
+//!  - while a song plays: `update_download` fetches the update now and keeps
+//!    it; at the end of the song the page calls `update_install`;
+//!  - with nothing playing: `update_install` at once (it downloads first when
+//!    nothing is kept yet).
 //!
-//! Installing is not the same everywhere. On macOS and Linux it swaps the app
-//! on disk and the running app carries on. On Windows it starts the installer
-//! and quits the app on the spot (`std::process::exit` inside the plugin),
-//! and the installer then starts Ember again. Doing that while a song played
-//! cut the song off mid-way.
+//! `update_install` checks the kept copy against the release's signature
+//! (the pubkey baked into tauri.conf.json, so a compromised server still
+//! cannot push a build) and hands it to the installer. On Windows the
+//! installer quits this process and starts the new version (passive mode,
+//! a small progress window); on macOS and Linux it swaps the app on disk and
+//! the app restarts itself. The page's note of the song to start once the
+//! new version opens is kept in this folder too (`update_take_resume`): the
+//! install ends the process sooner than the WebView writes its own storage.
 //!
-//! So this background check only ever downloads and keeps the update, on
-//! every OS (owner decision D6). Installing happens in one place: the launch
-//! dialog (src/gate.rs), at the start of a launch, before any music, with a
-//! countdown and "Not now".
+//! The server answers from the GitHub Release (it holds the token; the app
+//! never does) and streams the installer back.
 
 use std::path::{Path, PathBuf};
 
@@ -30,24 +29,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 use crate::applog;
 
-/// What to do with an update the server offers.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Step {
-    /// Download it and keep it for the launch dialog.
-    DownloadAndStage,
-    /// That version is already downloaded: nothing to do until a launch.
-    AlreadyStaged,
-}
-
-/// `staged`: the version an earlier session downloaded, if any.
-pub(crate) fn plan(staged: Option<&str>, offered: &str) -> Step {
-    match staged {
-        Some(v) if v == offered => Step::AlreadyStaged,
-        _ => Step::DownloadAndStage,
-    }
-}
-
-// --- The downloaded copy, kept between launches -----------------------------
+// --- The downloaded copy -----------------------------
 
 const STAGED_BYTES: &str = "pending.bin";
 const STAGED_VERSION: &str = "pending.version";
@@ -108,68 +90,139 @@ pub(crate) fn pubkey(app: &AppHandle) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Check for an update and download it, to be installed by the launch
-/// dialog at the next launch (see the module docs).
-///
-/// Runs in the background after the launch gate, when the gate itself did not
-/// already start a download.
-pub async fn check_on_startup(app: AppHandle, log_path: Option<PathBuf>) {
-    let log = |level: &str, msg: &str| applog::write_line(log_path.as_ref(), level, msg);
-    // The gate's clocks (src/gate.rs): with none, a server that stopped
-    // answering held this task, and its buffer, for the rest of the session.
-    let updater = match app.updater_builder().timeout(crate::gate::FEED_TIMEOUT).build() {
-        Ok(u) => u,
-        Err(e) => {
-            log("WARN", &format!("updater unavailable: {e}"));
-            return;
-        }
-    };
-    let Some(dir) = update_dir(&app) else {
-        // Nowhere to keep it, and installing now could quit mid-song.
-        log("WARN", "update check skipped: no app data folder");
-        return;
-    };
+// --- The resume note --------------------------------------------------------
 
-    let update = match updater.check().await {
-        Ok(Some(update)) => update,
-        Ok(None) => {
-            log("INFO", "no update available");
-            // The kept copy, if any, is what is running now.
-            clear(&dir);
-            return;
-        }
-        Err(e) => {
-            // Offline, server down, or a malformed feed. Not worth bothering
-            // the user about.
-            log("INFO", &format!("update check skipped: {e}"));
-            return;
-        }
-    };
-    let version = update.version.clone();
-    if plan(staged_version(&dir).as_deref(), &version) == Step::AlreadyStaged {
-        log("INFO", &format!("update {version} already downloaded, the launch dialog installs it"));
-        return;
+const RESUME_NOTE: &str = "resume.json";
+
+/// Keeps the page's note (`{ index, trackId, at }`, at most 2000 bytes).
+pub(crate) fn keep_resume(dir: &Path, note: &str) -> std::io::Result<()> {
+    if note.is_empty() || note.len() > 2000 {
+        return Ok(());
     }
+    std::fs::create_dir_all(dir)?;
+    std::fs::write(dir.join(RESUME_NOTE), note)
+}
 
-    log("INFO", &format!("update available: {version}, downloading"));
-    // No progress UI: this runs while the user is listening, and a desktop
-    // shell update is a few MB.
-    let fetching = &update;
-    let downloaded = crate::gate::download_unless_stalled(crate::gate::DOWNLOAD_STALL, |_chunk, _total| {}, |on_chunk| async move {
-        fetching.download(on_chunk, || {}).await.map_err(|e| e.to_string())
+/// The note, once.
+pub(crate) fn take_resume(dir: &Path) -> Option<String> {
+    let note = std::fs::read_to_string(dir.join(RESUME_NOTE)).ok()?;
+    let _ = std::fs::remove_file(dir.join(RESUME_NOTE));
+    (!note.trim().is_empty()).then_some(note)
+}
+
+// --- The commands -----------------------------------------------------------
+
+fn log_line(app: &AppHandle, level: &str, msg: &str) {
+    let path = app.try_state::<applog::LogFile>().and_then(|f| f.0.lock().ok().and_then(|p| p.clone()));
+    applog::write_line(path.as_ref(), level, msg);
+}
+
+fn event(app: &AppHandle, name: &str, data: serde_json::Value) {
+    if let Some(gate) = app.try_state::<std::sync::Arc<crate::gate::Gate>>() {
+        gate.event(name, data);
+    }
+}
+
+/// The updater's view of the newest release (its signature and download).
+async fn fetch(app: &AppHandle) -> Result<tauri_plugin_updater::Update, String> {
+    let updater = app
+        .updater_builder()
+        .timeout(crate::gate::FEED_TIMEOUT)
+        .build()
+        .map_err(|e| e.to_string())?;
+    updater.check().await.map_err(|e| e.to_string())?.ok_or_else(|| "no update to install".to_string())
+}
+
+/// Downloads `update` and keeps it, unless that version is kept already.
+async fn download_and_keep(dir: &Path, update: &tauri_plugin_updater::Update) -> Result<(), String> {
+    if plan(staged_version(dir).as_deref(), &update.version) == Step::AlreadyStaged {
+        return Ok(());
+    }
+    let bytes = crate::gate::download_unless_stalled(crate::gate::DOWNLOAD_STALL, |_chunk, _total| {}, |on_chunk| async move {
+        update.download(on_chunk, || {}).await.map_err(|e| e.to_string())
     })
-    .await;
-    let bytes = match downloaded {
-        Ok(b) => b,
-        Err(e) => {
-            log("WARN", &format!("update {version} failed to download: {e}"));
-            return;
-        }
-    };
-    match stage(&dir, &version, &bytes) {
-        Ok(()) => log("INFO", &format!("update {version} downloaded, the launch dialog installs it")),
-        Err(e) => log("WARN", &format!("update {version} could not be kept: {e}")),
+    .await?;
+    stage(dir, &update.version, &bytes).map_err(|e| e.to_string())
+}
+
+/// What to do with the update the feed offers.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Step {
+    /// Download it and keep it.
+    DownloadAndStage,
+    /// That version is kept already.
+    AlreadyStaged,
+}
+
+/// `staged`: the version kept already, if any.
+pub(crate) fn plan(staged: Option<&str>, offered: &str) -> Step {
+    match staged {
+        Some(v) if v == offered => Step::AlreadyStaged,
+        _ => Step::DownloadAndStage,
     }
+}
+
+/// The tap while a song plays: fetch the update now, keep it for
+/// `update_install` at the end of the song. Never installs. The version.
+#[tauri::command]
+pub async fn update_download(app: AppHandle) -> Result<String, String> {
+    let dir = update_dir(&app).ok_or("no app data folder")?;
+    let update = fetch(&app).await?;
+    log_line(&app, "INFO", &format!("update {}: downloading (tapped)", update.version));
+    if let Err(e) = download_and_keep(&dir, &update).await {
+        event(&app, "update.failed", serde_json::json!({ "stage": "download", "version": update.version, "error": e }));
+        return Err(e);
+    }
+    event(&app, "update.ready", serde_json::json!({ "version": update.version }));
+    Ok(update.version)
+}
+
+/// The tap with nothing playing, or the end of the song it waited for:
+/// install (downloading first when nothing is kept). `resume`: the page's
+/// note of the song to start once the new version opens. Ends the app; an
+/// error comes back only when the update could not even start.
+#[tauri::command]
+pub async fn update_install(app: AppHandle, resume: Option<String>) -> Result<(), String> {
+    if cfg!(target_os = "macos") && std::env::current_exe().is_ok_and(|exe| crate::gate::mac_location_problem(&exe)) {
+        return Err("Ember runs from outside Applications: move it there to update".into());
+    }
+    let dir = update_dir(&app).ok_or("no app data folder")?;
+    let update = fetch(&app).await?;
+    if let Err(e) = download_and_keep(&dir, &update).await {
+        event(&app, "update.failed", serde_json::json!({ "stage": "download", "version": update.version, "error": e }));
+        return Err(e);
+    }
+    let bytes = staged_bytes(&dir).map_err(|e| e.to_string())?;
+    let key = pubkey(&app).ok_or("no updater pubkey")?;
+    if let Err(e) = verify(&bytes, &update.signature, &key) {
+        clear(&dir);
+        event(&app, "update.failed", serde_json::json!({ "stage": "verify", "version": update.version, "error": e }));
+        return Err(format!("the update failed its signature check: {e}"));
+    }
+    if let Some(note) = resume.as_deref() {
+        let _ = keep_resume(&dir, note);
+    }
+    event(&app, "update.install", serde_json::json!({ "version": update.version }));
+    log_line(&app, "INFO", &format!("update {}: installing (tapped)", update.version));
+    let version = update.version.clone();
+    // The installers block (pkexec, the Windows installer): off the async
+    // workers. On Windows this does not return: the installer quits Ember.
+    let installed = tauri::async_runtime::spawn_blocking(move || update.install(bytes))
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Err(e) = installed {
+        let _ = take_resume(&dir);
+        event(&app, "update.failed", serde_json::json!({ "stage": "install", "version": version, "error": e.to_string() }));
+        return Err(e.to_string());
+    }
+    clear(&dir);
+    app.restart();
+}
+
+/// The page's resume note, once: asked by the new version's page at start.
+#[tauri::command]
+pub fn update_take_resume(app: AppHandle) -> Option<String> {
+    update_dir(&app).and_then(|d| take_resume(&d))
 }
 
 #[cfg(test)]
@@ -188,11 +241,8 @@ mod tests {
         dir
     }
 
-    /// The bug: on Windows the update installed (and quit the app) as soon as
-    /// it downloaded, whatever was playing. Now the background check only
-    /// downloads, on every OS (D6); the launch dialog installs.
     #[test]
-    fn a_new_update_is_downloaded_and_kept_not_installed() {
+    fn a_new_update_is_downloaded_and_kept() {
         assert_eq!(plan(None, "0.5.0"), Step::DownloadAndStage);
     }
 
@@ -206,25 +256,61 @@ mod tests {
         assert_eq!(plan(Some("0.5.0"), "0.5.1"), Step::DownloadAndStage);
     }
 
-    /// Nothing in the background path may install: installing quits the app
-    /// on Windows and swaps it under a running copy elsewhere.
-    #[test]
-    fn the_background_path_never_installs() {
+    fn body_of(name: &str) -> &'static str {
         let src = include_str!("update.rs");
-        let body = &src[src.find("pub async fn check_on_startup").unwrap()..src.find("#[cfg(test)]").unwrap()];
-        assert!(!body.contains(".install("), "check_on_startup must only download and stage");
+        let start = src.find(&format!("pub async fn {name}")).or_else(|| src.find(&format!("pub fn {name}"))).unwrap();
+        let rest = &src[start..];
+        &rest[..rest[1..].find("\n#[").map(|i| i + 1).unwrap_or(rest.len())]
     }
 
-    /// The background check and download had no clock at all (the default
-    /// updater has no timeout, and the plugin puts none on a download): a
-    /// stalled one held its task and buffer for the rest of the session.
-    /// They now run on the gate's clocks.
+    /// A download the page asked for while a song plays only fetches and
+    /// keeps: installing quits the app on Windows, which cut songs off.
     #[test]
-    fn the_background_check_and_download_have_time_limits() {
+    fn the_download_command_never_installs() {
+        let body = body_of("update_download");
+        assert!(body.contains("download_and_keep"));
+        assert!(!body.contains(".install("), "update_download must not install");
+        assert!(!body.contains("restart"), "update_download must not restart");
+    }
+
+    /// The install checks the signature before handing the bytes over, and
+    /// keeps the page's resume note first.
+    #[test]
+    fn the_install_command_verifies_and_keeps_the_note_first() {
+        let body = body_of("update_install");
+        let verify_at = body.find("verify(&bytes").unwrap();
+        let note_at = body.find("keep_resume").unwrap();
+        let install_at = body.find("update.install(bytes)").unwrap();
+        assert!(verify_at < install_at && note_at < install_at);
+    }
+
+    /// The feed and the download run on clocks: a stalled one held its task
+    /// (and its buffer) forever.
+    #[test]
+    fn the_feed_and_the_download_have_time_limits() {
         let src = include_str!("update.rs");
-        let body = &src[src.find("pub async fn check_on_startup").unwrap()..src.find("#[cfg(test)]").unwrap()];
-        assert!(body.contains(".timeout(crate::gate::FEED_TIMEOUT)"), "the check needs a timeout");
-        assert!(body.contains("download_unless_stalled(crate::gate::DOWNLOAD_STALL"), "the download needs a stall guard");
+        assert!(src.contains(".timeout(crate::gate::FEED_TIMEOUT)"));
+        assert!(src.contains("download_unless_stalled(crate::gate::DOWNLOAD_STALL"));
+    }
+
+    /// Nothing in the app checks or downloads by itself any more.
+    #[test]
+    fn nothing_runs_in_the_background() {
+        let gone = ["check_on", "_startup"].concat();
+        assert!(!include_str!("update.rs").contains(&gone));
+        assert!(!include_str!("lib.rs").contains(&gone));
+    }
+
+    #[test]
+    fn the_resume_note_is_kept_and_handed_over_once() {
+        let dir = scratch("resume");
+        assert_eq!(take_resume(&dir), None);
+        keep_resume(&dir, r#"{"index":2,"trackId":"youtube:b","at":1}"#).unwrap();
+        assert_eq!(take_resume(&dir).as_deref(), Some(r#"{"index":2,"trackId":"youtube:b","at":1}"#));
+        assert_eq!(take_resume(&dir), None);
+        keep_resume(&dir, &"x".repeat(3000)).unwrap();
+        assert_eq!(take_resume(&dir), None, "an oversized note is not kept");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

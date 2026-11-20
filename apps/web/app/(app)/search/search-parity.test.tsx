@@ -30,7 +30,11 @@ vi.mock('@/components/ui/dialog', () => ({
 // the page navigates) and the window size (dropdown vs sheet). Neither is
 // what this test is about: pin both, and render the overlay on a path where
 // it is live.
-vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: vi.fn() }),
+}));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
 
 vi.mock('@/lib/useOnline', () => ({ useOnline: () => true }));

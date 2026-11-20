@@ -18,7 +18,7 @@
              nothing but the config decides. -->
 
         <!-- The app itself (Capacitor's WebView, the plugins, the player).
-             Started by the launch gate below, not by the launcher. -->
+             Started by LaunchGateActivity below, not by the launcher. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:name=".EmberActivity"
@@ -27,9 +27,10 @@
             android:launchMode="singleTask"
             android:exported="false" />
 
-        <!-- The launch gate (LaunchGateActivity, GateRules): a launcher tap
-             asks the server for an update before the WebView or the player
-             exist, and offers it with "Not now". -->
+        <!-- LaunchGateActivity: hands every launcher start straight to the
+             app. It used to be the launch gate (an update check and dialog
+             before the app opened); updates now start only from a tap in
+             the page. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:name=".LaunchGateActivity"
@@ -134,7 +135,7 @@
             android:name=".UpdateInstallReceiver"
             android:exported="false" />
         <!-- Android does not reopen an app that updated itself: after an
-             update from the launch gate, a notification offers to (S3). -->
+             update the person tapped, a notification offers to (S3). -->
         <receiver
             android:name=".UpdatedReceiver"
             android:exported="false">
@@ -160,6 +161,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- Discord's Social SDK brings these for sign-in and voice; presence
+             without sign-in uses neither. The sign-in activity is exported, so
+             it must not sit in Ember unused. Nothing to remove in a build
+             without the SDK. -->
+        <activity
+            android:name="com.discord.socialsdk.AuthenticationActivity"
+            tools:node="remove" />
+        <service
+            android:name="com.discord.socialsdk.ForegroundService"
+            tools:node="remove" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -172,6 +184,17 @@
     </application>
 
     <!-- Permissions -->
+
+    <!-- Discord's Social SDK (a build that has it, see app/build.gradle) asks
+         for what voice chat needs. Ember only sets rich presence, and the
+         SDK's docs say everything but INTERNET can go without voice, so none
+         of this comes with it. RECORD_AUDIO is not in this list on purpose:
+         voice search declares it below for itself, and a remove here would
+         take that away too. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" tools:node="remove" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" tools:node="remove" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- The auto cache and the offline skip watch for a validated network
