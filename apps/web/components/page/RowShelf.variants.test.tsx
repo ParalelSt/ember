@@ -55,7 +55,7 @@ const wideRow = () => document.querySelector<HTMLElement>('[data-row-shelf="wide
 describe.each([
   ['a', 'header arrows'],
   ['b', 'hover edge arrows'],
-] as const)('variant %s (%s)', (variant) => {
+] as const)('variant %s (%s)', (variant, _label) => {
   const left = () => screen.getByRole('button', { name: 'Scroll Your mixes left' });
   const right = () => screen.getByRole('button', { name: 'Scroll Your mixes right' });
 
