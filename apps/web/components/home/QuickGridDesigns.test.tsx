@@ -44,9 +44,9 @@ const tiles = () => within(screen.getByRole('list', { name: 'Your collections' }
 const BUTTON = { a: 'All collections (5)', b: 'All collections', c: 'See all' } as const;
 
 describe.each(['a', 'b', 'c'] as const)('quickgrid design %s', (design) => {
-  it('phone: one row, 2 tiles (plus the square in b)', () => {
+  it('phone: one row, 2 tiles (1 with the square in b)', () => {
     render(<QuickGrid items={items} design={design} />);
-    expect(tiles()).toHaveLength(2);
+    expect(tiles()).toHaveLength(design === 'b' ? 1 : 2);
     expect(screen.getByRole('button', { name: BUTTON[design] })).toBeInTheDocument();
   });
 
@@ -104,7 +104,7 @@ describe('quickgrid today', () => {
     expect(pickQuickGridVariant(null, 'c')).toBe('c');
     expect(pickQuickGridVariant('a', 'c')).toBe('a');
     expect(pickQuickGridVariant(null, null)).toBe('today');
-    expect(quickGridSlots(3, 2, 'b')).toEqual({ visible: 2, overflow: true });
+    expect(quickGridSlots(3, 2, 'b')).toEqual({ visible: 1, overflow: true });
     expect(quickGridSlots(2, 2, 'a')).toEqual({ visible: 2, overflow: false });
   });
 });
