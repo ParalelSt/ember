@@ -113,7 +113,7 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
         variant={layout === 'desktop-row' ? 'desktop' : 'phone'}
         limit={limit}
         fullListHref={fullListHref}
-        rowKey={rowKey}
+        rowKey={loadingRow && layout === 'row' ? undefined : rowKey}
       >
         {loadingRow
           ? Array.from({ length: layout === 'desktop-row' ? 6 : 3 }).map((_, i) => (

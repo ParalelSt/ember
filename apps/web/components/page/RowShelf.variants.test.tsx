@@ -252,7 +252,7 @@ describe('today and the phone are untouched by the switch', () => {
 
   it('a phone row ignores the variant', () => {
     const tiles: ReactNode = [<div key="a">A</div>, <div key="b">B</div>];
-    for (const variant of ['a', 'c', 'd'] as const) {
+    for (const variant of ['a', 'b', 'd'] as const) {
       const { unmount } = render(
         <RowNavProvider value={{ variant }}>
           <RowShelf title="Recently played">{tiles}</RowShelf>
@@ -262,5 +262,47 @@ describe('today and the phone are untouched by the switch', () => {
       expect(screen.queryByRole('button')).toBeNull();
       unmount();
     }
+  });
+});
+
+describe('variant c on a phone', () => {
+  const phone = (n: number, nav: RowNav = { variant: 'c' }, props: Partial<ComponentProps<typeof RowShelf>> = {}) =>
+    render(
+      <RowNavProvider value={nav}>
+        <RowShelf title="Your mixes" rowKey="mixes" {...props}>
+          {Array.from({ length: n }, (_, i) => (
+            <div key={i}>{`tile ${i}`}</div>
+          ))}
+        </RowShelf>
+      </RowNavProvider>,
+    );
+
+  it('shows exactly two whole cards and no sideways scroll', () => {
+    phone(7);
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getByRole('list')).toHaveClass('grid', 'grid-cols-2');
+    expect(screen.getByRole('list')).not.toHaveClass('overflow-x-auto');
+  });
+
+  it('has Show all only past two cards, linking to the row page', () => {
+    const { unmount } = phone(3);
+    expect(screen.getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?homerows=c&row=mixes');
+    unmount();
+    phone(2);
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('the row page lists every card in two columns under a Back button', () => {
+    phone(7, { variant: 'c', fullRow: true });
+    expect(screen.getAllByRole('listitem')).toHaveLength(7);
+    expect(screen.getByRole('list')).toHaveClass('grid-cols-2');
+    expect(screen.getByRole('heading', { level: 1, name: 'Your mixes' })).toBeInTheDocument();
+    expect(document.querySelector('[data-row-full]')).not.toBeNull();
+  });
+
+  it('a filter chip grid stays a grid with every card', () => {
+    phone(5, { variant: 'c' }, { layout: 'grid' });
+    expect(screen.getAllByRole('listitem')).toHaveLength(5);
   });
 });

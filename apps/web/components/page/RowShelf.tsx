@@ -467,6 +467,45 @@ function WideRowShelf(props: WideRowProps) {
   return <WideScrollRow {...props} variant={variant} />;
 }
 
+/** How many whole cards a phone row shows in variant C: two side by side. */
+export const PHONE_FIT = 2;
+
+/** Variant C on a phone: exactly two whole cards side by side (never a
+ *  peeking third, no sideways scroll). "Show all" only when the row holds
+ *  more than two, linking to the row's full grid page. */
+function PhoneFitRow({ title, showAllHref, action, tiles, className }: Omit<WideRowProps, 'fullListHref' | 'rowKey'>) {
+  return (
+    <section className={cn('mb-section', className)} aria-label={title} data-row-nav="c">
+      <RowHeader title={title} showAllHref={tiles.length > PHONE_FIT ? showAllHref : undefined} action={action} />
+      <div role="list" data-row-grid="phone-fit" className={ROW_GRID_CLASS}>
+        {tiles.slice(0, PHONE_FIT).map((tile, i) => (
+          <div key={tileKey(tile, i)} role="listitem" className="min-w-0">
+            {tile}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Variant C's "Show all" page on a phone: every tile in two columns,
+ *  under a back button and the row's title. */
+function PhoneFullRow({ title, tiles, className }: Pick<WideRowProps, 'title' | 'tiles' | 'className'>) {
+  return (
+    <section className={className} aria-label={title} data-row-full>
+      <BackButton href="/" className="mb-block" />
+      <PageTitle className="mb-stack">{title}</PageTitle>
+      <div role="list" data-row-grid="full" className={ROW_GRID_CLASS}>
+        {tiles.map((tile, i) => (
+          <div key={tileKey(tile, i)} role="listitem" className="min-w-0">
+            {tile}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export interface RowShelfProps {
   title: string;
   /** Where "Show all" points. It only shows when the row has more tiles
@@ -506,6 +545,7 @@ export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, classN
   const all = Children.toArray(children);
   if (all.length === 0) return null;
   if (variant === 'desktop' && nav.fullRow) return <WideFullRow title={title} tiles={all} className={className} />;
+  if (variant === 'phone' && nav.fullRow) return <PhoneFullRow title={title} tiles={all} className={className} />;
   if (layout === 'grid' && variant === 'desktop') {
     return (
       <section className={cn('mb-section', className)} aria-label={title}>
@@ -536,6 +576,9 @@ export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, classN
   }
   const tiles = all.slice(0, limit);
   const more = all.length > tiles.length ? showAllHref : undefined;
+  if (variant === 'phone' && nav.variant === 'c') {
+    return <PhoneFitRow title={title} showAllHref={rowKey ? homeRowHref(rowKey) : showAllHref} action={action} tiles={tiles} className={className} />;
+  }
   if (variant === 'desktop') return <WideRowShelf title={title} showAllHref={more} fullListHref={fullListHref} rowKey={rowKey} action={action} tiles={tiles} className={className} />;
   return (
     <section className={cn('mb-section', className)} aria-label={title}>

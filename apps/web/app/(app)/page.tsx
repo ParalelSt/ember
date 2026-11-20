@@ -185,7 +185,9 @@ export default function HomePage() {
   const focused = focus ? sections.find((s) => s.key === focus && !s.hidden) : null;
   // C's full grid of one row, only for a row Home has on screen.
   const fullRow =
-    isDesktop && rowsVariant === 'c' && rowParam && view.rows.includes(rowParam as HomeRowKey) ? (rowParam as HomeRowKey) : null;
+    rowsVariant === 'c' && rowParam && view.rows.includes(rowParam as HomeRowKey) && (isDesktop || rowParam !== 'recommended')
+      ? (rowParam as HomeRowKey)
+      : null;
 
   const quick = quickPicks({
     liked: system.find((c) => c.ref.kind === 'liked'),
@@ -335,11 +337,16 @@ export default function HomePage() {
           fullscreen
         />
       ) : !isDesktop ? (
-        <div>
-          {chips.length > 1 && <HomeChips chips={chips} active={view.filter} onChange={setFilter} />}
-          {view.quickGrid && <QuickGrid items={quick} />}
-          {view.rows.map(renderRow)}
-        </div>
+        fullRow ? (
+          // Variant C's "Show all" on a phone: one row as a two-column grid.
+          <RowNavProvider value={{ variant: rowsVariant, fullRow: true }}>{renderRow(fullRow)}</RowNavProvider>
+        ) : (
+          <div>
+            {chips.length > 1 && <HomeChips chips={chips} active={view.filter} onChange={setFilter} />}
+            {view.quickGrid && <QuickGrid items={quick} />}
+            <RowNavProvider value={{ variant: rowsVariant === 'c' ? 'c' : 'today' }}>{view.rows.map(renderRow)}</RowNavProvider>
+          </div>
+        )
       ) : fullRow ? (
         // Variant C's "Show all": one row as a full grid, nothing else.
         <div data-home-wide>

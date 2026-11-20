@@ -909,3 +909,38 @@ describe('the ?homerows design preview on a desktop', () => {
     expect(screen.queryByRole('button', { name: /^Scroll / })).toBeNull();
   });
 });
+
+describe('?homerows=c on a phone', () => {
+  beforeEach(() => {
+    state.desktop = false;
+    state.history = makeTracks('hist', 12);
+    state.mixes = { eligible: true, building: false, mixes: [mixTile('rock', 'Rock'), mixTile('metal', 'Metal'), mixTile('jazz', 'Jazz')] };
+  });
+  const region = (name: string) => within(screen.getByRole('region', { name }));
+
+  it('shows two cards per row, Show all only past two', () => {
+    state.query = 'homerows=c';
+    render(<HomePage />);
+    expect(region('Recently played').getAllByRole('listitem')).toHaveLength(2);
+    expect(region('Recently played').getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?homerows=c&row=history');
+    expect(region('Your mixes').getAllByRole('listitem')).toHaveLength(2);
+    expect(region('Your mixes').getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?homerows=c&row=mixes');
+    expect(document.querySelector('[data-row-shelf]')).toBeNull();
+  });
+
+  it('?row=history lists every song, alone, with a title', () => {
+    state.query = 'homerows=c&row=history';
+    render(<HomePage />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Recently played' })).toBeInTheDocument();
+    expect(region('Recently played').getAllByRole('listitem')).toHaveLength(12);
+    expect(screen.queryByRole('region', { name: 'Your mixes' })).toBeNull();
+  });
+
+  it('is today\'s phone Home without c', () => {
+    state.query = 'homerows=a';
+    render(<HomePage />);
+    expect(document.querySelector('[data-row-nav]')).toBeNull();
+    expect(document.querySelector('[data-row-shelf]')).not.toBeNull();
+    expect(region('Recently played').getAllByRole('listitem')).toHaveLength(12);
+  });
+});
