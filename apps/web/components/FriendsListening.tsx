@@ -34,7 +34,7 @@ export function FriendsListening({ layout = 'cards' }: { layout?: 'cards' | 'row
   if (layout === 'row' || layout === 'desktop-row') {
     const lg = layout === 'desktop-row';
     return (
-      <RowShelf title={TITLE} variant={lg ? 'desktop' : 'phone'}>
+      <RowShelf title={TITLE} variant={lg ? 'desktop' : 'phone'} rowKey="friends">
         {data.map((item, i) => {
           const ago = formatAgo(item.playedAt);
           return (
