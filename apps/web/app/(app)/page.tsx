@@ -50,22 +50,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { POPULAR_COLOR, POPULAR_SLUG, tileCovers } from '@/lib/chartsView';
 import { MusicIcon } from '@/components/icons';
 import { RowNavProvider } from '@/components/page/RowNavContext';
-import { useHomeRowsVariant } from '@/hooks/useHomeRowsVariant';
-import { HOME_ROWS_PARAM } from '@/lib/homeRows';
 
 /** A song with no cover art (an upload without one, a track whose source
  *  gave none) gets a music note in its box, not a bare black square that
  *  reads as a broken, empty card. */
 const TILE_ART_FALLBACK = <MusicIcon className="size-10" data-testid="tile-art-fallback" />;
-
-/** The rows with a whole list of their own somewhere else, which the
- *  design preview's "Show all" (variants A and B) links to. Your mixes,
- *  Popular now and Friends have none: each row already holds them all. */
-const FULL_LIST_HREF: Partial<Record<HomeRowKey, string>> = {
-  history: '/library/recent',
-  playlists: '/library',
-  recommended: '/?focus=recommended',
-};
 
 interface Section {
   key: string;
@@ -78,9 +67,7 @@ interface Section {
 export default function HomePage() {
   const search = useSearchParams();
   const focus = search.get('focus');
-  // Design preview (lib/homeRows.ts): how the desktop rows are moved
-  // through, and C's full grid of one row (?row=<key>).
-  const rowsVariant = useHomeRowsVariant(search.get(HOME_ROWS_PARAM));
+  // "Show all" on a row opens that row alone as a full grid (?row=<key>).
   const rowParam = search.get('row');
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   // The shelves are presentational, so the page reads the lyrics flag and
@@ -183,9 +170,9 @@ export default function HomePage() {
   const myName = publicName(user);
 
   const focused = focus ? sections.find((s) => s.key === focus && !s.hidden) : null;
-  // C's full grid of one row, only for a row Home has on screen.
+  // The full grid of one row, only for a row Home has on screen.
   const fullRow =
-    rowsVariant === 'c' && rowParam && view.rows.includes(rowParam as HomeRowKey) && (isDesktop || rowParam !== 'recommended')
+    rowParam && view.rows.includes(rowParam as HomeRowKey) && (isDesktop || rowParam !== 'recommended')
       ? (rowParam as HomeRowKey)
       : null;
 
@@ -214,7 +201,7 @@ export default function HomePage() {
       return (
         // Every playlist gets a tile: Home's rows have no Show all (the
         // owner's pick), so the row is the way to them all.
-        <RowShelf key={key} title="Your playlists" variant={isDesktop ? 'desktop' : 'phone'} limit={Infinity} layout={gridLayout} rowKey={key} fullListHref={FULL_LIST_HREF.playlists}>
+        <RowShelf key={key} title="Your playlists" variant={isDesktop ? 'desktop' : 'phone'} limit={Infinity} layout={gridLayout} rowKey={key}>
           {recentFirst(playlists, playingPlaylistId).map((p) => (
             <CollectionCard
               key={p.href}
@@ -320,7 +307,6 @@ export default function HomePage() {
         limit={Infinity}
         renderCard={renderTile}
         rowKey={s.key}
-        fullListHref={FULL_LIST_HREF[s.key as HomeRowKey]}
       />
     );
   };
@@ -338,19 +324,19 @@ export default function HomePage() {
         />
       ) : !isDesktop ? (
         fullRow ? (
-          // Variant C's "Show all" on a phone: one row as a two-column grid.
-          <RowNavProvider value={{ variant: rowsVariant, fullRow: true }}>{renderRow(fullRow)}</RowNavProvider>
+          // "Show all" on a phone: one row as a two-column grid.
+          <RowNavProvider value={{ fit: true, fullRow: true }}>{renderRow(fullRow)}</RowNavProvider>
         ) : (
           <div>
             {chips.length > 1 && <HomeChips chips={chips} active={view.filter} onChange={setFilter} />}
             {view.quickGrid && <QuickGrid items={quick} />}
-            <RowNavProvider value={{ variant: rowsVariant === 'c' ? 'c' : 'today' }}>{view.rows.map(renderRow)}</RowNavProvider>
+            <RowNavProvider value={{ fit: true }}>{view.rows.map(renderRow)}</RowNavProvider>
           </div>
         )
       ) : fullRow ? (
-        // Variant C's "Show all": one row as a full grid, nothing else.
+        // "Show all": one row as a full grid, nothing else.
         <div data-home-wide>
-          <RowNavProvider value={{ variant: rowsVariant, fullRow: true }}>{renderRow(fullRow)}</RowNavProvider>
+          <RowNavProvider value={{ fit: true, fullRow: true }}>{renderRow(fullRow)}</RowNavProvider>
         </div>
       ) : (
         // data-home-wide lifts the shell's content width cap (the owner's
@@ -358,7 +344,7 @@ export default function HomePage() {
         <div data-home-wide>
           {chips.length > 1 && <HomeChips variant="desktop" chips={chips} active={view.filter} onChange={setFilter} />}
           {view.quickGrid && <QuickGrid variant="desktop" items={quick} onPlay={playQuick} isPlaying={quickPlaying} />}
-          <RowNavProvider value={{ variant: rowsVariant }}>{view.rows.map(renderRow)}</RowNavProvider>
+          <RowNavProvider value={{ fit: true }}>{view.rows.map(renderRow)}</RowNavProvider>
         </div>
       )}
     </OnlineOnly>

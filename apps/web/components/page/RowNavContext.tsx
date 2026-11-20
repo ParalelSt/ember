@@ -1,20 +1,20 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { HomeRowsVariant } from '@/lib/homeRows';
 
 export interface RowNav {
-  /** How the desktop rows are moved through (lib/homeRows.ts). */
-  variant: HomeRowsVariant;
-  /** C's "Show all" page: the row is drawn as a full grid of every tile,
+  /** Home's rows: whole cards only (two on a phone, as many as fit on
+   *  desktop) with "Show all" for the rest. Rows elsewhere keep the
+   *  sideways scroller. */
+  fit?: boolean;
+  /** The "Show all" page: the row is drawn as a full grid of every tile,
    *  under a back button and its title. */
   fullRow?: boolean;
 }
 
-const RowNavContext = createContext<RowNav>({ variant: 'today' });
+const RowNavContext = createContext<RowNav>({});
 
-/** The desktop Home sets this around its rows for the design preview; every
- *  other desktop row (and every phone row) keeps today's look. */
+/** Home sets this around its rows; every other row keeps its scroller. */
 export const RowNavProvider = RowNavContext.Provider;
 
 export function useRowNav(): RowNav {
