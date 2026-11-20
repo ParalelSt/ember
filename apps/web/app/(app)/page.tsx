@@ -48,6 +48,13 @@ import { kindLook, mixKind, MAX_MIXES } from '@/lib/mixes/kinds';
 import { MixCard } from '@/components/mixes/MixCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { POPULAR_COLOR, POPULAR_SLUG, tileCovers } from '@/lib/chartsView';
+import { MusicIcon } from '@/components/icons';
+import { RowNavProvider } from '@/components/page/RowNavContext';
+
+/** A song with no cover art (an upload without one, a track whose source
+ *  gave none) gets a music note in its box, not a bare black square that
+ *  reads as a broken, empty card. */
+const TILE_ART_FALLBACK = <MusicIcon className="size-10" data-testid="tile-art-fallback" />;
 
 interface Section {
   key: string;
@@ -60,6 +67,8 @@ interface Section {
 export default function HomePage() {
   const search = useSearchParams();
   const focus = search.get('focus');
+  // "Show all" on a row opens that row alone as a full grid (?row=<key>).
+  const rowParam = search.get('row');
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   // The shelves are presentational, so the page reads the lyrics flag and
   // renders the cards (with their playback state) itself.
@@ -80,6 +89,7 @@ export default function HomePage() {
         variant={variant}
         // Rows of songs read "Song · <artist>", Spotify's Recents tiles.
         kind={variant === 'card' ? undefined : 'Song'}
+        artworkFallback={TILE_ART_FALLBACK}
         active={active}
         playing={isPlaying}
         // Same rule the card used to own: re-tapping the current track
@@ -116,7 +126,7 @@ export default function HomePage() {
       cancelAnimationFrame(raf1);
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [focus]);
+  }, [focus, rowParam]);
 
   const { data: history = [] } = useQueryHistory();
   const { data: liked = [] } = useQueryLikes();
@@ -160,6 +170,11 @@ export default function HomePage() {
   const myName = publicName(user);
 
   const focused = focus ? sections.find((s) => s.key === focus && !s.hidden) : null;
+  // The full grid of one row, only for a row Home has on screen.
+  const fullRow =
+    rowParam && view.rows.includes(rowParam as HomeRowKey) && (isDesktop || rowParam !== 'recommended')
+      ? (rowParam as HomeRowKey)
+      : null;
 
   const quick = quickPicks({
     liked: system.find((c) => c.ref.kind === 'liked'),
@@ -186,7 +201,7 @@ export default function HomePage() {
       return (
         // Every playlist gets a tile: Home's rows have no Show all (the
         // owner's pick), so the row is the way to them all.
-        <RowShelf key={key} title="Your playlists" variant={isDesktop ? 'desktop' : 'phone'} limit={Infinity} layout={gridLayout}>
+        <RowShelf key={key} title="Your playlists" variant={isDesktop ? 'desktop' : 'phone'} limit={Infinity} layout={gridLayout} rowKey={key}>
           {recentFirst(playlists, playingPlaylistId).map((p) => (
             <CollectionCard
               key={p.href}
@@ -208,7 +223,7 @@ export default function HomePage() {
     }
     if (key === 'mixes') {
       return (
-        <RowShelf key={key} title="Your mixes" variant={isDesktop ? 'desktop' : 'phone'} phoneTileClassName="w-[172px]" layout={gridLayout} limit={MAX_MIXES}>
+        <RowShelf key={key} title="Your mixes" variant={isDesktop ? 'desktop' : 'phone'} phoneTileClassName="w-[172px]" layout={gridLayout} limit={MAX_MIXES} rowKey={key}>
           {mixes.map((m) => {
             const kind = m.kind ?? mixKind(m.key);
             const look = kindLook(m.key, m.cover.color);
@@ -233,7 +248,7 @@ export default function HomePage() {
       const wide = isDesktop ? 'desktop' : 'phone';
       return (
         // Every chart gets a tile: no ROW_MAX cut and no Show all.
-        <RowShelf key={key} title="Popular now" variant={wide} limit={Infinity} layout={gridLayout}>
+        <RowShelf key={key} title="Popular now" variant={wide} limit={Infinity} layout={gridLayout} rowKey={key}>
           {trending.length > 0 ? (
             <ChartTile
               title="Top songs"
@@ -291,6 +306,7 @@ export default function HomePage() {
         // its songs. The ?focus= views stay for old links.
         limit={Infinity}
         renderCard={renderTile}
+        rowKey={s.key}
       />
     );
   };
@@ -307,10 +323,20 @@ export default function HomePage() {
           fullscreen
         />
       ) : !isDesktop ? (
-        <div>
-          {chips.length > 1 && <HomeChips chips={chips} active={view.filter} onChange={setFilter} />}
-          {view.quickGrid && <QuickGrid items={quick} />}
-          {view.rows.map(renderRow)}
+        fullRow ? (
+          // "Show all" on a phone: one row as a two-column grid.
+          <RowNavProvider value={{ fit: true, fullRow: true }}>{renderRow(fullRow)}</RowNavProvider>
+        ) : (
+          <div>
+            {chips.length > 1 && <HomeChips chips={chips} active={view.filter} onChange={setFilter} />}
+            {view.quickGrid && <QuickGrid items={quick} />}
+            <RowNavProvider value={{ fit: true }}>{view.rows.map(renderRow)}</RowNavProvider>
+          </div>
+        )
+      ) : fullRow ? (
+        // "Show all": one row as a full grid, nothing else.
+        <div data-home-wide>
+          <RowNavProvider value={{ fit: true, fullRow: true }}>{renderRow(fullRow)}</RowNavProvider>
         </div>
       ) : (
         // data-home-wide lifts the shell's content width cap (the owner's
@@ -318,7 +344,7 @@ export default function HomePage() {
         <div data-home-wide>
           {chips.length > 1 && <HomeChips variant="desktop" chips={chips} active={view.filter} onChange={setFilter} />}
           {view.quickGrid && <QuickGrid variant="desktop" items={quick} onPlay={playQuick} isPlaying={quickPlaying} />}
-          {view.rows.map(renderRow)}
+          <RowNavProvider value={{ fit: true }}>{view.rows.map(renderRow)}</RowNavProvider>
         </div>
       )}
     </OnlineOnly>

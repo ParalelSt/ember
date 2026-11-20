@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import HomePage from './page';
 import { toSummary } from '@/lib/collections';
 import { ROW_MAX } from '@/components/page/RowShelf';
@@ -16,6 +16,8 @@ const state = vi.hoisted(() => ({
   /** The seed Home asked recommendations for. */
   seed: undefined as string | undefined,
   focus: null as string | null,
+  /** More of the URL's query (?row=). */
+  query: '',
   desktop: false,
   history: [] as Track[],
   liked: [] as Track[],
@@ -37,7 +39,8 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(state.focus ? `focus=${state.focus}` : ''),
+  useSearchParams: () => new URLSearchParams([state.focus ? `focus=${state.focus}` : '', state.query].filter(Boolean).join('&')),
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
 }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => state.desktop }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1', name: 'Aron' } }) }));
@@ -111,9 +114,11 @@ const headings = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   Object.assign(state, {
     seed: undefined,
     focus: null,
+    query: '',
     desktop: false,
     history: makeTracks('hist', 4),
     liked: makeTracks('like', 3),
@@ -203,21 +208,21 @@ describe('Home on a phone', () => {
     expect(within(screen.getByRole('list', { name: 'Your collections' })).getAllByRole('link')).toHaveLength(1);
   });
 
-  it('every row of tiles scrolls sideways', () => {
+  it('every row of tiles is two whole cards in a grid, never a sideways scroller', () => {
     render(<HomePage />);
     for (const name of ['Recently played', 'Your playlists', 'Popular now']) {
       const row = within(screen.getByRole('region', { name })).getByRole('list');
-      expect(row).toHaveClass('flex', 'overflow-x-auto', 'snap-x');
-      expect(row).not.toHaveClass('grid');
+      expect(row).toHaveClass('grid', 'grid-cols-2');
+      expect(row).not.toHaveClass('overflow-x-auto');
     }
+    expect(document.querySelector('[data-row-shelf]')).toBeNull();
   });
 
-  it('lines every row, the chips and the hero card up with the page gutter', () => {
+  it('lines the rows, the chips and the hero card up with the page gutter', () => {
     render(<HomePage />);
-    // Sideways rows bleed to the screen edges but pad back to the gutter
-    // and snap there.
-    for (const row of document.querySelectorAll('[data-row-shelf]')) {
-      expect(row).toHaveClass('-mx-page', 'px-page', 'scroll-px-page');
+    // The rows sit inside the page gutter (no bleed, no scroll padding).
+    for (const row of document.querySelectorAll('[data-row-grid]')) {
+      expect(row.className).not.toMatch(/-mx-|px-page/);
     }
     expect(document.querySelector('[data-home-chips]')).toHaveClass('-mx-page', 'px-page');
     // The big card sits inside the gutter: no negative margin at all.
@@ -226,21 +231,22 @@ describe('Home on a phone', () => {
     expect(hero.parentElement!.className).not.toMatch(/-m[xl]-/);
   });
 
-  it('offers no Show all on any row, the card with more suggestions than it shows included', () => {
+  it('links Show all of a row that holds more than two to its own page', () => {
     render(<HomePage />);
-    // 6 suggestions, the card holds 4: the rest still play from its button.
-    expect(screen.getByRole('region', { name: 'Because you played "hist song 0"' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+    const showAll = (name: string) => within(screen.getByRole('region', { name })).getByRole('link', { name: 'Show all' });
+    expect(showAll('Recently played')).toHaveAttribute('href', '/?row=history');
   });
 
-  it('holds every song and playlist in its row, past the usual row cap, with no Show all', () => {
+  it('holds every song and playlist on the row page, past the usual row cap', () => {
     state.history = makeTracks('hist', ROW_MAX + 5);
     state.playlists = Array.from({ length: ROW_MAX + 3 }, (_, i) => toSummary({ kind: 'playlist', id: `p${i}` }, { name: `List ${i}` }));
+    state.query = 'row=history';
+    const { unmount } = render(<HomePage />);
+    expect(within(screen.getByRole('region', { name: 'Recently played' })).getAllByRole('listitem')).toHaveLength(ROW_MAX + 5);
+    unmount();
+    state.query = 'row=playlists';
     render(<HomePage />);
-    const items = (name: string) => within(screen.getByRole('region', { name })).getAllByRole('listitem');
-    expect(items('Recently played')).toHaveLength(ROW_MAX + 5);
-    expect(items('Your playlists')).toHaveLength(ROW_MAX + 3);
-    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+    expect(within(screen.getByRole('region', { name: 'Your playlists' })).getAllByRole('listitem')).toHaveLength(ROW_MAX + 3);
   });
 
   it('subtitles tiles like Spotify Recents: "Playlist · <owner>" and "Song · <artist>"', () => {
@@ -253,7 +259,7 @@ describe('Home on a phone', () => {
     expect(lists.getByText('Playlist · Aron')).toBeInTheDocument();
     expect(lists.getByText('Playlist · Olga')).toBeInTheDocument();
     const played = within(screen.getByRole('region', { name: 'Recently played' }));
-    expect(played.getAllByText('Song · The Nulls')).toHaveLength(4);
+    expect(played.getAllByText('Song · The Nulls')).toHaveLength(2);
   });
 
   it('draws a playlist with four song covers as a mosaic, in the grid and in its row', () => {
@@ -350,8 +356,8 @@ describe('Because you played: the hero card', () => {
 describe('Home on a phone, playback', () => {
   it('a tap plays the track with its row as the list; a tap on the current track toggles', () => {
     render(<HomePage />);
-    fireEvent.click(screen.getByText('hist song 2'));
-    expect(state.playTrack).toHaveBeenCalledWith(state.history[2], state.history);
+    fireEvent.click(screen.getByText('hist song 1'));
+    expect(state.playTrack).toHaveBeenCalledWith(state.history[1], state.history);
     expect(state.toggle).not.toHaveBeenCalled();
   });
 
@@ -436,20 +442,31 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
     expect(headings()).toEqual(['Your playlists']);
   });
 
-  it('every row scrolls sideways with 180px tiles and its edge fades, holding everything with no Show all', () => {
+  it('every row is a line of whole cards in an auto-fill grid, no scrolling, no arrows, no fades', () => {
     state.history = makeTracks('hist', ROW_MAX + 1);
     render(<HomePage />);
     for (const name of ['Recently played', 'Because you played "hist song 0"', 'Popular now', 'Your playlists']) {
       const region = within(screen.getByRole('region', { name }));
       const row = region.getByRole('list');
-      expect(row).toHaveClass('flex', 'overflow-x-auto');
-      expect(region.getAllByRole('listitem')[0]).toHaveClass('w-[180px]');
-      expect(region.getByRole('button', { name: 'Scroll left' })).toBeInTheDocument();
-      expect(region.getByRole('button', { name: 'Scroll right' })).toBeInTheDocument();
+      expect(row).toHaveClass('grid', 'gap-block');
+      expect(row).not.toHaveClass('overflow-x-auto');
+      expect(region.queryByRole('button', { name: /^Scroll / })).toBeNull();
       expect(region.getByRole('heading', { level: 2 })).toHaveClass('text-2xl', 'font-bold');
     }
-    expect(within(screen.getByRole('region', { name: 'Recently played' })).getAllByRole('listitem')).toHaveLength(ROW_MAX + 1);
-    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+    expect(document.querySelector('[data-row-fade]')).toBeNull();
+  });
+
+  it('draws a music note on a song tile with no cover art, never a bare black box', () => {
+    state.history = [{ ...makeTracks('hist', 1)[0], artworkUrl: 'https://i.ytimg.com/vi/x/hq.jpg' }, ...makeTracks('bare', 2)];
+    render(<HomePage />);
+    const row = within(screen.getByRole('region', { name: 'Recently played' }));
+    const [withArt, ...bare] = row.getAllByRole('listitem');
+    expect(within(withArt).queryByTestId('tile-art-fallback')).toBeNull();
+    expect(withArt.querySelector('img')).not.toBeNull();
+    for (const item of bare) {
+      expect(within(item).getByTestId('tile-art-fallback')).toBeInTheDocument();
+      expect(item.querySelector('img')).toBeNull();
+    }
   });
 
   it('uses the full width: no bleed past the gutter and the content cap lifted', () => {
@@ -493,23 +510,17 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
     render(<HomePage />);
     const region = within(screen.getByRole('region', { name: 'Because you played "hist song 0"' }));
     expect(document.querySelector('[data-hero]')).toBeNull();
-    const items = region.getAllByRole('listitem');
-    expect(items).toHaveLength(6);
-    for (const item of items) expect(item).toHaveClass('w-[180px]', 'shrink-0');
-    expect(region.getByRole('list')).toHaveClass('gap-block');
-    expect(region.getByRole('button', { name: 'Scroll right' })).toBeInTheDocument();
+    expect(region.getAllByRole('listitem')).toHaveLength(6);
+    expect(region.getByRole('list')).toHaveClass('grid', 'gap-block');
     fireEvent.click(region.getByText('rec song 3'));
     expect(state.playTrack).toHaveBeenLastCalledWith(state.recommended[3], state.recommended);
   });
 
-  it('every desktop row shares one tile width and one gap', () => {
+  it('every desktop row shares one grid and one gap', () => {
     render(<HomePage />);
-    const rows = document.querySelectorAll('[data-row-shelf="wide"]');
+    const rows = document.querySelectorAll('[data-row-grid="fit"]');
     expect(rows.length).toBeGreaterThanOrEqual(4);
-    for (const row of rows) {
-      expect(row).toHaveClass('gap-block');
-      for (const item of row.children) expect(item).toHaveClass('w-[180px]');
-    }
+    for (const row of rows) expect(row).toHaveClass('grid', 'gap-block');
   });
 
   it('an old ?focus= link still opens the full grid of that row', () => {
@@ -539,26 +550,19 @@ describe('a focus view and back', () => {
 
 describe('Popular now chart tiles on Home', () => {
   const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name });
-  const hrefs = () => within(screen.getByRole('region', { name: 'Popular now' })).getAllByRole('link').map((a) => a.getAttribute('href'));
+  const hrefs = () => within(screen.getByRole('region', { name: 'Popular now' })).getAllByRole('link').map((a) => a.getAttribute('href')).filter((h) => h !== '/');
 
   it('is one row of chart tiles: Top songs first (opening the full list), genre tiles after in order', () => {
     state.charts = someCharts();
+    state.query = 'row=charts';
     render(<HomePage />);
-    expect(headings()).toEqual([
-      'Recently played',
-      'Because you played "hist song 0"',
-      'Popular now',
-      'Your playlists',
-      'Friends are listening to',
-    ]);
     expect(hrefs()).toEqual(['/chart/popular', '/chart/balkan', '/chart/rock', '/chart/pop']);
     const row = within(screen.getByRole('region', { name: 'Popular now' }));
     const top = row.getByRole('link', { name: 'Top songs chart' });
     expect(top.textContent).toContain('Top 5');
     expect(top.querySelector('div')).toHaveStyle({ backgroundColor: '#b4372a' });
     expect(row.getByRole('link', { name: 'Rock chart' }).textContent).toContain('Top 50');
-    // A sideways row on the gutter like the others, and no song cards.
-    expect(row.getByRole('list')).toHaveClass('flex', 'overflow-x-auto', '-mx-page', 'px-page');
+    // No song cards among the chart tiles.
     expect(screen.queryByText('trend song 0')).toBeNull();
   });
 
@@ -571,6 +575,7 @@ describe('Popular now chart tiles on Home', () => {
 
   it('keeps every genre chart, even past the usual row cap', () => {
     state.charts = { popular: {}, genres: Array.from({ length: ROW_MAX + 3 }, (_, i) => genre(`g${i}`, `G${i}`)) };
+    state.query = 'row=charts';
     render(<HomePage />);
     expect(hrefs()).toHaveLength(ROW_MAX + 4);
   });
@@ -594,6 +599,7 @@ describe('Popular now chart tiles on Home', () => {
   it('shows genre tiles alone when trending is empty', () => {
     state.trending = [];
     state.charts = someCharts();
+    state.query = 'row=charts';
     render(<HomePage />);
     expect(hrefs()).toEqual(['/chart/balkan', '/chart/rock', '/chart/pop']);
   });
@@ -602,6 +608,7 @@ describe('Popular now chart tiles on Home', () => {
     state.trending = [];
     state.trendingLoading = true;
     state.charts = someCharts();
+    state.query = 'row=charts';
     render(<HomePage />);
     const region = screen.getByRole('region', { name: 'Popular now' });
     expect(region.querySelector('[data-chart-loading]')).not.toBeNull();
@@ -616,13 +623,12 @@ describe('Popular now chart tiles on Home', () => {
     expect(within(screen.getByRole('toolbar', { name: 'Filter Home' })).queryByRole('button', { name: 'Charts' })).toBeNull();
   });
 
-  it('uses the wide row of 180px tiles on a desktop', () => {
+  it('uses the fitted row on a desktop', () => {
     state.desktop = true;
     state.charts = someCharts();
     render(<HomePage />);
     const region = screen.getByRole('region', { name: 'Popular now' });
-    expect(region.querySelector('[data-row-shelf="wide"]')).not.toBeNull();
-    expect(within(region).getAllByRole('listitem')[0]).toHaveClass('w-[180px]');
+    expect(region.querySelector('[data-row-grid="fit"]')).not.toBeNull();
     expect(hrefs()[0]).toBe('/chart/popular');
   });
 
@@ -648,15 +654,15 @@ describe('Your mixes on Home', () => {
       'Your playlists',
       'Friends are listening to',
     ]);
+    state.query = 'row=mixes';
+    cleanup();
+    render(<HomePage />);
     const row = within(screen.getByRole('region', { name: 'Your mixes' }));
-    expect(row.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/mix/rock-metal', '/mix/balkan', '/mix/pop']);
+    expect(row.getAllByRole('link').map((a) => a.getAttribute('href')).filter((h) => h !== '/')).toEqual(['/mix/rock-metal', '/mix/balkan', '/mix/pop']);
     const card = row.getByRole('link', { name: 'Rock & Metal Mix' });
     expect(card.textContent).toContain('MIX');
     expect(card.querySelectorAll('[data-mix-face]')).toHaveLength(3);
     expect(row.getByText('Rock & Metal Band, Other Band and more')).toBeInTheDocument();
-    // 172px cards on the gutter.
-    expect(row.getAllByRole('listitem')[0]).toHaveClass('w-[172px]');
-    expect(row.getByRole('list')).toHaveClass('-mx-page', 'px-page', 'scroll-px-page');
   });
 
   it('gives the top two mixes a quick grid slot after Liked songs', () => {
@@ -690,7 +696,7 @@ describe('Your mixes on Home', () => {
     expect(row.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/mix/pop']);
   });
 
-  it('shows every kind with its own label, kinds in order, at most twelve', () => {
+  it('shows every kind with its own label, kinds in order', () => {
     const all = [
       ...['rock', 'metal', 'punk', 'balkan', 'turbofolk', 'pop', 'house'].map((k) => mixTile(k, k)),
       { ...mixTile('discover', 'New to you'), kind: 'discover' },
@@ -699,27 +705,27 @@ describe('Your mixes on Home', () => {
       { ...mixTile('throwback', 'Back again'), kind: 'throwback' },
     ];
     state.mixes = { eligible: true, building: false, mixes: all };
+    state.query = 'row=mixes';
     render(<HomePage />);
     const row = within(screen.getByRole('region', { name: 'Your mixes' }));
     const cards = row.getAllByRole('link').filter((a) => a.hasAttribute('data-mix-card'));
-    expect(cards).toHaveLength(12);
+    expect(cards).toHaveLength(13);
     const label = (a: HTMLElement) => a.querySelector('[data-mix-label]')?.textContent;
     expect(label(row.getByRole('link', { name: 'rock Mix' }))).toBe('MIX');
     expect(label(row.getByRole('link', { name: 'New to you' }))).toBe('DISCOVER');
     expect(label(row.getByRole('link', { name: 'Your top songs' }))).toBe('ON REPEAT');
     expect(label(row.getByRole('link', { name: 'gojira Mix' }))).toBe('ARTIST MIX');
     expect(row.getByRole('link', { name: 'gojira Mix' })).toHaveAttribute('href', '/mix/artist-gojira');
-    // The thirteenth (Throwback) does not fit the row.
-    expect(row.queryByRole('link', { name: 'Back again' })).toBeNull();
+    expect(row.getByRole('link', { name: 'Back again' })).toBeInTheDocument();
     // A tile without a kind (an older server) reads it from the key.
     expect(row.getByRole('link', { name: 'New to you' }).getAttribute('data-mix-kind')).toBe('discover');
   });
 
-  it('uses the wide row on a desktop', () => {
+  it('uses the fitted row on a desktop', () => {
     state.desktop = true;
     state.mixes = someMixes();
     render(<HomePage />);
-    expect(screen.getByRole('region', { name: 'Your mixes' }).querySelector('[data-row-shelf="wide"]')).not.toBeNull();
+    expect(screen.getByRole('region', { name: 'Your mixes' }).querySelector('[data-row-grid="fit"]')).not.toBeNull();
   });
 });
 
@@ -772,17 +778,17 @@ describe('Home filters lay tile rows out as a grid on a phone, and Charts on des
     expect(within(rowList('Your mixes')).getAllByRole('listitem')).toHaveLength(3);
   });
 
-  it('All keeps the sideways rows', () => {
+  it('All keeps the two-card rows', () => {
     state.charts = someCharts();
     state.mixes = someMixes();
     render(<HomePage />);
     for (const name of ['Popular now', 'Your playlists', 'Your mixes']) {
-      expect(rowList(name)).toHaveClass('flex', 'overflow-x-auto');
-      expect(rowList(name)).not.toHaveClass('grid');
+      expect(rowList(name)).not.toHaveClass('overflow-x-auto');
+      expect(within(rowList(name)).getAllByRole('listitem').length).toBeLessThanOrEqual(2);
     }
     fireEvent.click(chip('Charts'));
     fireEvent.click(chip('All'));
-    expect(rowList('Popular now')).toHaveClass('flex', 'overflow-x-auto');
+    expect(within(rowList('Popular now')).getAllByRole('listitem')).toHaveLength(2);
   });
 
   it('desktop Charts chip: auto-fill grid of every tile, no sideways class, no fades', () => {
@@ -799,26 +805,83 @@ describe('Home filters lay tile rows out as a grid on a phone, and Charts on des
     expect(headings()).toEqual(['Popular now']);
   });
 
-  it('desktop All stays a sideways row', () => {
+  it('desktop All keeps the fitted row', () => {
     state.desktop = true;
     state.charts = someCharts();
     render(<HomePage />);
-    expect(rowList('Popular now')).toHaveClass('flex', 'overflow-x-auto');
+    expect(rowList('Popular now')).toHaveAttribute('data-row-grid', 'fit');
     fireEvent.click(chip('Charts'));
     fireEvent.click(chip('All'));
-    expect(rowList('Popular now')).toHaveClass('flex', 'overflow-x-auto');
-    expect(rowList('Popular now')).not.toHaveClass('grid');
+    expect(rowList('Popular now')).toHaveAttribute('data-row-grid', 'fit');
+    expect(rowList('Popular now')).not.toHaveClass('overflow-x-auto');
   });
 
-  it('desktop Playlists and Mixes chips stay sideways rows', () => {
+  it('desktop Playlists and Mixes chips keep the fitted row', () => {
     state.desktop = true;
     state.mixes = someMixes();
     render(<HomePage />);
     fireEvent.click(chip('Playlists'));
-    expect(rowList('Your playlists')).toHaveClass('flex', 'overflow-x-auto');
-    expect(rowList('Your playlists')).not.toHaveClass('grid');
+    expect(rowList('Your playlists')).not.toHaveClass('overflow-x-auto');
     fireEvent.click(chip('Mixes'));
-    expect(rowList('Your mixes')).toHaveClass('flex', 'overflow-x-auto');
-    expect(rowList('Your mixes')).not.toHaveClass('grid');
+    expect(rowList('Your mixes')).not.toHaveClass('overflow-x-auto');
+  });
+});
+
+describe('Home rows on a desktop', () => {
+  beforeEach(() => {
+    state.desktop = true;
+    state.history = makeTracks('hist', 12);
+    state.mixes = { eligible: true, building: false, mixes: [mixTile('rock', 'Rock'), mixTile('metal', 'Metal')] };
+  });
+
+  it('is whole cards in a line, never a sideways scroller or arrows', () => {
+    render(<HomePage />);
+    for (const name of ['Recently played', 'Your mixes', 'Popular now', 'Your playlists']) {
+      expect(screen.getByRole('region', { name }).getAttribute('data-row-nav')).toBe('c');
+    }
+    expect(document.querySelector('[data-row-shelf]')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Scroll / })).toBeNull();
+  });
+
+  it('?row=history is the full grid of Recently played, alone on the page', () => {
+    state.query = 'row=history';
+    render(<HomePage />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Recently played' })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Recently played' })).getAllByRole('listitem')).toHaveLength(12);
+    expect(screen.queryByRole('region', { name: 'Your mixes' })).toBeNull();
+    expect(screen.queryByRole('toolbar', { name: 'Filter Home' })).toBeNull();
+  });
+
+  it('ignores ?row= for a row Home does not have', () => {
+    state.query = 'row=nope';
+    render(<HomePage />);
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Recently played' })).toBeInTheDocument();
+  });
+});
+
+describe('Home rows on a phone', () => {
+  beforeEach(() => {
+    state.desktop = false;
+    state.history = makeTracks('hist', 12);
+    state.mixes = { eligible: true, building: false, mixes: [mixTile('rock', 'Rock'), mixTile('metal', 'Metal'), mixTile('jazz', 'Jazz')] };
+  });
+  const region = (name: string) => within(screen.getByRole('region', { name }));
+
+  it('shows two cards per row, Show all only past two', () => {
+    render(<HomePage />);
+    expect(region('Recently played').getAllByRole('listitem')).toHaveLength(2);
+    expect(region('Recently played').getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?row=history');
+    expect(region('Your mixes').getAllByRole('listitem')).toHaveLength(2);
+    expect(region('Your mixes').getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?row=mixes');
+    expect(document.querySelector('[data-row-shelf]')).toBeNull();
+  });
+
+  it('?row=history lists every song, alone, with a title', () => {
+    state.query = 'row=history';
+    render(<HomePage />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Recently played' })).toBeInTheDocument();
+    expect(region('Recently played').getAllByRole('listitem')).toHaveLength(12);
+    expect(screen.queryByRole('region', { name: 'Your mixes' })).toBeNull();
   });
 });
