@@ -300,6 +300,23 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
   .ember-row-in { animation: none !important; }
 }
 
+/* A phone tab swipe (hooks/useTabSwipe): the new tab slides in a
+   short way from the side it came from. Reduced motion: it just appears. */
+@keyframes ember-tab-in-next {
+  from { transform: translateX(32px); opacity: 0.4; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes ember-tab-in-prev {
+  from { transform: translateX(-32px); opacity: 0.4; }
+  to   { transform: none; opacity: 1; }
+}
+.ember-tab-in-next { animation: ember-tab-in-next 180ms ease-out; }
+.ember-tab-in-prev { animation: ember-tab-in-prev 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .ember-tab-in-next,
+  .ember-tab-in-prev { animation: none !important; }
+}
+
 /* Phone rotation lock, the app layout is portrait-only on phones. The PWA
    manifest locks orientation when installed, but a browser tab can't truly
    lock it (iOS Safari ignores the manifest entirely), so cover the broken

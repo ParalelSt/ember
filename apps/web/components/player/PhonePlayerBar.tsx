@@ -109,7 +109,7 @@ export function PhonePlayerBar({
   };
 
   return (
-    <div data-testid="phone-player-bar" className="flex flex-col">
+    <div data-testid="phone-player-bar" data-no-tab-swipe className="flex flex-col">
       <div
         data-testid="phone-player-row"
         onClick={openUnlessButton}

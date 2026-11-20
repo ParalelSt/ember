@@ -322,6 +322,8 @@ export function NowPlaying() {
   return (
     <div
       data-testid="now-playing"
+      // Its own gestures, never a tab swipe (hooks/useTabSwipe).
+      data-no-tab-swipe
       // The player itself: its keyboard shortcuts keep working here
       // (hooks/player/useKeyboardShortcuts OPEN_MODAL).
       data-player-view

@@ -26,6 +26,7 @@ import { logger } from '@/lib/logger/client';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useTabSwipe } from '@/hooks/useTabSwipe';
 import { useHeadUnitControls, useIsHeadUnit } from '@/hooks/useHeadUnit';
 import { useReleaseStaleHosting } from '@/hooks/useSession';
 
@@ -49,6 +50,9 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   const carLayout = useHeadUnitControls();
   // A carlist this device hosted and nobody ended must not keep radio off.
   useReleaseStaleHosting();
+  // Phones: a sideways swipe on Home, Search or Library goes to the tab
+  // beside it, in the bottom bar's order (lib/tabSwipe).
+  useTabSwipe(scrollerRef);
 
   // Hydrate the offline store on app boot. On Android this subscribes to the
   // native EmberOffline plugin's pins/trackFiles; elsewhere it reads OPFS

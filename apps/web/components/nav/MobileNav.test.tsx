@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MobileNav } from './MobileNav';
+import { PHONE_TABS } from '@/lib/tabSwipe';
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: ComponentProps<'a'>) => (
@@ -45,5 +46,11 @@ describe('MobileNav', () => {
   it('keeps /search as a real href for deep links', () => {
     render(<MobileNav />);
     expect(screen.getByRole('link', { name: 'Search' })).toHaveAttribute('href', '/search');
+  });
+
+  it('lists its tabs in the order the tab swipe moves through (lib/tabSwipe)', () => {
+    render(<MobileNav />);
+    const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'));
+    expect(hrefs).toEqual([...PHONE_TABS]);
   });
 });

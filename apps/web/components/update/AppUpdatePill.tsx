@@ -83,6 +83,7 @@ export function AppUpdatePill() {
     >
       <div
         data-testid="app-update-pill"
+        data-no-tab-swipe
         data-status={state.status}
         data-kind={permission ? 'permission' : 'card'}
         role="status"
