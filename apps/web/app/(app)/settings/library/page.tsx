@@ -8,7 +8,7 @@ function NewSettingsLibrary(): never {
 }
 
 /** The new look's page, or on a device on the Classic look the frozen one
- *  (RULES.md "Classic look"), imported only then. */
+ *  (docs/classic-look.md), imported only then. */
 export default async function SettingsLibrary() {
   if ((await serverUiMode()) === 'legacy') {
     // A client page: through its loader, so the new look never downloads it.

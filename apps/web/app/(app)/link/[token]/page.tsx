@@ -21,7 +21,7 @@ function NewApproveLinkPage({ params }: { params: Promise<{ token: string }> }) 
   return <ApproveLinkView token={safeDecode(token)} />;
 }
 
-/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+/** The Classic look's page (docs/classic-look.md), loaded only on a
  *  device that chose it. */
 const LegacyApproveLinkPage = dynamic(() => import('@legacy/app/link/[token]/page'));
 

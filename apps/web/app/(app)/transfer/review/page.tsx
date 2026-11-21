@@ -10,7 +10,7 @@ async function NewTransferReviewPage({ searchParams }: PageProps<'/transfer/revi
 }
 
 /** The new look's page, or on a device on the Classic look the frozen one
- *  (RULES.md "Classic look"), imported only then. */
+ *  (docs/classic-look.md), imported only then. */
 export default async function TransferReviewPage(props: Parameters<typeof NewTransferReviewPage>[0]) {
   if ((await serverUiMode()) === 'legacy') {
     const { default: Legacy } = await import('@legacy/app/transfer/review/page');

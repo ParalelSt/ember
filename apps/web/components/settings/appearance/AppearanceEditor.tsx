@@ -74,7 +74,7 @@ export function AppearanceEditor({ rows }: { rows?: boolean }) {
 
   return (
     <section data-testid="appearance" className="flex flex-col gap-block">
-      {/* The previous design, for this device (RULES.md "Classic look"). */}
+      {/* The previous design, for this device (docs/classic-look.md). */}
       <ClassicLookRow rows={rows} />
       <div data-testid="appearance-layout" className="flex flex-col gap-stack xl:flex-row xl:items-start">
         <ThemePreview

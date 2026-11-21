@@ -71,7 +71,7 @@ function NewJoinPlaylistPage({ params }: { params: Promise<{ code: string }> }) 
   return <InvitePreviewCard preview={preview} busy={joining} onJoin={() => void join()} onDecline={decline} />;
 }
 
-/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+/** The Classic look's page (docs/classic-look.md), loaded only on a
  *  device that chose it. */
 const LegacyJoinPlaylistPage = dynamic(() => import('@legacy/app/playlist/join/[code]/page'));
 

@@ -25,7 +25,7 @@ async function NewAdminLayout({ children }: { children: ReactNode }) {
 }
 
 /** The new look's layout, or on a device on the Classic look the frozen one
- *  (RULES.md "Classic look"), imported only then. */
+ *  (docs/classic-look.md), imported only then. */
 export default async function AdminLayout(props: Parameters<typeof NewAdminLayout>[0]) {
   if ((await serverUiMode()) === 'legacy') {
     const { default: Legacy } = await import('@legacy/app/admin/layout');

@@ -10,7 +10,7 @@ import { CLASSIC_LOOK_LABEL, CLASSIC_LOOK_TEXT } from '@/lib/uiMode';
 export const CLASSIC_LOOK_FAILED = "Couldn't switch the look. Check your connection and try again.";
 
 /** Settings > Appearance > Classic look: this device shows the previous
- *  design (legacy/, RULES.md "Classic look") after a reload. Per device,
+ *  design (legacy/, docs/classic-look.md) after a reload. Per device,
  *  like the cookie behind it (lib/uiMode). Phone: a card like the other
  *  switches; desktop (`rows`): a settings row. */
 export function ClassicLookRow({ rows }: { rows?: boolean }) {

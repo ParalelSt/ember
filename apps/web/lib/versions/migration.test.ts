@@ -87,3 +87,64 @@ describe('1793000000_user_devices', () => {
     expect(deleted).toHaveLength(1);
   });
 });
+
+describe('1793100000_user_devices_ui_mode', () => {
+  const source = readFileSync(
+    join(__dirname, '..', '..', '..', '..', 'pocketbase', 'pb_migrations', '1793100000_user_devices_ui_mode.js'),
+    'utf8',
+  );
+
+  function run() {
+    let up: ((db: unknown) => unknown) | null = null;
+    let down: ((db: unknown) => unknown) | null = null;
+    const added: Record<string, unknown>[] = [];
+    const removed: string[] = [];
+    const saved: unknown[] = [];
+    const collection = {
+      name: 'user_devices',
+      listRule: null,
+      schema: {
+        addField: (f: Record<string, unknown>) => added.push(f),
+        removeField: (id: string) => removed.push(id),
+      },
+    };
+    vm.runInNewContext(source, {
+      migrate: (u: (db: unknown) => unknown, d: (db: unknown) => unknown) => {
+        up = u;
+        down = d;
+      },
+      Dao: class {
+        findCollectionByNameOrId(name: string) {
+          expect(name).toBe('user_devices');
+          return collection;
+        }
+        saveCollection(c: unknown) {
+          saved.push(c);
+        }
+      },
+      SchemaField: class {
+        constructor(cfg: Record<string, unknown>) {
+          Object.assign(this, cfg);
+        }
+      },
+    });
+    return { up: up!, down: down!, added, removed, saved, collection };
+  }
+
+  it('adds one optional ui_mode field holding only the two looks, rules untouched', () => {
+    const { up, added, saved, collection } = run();
+    up({});
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatchObject({ name: 'ui_mode', type: 'select', required: false, options: { maxSelect: 1, values: ['new', 'legacy'] } });
+    expect(String(added[0].id)).toMatch(/^[a-z0-9]{15}$/);
+    expect(saved).toEqual([collection]);
+    expect(collection.listRule).toBeNull();
+  });
+
+  it('can be taken back', () => {
+    const { up, down, added, removed } = run();
+    up({});
+    down({});
+    expect(removed).toEqual([added[0].id]);
+  });
+});

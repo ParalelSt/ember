@@ -54,14 +54,14 @@ const libRestrictions = [
   },
 ];
 
-// The Classic look (legacy/, RULES.md "Classic look"): a frozen copy of the
+// The Classic look (legacy/, docs/classic-look.md): a frozen copy of the
 // old UI. Only the switch points, the files under app/(app)/ that pick the
 // new or the legacy shell and pages, may load it: anything else that
 // imported it would ship the old UI to everyone and blur the freeze.
 const noLegacyImport = {
   group: ["@legacy/*", "@legacy"],
   message:
-    "Only the switch points in app/(app)/ load the Classic look (legacy/); see RULES.md.",
+    "Only the switch points in app/(app)/ load the Classic look (legacy/); see docs/classic-look.md.",
 };
 
 // Inside legacy/: the old UI imports itself through @legacy/*, and from the

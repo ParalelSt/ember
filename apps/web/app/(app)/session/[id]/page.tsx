@@ -140,7 +140,7 @@ function NewSessionPage({ params }: { params: Promise<{ id: string }> }) {
   );
 }
 
-/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+/** The Classic look's page (docs/classic-look.md), loaded only on a
  *  device that chose it. */
 const LegacySessionPage = dynamic(() => import('@legacy/app/session/[id]/page'));
 

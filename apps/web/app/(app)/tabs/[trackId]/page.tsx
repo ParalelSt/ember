@@ -13,7 +13,7 @@ async function NewTabPage({ params }: { params: Promise<{ trackId: string }> }) 
 }
 
 /** The new look's page, or on a device on the Classic look the frozen one
- *  (RULES.md "Classic look"), imported only then. */
+ *  (docs/classic-look.md), imported only then. */
 export default async function TabPage(props: Parameters<typeof NewTabPage>[0]) {
   if ((await serverUiMode()) === 'legacy') {
     const { default: Legacy } = await import('@legacy/app/tabs/[trackId]/page');

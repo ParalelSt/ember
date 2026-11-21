@@ -23,7 +23,7 @@ export default defineConfig({
       // (withRequestLog.ts, the uploads routes) needs it aliased to a no-op
       // stub we own, rather than to a path inside next's compiled output.
       { find: /^server-only$/, replacement: `${webRoot}test-utils/serverOnlyStub.ts` },
-      // The Classic look's frozen UI tree (legacy/, see RULES.md).
+      // The Classic look's frozen UI tree (legacy/, see docs/classic-look.md).
       { find: /^@legacy\//, replacement: `${webRoot}legacy/` },
       { find: '@', replacement: webRoot },
     ],

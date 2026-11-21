@@ -9,7 +9,7 @@ function NewSettingsIndex() {
   return <SettingsHome />;
 }
 
-/** The Classic look's Settings index (RULES.md "Classic look"): it only
+/** The Classic look's Settings index (docs/classic-look.md): it only
  *  redirects to Profile. Loaded only on a device that chose that look. */
 const LegacySettingsIndex = dynamic(() =>
   import('@legacy/app/settings/page').then((m) => m.default as unknown as ComponentType),

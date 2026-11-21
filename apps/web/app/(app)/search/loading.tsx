@@ -27,7 +27,7 @@ function NewSearchLoading() {
 }
 
 /** The new look's loading, or on a device on the Classic look the frozen one
- *  (RULES.md "Classic look"), imported only then. */
+ *  (docs/classic-look.md), imported only then. */
 export default async function SearchLoading() {
   if ((await serverUiMode()) === 'legacy') {
     const { default: Legacy } = await import('@legacy/app/search/loading');

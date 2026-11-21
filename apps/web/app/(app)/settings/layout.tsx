@@ -43,7 +43,7 @@ function NewSettingsLayout({ children }: { children: ReactNode }) {
   );
 }
 
-/** The Classic look's Settings frame (RULES.md "Classic look"), loaded only
+/** The Classic look's Settings frame (docs/classic-look.md), loaded only
  *  on a device that chose it. A client switch, not a server one: every
  *  piece of either frame is a client component already. */
 const LegacySettingsLayout = dynamic(() => import('@legacy/app/settings/layout'));

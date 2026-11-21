@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
 import { join } from 'node:path';
 
-/** The Classic look's import boundary (eslint.config.mjs, RULES.md): only
+/** The Classic look's import boundary (eslint.config.mjs, docs/classic-look.md): only
  *  app/(app)/ may load legacy/, and legacy/ may not load redesign UI. */
 const webRoot = join(__dirname, '..');
 const eslint = new ESLint({ cwd: webRoot });

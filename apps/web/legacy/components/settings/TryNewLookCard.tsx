@@ -6,7 +6,7 @@ import { Button } from '@legacy/components/ui/button';
 import { useUiMode } from '@/components/providers/UiModeProvider';
 
 /** The way back to the new design, at the top of the Classic look's
- *  Settings: the one thing added to the frozen UI (RULES.md "Classic look").
+ *  Settings: the one thing added to the frozen UI (docs/classic-look.md).
  *  Switches this device (lib/uiMode) and reloads. */
 export function TryNewLookCard() {
   const { setMode } = useUiMode();

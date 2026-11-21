@@ -5,7 +5,7 @@ import { join, relative } from 'node:path';
 import { isValidElement, type ComponentType, type ReactElement } from 'react';
 import { render, screen } from '@testing-library/react';
 
-/* Every route file under app/(app) in both looks (RULES.md "Classic look"):
+/* Every route file under app/(app) in both looks (docs/classic-look.md):
  * a route the Classic look also had renders its frozen page there and the
  * new page otherwise; a route only the redesign has renders its new page in
  * both (inside the legacy shell on a Classic device). The legacy pages

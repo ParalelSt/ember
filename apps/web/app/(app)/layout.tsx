@@ -33,7 +33,7 @@ import { useHeadUnitControls, useIsHeadUnit } from '@/hooks/useHeadUnit';
 import { useReleaseStaleHosting } from '@/hooks/useSession';
 import { useUiMode } from '@/components/providers/UiModeProvider';
 
-/** The Classic look's shell (legacy/, RULES.md "Classic look"), loaded only
+/** The Classic look's shell (legacy/, docs/classic-look.md), loaded only
  *  on a device that chose it: the new look never downloads it. */
 const LegacyAppShell = dynamic(() => import('@legacy/app/layout'));
 

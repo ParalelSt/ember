@@ -27,7 +27,7 @@ describe('DeviceVersionReporter', () => {
     expect(container).toBeEmptyDOMElement();
     expect(report).not.toHaveBeenCalled();
     act(() => void vi.advanceTimersByTime(3000));
-    expect(report).toHaveBeenCalledWith('u1');
+    expect(report).toHaveBeenCalledWith('u1', expect.any(Number), 'new');
   });
 
   it('checks again when the app comes back into view, not when it leaves', () => {
@@ -57,5 +57,16 @@ describe('DeviceVersionReporter', () => {
     act(() => void vi.advanceTimersByTime(10_000));
     document.dispatchEvent(new Event('visibilitychange'));
     expect(report).not.toHaveBeenCalled();
+  });
+
+  it('sends the look a device on the Classic look shows', async () => {
+    const { UiModeProvider } = await import('@/components/providers/UiModeProvider');
+    render(
+      <UiModeProvider mode="legacy">
+        <DeviceVersionReporter />
+      </UiModeProvider>,
+    );
+    act(() => void vi.advanceTimersByTime(3000));
+    expect(report).toHaveBeenCalledWith('u1', expect.any(Number), 'legacy');
   });
 });

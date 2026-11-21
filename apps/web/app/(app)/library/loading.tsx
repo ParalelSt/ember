@@ -28,7 +28,7 @@ function NewLibraryLoading() {
 }
 
 /** The new look's loading, or on a device on the Classic look the frozen one
- *  (RULES.md "Classic look"), imported only then. */
+ *  (docs/classic-look.md), imported only then. */
 export default async function LibraryLoading() {
   if ((await serverUiMode()) === 'legacy') {
     const { default: Legacy } = await import('@legacy/app/library/loading');

@@ -140,7 +140,7 @@ function NewSettingsProfile() {
   );
 }
 
-/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+/** The Classic look's page (docs/classic-look.md), loaded only on a
  *  device that chose it. */
 const LegacySettingsProfile = dynamic(() => import('@legacy/app/settings/profile/page'));
 
