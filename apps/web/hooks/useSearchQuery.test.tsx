@@ -235,14 +235,15 @@ describe('useSearchQuery: streamed results', () => {
     }
   });
 
-  it('own matches (recent searches) come first, before the server answers', async () => {
+  it('own matches (recent searches) wait for the artist lookup, so Artists can lead the results', async () => {
     recents.tracks = [makeTrack({ id: 'youtube:r1', title: 'Necro Fantasia', artist: 'Demetori' })];
     const original = api.searchStream;
     api.searchStream = (q: string) => (q ? controlledStream().stream() : original(q));
     try {
       const { result } = renderHook(() => useSearchQuery(), { wrapper });
       act(() => result.current.setQ('demetori'));
-      await waitFor(() => expect(result.current.data.map((t) => t.id)).toEqual(['youtube:r1']));
+      await new Promise((r) => setTimeout(r, 400));
+      expect(result.current.data.map((t) => t.id)).toEqual([]);
     } finally {
       api.searchStream = original;
     }

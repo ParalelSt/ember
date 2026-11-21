@@ -151,13 +151,13 @@ function ArtistPhoto({ a, className, iconClass }: { a: SearchArtist; className: 
 /** The search page's Artists: round cards, a 140px picture over the name. */
 function ArtistCards({ artists }: { artists: SearchArtist[] }) {
   return (
-    <div className="flex flex-wrap gap-4" data-testid="search-artist-cards">
+    <div className="flex flex-wrap gap-block" data-testid="search-artist-cards">
       {artists.map((a) => (
         <Link
           key={a.id}
           href={artistHref(a)}
           data-testid="search-artist-card"
-          className={cn('flex w-40 min-w-0 flex-col items-center gap-2 rounded-xl p-3 text-center transition-colors hover:bg-card', ARTIST_FOCUS)}
+          className={cn('flex w-40 min-w-0 flex-col items-center gap-cluster rounded-xl p-row text-center transition-colors hover:bg-card', ARTIST_FOCUS)}
         >
           <ArtistPhoto a={a} className="size-[140px]" iconClass="h-10 w-10" />
           <span className="w-full truncate text-sm font-semibold">{a.name}</span>
