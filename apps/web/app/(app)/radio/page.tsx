@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { LocateIcon, SearchIcon } from '@/components/icons';
@@ -10,6 +11,9 @@ import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { RowHeader, WideRowHeader } from '@/components/page/RowShelf';
 import { StationList } from '@/components/radio/StationList';
+import { RowNavProvider } from '@/components/page/RowNavContext';
+import { useScrollTopOnChange } from '@/hooks/useScrollTopOnChange';
+import { rowHref } from '@/lib/homeRows';
 import { StationShelf } from '@/components/radio/StationShelf';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -36,6 +40,9 @@ const SEARCH_DEBOUNCE_MS = 300;
  *  site already has their permission (which asks nothing). */
 export default function RadioPage() {
   const { user } = useAuth();
+  // "Show all" on a row opens that row alone as a full grid (?row=<key>).
+  const rowParam = useSearchParams().get('row');
+  useScrollTopOnChange(rowParam);
   // Shelves as on Home: 140px tiles by touch on a phone, 180px ones on a
   // desktop window.
   const isDesktop = useIsDesktop();
@@ -95,7 +102,7 @@ export default function RadioPage() {
     listState(stations, loading, failed, empty)
     ?? <StationList stations={stations!} name={name} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} />;
 
-  const shelf = (title: string, stations: RadioStation[] | undefined, loading: boolean, failed: boolean, empty: string, action?: ReactNode) => {
+  const shelf = (key: string, title: string, stations: RadioStation[] | undefined, loading: boolean, failed: boolean, empty: string, action?: ReactNode) => {
     const state = listState(stations, loading, failed, empty);
     if (state) {
       const Header = isDesktop ? WideRowHeader : RowHeader;
@@ -115,6 +122,7 @@ export default function RadioPage() {
         onToggleFavorite={onToggleFavorite}
         variant={isDesktop ? 'desktop' : 'phone'}
         action={action}
+        showAllHref={rowHref('/radio', key)}
       />
     );
   };
@@ -125,6 +133,25 @@ export default function RadioPage() {
       <LocateIcon /> {locating ? 'Finding you…' : 'Use my location'}
     </Button>
   );
+
+  // One row's full list: only for a row the page has with stations in it.
+  const fullKey =
+    !debouncedQ && ((rowParam === 'favourites' && favorites.data?.length) || (rowParam === 'nearby' && nearby.data?.length))
+      ? rowParam
+      : null;
+  if (fullKey) {
+    return (
+      <OnlineOnly>
+        <div className="pt-block md:pt-0">
+          <RowNavProvider value={{ fit: true, fullRow: true, backHref: '/radio' }}>
+            {fullKey === 'favourites'
+              ? shelf('favourites', 'Favourites', favorites.data, false, false, '')
+              : shelf('nearby', nearbyName, nearby.data, false, false, '')}
+          </RowNavProvider>
+        </div>
+      </OnlineOnly>
+    );
+  }
 
   return (
     <OnlineOnly>
@@ -151,11 +178,13 @@ export default function RadioPage() {
               : list(search.data, 'Search', search.isFetching, search.isError, 'No stations by that name.')}
           </>
         ) : (
+          <RowNavProvider value={{ fit: true }}>
           <div className="mt-section md:mt-block">
-            {!!favorites.data?.length && shelf('Favourites', favorites.data, favorites.isLoading, favorites.isError, '')}
+            {!!favorites.data?.length && shelf('favourites', 'Favourites', favorites.data, favorites.isLoading, favorites.isError, '')}
             {locationError && <p className="mb-block text-sm text-muted-foreground">{locationError}</p>}
-            {shelf(nearbyName, nearby.data, nearby.isLoading, nearby.isError, 'No stations found here.', locationAction)}
+            {shelf('nearby', nearbyName, nearby.data, nearby.isLoading, nearby.isError, 'No stations found here.', locationAction)}
           </div>
+          </RowNavProvider>
         )}
       </div>
     </OnlineOnly>

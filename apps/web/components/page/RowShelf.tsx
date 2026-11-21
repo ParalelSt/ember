@@ -260,7 +260,7 @@ function WideFitRow({ title, showAllHref, rowKey, action, tiles, className }: Wi
   const { ref, fit } = useFitCount(FIT_TILE_MIN);
   const hidden = fit > 0 && tiles.length > fit;
   const shown = fit === 0 ? tiles : tiles.slice(0, fit);
-  const fullHref = rowKey ? homeRowHref(rowKey) : showAllHref;
+  const fullHref = showAllHref ?? (rowKey ? homeRowHref(rowKey) : undefined);
   return (
     <section className={cn('mb-section', className)} aria-label={title} data-row-nav="c">
       <WideRowHeader title={title} showAllHref={hidden ? fullHref : undefined} action={action} />
@@ -287,10 +287,10 @@ function WideFitRow({ title, showAllHref, rowKey, action, tiles, className }: Wi
 
 /** The "Show all" page: every tile of one row in a grid, under a
  *  back button and the row's title. */
-function WideFullRow({ title, tiles, className }: WideRowProps) {
+function WideFullRow({ title, tiles, className, backHref = '/' }: WideRowProps & { backHref?: string }) {
   return (
     <section className={className} aria-label={title} data-row-full>
-      <BackButton href="/" className="mb-block" />
+      <BackButton href={backHref} className="mb-block" />
       <PageTitle className="mb-stack">{title}</PageTitle>
       <div role="list" data-row-grid="full" className={WIDE_GRID_CLASS}>
         {tiles.map((tile, i) => (
@@ -326,10 +326,10 @@ function PhoneFitRow({ title, showAllHref, action, tiles, className }: Omit<Wide
 
 /** The "Show all" page on a phone: every tile in two columns,
  *  under a back button and the row's title. */
-function PhoneFullRow({ title, tiles, className }: Pick<WideRowProps, 'title' | 'tiles' | 'className'>) {
+function PhoneFullRow({ title, tiles, className, backHref = '/' }: Pick<WideRowProps, 'title' | 'tiles' | 'className'> & { backHref?: string }) {
   return (
     <section className={className} aria-label={title} data-row-full>
-      <BackButton href="/" className="mb-block" />
+      <BackButton href={backHref} className="mb-block" />
       <PageTitle className="mb-stack">{title}</PageTitle>
       <div role="list" data-row-grid="full" className={ROW_GRID_CLASS}>
         {tiles.map((tile, i) => (
@@ -376,8 +376,8 @@ export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, classN
   const nav = useRowNav();
   const all = Children.toArray(children);
   if (all.length === 0) return null;
-  if (variant === 'desktop' && nav.fullRow) return <WideFullRow title={title} tiles={all} className={className} />;
-  if (variant === 'phone' && nav.fullRow) return <PhoneFullRow title={title} tiles={all} className={className} />;
+  if (variant === 'desktop' && nav.fullRow) return <WideFullRow title={title} tiles={all} className={className} backHref={nav.backHref} />;
+  if (variant === 'phone' && nav.fullRow) return <PhoneFullRow title={title} tiles={all} className={className} backHref={nav.backHref} />;
   if (layout === 'grid' && variant === 'desktop') {
     return (
       <section className={cn('mb-section', className)} aria-label={title}>
@@ -408,11 +408,12 @@ export function RowShelf({ title, showAllHref, limit = ROW_MAX, children, classN
   }
   const tiles = all.slice(0, limit);
   const more = all.length > tiles.length ? showAllHref : undefined;
+  // Fitted rows decide for themselves when there is more than they show.
   if (nav.fit) {
     return variant === 'desktop' ? (
-      <WideFitRow title={title} showAllHref={more} rowKey={rowKey} action={action} tiles={tiles} className={className} />
+      <WideFitRow title={title} showAllHref={showAllHref} rowKey={rowKey} action={action} tiles={tiles} className={className} />
     ) : (
-      <PhoneFitRow title={title} showAllHref={rowKey ? homeRowHref(rowKey) : showAllHref} action={action} tiles={tiles} className={className} />
+      <PhoneFitRow title={title} showAllHref={showAllHref ?? (rowKey ? homeRowHref(rowKey) : undefined)} action={action} tiles={tiles} className={className} />
     );
   }
   if (variant === 'desktop') return <WideScrollRow title={title} showAllHref={more} action={action} tiles={tiles} className={className} />;

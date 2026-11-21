@@ -24,6 +24,12 @@ describe('tabSwipeTarget', () => {
     expect(swipe(80, '/search')).toEqual({ href: '/', dir: 'prev' });
   });
 
+  it('Radio and artist row views are not tab pages, so they never swipe', () => {
+    expect(swipe(-80, '/radio', { search: '?row=nearby' })).toBeNull();
+    expect(swipe(80, '/radio', { search: '?row=nearby' })).toBeNull();
+    expect(tabIndexFor('/artist/UC1', '?row=albums')).toBe(-1);
+  });
+
   it('does not wrap at either end', () => {
     expect(swipe(80, '/')).toBeNull();
     expect(swipe(-80, '/library')).toBeNull();

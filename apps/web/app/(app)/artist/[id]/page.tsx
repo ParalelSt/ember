@@ -1,6 +1,7 @@
 'use client';
 
 import { use } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { TrackList } from '@/components/track/TrackList';
 import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { useTrackActions } from '@/hooks/useTrackActions';
@@ -14,6 +15,9 @@ import { pickThumbnail } from '@/lib/artwork';
 import { EmptyState } from '@/components/page/EmptyState';
 import { BrowseError } from '@/components/page/BrowseError';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { RowNavProvider } from '@/components/page/RowNavContext';
+import { useScrollTopOnChange } from '@/hooks/useScrollTopOnChange';
+import { rowHref } from '@/lib/homeRows';
 
 export default function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -26,6 +30,9 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
 
 function ArtistView({ id }: { id: string }) {
   const trackActions = useTrackActions();
+  // "Show all" on a row opens that row alone as a full grid (?row=<key>).
+  const rowParam = useSearchParams().get('row');
+  useScrollTopOnChange(rowParam);
   const { data, isLoading, error, refetch } = useQueryArtist(id);
 
   if (error) return <BrowseError error={error} kind="Artist" onRetry={() => void refetch()} />;
@@ -33,7 +40,17 @@ function ArtistView({ id }: { id: string }) {
 
   const { name, description, thumbnails = [], tracks = [], albums = [], singles = [] } = data;
   const heroArt = pickThumbnail(thumbnails);
+  const path = `/artist/${id}`;
   const artistContext = { type: 'artist' as const, artistName: name, artistId: id };
+
+  if (rowParam === 'albums' || rowParam === 'singles') {
+    const albumsRow = rowParam === 'albums';
+    return (
+      <RowNavProvider value={{ fit: true, fullRow: true, backHref: path }}>
+        <AlbumShelf title={albumsRow ? 'Discography' : 'Singles & EPs'} albums={albumsRow ? albums : singles} />
+      </RowNavProvider>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-stack">
@@ -72,8 +89,10 @@ function ArtistView({ id }: { id: string }) {
           </div>
         </section>
 
-        <AlbumShelf title="Discography" albums={albums} />
-        <AlbumShelf title="Singles & EPs" albums={singles} />
+        <RowNavProvider value={{ fit: true }}>
+          <AlbumShelf title="Discography" albums={albums} showAllHref={rowHref(path, 'albums')} />
+          <AlbumShelf title="Singles & EPs" albums={singles} showAllHref={rowHref(path, 'singles')} />
+        </RowNavProvider>
       </div>
     </div>
   );

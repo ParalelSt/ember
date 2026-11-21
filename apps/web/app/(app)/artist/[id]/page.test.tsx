@@ -7,6 +7,10 @@ import AlbumPage from '../../album/[id]/page';
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: ComponentProps<'a'>) => <a href={href} {...rest}>{children}</a>,
 }));
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+}));
 vi.mock('@/lib/useOnline', () => ({ useOnline: () => true }));
 vi.mock('@/components/track/menus/TrackMenu', () => ({ renderTrackMenu: () => null }));
 vi.mock('@/hooks/useTrackActions', () => ({
