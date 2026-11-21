@@ -8,6 +8,7 @@ import { UploadProgressCard } from '@/components/uploads/UploadProgressCard';
 import { MyUploadRow } from '@/components/uploads/MyUploadRow';
 import { UPLOADS_SHARED_TEXT, UploadsDialogs, useUploadsSettings } from '@/components/settings/useUploadsSettings';
 import { TransferCard } from '@/components/settings/PhoneLibraryCards';
+import { UploadsNoMatch, UploadsSearchPhoneBox, UploadsSearchToggle, useUploadsSearch } from '@/components/uploads/UploadsSearch';
 import { formatCount } from '@/lib/format';
 
 /** Settings > Uploads on a phone and narrow windows (desktop draws the
@@ -19,6 +20,8 @@ import { formatCount } from '@/lib/format';
 export default function UploadsPage() {
   const s = useUploadsSettings();
   const { user, desktop, queue, items, uploads, isLoading, isError, dropOpen, setDropOpen, setEditing, setRemoving, addFiles } = s;
+
+  const search = useUploadsSearch(uploads, desktop);
 
   if (!user) return <EmptyState>Sign in to upload songs</EmptyState>;
 
@@ -57,8 +60,12 @@ export default function UploadsPage() {
       <div className="flex flex-col gap-cluster">
         <div className="flex items-baseline justify-between gap-row">
           <h3 className="text-base font-bold">Your uploads</h3>
-          <span className="text-xs text-muted-foreground">{formatCount(uploads.length, 'song')}</span>
+          <div className="flex items-center gap-cluster">
+            <span className="text-xs text-muted-foreground">{formatCount(uploads.length, 'song')}</span>
+            <UploadsSearchToggle search={search} />
+          </div>
         </div>
+        <UploadsSearchPhoneBox search={search} />
         {isLoading && uploads.length === 0 ? (
           <p className="text-meta">Loading…</p>
         ) : isError && uploads.length === 0 ? (
@@ -71,9 +78,11 @@ export default function UploadsPage() {
           >
             Add songs from your device and everyone on this server can play them.
           </EmptyState>
+        ) : search.filtering && search.shown.length === 0 ? (
+          <UploadsNoMatch search={search} />
         ) : (
           <ul aria-label="Your uploads" className="flex flex-col">
-            {uploads.map((u) => (
+            {search.shown.map((u) => (
               <MyUploadRow key={u.id} upload={u} onEdit={setEditing} onRemove={setRemoving} />
             ))}
           </ul>
