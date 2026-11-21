@@ -315,7 +315,7 @@ describe('CollectionPage select mode and sort', () => {
     expect(screen.queryByText('3 songs')).toBeNull();
     const bar = screen.getByTestId('action-bar');
     const sortButton = within(bar).getByTestId('sort-button');
-    expect(sortButton.parentElement).toHaveClass('ml-auto');
+    expect(within(bar).getByTestId('list-search')).toHaveClass('ml-auto');
     expect(bar.lastElementChild).toBe(sortButton.parentElement);
     // Transfer, then the ⋯, then Sort.
     const transfer = within(bar).getByRole('link', { name: 'Transfer' });
@@ -449,10 +449,9 @@ describe('CollectionPage search in list', () => {
   ];
   const reorderProps = { editing: false, tracks: four, onStart: noop, onDone: noop, onMove: noop };
 
-  function setup(opts: { desktop?: boolean; look?: 1 | 2 | 3 } = {}) {
+  function setup(opts: { desktop?: boolean } = {}) {
     screenSize.desktop = opts.desktop ?? true;
     window.localStorage.clear();
-    window.history.replaceState({}, '', opts.look ? `/?listbox=${opts.look}` : '/');
   }
 
   it('desktop shows the box without tapping; filters as you type on title, artist', () => {
@@ -474,26 +473,23 @@ describe('CollectionPage search in list', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Search in this list', { selector: 'input' }));
   });
 
-  it.each([1, 2, 3] as const)('box look %i renders on desktop and phone', (look) => {
-    setup({ look });
-    const { unmount } = render(<CollectionPage {...props({ tracks: four })} />);
-    expect(screen.getByTestId('list-search').getAttribute('data-look')).toBe(String(look));
-    unmount();
-    setup({ look, desktop: false });
+  it('desktop: soft box in the action row, visible without tapping', () => {
+    setup();
+    render(<CollectionPage {...props({ tracks: four })} />);
+    const box = screen.getByTestId('list-search');
+    expect(box.getAttribute('data-variant')).toBe('soft');
+    expect(box.parentElement).toBe(screen.getByLabelText('Shuffle play').parentElement);
+    expect(screen.queryByTestId('list-search-toggle')).toBeNull();
+  });
+
+  it('phone: icon reveals an underline box above the songs, not in the action row', () => {
+    setup({ desktop: false });
     render(<CollectionPage {...props({ tracks: four })} />);
     expect(screen.queryByTestId('list-search')).toBeNull();
     fireEvent.click(screen.getByTestId('list-search-toggle'));
-    expect(screen.getByTestId('list-search').getAttribute('data-look')).toBe(String(look));
-  });
-
-  it('look 3 sits in the action row; looks 1 and 2 sit above the songs', () => {
-    setup({ look: 3 });
-    const { unmount } = render(<CollectionPage {...props({ tracks: four })} />);
-    expect(screen.getByTestId('list-search').parentElement).toBe(screen.getByLabelText('Shuffle play').parentElement);
-    unmount();
-    setup({ look: 2 });
-    render(<CollectionPage {...props({ tracks: four })} />);
-    expect(screen.getByTestId('list-search').parentElement).not.toBe(screen.getByLabelText('Shuffle play').parentElement);
+    const box = screen.getByTestId('list-search');
+    expect(box.getAttribute('data-variant')).toBe('underline');
+    expect(box.parentElement).not.toBe(screen.getByLabelText('Shuffle play').parentElement);
   });
 
   it('empty state with the query and a Clear button; the x and Escape clear', () => {

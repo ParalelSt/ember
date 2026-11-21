@@ -5,26 +5,23 @@ import { CloseIcon, SearchIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import type { ListBoxLook } from '@/lib/listBoxDesign';
 
 /** The "Search in this list" box, in the main Search page's input style.
- *  Escape clears it and calls `onEscape` (variant a closes the box). */
+ *  Escape clears it and calls `onEscape` (the phone box closes). */
 export function ListSearchBox({
   value,
   onChange,
   onEscape,
   autoFocus,
-  look = 1,
-  onBlurEmpty,
+  variant = 'underline',
   className,
 }: {
   value: string;
   onChange: (v: string) => void;
   onEscape?: () => void;
   autoFocus?: boolean;
-  look?: ListBoxLook;
-  /** Called when the box loses focus while empty (phone look 3 folds back to the icon). */
-  onBlurEmpty?: () => void;
+  /** underline: phone, flat. soft: desktop, filled rectangle. */
+  variant?: 'underline' | 'soft';
   className?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -34,13 +31,13 @@ export function ListSearchBox({
   return (
     <div
       data-testid="list-search"
-      data-look={look}
-      className={cn('group relative', look === 1 && 'border-b border-foreground/15 focus-within:border-ember', className)}
+      data-variant={variant}
+      className={cn('group relative', variant === 'underline' && 'border-b border-foreground/15 focus-within:border-ember', className)}
     >
       <SearchIcon
         className={cn(
           'pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground',
-          look === 1 ? 'left-0' : 'left-3',
+          variant === 'underline' ? 'left-0' : 'left-3',
         )}
       />
       <Input
@@ -54,14 +51,11 @@ export function ListSearchBox({
             onEscape?.();
           }
         }}
-        onBlur={() => {
-          if (!value) onBlurEmpty?.();
-        }}
         placeholder="Search in this list"
         aria-label="Search in this list"
         className={cn(
           'h-10 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0',
-          look === 1
+          variant === 'underline'
             ? 'rounded-none bg-transparent pl-7 text-base md:text-sm'
             : 'rounded-md bg-foreground/5 pl-9 text-sm focus-visible:bg-foreground/10',
           value ? 'pr-10' : 'pr-3',

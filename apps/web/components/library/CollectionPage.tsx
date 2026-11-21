@@ -16,7 +16,6 @@ import { DownloadButton, type DownloadButtonProps } from '@/components/library/D
 import type { CollectionCoverProps } from '@/components/primitives/CollectionCover';
 import { cn } from '@/lib/utils';
 import { filterTracks } from '@/lib/listSearch';
-import { readListBoxLook, type ListBoxLook } from '@/lib/listBoxDesign';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { ListSearchBox } from '@/components/library/ListSearchBox';
 import type { PlaybackContext, PlaylistPerson, Track } from '@/types/track';
@@ -166,8 +165,6 @@ export function CollectionPage({
   // Search in the list: plain list only (not an import's rows, not select or
   // edit-order mode, which work on the whole list).
   const isDesktop = useIsDesktop();
-  const [look, setLook] = useState<ListBoxLook>(1);
-  useEffect(() => setLook(readListBoxLook()), []);
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const canSearch = !list && tracks.length > 0 && !editingOrder && !selecting;
@@ -176,9 +173,7 @@ export function CollectionPage({
   const shown = useMemo(() => filterTracks(tracks, q), [tracks, q]);
   // Desktop: the box is always there. Phone: the icon reveals it.
   const boxVisible = canSearch && (isDesktop || searchOpen || filtering);
-  // Look 3 puts the box in the action row; 1 and 2 put it above the songs.
-  const inRow = look === 3;
-  const phoneExpanded = inRow && !isDesktop && boxVisible;
+  // Desktop: soft box in the action row. Phone: underline box above the songs.
   // Playing a filtered row queues the whole list, starting at that song.
   const listActions = useMemo<TrackActions>(
     () => (filtering ? { ...trackActions, onPlay: (t, _l, c) => trackActions.onPlay(t, tracks, c) } : trackActions),
@@ -242,7 +237,7 @@ export function CollectionPage({
                 Done
               </button>
             )}
-            {canSearch && !isDesktop && !phoneExpanded && (
+            {canSearch && !isDesktop && (
               <button
                 type="button"
                 data-testid="list-search-toggle"
@@ -257,20 +252,17 @@ export function CollectionPage({
                 <SearchIcon className="h-5 w-5" />
               </button>
             )}
-            {canSearch && inRow && boxVisible && (
+            {canSearch && isDesktop && (
               <ListSearchBox
                 value={query}
                 onChange={setQuery}
-                onEscape={() => setSearchOpen(false)}
-                onBlurEmpty={() => !isDesktop && setSearchOpen(false)}
-                autoFocus={!isDesktop}
-                look={3}
-                className={isDesktop ? 'ml-auto w-[260px]' : 'min-w-0 flex-1'}
+                variant="soft"
+                className="ml-auto w-[260px]"
               />
             )}
-            {!phoneExpanded && <MoreMenu actions={menu} label={moreLabel} name={moreName} />}
-            {showSort && !phoneExpanded && (
-              <div className={cn(!(inRow && boxVisible && isDesktop) && 'ml-auto')}>
+            <MoreMenu actions={menu} label={moreLabel} name={moreName} />
+            {showSort && (
+              <div className={cn(!(canSearch && isDesktop) && 'ml-auto')}>
                 <SortMenu sort={sort.value} onChange={sort.onChange} />
               </div>
             )}
@@ -324,13 +316,12 @@ export function CollectionPage({
                 )}
               </div>
             )}
-            {boxVisible && !inRow && (
+            {boxVisible && !isDesktop && (
               <ListSearchBox
                 value={query}
                 onChange={setQuery}
                 onEscape={() => setSearchOpen(false)}
-                autoFocus={!isDesktop}
-                look={look}
+                autoFocus
               />
             )}
             {editingOrder && reorder ? (
