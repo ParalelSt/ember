@@ -1,5 +1,9 @@
-// "New version" Discord ping. Changes pushed before 19:00 Europe/Zagreb are
-// announced at 19:00; changes pushed after 19:00 are announced right away.
+// "New version" Discord ping to the host, ONLY when a release needs a manual
+// step beyond the routine auto-update (a real `host:` note in UPDATE_NOTES,
+// e.g. a new env var or a manual migration). Routine releases, which the
+// host`s auto-update deploys on its own, move the state tag but never ping.
+// Timing: anything pushed before 19:00 Europe/Zagreb is announced at 19:00;
+// after 19:00, right away.
 // Node 20 built-ins only.
 // See .github/workflows/release-ping.yml for the config and the state model.
 import { execFileSync } from 'node:child_process';
@@ -176,14 +180,31 @@ export async function run(deps) {
   const sinceVersion = pkgVersion(base);
   const show = (rev, p) => tryGit('show', `${rev}:${p}`) || '';
 
+  const moveTag = () => {
+    try {
+      git('tag', '-f', '-a', TAG, '-m', d.date, head);
+      if (!deps.noPush) git('push', '-f', 'origin', `refs/tags/${TAG}`);
+    } catch (e) { log(`tag move failed: ${e.message}`); }
+  };
+
+  // Only notify the host when a release needs a manual step beyond the routine
+  // auto-update (a real `host:` note in UPDATE_NOTES, e.g. a new env var). A
+  // routine release deploys on its own, so it just moves the tag (marking it
+  // accounted for) with no ping.
+  const notesExtra = extraNotes(show(head, 'UPDATE_NOTES.md'), sinceVersion);
+  if (notesExtra.length === 0) {
+    log('routine update, nothing the host must do by hand; not pinging');
+    moveTag();
+    return { pinged: false, reason: 'routine update' };
+  }
+
   // Every app's release tags (android-v0.4.25, ..., and the old shared
   // v0.4.x ones), of any version: the names keep working at 0.5 and later.
   const tagsAt = (rev) => (tryGit('tag', '--merged', rev, '--list', '*v*') || '').split('\n').filter(Boolean);
   const appsVersions = appVersions(tagsAt(head));
 
   const text = buildMessage({
-    userId, webVersion, appsVersions, changedPaths: changed,
-    notesExtra: extraNotes(show(head, 'UPDATE_NOTES.md'), sinceVersion),
+    userId, webVersion, appsVersions, changedPaths: changed, notesExtra,
   });
 
   const res = await doFetch(hook, {
@@ -197,8 +218,7 @@ export async function run(deps) {
     e.exitCode = 1;
     throw e;
   }
-  git('tag', '-f', '-a', TAG, '-m', d.date, head);
-  if (!deps.noPush) git('push', '-f', 'origin', `refs/tags/${TAG}`);
+  moveTag();
   log('pinged and moved tag');
   return { pinged: true, text };
 }

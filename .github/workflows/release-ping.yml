@@ -1,5 +1,6 @@
-# Pings the friend who hosts in Discord (#release-notif) when main has changes
-# he needs to update for. Changes pushed before 19:00 Europe/Zagreb are sent at
+# Pings the friend who hosts in Discord (#release-notif) ONLY when a release
+# needs him to do something by hand (a `host:` note in UPDATE_NOTES, e.g. a new
+# env var). Routine releases deploy via his auto-update and are not pinged. Changes pushed before 19:00 Europe/Zagreb are sent at
 # 19:00; changes pushed after 19:00 are sent as soon as they are pushed. No
 # changes, no ping.
 #
