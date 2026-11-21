@@ -449,13 +449,14 @@ describe('CollectionPage search in list', () => {
   ];
   const reorderProps = { editing: false, tracks: four, onStart: noop, onDone: noop, onMove: noop };
 
-  function setDesign(d?: 'a' | 'b') {
+  function setup(opts: { desktop?: boolean; look?: 1 | 2 | 3 } = {}) {
+    screenSize.desktop = opts.desktop ?? true;
     window.localStorage.clear();
-    window.history.replaceState({}, '', d ? `/?listsearch=${d}` : '/');
+    window.history.replaceState({}, '', opts.look ? `/?listbox=${opts.look}` : '/');
   }
 
-  it('variant b shows the box by default; filters as you type on title, artist', () => {
-    setDesign('b');
+  it('desktop shows the box without tapping; filters as you type on title, artist', () => {
+    setup();
     render(<CollectionPage {...props({ tracks: four })} />);
     const box = screen.getByLabelText('Search in this list');
     expect(document.activeElement).not.toBe(box);
@@ -465,16 +466,38 @@ describe('CollectionPage search in list', () => {
     expect(screen.getAllByTestId('track-row')).toHaveLength(1);
   });
 
-  it('variant a (the default) hides the box until the icon is tapped, then focuses it', () => {
-    setDesign();
+  it('phone shows the icon, not the box, tapped, then focuses it', () => {
+    setup({ desktop: false });
     render(<CollectionPage {...props({ tracks: four })} />);
     expect(screen.queryByLabelText('Search in this list', { selector: 'input' })).toBeNull();
     fireEvent.click(screen.getByTestId('list-search-toggle'));
     expect(document.activeElement).toBe(screen.getByLabelText('Search in this list', { selector: 'input' }));
   });
 
+  it.each([1, 2, 3] as const)('box look %i renders on desktop and phone', (look) => {
+    setup({ look });
+    const { unmount } = render(<CollectionPage {...props({ tracks: four })} />);
+    expect(screen.getByTestId('list-search').getAttribute('data-look')).toBe(String(look));
+    unmount();
+    setup({ look, desktop: false });
+    render(<CollectionPage {...props({ tracks: four })} />);
+    expect(screen.queryByTestId('list-search')).toBeNull();
+    fireEvent.click(screen.getByTestId('list-search-toggle'));
+    expect(screen.getByTestId('list-search').getAttribute('data-look')).toBe(String(look));
+  });
+
+  it('look 3 sits in the action row; looks 1 and 2 sit above the songs', () => {
+    setup({ look: 3 });
+    const { unmount } = render(<CollectionPage {...props({ tracks: four })} />);
+    expect(screen.getByTestId('list-search').parentElement).toBe(screen.getByLabelText('Shuffle play').parentElement);
+    unmount();
+    setup({ look: 2 });
+    render(<CollectionPage {...props({ tracks: four })} />);
+    expect(screen.getByTestId('list-search').parentElement).not.toBe(screen.getByLabelText('Shuffle play').parentElement);
+  });
+
   it('empty state with the query and a Clear button; the x and Escape clear', () => {
-    setDesign('a');
+    setup({ desktop: false });
     render(<CollectionPage {...props({ tracks: four })} />);
     fireEvent.click(screen.getByTestId('list-search-toggle'));
     const box = screen.getByLabelText('Search in this list', { selector: 'input' });
@@ -494,7 +517,7 @@ describe('CollectionPage search in list', () => {
   });
 
   it('playing a filtered row hands the full list and that song', () => {
-    setDesign('b');
+    setup();
     const onPlay = vi.fn();
     render(
       <CollectionPage
@@ -510,7 +533,7 @@ describe('CollectionPage search in list', () => {
   });
 
   it('Edit order is unavailable while a filter is active', () => {
-    setDesign('b');
+    setup();
     render(<CollectionPage {...props({ tracks: four, reorder: reorderProps })} />);
     fireEvent.click(screen.getByTestId('more-menu'));
     expect(screen.getByRole('menuitem', { name: 'Edit order' })).toBeTruthy();
