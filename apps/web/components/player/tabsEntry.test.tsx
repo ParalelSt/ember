@@ -120,7 +120,7 @@ describe('tabs entry points', () => {
     usePlayerStore.getState().setNowPlayingOpen(true);
     render(<NowPlaying />);
     // On the phone, Guitar tabs is a row in the More sheet.
-    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     fireEvent.click(screen.getByTestId('more-tabs'));
     expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
     // After the view's own history entry is popped, so the back cannot undo it.
@@ -138,7 +138,7 @@ describe('tabs entry points', () => {
     useSettingsStore.getState().setTabsEnabled(false);
     usePlayerStore.getState().setNowPlayingOpen(true);
     render(<NowPlaying />);
-    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     expect(screen.queryByTestId('more-tabs')).toBeNull();
   });
 });

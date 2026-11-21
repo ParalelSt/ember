@@ -98,6 +98,21 @@ export function NowPlaying() {
   const [addOpen, setAddOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
+  // Design switch for the action row under the controls: ?playerrow=a|b,
+  // remembered in localStorage (ember.design.playerrow); default a.
+  const [playerRow, setPlayerRow] = useState<'a' | 'b'>('a');
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search).get('playerrow');
+      if (q === 'a' || q === 'b') {
+        setPlayerRow(q);
+        try { window.localStorage.setItem('ember.design.playerrow', q); } catch { /* storage blocked */ }
+        return;
+      }
+      const saved = window.localStorage.getItem('ember.design.playerrow');
+      if (saved === 'a' || saved === 'b') setPlayerRow(saved);
+    } catch { /* storage blocked */ }
+  }, []);
   // Devices shows only with somewhere else to play, named when it plays there.
   const devices = useDevicesEntry();
   // Whether the song has lyrics to report (the same cached query the
@@ -228,14 +243,13 @@ export function NowPlaying() {
     </button>
   ) : coverArt;
 
-  // The More sheet: one plain list of what has no button on the player. Like,
-  // Lyrics and Devices stay on the player itself. Each row opens the sheet or
+  // The Options sheet: one plain list of what has no button on the player. Like,
+  // Queue, Lyrics and Devices stay on the player itself. Each row opens the sheet or
   // page it always did.
   const canAdd = !!(current && user && !isUnavailable(current) && !live);
   const blocking = useBlockedTracks();
   const items: MoreItem[] = [];
   if (canAdd) items.push({ key: 'add', label: 'Add to playlist', Icon: ListPlusIcon, onSelect: () => setAddOpen(true) });
-  if (current) items.push({ key: 'queue', label: 'Queue', Icon: QueueIcon, onSelect: () => setQueueOpen(true) });
   if (current && tabsEnabled && !live) items.push({ key: 'tabs', label: 'Guitar tabs', Icon: TabsIcon, onSelect: openTabs });
   if (eqAvailable) {
     items.push({ key: 'eq', label: 'Equalizer', detail: eqOn ? 'On' : 'Off', Icon: EqualizerIcon, lit: eqOn, onSelect: () => setEqOpen(true) });
@@ -376,8 +390,8 @@ export function NowPlaying() {
           )}
           <button
             type="button"
-            aria-label="More"
-            title="More"
+            aria-label="Options"
+            title="Options"
             data-testid="now-playing-more"
             onClick={() => setMoreOpen(true)}
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
@@ -498,39 +512,70 @@ export function NowPlaying() {
           right={loopButton}
         />
 
-        {/* Devices bottom-left (named when it plays elsewhere), Lyrics
-            bottom-right, under the transport. */}
-        {current && (
-          <div className="mt-block flex items-center justify-between gap-block">
-            {devices.visible ? (
-              <button
-                type="button"
-                aria-label="Devices"
-                title="Devices"
-                data-testid="player-devices"
-                onClick={() => setDevicesOpen(true)}
-                className={cn(
-                  'inline-flex h-10 min-w-0 items-center gap-cluster rounded-md pr-cluster transition-colors hover:text-foreground',
-                  devices.lit ? 'text-ember' : 'text-muted-foreground',
-                )}
-              >
-                <DevicesIcon className="h-5 w-5 shrink-0" />
-                {devices.on && <span className="max-w-32 truncate text-xs">{devices.on}</span>}
-              </button>
-            ) : <span />}
-            {!live && <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLyricsAsked((n) => n + 1)}
+        {/* One action row right under the transport (design switch
+            ?playerrow=a|b): a = icon-only, Devices left, Queue + Lyrics
+            right; b = evenly spaced icons with a small label each. */}
+        {current && (() => {
+          const labelled = playerRow === 'b';
+          const btn = 'inline-flex items-center justify-center rounded-md transition-colors hover:text-foreground';
+          const devicesBtn = devices.visible ? (
+            <button
+              type="button"
+              aria-label="Devices"
+              title="Devices"
+              data-testid="player-devices"
+              onClick={() => setDevicesOpen(true)}
+              className={cn(
+                btn,
+                labelled ? 'min-w-16 flex-col gap-0 py-cluster' : 'h-10 min-w-0 gap-cluster pr-cluster',
+                devices.lit ? 'text-ember' : 'text-muted-foreground',
+              )}
+            >
+              <DevicesIcon className="h-5 w-5 shrink-0" />
+              {labelled ? (
+                <span className="max-w-24 truncate text-[11px] leading-none">{devices.on || 'Devices'}</span>
+              ) : (
+                devices.on && <span className="max-w-32 truncate text-xs">{devices.on}</span>
+              )}
+            </button>
+          ) : null;
+          const queueBtn = (
+            <button
+              type="button"
+              aria-label="Queue"
+              title="Queue"
+              data-testid="player-queue"
+              onClick={() => setQueueOpen(true)}
+              className={cn(btn, 'text-muted-foreground', labelled ? 'min-w-16 flex-col gap-0 py-cluster' : 'h-10 w-10')}
+            >
+              <QueueIcon className="h-5 w-5" />
+              {labelled && <span className="text-[11px] leading-none">Queue</span>}
+            </button>
+          );
+          const lyricsBtn = !live ? (
+            <button
+              type="button"
               aria-label="Lyrics"
               title="Lyrics"
               data-testid="player-lyrics"
-              className="h-10 w-10 text-muted-foreground hover:text-foreground"
+              onClick={() => setLyricsAsked((n) => n + 1)}
+              className={cn(btn, 'text-muted-foreground', labelled ? 'min-w-16 flex-col gap-0 py-cluster' : 'h-10 w-10')}
             >
               <LyricsIcon className="h-5 w-5" />
-            </Button>}
-          </div>
-        )}
+              {labelled && <span className="text-[11px] leading-none">Lyrics</span>}
+            </button>
+          ) : null;
+          return labelled ? (
+            <div data-testid="player-action-row" data-variant="b" className="mt-block flex items-start justify-evenly gap-block">
+              {devicesBtn}{queueBtn}{lyricsBtn}
+            </div>
+          ) : (
+            <div data-testid="player-action-row" data-variant="a" className="mt-block flex items-center justify-between gap-block">
+              {devicesBtn ?? <span />}
+              <div className="flex items-center gap-cluster">{queueBtn}{lyricsBtn}</div>
+            </div>
+          );
+        })()}
 
       </div>
 

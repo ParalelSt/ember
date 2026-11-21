@@ -132,7 +132,7 @@ const PHONE_WITH_BUDS = {
 };
 
 const view = () => screen.getByTestId('now-playing');
-const openMore = () => fireEvent.click(within(view()).getByRole('button', { name: 'More' }));
+const openMore = () => fireEvent.click(within(view()).getByRole('button', { name: 'Options' }));
 const sheet = () => screen.getByTestId('now-playing-more-sheet');
 const rows = () => Array.from(sheet().querySelectorAll<HTMLElement>('[data-testid^="more-"]')).map((b) => b.dataset.testid!.slice(5));
 const row = (key: string) => within(sheet()).getByTestId(`more-${key}`);
@@ -199,19 +199,19 @@ describe('NowPlaying: the song page', () => {
 });
 
 describe('NowPlaying: the top row', () => {
-  it('is the close chevron, the "Playing from" title and one More button, nothing else', () => {
+  it('is the close chevron, the "Playing from" title and one Options button, nothing else', () => {
     auth.user = { id: 'u1' };
     player.current = { ...TRACK, artistId: 'UC1' };
     usePlayerStore.setState({ context: { type: 'playlist', playlistId: 'p1', playlistName: 'Road trip' } });
     render(<NowPlaying />);
     expect(screen.getByTestId('context-title')).toHaveTextContent('Playing from playlistRoad trip');
     expect(within(view()).getByRole('button', { name: 'Close' })).toBeInTheDocument();
-    expect(within(view()).getAllByRole('button', { name: 'More' })).toHaveLength(1);
+    expect(within(view()).getAllByRole('button', { name: 'Options' })).toHaveLength(1);
     // On the player itself: Like, Devices and Lyrics, and nothing else.
-    for (const name of ['Like', 'Devices', 'Lyrics']) {
+    for (const name of ['Like', 'Devices', 'Queue', 'Lyrics']) {
       expect(within(view()).getAllByRole('button', { name })).toHaveLength(1);
     }
-    for (const name of ['Equalizer', 'Guitar tabs', 'Up next', 'Queue']) {
+    for (const name of ['Equalizer', 'Guitar tabs', 'Up next']) {
       expect(within(view()).queryByRole('button', { name })).toBeNull();
     }
     expect(screen.queryByTestId('tool-row')).toBeNull();
@@ -267,7 +267,7 @@ describe('NowPlaying: the More sheet', () => {
     expect(within(sheet()).getByText('Coastline')).toBeInTheDocument();
     // One of the player's own sheets: its keyboard shortcuts keep working.
     expect(sheet()).toHaveAttribute('data-player-view');
-    expect(rows()).toEqual(['add', 'queue', 'tabs', 'eq', 'share', 'artist', 'album', 'block', 'report']);
+    expect(rows()).toEqual(['add', 'tabs', 'eq', 'share', 'artist', 'album', 'block', 'report']);
     expect(sheet().querySelectorAll('[role="group"]')).toHaveLength(0);
     expect(row('share')).toHaveTextContent('Copy link');
     // Like, Lyrics and Devices are on the player, not in the sheet.
@@ -285,7 +285,7 @@ describe('NowPlaying: the More sheet', () => {
   it('signed out, keeps what needs no account', () => {
     render(<NowPlaying />);
     openMore();
-    expect(rows()).toEqual(['queue', 'tabs', 'eq', 'share']);
+    expect(rows()).toEqual(['tabs', 'eq', 'share']);
     expect(within(view()).queryByRole('button', { name: 'Like' })).toBeNull();
   });
 
@@ -314,14 +314,39 @@ describe('NowPlaying: the More sheet', () => {
     expect(share.shareTrack).toHaveBeenCalledWith(TRACK);
   });
 
-  it('Queue in the ⋯ menu opens the queue sheet over the player', () => {
+  it('Queue on the player opens the queue sheet; the Options menu no longer lists it', () => {
     render(<NowPlaying />);
-    openMore();
-    expect(row('queue')).toHaveTextContent('Queue');
-    expect(row('queue')).not.toHaveTextContent('Up next');
-    fireEvent.click(row('queue'));
+    fireEvent.click(within(view()).getByRole('button', { name: 'Queue' }));
     expect(screen.getByTestId('queue-sheet')).toBeInTheDocument();
     expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
+    openMore();
+    expect(within(sheet()).queryByText('Queue')).toBeNull();
+    expect(screen.queryByTestId('more-queue')).toBeNull();
+    expect(within(view()).queryByRole('button', { name: 'More' })).toBeNull();
+    expect(within(view()).getByRole('button', { name: 'Options' })).toHaveAttribute('title', 'Options');
+  });
+
+  it('variant a: icon-only action row with Queue and Lyrics together', () => {
+    render(<NowPlaying />);
+    const row = screen.getByTestId('player-action-row');
+    expect(row).toHaveAttribute('data-variant', 'a');
+    expect(within(row).getByRole('button', { name: 'Queue' })).toHaveTextContent('');
+    expect(within(row).getByRole('button', { name: 'Lyrics' })).toHaveTextContent('');
+  });
+
+  it('variant b (?playerrow=b) shows a label under each icon and remembers it', () => {
+    window.history.pushState({}, '', '/?playerrow=b');
+    try {
+      render(<NowPlaying />);
+      const row = screen.getByTestId('player-action-row');
+      expect(row).toHaveAttribute('data-variant', 'b');
+      expect(within(row).getByRole('button', { name: 'Queue' })).toHaveTextContent('Queue');
+      expect(within(row).getByRole('button', { name: 'Lyrics' })).toHaveTextContent('Lyrics');
+      expect(window.localStorage.getItem('ember.design.playerrow')).toBe('b');
+    } finally {
+      window.history.pushState({}, '', '/');
+      window.localStorage.removeItem('ember.design.playerrow');
+    }
   });
 
   it('the Lyrics button scrolls down to the lyrics card', () => {
@@ -457,7 +482,7 @@ describe('NowPlaying: the More sheet', () => {
     player.current = null;
     usePlayerStore.getState().setNowPlayingOpen(false);
     render(<NowPlaying />);
-    expect(within(view()).queryByRole('button', { name: 'More' })).toBeNull();
+    expect(within(view()).queryByRole('button', { name: 'Options' })).toBeNull();
   });
 });
 
