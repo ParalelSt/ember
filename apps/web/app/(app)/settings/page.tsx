@@ -1,18 +1,18 @@
+'use client';
+
+import type { ComponentType } from 'react';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 import { SettingsHome } from '@/components/settings/SettingsHome';
-import { serverUiMode } from '@/components/providers/serverUiMode';
 
 function NewSettingsIndex() {
   return <SettingsHome />;
 }
 
-/** The new look's page, or on a device on the Classic look the frozen one
- *  (RULES.md "Classic look"), imported only then. */
-export default async function SettingsIndex() {
-  if ((await serverUiMode()) === 'legacy') {
-    const { default: Legacy } = await import('@legacy/app/settings/page');
-    // The Classic look's index only redirects to its first section.
-    Legacy();
-    return null;
-  }
-  return NewSettingsIndex();
-}
+/** The Classic look's Settings index (RULES.md "Classic look"): it only
+ *  redirects to Profile. Loaded only on a device that chose that look. */
+const LegacySettingsIndex = dynamic(() =>
+  import('@legacy/app/settings/page').then((m) => m.default as unknown as ComponentType),
+);
+
+export default uiSwitch(NewSettingsIndex, LegacySettingsIndex);

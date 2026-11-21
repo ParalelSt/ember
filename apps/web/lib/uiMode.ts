@@ -8,6 +8,12 @@ export type UiMode = 'new' | 'legacy';
 
 export const UI_MODE_COOKIE = 'ember_ui';
 
+/** The new look's switch, Settings > Appearance > Classic look
+ *  (components/settings/appearance/ClassicLookRow). The redesign intro's
+ *  "Prefer the old look?" step names it with the same words. */
+export const CLASSIC_LOOK_LABEL = 'Classic look';
+export const CLASSIC_LOOK_TEXT = 'Use the previous design';
+
 /** The query parameter that switches a device from any link. */
 export const UI_MODE_PARAM = 'ui';
 

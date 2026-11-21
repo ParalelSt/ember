@@ -1,10 +1,13 @@
+'use client';
+
 import type { ReactNode } from 'react';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 import { SettingsHeader, SettingsContent } from '@/components/settings/SettingsHeader';
 import { BuildStamp } from '@/components/settings/BuildStamp';
 import { AppUpdateCard } from '@/components/settings/AppUpdateCard';
 import { SettingsFrame } from '@/components/settings/desktop/DesktopSettings';
 import { UpdatesCard } from '@/components/settings/UpdatesCard';
-import { serverUiMode } from '@/components/providers/serverUiMode';
 
 function NewSettingsLayout({ children }: { children: ReactNode }) {
   return (
@@ -40,12 +43,9 @@ function NewSettingsLayout({ children }: { children: ReactNode }) {
   );
 }
 
-/** The new look's layout, or on a device on the Classic look the frozen one
- *  (RULES.md "Classic look"), imported only then. */
-export default async function SettingsLayout(props: Parameters<typeof NewSettingsLayout>[0]) {
-  if ((await serverUiMode()) === 'legacy') {
-    const { default: Legacy } = await import('@legacy/app/settings/layout');
-    return <Legacy {...props} />;
-  }
-  return NewSettingsLayout(props);
-}
+/** The Classic look's Settings frame (RULES.md "Classic look"), loaded only
+ *  on a device that chose it. A client switch, not a server one: every
+ *  piece of either frame is a client component already. */
+const LegacySettingsLayout = dynamic(() => import('@legacy/app/settings/layout'));
+
+export default uiSwitch(NewSettingsLayout, LegacySettingsLayout);

@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Dialog } from '@base-ui/react/dialog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { introSteps, markIntroSeen, type IntroStepId } from '@/lib/redesignIntro';
+import { CLASSIC_LOOK_LABEL, CLASSIC_LOOK_TEXT } from '@/lib/uiMode';
 import { cn } from '@/lib/utils';
 import s from './RedesignIntro.module.css';
 
@@ -195,7 +196,8 @@ function ArtClassic() {
     <div className={s.legacy}>
       <div className={s.setrow}>
         <div>
-          Classic layout<small>Use the previous design</small>
+          {CLASSIC_LOOK_LABEL}
+          <small>{CLASSIC_LOOK_TEXT}</small>
         </div>
         <div className={s.toggle} />
       </div>
@@ -246,7 +248,7 @@ const COPY: Record<IntroStepId, { eyebrow: string; title: string; text: string }
   classic: {
     eyebrow: 'Your choice',
     title: 'Prefer the old look?',
-    text: 'Switch back any time in Settings under Classic layout, and switch again whenever you like. Your music and playlists stay the same in both.',
+    text: `Switch back any time in Settings > Appearance > ${CLASSIC_LOOK_LABEL}, and switch again whenever you like. Your music and playlists stay the same in both.`,
   },
   fix: {
     eyebrow: 'Tell us',

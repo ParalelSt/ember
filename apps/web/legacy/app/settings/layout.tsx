@@ -3,11 +3,14 @@ import { SettingsTabs } from '@legacy/components/settings/SettingsTabs';
 import { PageTitle } from '@legacy/components/page/PageTitle';
 import { BuildStamp } from '@legacy/components/settings/BuildStamp';
 import { AppUpdateCard } from '@legacy/components/settings/AppUpdateCard';
+import { TryNewLookCard } from '@legacy/components/settings/TryNewLookCard';
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div>
       <PageTitle className="mb-6">Settings</PageTitle>
+      {/* The way back to the new design (added to the frozen UI on purpose). */}
+      <TryNewLookCard />
       {/* Side nav from lg only: at md the sidebar already takes 240px, and a
           second column left the page ~230px (bughunt V8). Below lg the tabs
           are the row across the top that phones use. */}
