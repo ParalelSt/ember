@@ -228,14 +228,13 @@ export function NowPlaying() {
     </button>
   ) : coverArt;
 
-  // The More sheet: one plain list of what has no button on the player. Like,
-  // Lyrics and Devices stay on the player itself. Each row opens the sheet or
+  // The Options sheet: one plain list of what has no button on the player. Like,
+  // Queue, Lyrics and Devices stay on the player itself. Each row opens the sheet or
   // page it always did.
   const canAdd = !!(current && user && !isUnavailable(current) && !live);
   const blocking = useBlockedTracks();
   const items: MoreItem[] = [];
   if (canAdd) items.push({ key: 'add', label: 'Add to playlist', Icon: ListPlusIcon, onSelect: () => setAddOpen(true) });
-  if (current) items.push({ key: 'queue', label: 'Queue', Icon: QueueIcon, onSelect: () => setQueueOpen(true) });
   if (current && tabsEnabled && !live) items.push({ key: 'tabs', label: 'Guitar tabs', Icon: TabsIcon, onSelect: openTabs });
   if (eqAvailable) {
     items.push({ key: 'eq', label: 'Equalizer', detail: eqOn ? 'On' : 'Off', Icon: EqualizerIcon, lit: eqOn, onSelect: () => setEqOpen(true) });
@@ -376,8 +375,8 @@ export function NowPlaying() {
           )}
           <button
             type="button"
-            aria-label="More"
-            title="More"
+            aria-label="Options"
+            title="Options"
             data-testid="now-playing-more"
             onClick={() => setMoreOpen(true)}
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
@@ -498,39 +497,54 @@ export function NowPlaying() {
           right={loopButton}
         />
 
-        {/* Devices bottom-left (named when it plays elsewhere), Lyrics
-            bottom-right, under the transport. */}
-        {current && (
-          <div className="mt-block flex items-center justify-between gap-block">
-            {devices.visible ? (
-              <button
-                type="button"
-                aria-label="Devices"
-                title="Devices"
-                data-testid="player-devices"
-                onClick={() => setDevicesOpen(true)}
-                className={cn(
-                  'inline-flex h-10 min-w-0 items-center gap-cluster rounded-md pr-cluster transition-colors hover:text-foreground',
-                  devices.lit ? 'text-ember' : 'text-muted-foreground',
-                )}
-              >
-                <DevicesIcon className="h-5 w-5 shrink-0" />
-                {devices.on && <span className="max-w-32 truncate text-xs">{devices.on}</span>}
-              </button>
-            ) : <span />}
-            {!live && <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLyricsAsked((n) => n + 1)}
+        {/* One icon-only action row right under the transport: Devices
+            left, Queue and Lyrics right. */}
+        {current && (() => {
+          const btn = 'inline-flex items-center justify-center rounded-md transition-colors hover:text-foreground';
+          const devicesBtn = devices.visible ? (
+            <button
+              type="button"
+              aria-label="Devices"
+              title="Devices"
+              data-testid="player-devices"
+              onClick={() => setDevicesOpen(true)}
+              className={cn(btn, 'h-10 min-w-0 gap-cluster pr-cluster', devices.lit ? 'text-ember' : 'text-muted-foreground')}
+            >
+              <DevicesIcon className="h-5 w-5 shrink-0" />
+              {devices.on && <span className="max-w-32 truncate text-xs">{devices.on}</span>}
+            </button>
+          ) : null;
+          const queueBtn = (
+            <button
+              type="button"
+              aria-label="Queue"
+              title="Queue"
+              data-testid="player-queue"
+              onClick={() => setQueueOpen(true)}
+              className={cn(btn, 'h-10 w-10 text-muted-foreground')}
+            >
+              <QueueIcon className="h-5 w-5" />
+            </button>
+          );
+          const lyricsBtn = !live ? (
+            <button
+              type="button"
               aria-label="Lyrics"
               title="Lyrics"
               data-testid="player-lyrics"
-              className="h-10 w-10 text-muted-foreground hover:text-foreground"
+              onClick={() => setLyricsAsked((n) => n + 1)}
+              className={cn(btn, 'h-10 w-10 text-muted-foreground')}
             >
               <LyricsIcon className="h-5 w-5" />
-            </Button>}
-          </div>
-        )}
+            </button>
+          ) : null;
+          return (
+            <div data-testid="player-action-row" className="mt-block flex items-center justify-between gap-block">
+              {devicesBtn ?? <span />}
+              <div className="flex items-center gap-cluster">{queueBtn}{lyricsBtn}</div>
+            </div>
+          );
+        })()}
 
       </div>
 
