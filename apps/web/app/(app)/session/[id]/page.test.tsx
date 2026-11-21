@@ -62,6 +62,7 @@ vi.mock('@/hooks/useSession', () => ({
   useExecuteAddToSession: () => ({ mutateAsync, isPending: false }),
   useExecuteSkipSession: () => idle,
   useExecutePlaySessionItem: () => idle,
+  useExecuteRemoveSessionItem: () => idle,
   useExecuteEndSession: () => idle,
   useExecuteSaveSession: () => idle,
 }));

@@ -8,8 +8,8 @@ import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Avatar } from '@/components/primitives/Avatar';
 import { Artwork } from '@/components/primitives/Artwork';
 import { SectionHeader } from '@/components/page/SectionHeader';
-import { CheckIcon, ListPlusIcon, MusicIcon, NextIcon, PlayIcon, PlusIcon, ShareIcon } from '@/components/icons';
-import { personLabel, whosePhone, type AddPosition } from '@/lib/carlist';
+import { CheckIcon, CloseIcon, ListPlusIcon, MusicIcon, NextIcon, PlayIcon, PlusIcon, ShareIcon } from '@/components/icons';
+import { canRemoveItem, personLabel, whosePhone, type AddPosition } from '@/lib/carlist';
 import { cn } from '@/lib/utils';
 import type { PlaylistPerson, SessionQueueItem, SessionState, Track } from '@/types/track';
 
@@ -264,6 +264,9 @@ export interface CarlistLiveProps {
   onSkip: () => void;
   /** Play a queued song now (its queue item id). Everyone who can Skip. */
   onPlayItem?: (itemId: string, item: SessionQueueItem) => void;
+  /** Take a queued song out. Shown on the rows the viewer may remove (the
+   *  host: all; a member: their own), never the playing one. */
+  onRemoveItem?: (itemId: string, item: SessionQueueItem) => void;
   onEnd: () => void;
   onSave: () => void;
   onShare: () => void;
@@ -282,6 +285,7 @@ export function CarlistLive({
   skipping,
   onSkip,
   onPlayItem,
+  onRemoveItem,
   onEnd,
   onSave,
   onShare,
@@ -413,6 +417,18 @@ export function CarlistLive({
                       className="size-8 shrink-0 text-foreground hover:bg-accent focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 [@media(hover:none)]:opacity-100"
                     >
                       <PlayIcon className="size-3.5" />
+                    </Button>
+                  )}
+                  {session.active && onRemoveItem && !isNow && canRemoveItem(session.viewerId, session.isHost, item.addedBy?.id) && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onRemoveItem(item.id, item)}
+                      aria-label={`Remove ${item.track.title} from the carlist`}
+                      data-testid="queue-remove"
+                      className="size-8 shrink-0 text-foreground hover:bg-accent focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+                    >
+                      <CloseIcon className="size-3.5" />
                     </Button>
                   )}
                 </li>

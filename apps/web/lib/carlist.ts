@@ -161,6 +161,40 @@ export function sessionIndexFor(sessionIds: readonly string[], currentId: string
   return before;
 }
 
+// ---------- Removing songs ----------
+
+/** The host removes any song, a member only the ones they added. */
+export function canRemoveItem(viewerId: string, isHost: boolean, addedById: string | null | undefined): boolean {
+  return isHost || (!!addedById && addedById === viewerId);
+}
+
+/** `now_index` after the queue row at `removedIndex` is deleted: rows after
+ *  it shift down, so a removal before the playing row moves the pointer down
+ *  by one; one after it leaves it. (The playing row itself is never removed.) */
+export function nowIndexAfterRemove(nowIndex: number, removedIndex: number): number {
+  return removedIndex < nowIndex ? Math.max(0, nowIndex - 1) : nowIndex;
+}
+
+/** The host's player queue after songs left the carlist: drops each removed
+ *  track (all copies; the mirror keeps one per track anyway) except the one
+ *  playing, and keeps the playing song playing. null when nothing changes. */
+export function dropFromPlayerQueue<T extends HasId>(
+  playerQueue: readonly T[],
+  playerIndex: number,
+  removedTrackIds: ReadonlySet<string>,
+): { queue: T[]; index: number } | null {
+  const queue: T[] = [];
+  let index = playerIndex;
+  playerQueue.forEach((t, i) => {
+    if (removedTrackIds.has(t.id) && i !== playerIndex) {
+      if (i < playerIndex) index--;
+      return;
+    }
+    queue.push(t);
+  });
+  return queue.length === playerQueue.length ? null : { queue, index };
+}
+
 // ---------- People ----------
 
 export type CarlistPerson = PlaylistPerson;

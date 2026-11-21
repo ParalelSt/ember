@@ -505,6 +505,13 @@ export const api = {
       body: { id: itemId },
       expected: [410],
     }),
+  /** Take a queued song out (host: any; member: their own). 409: it is
+   *  playing now. */
+  removeSessionItem: (id: string, itemId: string) =>
+    req<{ ok: true; nowIndex: number }>(
+      `/sessions/${encodeURIComponent(id)}/tracks/${encodeURIComponent(itemId)}`,
+      { method: 'DELETE', expected: [409, 410] },
+    ),
   consumeSessionCommands: (id: string) =>
     req<{ commands: { type: string }[] }>(`/sessions/${encodeURIComponent(id)}/commands/consume`, {
       method: 'POST',

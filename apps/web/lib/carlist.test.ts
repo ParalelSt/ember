@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   addedMessage,
+  canRemoveItem,
+  dropFromPlayerQueue,
+  nowIndexAfterRemove,
   carlistJoinPath,
   carlistJoinUrl,
   insertIndex,
@@ -212,5 +215,29 @@ describe('play commands (jump to a queued song)', () => {
     expect(playerIndexFor(['a', 'b', 'a', 'c'], 'a', 1)).toBe(2);
     expect(playerIndexFor(['a', 'b', 'c'], 'a', 1)).toBe(0);
     expect(playerIndexFor(['a', 'b'], 'z', 0)).toBe(-1);
+  });
+});
+
+describe('removing songs', () => {
+  it('canRemoveItem: host any, member own only', () => {
+    expect(canRemoveItem('h', true, 'x')).toBe(true);
+    expect(canRemoveItem('m', false, 'm')).toBe(true);
+    expect(canRemoveItem('m', false, 'x')).toBe(false);
+    expect(canRemoveItem('m', false, null)).toBe(false);
+  });
+
+  it('nowIndexAfterRemove shifts only for rows before the playing one', () => {
+    expect(nowIndexAfterRemove(3, 0)).toBe(2);
+    expect(nowIndexAfterRemove(3, 2)).toBe(2);
+    expect(nowIndexAfterRemove(3, 4)).toBe(3);
+    expect(nowIndexAfterRemove(0, 5)).toBe(0);
+  });
+
+  it('dropFromPlayerQueue drops removed tracks and keeps the playing song playing', () => {
+    const q = ['a', 'b', 'c', 'd'].map((id) => ({ id }));
+    expect(dropFromPlayerQueue(q, 2, new Set(['a']))).toEqual({ queue: [{ id: 'b' }, { id: 'c' }, { id: 'd' }], index: 1 });
+    expect(dropFromPlayerQueue(q, 2, new Set(['d']))).toEqual({ queue: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], index: 2 });
+    expect(dropFromPlayerQueue(q, 2, new Set(['c']))).toBeNull();
+    expect(dropFromPlayerQueue(q, 0, new Set(['x']))).toBeNull();
   });
 });

@@ -90,6 +90,14 @@ export function useExecutePlaySessionItem(id: string) {
   return useMutation({ mutationFn: (itemId: string) => api.playSessionItem(id, itemId) });
 }
 
+export function useExecuteRemoveSessionItem(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) => api.removeSessionItem(id, itemId),
+    onSettled: () => void qc.invalidateQueries({ queryKey: sessionKey(id) }),
+  });
+}
+
 export function useExecuteEndSession(id: string) {
   const qc = useQueryClient();
   return useMutation({
