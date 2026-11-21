@@ -7,6 +7,7 @@ import type { TrackActions } from '@/components/track/TrackList';
 import { Artwork } from '@/components/primitives/Artwork';
 import { EmptyState } from '@/components/page/EmptyState';
 import { ArtistIcon, ChevronRightIcon } from '@/components/icons';
+import { SectionHeader } from '@/components/page/SectionHeader';
 import { cn } from '@/lib/utils';
 import { canonicalId } from '@/lib/trackIdentity';
 import { songPageHref } from '@/lib/songPage';
@@ -136,6 +137,37 @@ export function SearchArtists({
   );
 }
 
+const ARTIST_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const artistHref = (a: SearchArtist) => `/artist/${encodeURIComponent(a.id)}`;
+
+function ArtistPhoto({ a, className, iconClass }: { a: SearchArtist; className: string; iconClass: string }) {
+  return (
+    <Artwork src={a.artworkUrl} alt="" shape="round" loading="lazy" className={cn('grid shrink-0 place-items-center bg-art text-foreground/30', className)}>
+      <ArtistIcon className={iconClass} />
+    </Artwork>
+  );
+}
+
+/** The search page's Artists: round cards, a 140px picture over the name. */
+function ArtistCards({ artists }: { artists: SearchArtist[] }) {
+  return (
+    <div className="flex flex-wrap gap-4" data-testid="search-artist-cards">
+      {artists.map((a) => (
+        <Link
+          key={a.id}
+          href={artistHref(a)}
+          data-testid="search-artist-card"
+          className={cn('flex w-40 min-w-0 flex-col items-center gap-2 rounded-xl p-3 text-center transition-colors hover:bg-card', ARTIST_FOCUS)}
+        >
+          <ArtistPhoto a={a} className="size-[140px]" iconClass="h-10 w-10" />
+          <span className="w-full truncate text-sm font-semibold">{a.name}</span>
+          <span className="text-xs text-muted-foreground">Artist</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 /** Presentational: the search results as they arrive, from a SearchView
  *  (lib/search/view). Rows only ever join at the end, and each one fades in
  *  a moment after the one above it, counted from the first row of the
@@ -166,7 +198,60 @@ export function SearchResults({
   if (!count) return <EmptyState className="text-sm">No tracks</EmptyState>;
 
   const desktop = platform === 'desktop';
+  // The search page's desktop list (not the overlay): artist cards above the songs.
+  const pageLayout = desktop && !trailingPlayControl;
   const delayFor = (i: number) => Math.min(Math.max(0, i - batchStart), MAX_STAGGER_ROWS) * STAGGER_MS;
+
+  const renderTrack = (row: Extract<SearchView['rows'][number], { kind: 'track' }>, i: number, index: number) => {
+    const t = row.track;
+    return (
+      <Arrival key={row.key} delayMs={delayFor(i)}>
+        <TrackRow
+          track={t}
+          index={index}
+          density="list"
+          active={currentId === t.id}
+          playing={isPlaying}
+          liked={onLike ? likedIds.has(canonicalId(t.id)) : undefined}
+          artworkSrc={artworkSrcFor?.(t) ?? undefined}
+          onPlay={() => onPlay(t, view.tracks, context)}
+          onToggle={onToggle}
+          onLike={onLike ? () => onLike(t) : undefined}
+          trailing={trailing?.(t)}
+          trailingPlayControl={trailingPlayControl}
+          unavailable={!!isUnavailable?.(t)}
+          songHref={songPageHref(t)}
+          titleOpensSong={desktop}
+          marqueeTitle
+        />
+      </Arrival>
+    );
+  };
+
+  if (pageLayout) {
+    const artists = view.rows.find((r) => r.kind === 'artists')?.artists ?? [];
+    const songs: ReactNode[] = [];
+    let n = 0;
+    view.rows.forEach((row, i) => {
+      if (row.kind === 'track') songs.push(renderTrack(row, i, n++));
+    });
+    return (
+      <div className="@container flex flex-col">
+        {artists.length > 0 && (
+          <section aria-label="Artists" data-testid="search-artists" className="py-cluster">
+            <SectionHeader title="Artists" className="px-row pb-inset" />
+            <ArtistCards artists={artists} />
+          </section>
+        )}
+        {songs.length > 0 && (
+          <section aria-label="Songs" data-testid="search-songs" className="py-cluster">
+            <SectionHeader title="Songs" className="px-row pb-inset" />
+            {songs}
+          </section>
+        )}
+      </div>
+    );
+  }
 
   let trackIndex = 0;
   return (
