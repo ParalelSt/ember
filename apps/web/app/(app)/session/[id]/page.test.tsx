@@ -61,6 +61,7 @@ vi.mock('@/hooks/useSession', () => ({
   useQuerySession: () => ({ data: poll.hasData ? data : undefined, isLoading: false, error: poll.error, dataUpdatedAt: 1 }),
   useExecuteAddToSession: () => ({ mutateAsync, isPending: false }),
   useExecuteSkipSession: () => idle,
+  useExecutePlaySessionItem: () => idle,
   useExecuteEndSession: () => idle,
   useExecuteSaveSession: () => idle,
 }));

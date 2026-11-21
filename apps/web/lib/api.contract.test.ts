@@ -131,10 +131,11 @@ describe('Carlist: a carlist that ended between two polls is an answer', () => {
     vi.stubGlobal('fetch', answer(410, { error: 'This session has ended.' }));
     await expect(api.addToSession('s1', song)).rejects.toMatchObject({ status: 410, message: 'This session has ended.' });
     await expect(api.skipSession('s1', 2)).rejects.toMatchObject({ status: 410 });
+    await expect(api.playSessionItem('s1', 'st1')).rejects.toMatchObject({ status: 410 });
     await expect(api.consumeSessionCommands('s1')).rejects.toMatchObject({ status: 410 });
     await expect(api.publishSessionNow('s1', 3)).rejects.toMatchObject({ status: 410 });
     expect(logger.error).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledTimes(4);
+    expect(logger.warn).toHaveBeenCalledTimes(5);
   });
 });
 

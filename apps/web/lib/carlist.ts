@@ -193,3 +193,22 @@ export function estimateProgress(opts: {
   const ms = elapsedMs + Math.max(0, now - fetchedAt);
   return Math.min(1, Math.max(0, ms / (durationSec * 1000)));
 }
+
+const PLAY_PREFIX = 'play:';
+
+/** The session_commands type for "play this queued song now". */
+export function playCommandType(sessionTrackId: string): string {
+  return `${PLAY_PREFIX}${sessionTrackId}`;
+}
+
+/** The session_tracks id inside a play command type, or null for other kinds. */
+export function parsePlayCommand(type: string): string | null {
+  return type.startsWith(PLAY_PREFIX) && type.length > PLAY_PREFIX.length ? type.slice(PLAY_PREFIX.length) : null;
+}
+
+/** Where in the host's player queue a jump lands: the song's nearest copy at
+ *  or after the playing index (a track queued twice), else any copy, else -1. */
+export function playerIndexFor(playerIds: readonly string[], trackId: string, playingIndex: number): number {
+  const after = playerIds.findIndex((id, i) => i >= playingIndex && id === trackId);
+  return after >= 0 ? after : playerIds.indexOf(trackId);
+}

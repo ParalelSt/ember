@@ -500,3 +500,46 @@ describe('limits on starting carlists and adding songs', () => {
     expect((await POST(req({ name: 'x'.repeat(201) }), ctx)).status).toBe(400);
   });
 });
+
+describe('play a queued song now', () => {
+  const play = () => handler(import('./[id]/play/route'));
+  const commands = () => db.session_commands.map((c) => c.type);
+
+  it('a guest queues a play command for a song in the carlist, like Skip', async () => {
+    db.session_members.push({ id: 'm2', session: 's1', user: 'u2', created: '2' });
+    caller.id = 'u2';
+    const res = await (await play())(req({ id: 'st3' }), ctx);
+    expect(res.status).toBe(201);
+    expect(commands()).toEqual(['play:st3']);
+    expect(db.session_commands[0]).toMatchObject({ session: 's1', issued_by: 'u2' });
+    // Nothing moves server-side: the host does the jump, then publishes it.
+    expect(db.sessions[0].now_index).toBe(0);
+    expect(order()).toEqual(['t1@1', 't2@2', 't3@3']);
+  });
+
+  it('the host can too', async () => {
+    expect((await (await play())(req({ id: 'st2' }), ctx)).status).toBe(201);
+  });
+
+  it('someone who has not joined is refused, as with Skip', async () => {
+    caller.id = 'u3';
+    expect((await (await play())(req({ id: 'st2' }), ctx)).status).toBe(403);
+    const skip = await handler(import('./[id]/skip/route'));
+    expect((await skip(req(), ctx)).status).toBe(403);
+    expect(commands()).toEqual([]);
+  });
+
+  it('an ended carlist answers 410', async () => {
+    db.sessions[0].active = false;
+    expect((await (await play())(req({ id: 'st2' }), ctx)).status).toBe(410);
+  });
+
+  it('needs a song id that belongs to this carlist', async () => {
+    db.session_tracks.push({ id: 'other', session: 's2', track: 't1', position: 1, added_by: 'u3', played: false });
+    const POST = await play();
+    expect((await POST(req({}), ctx)).status).toBe(400);
+    expect((await POST(req({ id: 'x"||1' }), ctx)).status).toBe(400);
+    expect((await POST(req({ id: 'other' }), ctx)).status).toBe(404);
+    expect(commands()).toEqual([]);
+  });
+});

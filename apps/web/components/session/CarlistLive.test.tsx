@@ -121,6 +121,20 @@ describe('CarlistLive: the bottom (queue and add)', () => {
     expect(rows[2]).toHaveTextContent('3Electric FeelMGMT');
   });
 
+  it('every queue row but the playing one has a Play button that jumps to it', () => {
+    const p = setup({ onPlayItem: vi.fn() });
+    const rows = screen.getAllByTestId('queue-row');
+    expect(within(rows[1]).queryByTestId('queue-play')).toBeNull();
+    expect(within(rows[0]).getByTestId('queue-play')).toBeInTheDocument();
+    fireEvent.click(within(rows[2]).getByRole('button', { name: 'Play Electric Feel' }));
+    expect(p.onPlayItem).toHaveBeenCalledWith('q3', expect.objectContaining({ id: 'q3' }));
+  });
+
+  it('no Play buttons once ended, or without a handler', () => {
+    setup({ onPlayItem: vi.fn() }, { active: false });
+    expect(screen.queryByTestId('queue-play')).toBeNull();
+  });
+
   it('Queue heading with Save as playlist on the right', () => {
     const p = setup({}, { isHost: true, viewerId: 'u1' });
     expect(screen.getByRole('heading', { name: 'Queue' })).toBeInTheDocument();
