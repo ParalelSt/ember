@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
 import { Sidebar } from '@/components/nav/Sidebar';
 import { CarRail } from '@/components/nav/CarRail';
 import { TopBar } from '@/components/nav/TopBar';
@@ -30,8 +31,21 @@ import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useTabSwipe } from '@/hooks/useTabSwipe';
 import { useHeadUnitControls, useIsHeadUnit } from '@/hooks/useHeadUnit';
 import { useReleaseStaleHosting } from '@/hooks/useSession';
+import { useUiMode } from '@/components/providers/UiModeProvider';
 
+/** The Classic look's shell (legacy/, RULES.md "Classic look"), loaded only
+ *  on a device that chose it: the new look never downloads it. */
+const LegacyAppShell = dynamic(() => import('@legacy/app/layout'));
+
+/** The app shell this device chose (lib/uiMode): the new look's own, below,
+ *  or the Classic look's frozen one. */
 export default function AppShellLayout({ children }: { children: ReactNode }) {
+  const { mode } = useUiMode();
+  if (mode === 'legacy') return <LegacyAppShell>{children}</LegacyAppShell>;
+  return <NewAppShell>{children}</NewAppShell>;
+}
+
+function NewAppShell({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollerH, setScrollerH] = useState(0);

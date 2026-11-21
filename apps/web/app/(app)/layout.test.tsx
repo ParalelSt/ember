@@ -48,6 +48,9 @@ vi.mock('@/components/auth/QrScanHost', () => ({ QrScanHost: () => null }));
 vi.mock('@/components/DeviceVersionReporter', () => ({ DeviceVersionReporter: () => <span data-testid="device-version-reporter" /> }));
 vi.mock('@/components/auth/ApproveSheetHost', () => ({ ApproveSheetHost: () => null }));
 vi.mock('@/components/intro/RedesignIntroHost', () => ({ RedesignIntroHost: () => null }));
+vi.mock('@legacy/app/layout', () => ({
+  default: ({ children }: { children: ReactNode }) => <div data-testid="legacy-shell">{children}</div>,
+}));
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
@@ -281,5 +284,29 @@ describe('app shell, offline store', () => {
     } finally {
       process.off('unhandledRejection', unhandled);
     }
+  });
+});
+
+describe('app shell, Classic look', () => {
+  it('a device on the Classic look gets the frozen legacy shell instead', async () => {
+    const { UiModeProvider } = await import('@/components/providers/UiModeProvider');
+    render(
+      <UiModeProvider mode="legacy">
+        <AppShellLayout>
+          <h1>Home</h1>
+        </AppShellLayout>
+      </UiModeProvider>,
+    );
+    expect(await screen.findByTestId('legacy-shell')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument();
+    // None of the new shell's pieces.
+    expect(screen.queryByTestId('sidebar')).toBeNull();
+    expect(document.querySelector('[data-app-scroller]')).toBeNull();
+  });
+
+  it('the new look (and no provider at all) keeps the new shell', () => {
+    renderShell();
+    expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+    expect(screen.queryByTestId('legacy-shell')).toBeNull();
   });
 });

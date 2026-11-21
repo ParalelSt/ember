@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+// The Classic look's own CSS, scoped to html[data-ui=legacy]: loaded with
+// this shell only.
+import '../legacy.css';
 import { Sidebar } from '@legacy/components/nav/Sidebar';
 import { CarRail } from '@legacy/components/nav/CarRail';
 import { TopBar } from '@legacy/components/nav/TopBar';
