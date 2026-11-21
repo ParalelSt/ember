@@ -126,3 +126,20 @@ describe('desktop Settings > Uploads as rows', () => {
     expect(screen.queryByRole('button', { name: 'Upload songs' })).toBeNull();
   });
 });
+
+describe('desktop Your uploads search', () => {
+  it('shows the soft box without a toggle, filters with accents, and has a Clear empty state', async () => {
+    state.uploads = [{ ...up(1), title: 'Beyoncé Halo' }, up(2)];
+    renderSection();
+    await within(group('Your uploads')).findAllByTestId('my-upload-row');
+    expect(screen.queryByTestId('list-search-toggle')).toBeNull();
+    expect(screen.getByTestId('list-search')).toHaveAttribute('data-variant', 'soft');
+    const box = screen.getByRole('textbox', { name: 'Search in this list' });
+    fireEvent.change(box, { target: { value: 'beyonce' } });
+    expect(screen.getAllByTestId('my-upload-row')).toHaveLength(1);
+    fireEvent.change(box, { target: { value: 'nope' } });
+    expect(screen.getByText(/No songs match/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getAllByTestId('my-upload-row')).toHaveLength(2);
+  });
+});

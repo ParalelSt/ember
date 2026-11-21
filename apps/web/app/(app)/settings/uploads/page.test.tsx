@@ -383,3 +383,52 @@ describe('the edit sheet', () => {
     expect(state.api.updateUpload).not.toHaveBeenCalled();
   });
 });
+
+describe('Settings > Uploads search (phone)', () => {
+  beforeEach(() => {
+    state.uploads = [up(1, { title: 'Beyoncé Halo' }), up(2, { title: 'Đorđe Song', artist: 'Plain' }), up(3, { album: 'Demos' })];
+  });
+
+  it('the magnifier reveals the box; the box is hidden until then', async () => {
+    renderPage();
+    await screen.findAllByTestId('my-upload-row');
+    expect(screen.queryByTestId('list-search')).toBeNull();
+    fireEvent.click(screen.getByTestId('list-search-toggle'));
+    expect(screen.getByTestId('list-search')).toHaveAttribute('data-variant', 'underline');
+  });
+
+  it('filters the rows, folding accents', async () => {
+    renderPage();
+    await screen.findAllByTestId('my-upload-row');
+    fireEvent.click(screen.getByTestId('list-search-toggle'));
+    const box = screen.getByRole('textbox', { name: 'Search in this list' });
+    fireEvent.change(box, { target: { value: 'beyonce' } });
+    expect(screen.getAllByTestId('my-upload-row')).toHaveLength(1);
+    expect(screen.getByText('Beyoncé Halo')).toBeInTheDocument();
+    fireEvent.change(box, { target: { value: 'dorde' } });
+    expect(screen.getByText('Đorđe Song')).toBeInTheDocument();
+    fireEvent.change(box, { target: { value: 'demos' } });
+    expect(screen.getAllByTestId('my-upload-row')).toHaveLength(1);
+  });
+
+  it('shows the empty state with Clear, and Escape clears and closes', async () => {
+    renderPage();
+    await screen.findAllByTestId('my-upload-row');
+    fireEvent.click(screen.getByTestId('list-search-toggle'));
+    const box = screen.getByRole('textbox', { name: 'Search in this list' });
+    fireEvent.change(box, { target: { value: 'zzz' } });
+    expect(screen.getByText(/No songs match/)).toHaveTextContent('No songs match “zzz”');
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getAllByTestId('my-upload-row')).toHaveLength(3);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search in this list' }), { target: { value: 'song 1' } });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Search in this list' }), { key: 'Escape' });
+    expect(screen.queryByTestId('list-search')).toBeNull();
+    expect(screen.getAllByTestId('my-upload-row')).toHaveLength(3);
+  });
+
+  it('has no search with no uploads', () => {
+    state.uploads = [];
+    renderPage();
+    expect(screen.queryByTestId('list-search-toggle')).toBeNull();
+  });
+});

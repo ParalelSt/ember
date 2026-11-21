@@ -6,6 +6,7 @@ import { UploadDropZone } from '@/components/uploads/UploadDropZone';
 import { UploadProgressCard } from '@/components/uploads/UploadProgressCard';
 import { MyUploadRow } from '@/components/uploads/MyUploadRow';
 import { UPLOADS_SHARED_TEXT, UploadsDialogs, useUploadsSettings } from '@/components/settings/useUploadsSettings';
+import { UploadsNoMatch, UploadsSearchDesktopBox, useUploadsSearch } from '@/components/uploads/UploadsSearch';
 import { formatCount } from '@/lib/format';
 import { SettingsGroup, SettingsRow } from './rows';
 import { TransferRow } from './RowSections';
@@ -16,6 +17,8 @@ import { TransferRow } from './RowSections';
 export function UploadsSection() {
   const s = useUploadsSettings();
   const { user, queue, items, uploads, isLoading, isError, dropOpen, setDropOpen, setEditing, setRemoving, addFiles } = s;
+
+  const search = useUploadsSearch(uploads, true);
 
   if (!user) {
     return (
@@ -49,7 +52,12 @@ export function UploadsSection() {
 
       <SettingsGroup
         title="Your uploads"
-        aside={<span className="text-xs text-muted-foreground">{formatCount(uploads.length, 'song')}</span>}
+        aside={
+          <div className="flex items-center gap-cluster">
+            <span className="text-xs text-muted-foreground">{formatCount(uploads.length, 'song')}</span>
+            <UploadsSearchDesktopBox search={search} />
+          </div>
+        }
       >
         {isLoading && uploads.length === 0 ? (
           <SettingsRow title={<span className="font-normal text-muted-foreground">Loading…</span>} />
@@ -70,9 +78,11 @@ export function UploadsSection() {
               </Button>
             }
           />
+        ) : search.filtering && search.shown.length === 0 ? (
+          <UploadsNoMatch search={search} />
         ) : (
           <ul aria-label="Your uploads" className="-mx-inset flex flex-col">
-            {uploads.map((u) => (
+            {search.shown.map((u) => (
               <MyUploadRow key={u.id} upload={u} onEdit={setEditing} onRemove={setRemoving} />
             ))}
           </ul>
