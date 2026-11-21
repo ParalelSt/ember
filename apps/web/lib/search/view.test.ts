@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Track } from '@/types/track';
 import { addSearchChunk, EMPTY_SEARCH_PARTS, type SearchArtist, type SearchChunk, type SearchParts } from './types';
-import { ARTISTS_AFTER_SONGS, buildSearchView, SONG_CAP, YOUTUBE_TOTAL, type SearchView } from './view';
+import { buildSearchView, SONG_CAP, YOUTUBE_TOTAL, type SearchView } from './view';
 
 const t = (id: string, title = id, artist = 'Someone'): Track => ({
   id,
@@ -48,20 +48,21 @@ describe('buildSearchView: order', () => {
     expect(shape(v)).toEqual(['ARTISTS', 's0', 's1', 's2', 's3', 's4']);
   });
 
-  it('own matches still lead a direct artist search (they are there before the artists are)', () => {
+  it('Artists lead even your own matches; nothing shows until the artist lookup has answered', () => {
     const v = buildSearchView('demetori', parts({ uploads: [], artists: [artist('Demetori')], songs: [t('s0')], videos: [] }), [t('own1')]);
-    expect(shape(v)).toEqual(['own1', 'ARTISTS', 's0']);
+    expect(shape(v)).toEqual(['ARTISTS', 'own1', 's0']);
+    expect(shape(buildSearchView('demetori', parts({ uploads: [], artists: null, songs: null, videos: null }), [t('own1')]))).toEqual([]);
   });
 
-  it('otherwise Artists go under the first few songs', () => {
+  it('any search puts Artists above the songs', () => {
     const v = buildSearchView('necro fantasia', parts({
       uploads: [],
       artists: [artist('Demetori')],
       songs: many('s', 5),
       videos: [t('v0')],
     }));
-    expect(v.artistsOnTop).toBe(false);
-    expect(shape(v)).toEqual([...many('s', ARTISTS_AFTER_SONGS).map((x) => x.id), 'ARTISTS', 's3', 's4', 'v0']);
+    expect(v.artistsOnTop).toBe(true);
+    expect(shape(v)).toEqual(['ARTISTS', 's0', 's1', 's2', 's3', 's4', 'v0']);
   });
 
   it('at most 3 artists', () => {
@@ -137,11 +138,12 @@ describe('buildSearchView: arriving one group at a time', () => {
     for (let i = 1; i < steps.length; i++) {
       expect(steps[i].slice(0, steps[i - 1].length)).toEqual(steps[i - 1]);
     }
-    expect(steps.at(-1)).toEqual(['own1', 'upload:u1', 's0', 's1', 's2', 'ARTISTS', 's3', 's4', 'v0']);
+    expect(steps.at(-1)).toEqual(['ARTISTS', 'own1', 'upload:u1', 's0', 's1', 's2', 's3', 's4', 'v0']);
   });
 
-  it('own matches show before the server has answered anything', () => {
-    expect(shape(buildSearchView('x', EMPTY_SEARCH_PARTS, [t('own1')]))).toEqual(['own1']);
+  it('own matches wait for the artist lookup (so Artists can lead), but show on an error', () => {
+    expect(shape(buildSearchView('x', EMPTY_SEARCH_PARTS, [t('own1')]))).toEqual([]);
+    expect(shape(buildSearchView('x', { ...EMPTY_SEARCH_PARTS, error: { status: 503, error: 'down' } }, [t('own1')]))).toEqual(['own1']);
   });
 
   it('songs wait for uploads, and videos wait for songs', () => {
@@ -149,8 +151,8 @@ describe('buildSearchView: arriving one group at a time', () => {
     expect(shape(buildSearchView('x', parts({ uploads: [], videos: [t('v0')] })))).toEqual([]);
   });
 
-  it('a non-direct Artists section waits for the songs it sits under', () => {
-    expect(shape(buildSearchView('necro', parts({ uploads: [], artists: [artist('Demetori')] })))).toEqual([]);
+  it('Artists show as soon as they arrive, above everything else', () => {
+    expect(shape(buildSearchView('necro', parts({ uploads: [], artists: [artist('Demetori')] })))).toEqual(['ARTISTS']);
   });
 });
 

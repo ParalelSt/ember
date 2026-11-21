@@ -775,14 +775,14 @@ describe('SearchOverlayContainer, song page access', () => {
 // Own matches come first and need no network: liked songs the app already
 // holds show the moment the query settles, before the server answers.
 describe('SearchOverlayContainer, own matches first', () => {
-  it('a liked song that matches shows while the search is still running', async () => {
+  it('a liked song that matches waits for the artist lookup, so Artists can lead the results', async () => {
     desktop.value = true;
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(['likes'], [makeTrack({ id: 'youtube:l1', sourceId: 'l1', title: 'Necro Fantasia', artist: 'Demetori' })]);
     api.search.mockImplementation(neverResolves);
     renderOverlay(false, client);
     fireEvent.change(box(), { target: { value: 'demetori' } });
-    expect((await screen.findAllByText('Necro Fantasia'))[0]).toBeInTheDocument();
-    expect(screen.queryByText('Searching…')).toBeNull();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(screen.queryByText('Necro Fantasia')).toBeNull();
   });
 });

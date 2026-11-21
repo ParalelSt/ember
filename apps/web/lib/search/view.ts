@@ -1,12 +1,9 @@
 import type { Track } from '@/types/track';
-import { isDirectArtistSearch, matchesAllWords, queryWords, rankByQuery } from './rank';
+import { matchesAllWords, queryWords, rankByQuery } from './rank';
 import type { SearchArtist, SearchParts } from './types';
 
 /** Up to this many artists in the Artists section. */
 export const MAX_ARTISTS = 3;
-/** Not a direct artist search: the Artists section goes under this many
- *  top songs. */
-export const ARTISTS_AFTER_SONGS = 3;
 /** YouTube rows in all, as the one-shot search had: songs take up to
  *  SONG_CAP of them and videos fill the rest. */
 export const YOUTUBE_TOTAL = 30;
@@ -58,16 +55,19 @@ export function buildSearchView(q: string, parts: SearchParts, own: Track[] = []
     return added;
   };
 
-  add(own);
-  if (parts.uploads === null) return { rows, tracks, artistsOnTop: false };
-  add(parts.uploads);
-
+  // Artists always lead the results (owner, 2026-11-21), above your own
+  // songs and uploads too; the songs follow under them.
+  // Wait for the artist lookup before showing anything, so the Artists
+  // section never pushes rows that are already on screen.
+  // (An error or a finished search with no artist answer shows the rest.)
+  if (parts.artists === null && !parts.done && !parts.error) return { rows, tracks, artistsOnTop: false };
   const artists = (parts.artists ?? []).slice(0, MAX_ARTISTS);
-  const artistsRow: SearchRow | null = artists.length
-    ? { kind: 'artists', key: 'artists', artists }
-    : null;
-  const artistsOnTop = !!artistsRow && isDirectArtistSearch(q, artists[0].name);
-  if (artistsOnTop && artistsRow) rows.push(artistsRow);
+  const artistsOnTop = artists.length > 0;
+  if (artistsOnTop) rows.push({ kind: 'artists', key: 'artists', artists });
+
+  add(own);
+  if (parts.uploads === null) return { rows, tracks, artistsOnTop };
+  add(parts.uploads);
 
   if (parts.songs === null) return { rows, tracks, artistsOnTop };
   const words = queryWords(q);
@@ -75,11 +75,9 @@ export function buildSearchView(q: string, parts: SearchParts, own: Track[] = []
   if (songsMiss && parts.videos === null) return { rows, tracks, artistsOnTop };
   const promoted = songsMiss ? (parts.videos ?? []).filter((t) => matchesAllWords(t, words)) : [];
   const ranked = [...promoted, ...rankByQuery(parts.songs, q)];
-  const songsShown = add(ranked.slice(0, ARTISTS_AFTER_SONGS));
-  if (!artistsOnTop && artistsRow) rows.push(artistsRow);
-  const rest = add(ranked.slice(ARTISTS_AFTER_SONGS), Math.max(0, SONG_CAP - songsShown));
+  const songsShown = add(ranked, SONG_CAP);
 
   if (parts.videos === null) return { rows, tracks, artistsOnTop };
-  add(rankByQuery(parts.videos, q), Math.max(0, YOUTUBE_TOTAL - songsShown - rest));
+  add(rankByQuery(parts.videos, q), Math.max(0, YOUTUBE_TOTAL - songsShown));
   return { rows, tracks, artistsOnTop };
 }

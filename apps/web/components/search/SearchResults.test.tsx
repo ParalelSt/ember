@@ -202,10 +202,10 @@ describe('SearchResults: the Artists section', () => {
     expect(rows()[0]).toContainElement(screen.getByTestId('search-artists'));
   });
 
-  it('otherwise it sits under the first three songs', () => {
+  it('any search puts it first, above the songs', () => {
     const songs = [t('a1'), t('b2'), t('c3'), t('d4')];
     renderResults(buildSearchView('something else', parts({ uploads: [], artists, songs, videos: [] })));
-    expect(rows()[3]).toContainElement(screen.getByTestId('search-artists'));
+    expect(rows()[0]).toContainElement(screen.getByTestId('search-artists'));
   });
 });
 
