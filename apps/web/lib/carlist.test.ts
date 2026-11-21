@@ -197,3 +197,20 @@ describe('estimateProgress', () => {
     expect(estimateProgress({ elapsedMs: 5, fetchedAt: 0, now: 2, durationSec: 10 })).toBeNull();
   });
 });
+
+describe('play commands (jump to a queued song)', () => {
+  it('round-trips the queue item id and ignores other kinds', async () => {
+    const { playCommandType, parsePlayCommand } = await import('./carlist');
+    expect(parsePlayCommand(playCommandType('abc123def456ghi'))).toBe('abc123def456ghi');
+    expect(playCommandType('abc123def456ghi').length).toBeLessThanOrEqual(20);
+    expect(parsePlayCommand('skip')).toBeNull();
+    expect(parsePlayCommand('play:')).toBeNull();
+  });
+
+  it('lands on the nearest copy at or after the playing song, else any, else -1', async () => {
+    const { playerIndexFor } = await import('./carlist');
+    expect(playerIndexFor(['a', 'b', 'a', 'c'], 'a', 1)).toBe(2);
+    expect(playerIndexFor(['a', 'b', 'c'], 'a', 1)).toBe(0);
+    expect(playerIndexFor(['a', 'b'], 'z', 0)).toBe(-1);
+  });
+});

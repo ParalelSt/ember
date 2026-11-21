@@ -86,6 +86,10 @@ export function useExecuteSkipSession(id: string) {
   return useMutation({ mutationFn: (index?: number) => api.skipSession(id, index) });
 }
 
+export function useExecutePlaySessionItem(id: string) {
+  return useMutation({ mutationFn: (itemId: string) => api.playSessionItem(id, itemId) });
+}
+
 export function useExecuteEndSession(id: string) {
   const qc = useQueryClient();
   return useMutation({

@@ -497,6 +497,14 @@ export const api = {
       body: index === undefined ? undefined : { index },
       expected: [410],
     }),
+  /** Play this queued song now (same people as Skip): `id` is the queue
+   *  item's id. The host jumps to it and carries on in queue order. */
+  playSessionItem: (id: string, itemId: string) =>
+    req<{ ok: true }>(`/sessions/${encodeURIComponent(id)}/play`, {
+      method: 'POST',
+      body: { id: itemId },
+      expected: [410],
+    }),
   consumeSessionCommands: (id: string) =>
     req<{ commands: { type: string }[] }>(`/sessions/${encodeURIComponent(id)}/commands/consume`, {
       method: 'POST',

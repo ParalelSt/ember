@@ -8,7 +8,7 @@ import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Avatar } from '@/components/primitives/Avatar';
 import { Artwork } from '@/components/primitives/Artwork';
 import { SectionHeader } from '@/components/page/SectionHeader';
-import { CheckIcon, ListPlusIcon, MusicIcon, NextIcon, PlusIcon, ShareIcon } from '@/components/icons';
+import { CheckIcon, ListPlusIcon, MusicIcon, NextIcon, PlayIcon, PlusIcon, ShareIcon } from '@/components/icons';
 import { personLabel, whosePhone, type AddPosition } from '@/lib/carlist';
 import { cn } from '@/lib/utils';
 import type { PlaylistPerson, SessionQueueItem, SessionState, Track } from '@/types/track';
@@ -262,6 +262,8 @@ export interface CarlistLiveProps {
   saving?: boolean;
   skipping?: boolean;
   onSkip: () => void;
+  /** Play a queued song now (its queue item id). Everyone who can Skip. */
+  onPlayItem?: (itemId: string, item: SessionQueueItem) => void;
   onEnd: () => void;
   onSave: () => void;
   onShare: () => void;
@@ -279,6 +281,7 @@ export function CarlistLive({
   saving,
   skipping,
   onSkip,
+  onPlayItem,
   onEnd,
   onSave,
   onShare,
@@ -384,7 +387,7 @@ export function CarlistLive({
                   data-state={isNow ? 'now' : isPast ? 'played' : 'next'}
                   aria-current={isNow ? 'true' : undefined}
                   className={cn(
-                    'flex items-center gap-row rounded-md px-row py-cluster',
+                    'group flex items-center gap-row rounded-md px-row py-cluster',
                     isNow && 'bg-card',
                     isPast && 'opacity-40',
                   )}
@@ -401,6 +404,18 @@ export function CarlistLive({
                   <span className="max-w-28 shrink-0 truncate text-xs text-muted-foreground" data-testid="added-by">
                     {label}
                   </span>
+                  {session.active && onPlayItem && !isNow && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onPlayItem(item.id, item)}
+                      aria-label={`Play ${item.track.title}`}
+                      data-testid="queue-play"
+                      className="size-8 shrink-0 text-muted-foreground hover:text-foreground focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+                    >
+                      <PlayIcon className="size-3.5" />
+                    </Button>
+                  )}
                 </li>
               );
             })}

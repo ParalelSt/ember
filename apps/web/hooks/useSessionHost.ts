@@ -6,7 +6,7 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
-import { mergeIntoPlayerQueue, sessionIndexFor } from '@/lib/carlist';
+import { mergeIntoPlayerQueue, parsePlayCommand, playerIndexFor, sessionIndexFor } from '@/lib/carlist';
 import { useQuerySession } from '@/hooks/useSession';
 import type { SessionState } from '@/types/track';
 
@@ -22,7 +22,7 @@ const COMMAND_POLL_MS = 2500;
  *    (idempotent id-diff, so refreshes and repeat polls are safe; a track
  *    added twice to one session queues once on the host, an accepted v1
  *    limitation);
- *  - consumes guest commands (skip → player.next());
+ *  - consumes guest commands (skip → player.next(); play → player.playAt());
  *  - publishes the playing session row so guests' screens track it;
  *  - drops the hosting flag (which also suppresses radio auto-extend) once
  *    the carlist has ended or is no longer ours; useReleaseStaleHosting
@@ -30,7 +30,7 @@ const COMMAND_POLL_MS = 2500;
  *  Autoplay note: the very first track still needs one tap on the host phone
  *  (browser gesture policy), after that, advances are automatic. */
 export function useSessionHost() {
-  const { next, current } = usePlayer();
+  const { next, playAt, current } = usePlayer();
   const hostingId = useSessionStore((s) => s.hostingSessionId);
   const { data, dataUpdatedAt } = useQuerySession(hostingId);
   // An answer for another carlist (cached while the flag changed) says
@@ -45,6 +45,14 @@ export function useSessionHost() {
   useEffect(() => {
     nextRef.current = next;
   }, [next]);
+
+  // Latest playAt and session queue for the same interval.
+  const playAtRef = useRef(playAt);
+  const queueRef = useRef(state?.queue);
+  useEffect(() => {
+    playAtRef.current = playAt;
+    queueRef.current = state?.queue;
+  }, [playAt, state]);
 
   // Let go of the flag once the carlist is over for this device. Only if it
   // still names this carlist: a new one may have been claimed meanwhile.
@@ -83,6 +91,17 @@ export function useSessionHost() {
             if (c.type === 'skip') {
               logger.breadcrumb('session', 'skip-executed', { sessionId });
               nextRef.current();
+              continue;
+            }
+            const itemId = parsePlayCommand(c.type);
+            if (itemId) {
+              // Jump to that song; the ones between stay in the queue,
+              // passed over like repeated skips.
+              const item = queueRef.current?.find((q) => q.id === itemId);
+              const st = usePlayerStore.getState();
+              const at = item ? playerIndexFor(st.queue.map((t) => t.id), item.track.id, st.index) : -1;
+              logger.breadcrumb('session', 'play-executed', { sessionId, found: at >= 0 });
+              if (at >= 0) playAtRef.current(at);
             }
           }
         })

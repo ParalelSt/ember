@@ -9,13 +9,14 @@ import {
   useQuerySession,
   useExecuteAddToSession,
   useExecuteSkipSession,
+  useExecutePlaySessionItem,
   useExecuteEndSession,
   useExecuteSaveSession,
 } from '@/hooks/useSession';
 import { useClaimSessionHost } from '@/hooks/useSessionHost';
 import { useCarlistProgress } from '@/hooks/useCarlistProgress';
 import { addedMessage, type AddPosition } from '@/lib/carlist';
-import type { Track } from '@/types/track';
+import type { SessionQueueItem, Track } from '@/types/track';
 import { EmptyState } from '@/components/page/EmptyState';
 
 export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
@@ -23,6 +24,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const { data, isLoading, error, dataUpdatedAt } = useQuerySession(id);
   const addToSession = useExecuteAddToSession(id);
   const skip = useExecuteSkipSession(id);
+  const playItem = useExecutePlaySessionItem(id);
   const end = useExecuteEndSession(id);
   const save = useExecuteSaveSession(id);
   const [saved, setSaved] = useState(false);
@@ -64,6 +66,13 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     });
   };
 
+  const handlePlayItem = (itemId: string, item: SessionQueueItem) => {
+    playItem.mutate(itemId, {
+      onSuccess: () => toast.message(`Playing "${item.track.title}" next on the host's phone`),
+      onError: () => toast.error("Couldn't play that song. Please try again."),
+    });
+  };
+
   const handleSave = () => {
     save.mutate(undefined, {
       onSuccess: ({ playlist }) => {
@@ -89,6 +98,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         saving={save.isPending}
         skipping={skip.isPending}
         onSkip={handleSkip}
+        onPlayItem={handlePlayItem}
         onEnd={handleEnd}
         onSave={handleSave}
         onShare={() => setShareOpen(true)}

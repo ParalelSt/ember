@@ -19,9 +19,10 @@ const api = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({ api }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 const next = vi.hoisted(() => vi.fn());
+const playAt = vi.hoisted(() => vi.fn());
 vi.mock('@/components/player/PlayerProvider', async () => {
   const { usePlayerStore: store } = await import('@/stores/usePlayerStore');
-  return { usePlayer: () => ({ next, current: store.getState().queue[store.getState().index] ?? null }) };
+  return { usePlayer: () => ({ next, playAt, current: store.getState().queue[store.getState().index] ?? null }) };
 });
 
 const { useSessionHost, useClaimSessionHost } = await import('./useSessionHost');
@@ -72,6 +73,21 @@ describe('useSessionHost (app shell, no session page open)', () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
     expect(next).toHaveBeenCalled();
+  });
+
+  it("carries out a guest's play of a queued song by jumping to it, other songs stay queued", async () => {
+    const c = makeTrack({ id: 'youtube:c', sourceId: 'c', title: 'C' });
+    api.getSession.mockResolvedValue(state({}, [a, b, c]));
+    api.consumeSessionCommands.mockResolvedValue({ commands: [{ type: 'play:q2' }, { type: 'play:gone' }] });
+    renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(usePlayerStore.getState().queue).toHaveLength(3));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(playAt).toHaveBeenCalledTimes(1);
+    expect(playAt).toHaveBeenCalledWith(2);
+    expect(next).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().queue).toHaveLength(3);
   });
 
   it('does not ask for guest commands while the device is offline, and asks again once it is back', async () => {
