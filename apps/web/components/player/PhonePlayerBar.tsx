@@ -9,7 +9,6 @@ import { Artwork } from '@/components/primitives/Artwork';
 import { Button } from '@/components/ui/button';
 import { NextIcon, PauseIcon, PlayIcon } from '@/components/icons';
 import { useTrackArtSrc } from '@/lib/offlineNative';
-import { cn } from '@/lib/utils';
 import { isLiveTrack } from '@/lib/radio/station';
 import type { Track } from '@/types/track';
 
@@ -42,7 +41,7 @@ function BarPlayButton({ playing, onToggle }: { playing: boolean; onToggle: () =
       >
         {/* The play triangle's weight sits left of its box: a whole pixel
             nudge centres it at 20px and keeps it crisp. */}
-        <Glyph className={cn('size-5', !playing && 'translate-x-px')} />
+        <Glyph className="size-5" />
       </span>
     </Button>
   );

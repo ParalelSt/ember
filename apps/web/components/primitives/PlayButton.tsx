@@ -17,14 +17,6 @@ const ICON: Record<PlayButtonSize, string> = {
   lg: 'h-6 w-6',
 };
 
-// A play triangle looks off-centre in a circle, so the bigger buttons nudge
-// it right. Pause is symmetric and never moves.
-const NUDGE: Record<PlayButtonSize, string> = {
-  sm: '',
-  md: 'ml-0.5',
-  lg: 'ml-0.5',
-};
-
 export interface PlayButtonProps {
   onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
@@ -59,7 +51,7 @@ export function PlayButton({
         className,
       )}
     >
-      <Icon className={cn(ICON[size], !playing && NUDGE[size])} />
+      <Icon className={ICON[size]} />
     </Button>
   );
 }

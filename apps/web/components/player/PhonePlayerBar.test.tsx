@@ -142,11 +142,10 @@ describe('PhonePlayerBar', () => {
     );
     const play = screen.getByRole('button', { name: 'Play' });
     expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
-    // The play triangle keeps the disc and the glyph size, nudged one whole
-    // pixel right so it reads centred.
+    // The play triangle keeps the disc and the glyph size, centred in the disc.
     const glyph = within(play).getByTestId('phone-play-disc').querySelector('svg')!;
     expect(sizePx(glyph)).toBe(20);
-    expect(glyph).toHaveClass('translate-x-px');
+    expect(glyph).not.toHaveClass('translate-x-px');
   });
 
   it('play toggles playback without opening the full-screen view', () => {

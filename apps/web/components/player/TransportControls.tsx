@@ -88,7 +88,7 @@ export function PlayPauseButton({
     >
       {playing
         ? <PauseIcon className={PLAY_ICON[size]} />
-        : <PlayIcon className={cn(PLAY_ICON[size], 'ml-0.5')} />}
+        : <PlayIcon className={PLAY_ICON[size]} />}
     </Button>
   );
 }
@@ -105,13 +105,9 @@ export function TransportControls({
   right,
   className,
 }: TransportControlsProps) {
-  // On the full-screen view, shuffle and loop are pinned to the edges so the
-  // previous/play/next trio stays centered on the screen (the play button dead
-  // centre). Other bars keep them inline.
-  const pinned = size === 'lg';
   return (
     <div className={cn(ROW[size], className)}>
-      {pinned ? left && <div className="absolute left-0">{left}</div> : left}
+      {left}
       <Button variant="ghost" size="icon" className={STEP_BOX[size]} onClick={onPrev} aria-label="Previous">
         <PrevIcon className={STEP_ICON[size]} />
       </Button>
@@ -119,7 +115,7 @@ export function TransportControls({
       <Button variant="ghost" size="icon" className={STEP_BOX[size]} onClick={onNext} aria-label="Next">
         <NextIcon className={STEP_ICON[size]} />
       </Button>
-      {pinned ? right && <div className="absolute right-0">{right}</div> : right}
+      {right}
     </div>
   );
 }
