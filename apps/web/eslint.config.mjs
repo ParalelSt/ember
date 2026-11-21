@@ -54,9 +54,49 @@ const libRestrictions = [
   },
 ];
 
+// The Classic look (legacy/, RULES.md "Classic look"): a frozen copy of the
+// old UI. Only the switch points, the files under app/(app)/ that pick the
+// new or the legacy shell and pages, may load it: anything else that
+// imported it would ship the old UI to everyone and blur the freeze.
+const noLegacyImport = {
+  group: ["@legacy/*", "@legacy"],
+  message:
+    "Only the switch points in app/(app)/ load the Classic look (legacy/); see RULES.md.",
+};
+
+// Inside legacy/: the old UI imports itself through @legacy/*, and from the
+// shared tree only engine code (lib, hooks, stores, the providers, the
+// player engine, the session bridge, the device reporter). A redesign
+// component imported here would change the Classic look behind its back.
+const legacyRestrictions = [
+  {
+    regex:
+      "^@/components/(?!providers/|player/PlayerProvider$|session/SessionHostBridge$|DeviceVersionReporter$|AppErrorBoundary$|ExternalLinks$)",
+    message:
+      "The Classic look must not import redesign components: use its own copy under @legacy/components, or shared engine code.",
+  },
+  {
+    regex: "^@/app/\\(app\\)(/|$)",
+    message: "The Classic look must not import the new app's pages: use @legacy/app.",
+  },
+];
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    files: ["**/*.{ts,tsx,mts,js,mjs}"],
+    ignores: ["legacy/**", "app/(app)/**"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [noLegacyImport] }],
+    },
+  },
+  {
+    files: ["legacy/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: legacyRestrictions }],
+    },
+  },
   {
     files: [
       "components/primitives/**/*.{ts,tsx}",
@@ -66,7 +106,7 @@ const eslintConfig = defineConfig([
       "components/nav/**/*.{ts,tsx}",
     ],
     rules: {
-      "no-restricted-imports": ["error", { patterns: presentationalRestrictions }],
+      "no-restricted-imports": ["error", { patterns: [...presentationalRestrictions, noLegacyImport] }],
     },
   },
   {
@@ -87,7 +127,7 @@ const eslintConfig = defineConfig([
       "components/track/menus/**/*.{ts,tsx}",
     ],
     rules: {
-      "no-restricted-imports": "off",
+      "no-restricted-imports": ["error", { patterns: [noLegacyImport] }],
     },
   },
   {
@@ -99,11 +139,14 @@ const eslintConfig = defineConfig([
       "no-restricted-imports": [
         "error",
         {
-          patterns: presentationalRestrictions.map((r) =>
-            r.group.includes("@/hooks/*")
-              ? { regex: "^@/hooks(?!/useIsDesktop$)(/.*)?$", message: r.message }
-              : r,
-          ),
+          patterns: [
+            ...presentationalRestrictions.map((r) =>
+              r.group.includes("@/hooks/*")
+                ? { regex: "^@/hooks(?!/useIsDesktop$)(/.*)?$", message: r.message }
+                : r,
+            ),
+            noLegacyImport,
+          ],
         },
       ],
     },
@@ -111,7 +154,7 @@ const eslintConfig = defineConfig([
   {
     files: ["lib/**/*.{ts,tsx}"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: libRestrictions }],
+      "no-restricted-imports": ["error", { patterns: [...libRestrictions, noLegacyImport] }],
     },
   },
   {
@@ -131,7 +174,7 @@ const eslintConfig = defineConfig([
       "lib/logger/withRequestLog.ts",
     ],
     rules: {
-      "no-restricted-imports": "off",
+      "no-restricted-imports": ["error", { patterns: [noLegacyImport] }],
     },
   },
   // Override default ignores of eslint-config-next.

@@ -1,0 +1,205 @@
+import type { ReactNode } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { Track } from '@/types/track';
+import { PlayerBar } from './PlayerBar';
+import { NowPlaying } from './NowPlaying';
+import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
+import { resetInAppHistory } from '@/lib/inAppHistory';
+
+// The tabs button opens the tab page for the playing song: the player bar
+// on desktop, the full-screen Now playing view on phones. Everything else
+// in those two components is stubbed.
+
+const nav = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn(), pathname: '/' }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: nav.push, back: nav.back }),
+  usePathname: () => nav.pathname,
+}));
+
+const TRACK: Track = {
+  id: 'youtube:dQw4w9WgXcQ',
+  source: 'youtube',
+  sourceId: 'dQw4w9WgXcQ',
+  title: 'Copper Sky',
+  artist: 'Coastline',
+  artistId: null,
+  album: null,
+  albumId: null,
+  durationSec: 180,
+  artworkUrl: null,
+  streamUrl: '/x',
+};
+const player = vi.hoisted(() => ({ current: null as unknown, toggle: vi.fn(), next: vi.fn(), prev: vi.fn() }));
+vi.mock('@/components/player/PlayerProvider', () => ({
+  usePlayer: () => ({
+    current: player.current,
+    isPlaying: true,
+    duration: 180,
+    toggle: player.toggle,
+    next: player.next,
+    prev: player.prev,
+    seek: () => {},
+    setVolume: () => {},
+  }),
+  usePlayerPosition: () => 0,
+}));
+vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: null }) }));
+vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, toggle: () => {} }) }));
+vi.mock('@/lib/offlineNative', () => ({ useTrackArtSrc: () => null }));
+vi.mock('@/lib/useBackDismiss', () => ({ useBackDismiss: () => {} }));
+vi.mock('@/hooks/useLyrics', () => ({ useQueryLyrics: () => ({ data: null }) }));
+// Now playing's More sheet, as a plain box while open (see NowPlaying.test.tsx).
+vi.mock('@legacy/components/ui/sheet', () => ({
+  Sheet: ({ open, children }: { open: boolean; children: ReactNode }) => (open ? <div>{children}</div> : null),
+  SheetContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+// base-ui's menu brings the root's second React into a test render (see
+// QueueSheet.test.tsx): the full player's More menu is a plain box.
+vi.mock('@legacy/components/ui/dropdown-menu', () => {
+  const Box = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
+  return {
+    DropdownMenu: Box,
+    DropdownMenuTrigger: ({ children, ...rest }: React.ComponentProps<'button'>) => <button {...rest}>{children}</button>,
+    DropdownMenuContent: () => null,
+    DropdownMenuItem: Box,
+    DropdownMenuGroup: Box,
+    DropdownMenuLabel: Box,
+    DropdownMenuSeparator: () => null,
+  };
+});
+const Stub = vi.hoisted(() => () => null);
+vi.mock('@legacy/components/player/QueueSheet', () => ({ QueueSheet: Stub }));
+vi.mock('@legacy/components/player/EqualizerSheet', () => ({ EqualizerSheet: Stub }));
+vi.mock('@legacy/components/player/SeekBar', () => ({ SeekBar: Stub, PlayheadSeekBar: Stub }));
+vi.mock('@legacy/components/player/VolumeControl', () => ({ VolumeControl: Stub }));
+vi.mock('@legacy/components/player/LyricsBody', () => ({ LyricsBody: Stub }));
+vi.mock('@legacy/components/player/NowPlayingSummary', () => ({ NowPlayingSummary: Stub }));
+vi.mock('@legacy/components/player/TransportControls', () => ({ TransportControls: Stub }));
+vi.mock('@legacy/components/primitives/Artwork', () => ({ Artwork: Stub }));
+
+const initialSettings = useSettingsStore.getState();
+
+beforeEach(() => {
+  nav.push.mockReset();
+  nav.back.mockReset();
+  player.toggle.mockReset();
+  nav.pathname = '/';
+  resetInAppHistory();
+  vi.unstubAllGlobals();
+  player.current = TRACK;
+  useSettingsStore.setState(initialSettings, true);
+});
+
+describe('tabs entry points', () => {
+  it('the player bar’s Guitar tabs button opens /tabs/<current track id>', () => {
+    render(<PlayerBar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Guitar tabs' }));
+    expect(nav.push).toHaveBeenCalledWith('/tabs/youtube%3AdQw4w9WgXcQ');
+  });
+
+  it('the button shows as on while the tab page for this song is open', () => {
+    nav.pathname = '/tabs/youtube%3AdQw4w9WgXcQ';
+    render(<PlayerBar />);
+    expect(screen.getByRole('button', { name: 'Guitar tabs' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('no dialog any more: nothing opens in place', () => {
+    render(<PlayerBar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Guitar tabs' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('on phones, Now playing opens the same page and closes itself', async () => {
+    usePlayerStore.getState().setNowPlayingOpen(true);
+    render(<NowPlaying />);
+    // On the phone, Guitar tabs is a row in the More sheet.
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByTestId('more-tabs'));
+    expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
+    // After the view's own history entry is popped, so the back cannot undo it.
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/tabs/youtube%3AdQw4w9WgXcQ'));
+    expect(nav.push).toHaveBeenCalledTimes(1);
+  });
+
+  it('the player bar hides the Guitar tabs button when the plugin is off', () => {
+    useSettingsStore.getState().setTabsEnabled(false);
+    render(<PlayerBar />);
+    expect(screen.queryByRole('button', { name: 'Guitar tabs' })).toBeNull();
+  });
+
+  it('Now playing hides the Guitar tabs button when the plugin is off', () => {
+    useSettingsStore.getState().setTabsEnabled(false);
+    usePlayerStore.getState().setNowPlayingOpen(true);
+    render(<NowPlaying />);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    expect(screen.queryByTestId('more-tabs')).toBeNull();
+  });
+});
+
+describe('the player bar’s tabs button closes the tab page again', () => {
+  const TABS = '/tabs/youtube%3AdQw4w9WgXcQ';
+
+  it('shows as on only on this song’s tab page', () => {
+    nav.pathname = '/tabs/youtube%3Aother';
+    const view = render(<PlayerBar />);
+    const button = screen.getByRole('button', { name: 'Guitar tabs' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button).toHaveAttribute('title', 'Guitar tabs');
+    nav.pathname = TABS;
+    view.rerender(<PlayerBar />);
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(button).toHaveAttribute('title', 'Close guitar tabs');
+  });
+
+  it('reached from inside Ember: the second click goes Back to that page', () => {
+    nav.pathname = '/library';
+    const view = render(<PlayerBar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Guitar tabs' }));
+    expect(nav.push).toHaveBeenCalledWith(TABS);
+    // The router lands on the tab page.
+    nav.pathname = TABS;
+    view.rerender(<PlayerBar />);
+    nav.push.mockReset();
+    fireEvent.click(screen.getByRole('button', { name: 'Guitar tabs' }));
+    expect(nav.back).toHaveBeenCalledTimes(1);
+    expect(nav.push).not.toHaveBeenCalled();
+  });
+
+  it('opened straight from a link or a reload: the second click goes home, not out of Ember', () => {
+    nav.pathname = TABS;
+    render(<PlayerBar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Guitar tabs' }));
+    expect(nav.push).toHaveBeenCalledWith('/');
+    expect(nav.back).not.toHaveBeenCalled();
+  });
+
+  it('where the browser can say (Navigation API), it decides', () => {
+    vi.stubGlobal('navigation', { canGoBack: false });
+    nav.pathname = '/library';
+    const view = render(<PlayerBar />);
+    nav.pathname = TABS;
+    view.rerender(<PlayerBar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Guitar tabs' }));
+    expect(nav.push).toHaveBeenCalledWith('/');
+    expect(nav.back).not.toHaveBeenCalled();
+
+    vi.stubGlobal('navigation', { canGoBack: true });
+    nav.push.mockReset();
+    fireEvent.click(screen.getByRole('button', { name: 'Guitar tabs' }));
+    expect(nav.back).toHaveBeenCalledTimes(1);
+    expect(nav.push).not.toHaveBeenCalled();
+  });
+
+  it('closing leaves the music alone', () => {
+    nav.pathname = TABS;
+    render(<PlayerBar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Guitar tabs' }));
+    expect(player.toggle).not.toHaveBeenCalled();
+    expect(player.next).not.toHaveBeenCalled();
+    expect(player.prev).not.toHaveBeenCalled();
+  });
+});

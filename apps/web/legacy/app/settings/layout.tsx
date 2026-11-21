@@ -1,0 +1,29 @@
+import type { ReactNode } from 'react';
+import { SettingsTabs } from '@legacy/components/settings/SettingsTabs';
+import { PageTitle } from '@legacy/components/page/PageTitle';
+import { BuildStamp } from '@legacy/components/settings/BuildStamp';
+import { AppUpdateCard } from '@legacy/components/settings/AppUpdateCard';
+
+export default function SettingsLayout({ children }: { children: ReactNode }) {
+  return (
+    <div>
+      <PageTitle className="mb-6">Settings</PageTitle>
+      {/* Side nav from lg only: at md the sidebar already takes 240px, and a
+          second column left the page ~230px (bughunt V8). Below lg the tabs
+          are the row across the top that phones use. */}
+      <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
+        <SettingsTabs />
+        <div className="flex-1 min-w-0">{children}</div>
+      </div>
+      {/* The Android app's updater: its version, where the update is, and
+          Check for updates. Renders nothing outside the Android app. */}
+      <AppUpdateCard />
+      {/* Build stamp, NEXT_PUBLIC_APP_VERSION is inlined at build time
+          (git SHA + build date, see next.config.ts). Inside the desktop or
+          phone app, that app's own version follows it. */}
+      <div className="mt-10 text-xs text-muted-foreground/60">
+        <BuildStamp build={process.env.NEXT_PUBLIC_APP_VERSION ?? 'unknown'} />
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,433 @@
+'use client';
+
+import type { ReactNode } from 'react';
+import Link from 'next/link';
+import { toast } from 'sonner';
+import { Button } from '@legacy/components/ui/button';
+import { Artwork } from '@legacy/components/primitives/Artwork';
+import { Checkbox } from '@legacy/components/primitives/Checkbox';
+import { Avatar } from '@legacy/components/primitives/Avatar';
+import { LikeButton } from '@legacy/components/primitives/LikeButton';
+import { CloseIcon, PauseIcon, PlayIcon, RefreshIcon, TrashIcon } from '@legacy/components/icons';
+import { formatTime } from '@/lib/format';
+import type { PlaylistPerson, Track } from '@/types/track';
+import { cn } from '@/lib/utils';
+import { reasonLabel, reasonPhrase } from '@/lib/playback/unplayable';
+
+export type TrackRowDensity = 'list' | 'compact';
+/** Which palette the row sits in. The queue sheet paints its own sidebar
+ *  colours, so its secondary text is not `muted-foreground`. */
+export type TrackRowTone = 'default' | 'sidebar';
+
+const SUBTLE: Record<TrackRowTone, string> = {
+  default: 'text-muted-foreground',
+  sidebar: 'text-sidebar-foreground/55',
+};
+
+
+export interface TrackRowProps {
+  track: Track;
+  /** 0-based position; rendered as `index + 1` when `showRank`. */
+  index?: number;
+  showRank?: boolean;
+  showAlbum?: boolean;
+  showDuration?: boolean;
+  /** This row's track is the player's current one. */
+  active?: boolean;
+  /** The player is playing: only meaningful together with `active`. */
+  playing?: boolean;
+  /** Omit to hide the heart entirely (queue, search recents, picker). */
+  liked?: boolean;
+  /** Start this track. Omitting it makes the row inert (the queue sheet's
+   *  "Now playing" row, which is a label rather than a control). */
+  onPlay?: () => void;
+  /** Play/pause the current track: used by the leading cell when `active`. */
+  onToggle?: () => void;
+  onLike?: () => void;
+  onRemove?: () => void;
+  /** aria-label for the remove button; search recents names the track. */
+  removeLabel?: string;
+  /** Extra controls before the heart (the add-to-playlist / share menu). */
+  trailing?: ReactNode;
+  /** The server has confirmed this track can no longer be streamed. Greys
+   *  the row, badges the title, disables its play cell, and turns a click
+   *  into an explanation instead of silent nothing. A compact row (the
+   *  queue sheet) is greyed the same way, with the same small pill, so a
+   *  song radio could not play stays visible in the queue instead of
+   *  silently vanishing. The pill's tooltip gives the reason. */
+  unavailable?: boolean;
+  /** Opens the find-replacement flow. Only rendered on an unavailable row,
+   *  and only where a replacement is actionable (a playlist, or Liked). */
+  onReplace?: () => void;
+  /** Rendered inside the artwork box when the track has no art. Omit and a
+   *  track without art gets no box at all, which is what the list rows and
+   *  the picker have always done. */
+  artworkFallback?: ReactNode;
+  /** Overrides `track.artworkUrl` for the artwork image when given (a local
+   *  downloaded-file URL, for offline rows). Undefined falls back to the
+   *  track's own `artworkUrl`; null renders as no art. */
+  artworkSrc?: string | null;
+  /** The search overlay's row shape. The play/pause control moves to the
+   *  trailing end of the row (revealed on hover or keyboard focus, always
+   *  shown on the current row, always shown on a phone, which has neither),
+   *  the `list` density drops its leading play column with it, and the
+   *  current row is marked by its TITLE in the ember accent rather than the
+   *  whole line. Default off, so every other caller keeps the leading play
+   *  cell and the whole-row tint it has always had. */
+  trailingPlayControl?: boolean;
+  /** Select mode (copying songs to another playlist): the play column
+   *  turns into a tick box, a click anywhere on the row toggles it, and
+   *  nothing on the row plays, follows a link or opens a menu. `list`
+   *  density only. */
+  onSelect?: () => void;
+  selected?: boolean;
+  /** When the song was added ("12 Jun"), shown in select mode on a wide
+   *  row, where the menu and heart were. */
+  addedLabel?: string;
+  /** Who put this song in a collaborative playlist: a small picture after
+   *  the artist, and the name too where the row is wide enough. `list`
+   *  density only. */
+  addedBy?: Pick<PlaylistPerson, 'name' | 'avatarUrl'> | null;
+  density?: TrackRowDensity;
+  tone?: TrackRowTone;
+  className?: string;
+}
+
+/** Presentational only: one track line. `list` is the full row used on
+ *  collection, album, artist and search pages; `compact` is the tighter
+ *  line used in the queue sheet, search recents and the track picker. */
+export function TrackRow({
+  track,
+  index = 0,
+  showRank = false,
+  showAlbum = true,
+  showDuration,
+  active = false,
+  playing = false,
+  liked,
+  onPlay,
+  onToggle,
+  onLike,
+  onRemove,
+  removeLabel = 'Remove',
+  trailing,
+  unavailable = false,
+  onReplace,
+  artworkFallback,
+  artworkSrc,
+  trailingPlayControl = false,
+  onSelect,
+  selected = false,
+  addedLabel,
+  addedBy,
+  density = 'list',
+  tone = 'default',
+  className,
+}: TrackRowProps) {
+  const compact = density === 'compact';
+  const selecting = !!onSelect && !compact && !trailingPlayControl;
+  const showTime = showDuration ?? !compact;
+  // An unavailable track can't actually start (the server has confirmed
+  // yt-dlp can't fetch it), so clicking it explains why instead of
+  // silently doing nothing.
+  const playOrToast = onPlay
+    ? () => {
+        if (unavailable) {
+          toast.message(`Couldn't play "${track.title}": ${reasonPhrase(track.unavailableReason)}.`);
+          return;
+        }
+        onPlay();
+      }
+    : undefined;
+  const duration = formatTime(track.durationSec, { empty: '--:--' });
+  // `artworkSrc` (a downloaded file's local URL) wins when given; undefined
+  // means "no override" and falls back to the track's own remote URL.
+  const resolvedArtworkUrl = artworkSrc !== undefined ? artworkSrc : track.artworkUrl;
+  const hasArtwork = !!resolvedArtworkUrl || artworkFallback !== undefined;
+
+  const artwork = hasArtwork ? (
+    <Artwork
+      src={resolvedArtworkUrl}
+      size="xs"
+      onClick={compact || selecting ? undefined : playOrToast}
+      // A list can be thousands of rows (Liked, a long queue): covers off
+      // screen wait until they are scrolled near.
+      loading="lazy"
+      className={cn(
+        'rounded shrink-0 bg-art',
+        !resolvedArtworkUrl && 'grid place-items-center text-foreground/20',
+      )}
+    >
+      {artworkFallback}
+    </Artwork>
+  ) : null;
+
+  const remove = onRemove ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn(
+        'text-muted-foreground hover:text-foreground',
+        compact
+          ? 'h-7 w-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-md:opacity-100 transition-opacity'
+          : 'h-8 w-8',
+      )}
+      // Compact rows play on a single click, so the remove press must not
+      // reach the row underneath.
+      onClick={(e) => { e.stopPropagation(); onRemove(); }}
+      aria-label={removeLabel}
+    >
+      {compact ? <CloseIcon className="h-3.5 w-3.5" /> : <TrashIcon className="h-3.5 w-3.5" />}
+    </Button>
+  ) : null;
+
+  const like = liked !== undefined && onLike ? <LikeButton liked={liked} onToggle={onLike} /> : null;
+
+  const replace = unavailable && onReplace ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 text-ember hover:text-ember"
+      onClick={(e) => { e.stopPropagation(); onReplace(); }}
+      aria-label="Find replacement"
+      title="Find replacement"
+    >
+      <RefreshIcon className="h-3.5 w-3.5" />
+    </Button>
+  ) : null;
+
+  // The search overlay's control. Hidden with opacity rather than removed,
+  // so the space it takes is already reserved and nothing shifts when a
+  // hover reveals it; opacity-0 still leaves it clickable and in the tab
+  // order, which is what makes keyboard focus able to reveal it at all.
+  // `size-hit md:size-8` is the app's touch convention (40px phone / 32px
+  // desktop); 40px is also the xs artwork
+  // height, so a compact row keeps its height on a phone.
+  const playControl = trailingPlayControl ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      data-testid="track-row-play"
+      className={cn(
+        'size-hit md:size-8 transition-opacity',
+        active
+          ? 'text-ember hover:text-ember'
+          : 'text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-md:opacity-100',
+      )}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (active) onToggle?.();
+        else playOrToast?.();
+      }}
+      disabled={unavailable}
+      aria-label={
+        unavailable
+          ? `"${track.title}" is unavailable`
+          : active
+            ? playing
+              ? `Pause ${track.title}`
+              : `Resume ${track.title}`
+            : `Play ${track.title}`
+      }
+    >
+      {active && playing ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
+    </Button>
+  ) : null;
+
+  /** The current row's mark when `trailingPlayControl` is on: the title in
+   *  the ember accent, in both the playing and the paused state, and no
+   *  glyph beside it. The button's own icon is the only thing that says
+   *  which of the two it is. */
+  const emberTitle = trailingPlayControl && active && 'text-ember';
+
+  /** The small "UNAVAILABLE" pill by a greyed title (the owner's pick,
+   *  /dizajn/unplayable option B). Never cut: the title gives way first. */
+  const unavailablePill = unavailable ? (
+    <span
+      data-testid="unavailable-badge"
+      title={reasonLabel(track.unavailableReason)}
+      className={cn(
+        'shrink-0 rounded-full border px-inset font-semibold uppercase',
+        compact
+          ? cn('border-sidebar-border text-[10px] tracking-wider', SUBTLE[tone])
+          // Never wider than the row: on the narrowest one it cuts rather
+          // than spilling under the buttons.
+          : 'min-w-0 max-w-full justify-self-start truncate text-[10px] tracking-wide text-muted-foreground',
+      )}
+    >
+      Unavailable
+    </span>
+  ) : null;
+
+  if (compact) {
+    return (
+      <div
+        onClick={playOrToast}
+        data-unavailable={unavailable ? 'true' : undefined}
+        className={cn(
+          'group flex items-center gap-3 px-3 py-2 rounded-md transition-colors',
+          onPlay && 'cursor-pointer hover:bg-card',
+          active && !trailingPlayControl && 'text-ember',
+          unavailable && 'opacity-60',
+          className,
+        )}
+      >
+        {artwork}
+        <div className="min-w-0 flex-1">
+          <div data-testid="track-row-title" className={cn('flex min-w-0 items-center gap-cluster text-sm font-medium', emberTitle)}>
+            <span className="truncate">{track.title}</span>
+            {unavailablePill}
+          </div>
+          {/* Plain text, not a link: these rows sit inside a sheet, a
+              recents list and a picker, where a stray navigation would
+              throw away what the user was doing. */}
+          <div className={cn('truncate text-xs', SUBTLE[tone])}>{track.artist}</div>
+        </div>
+        {showTime && <div className={cn('text-xs tabular-nums', SUBTLE[tone])}>{duration}</div>}
+        {playControl}
+        {trailing}
+        {like}
+        {remove}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="track-row"
+      data-unavailable={unavailable ? 'true' : undefined}
+      data-selected={selecting ? String(selected) : undefined}
+      onClick={selecting ? onSelect : undefined}
+      onDoubleClick={selecting ? undefined : playOrToast}
+      className={cn(
+        // The 5-column desktop shape (adds the album + duration columns)
+        // only kicks in once the row's own container is wide enough, not
+        // once the *window* is: a viewport breakpoint (md:) would still
+        // pick the desktop shape inside a narrow container on a wide
+        // window (the search overlay caps at max-w-xl, ~576px, well past
+        // sm:768px on any laptop or desktop display), squeezing title and
+        // album into equal, too-narrow halves. @3xl is 48rem/768px on the
+        // container-query scale, the same number the old md: breakpoint
+        // used, just measured against the row's own space. Below it, the
+        // 3-column "phone" shape (this one, unqualified) is used, same as
+        // it always was on a narrow phone screen.
+        'group grid gap-3 items-center px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors',
+        // `trailingPlayControl` moves the control to the far end, so the
+        // leading 40px column goes with it and the title starts at the
+        // row's edge.
+        trailingPlayControl
+          ? 'grid-cols-[minmax(0,1fr)_auto] @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_60px_auto]'
+          : 'grid-cols-[40px_minmax(0,1fr)_auto] @3xl:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto]',
+        active && !trailingPlayControl && 'text-ember',
+        unavailable && 'opacity-60',
+        selecting && selected && 'bg-ember/10 hover:bg-ember/15',
+        className,
+      )}
+    >
+      {selecting && (
+        <Checkbox checked={selected} onChange={onSelect} label={`Select ${track.title}`} className="justify-self-center" />
+      )}
+      {!trailingPlayControl && !selecting && (
+        <div className="relative grid place-items-center h-8 w-8 justify-self-center">
+          {showRank && !active && (
+            <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 group-focus-within:opacity-0 transition-opacity">
+              {index + 1}
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn('h-8 w-8', showRank && !active && 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity')}
+            onClick={() => (active ? onToggle?.() : onPlay?.())}
+            disabled={unavailable}
+            aria-label={unavailable ? 'Unavailable' : active && playing ? 'Pause' : 'Play'}
+          >
+            {active && playing ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
+      )}
+
+      <div data-testid="track-row-title-cell" className="flex items-center gap-3 min-w-0">
+        {artwork}
+        <div
+          className={cn(
+            'min-w-0',
+            // The pill sits beside the title where the row has room; on a
+            // narrow one (a phone row's buttons leave about 100px) it takes
+            // the artist's line instead, so the title and the pill both read
+            // in full.
+            unavailable && 'grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] items-center gap-x-cluster @md:grid-cols-[minmax(0,max-content)_minmax(0,1fr)]',
+          )}
+        >
+          <div
+            data-testid="track-row-title"
+            onClick={selecting ? undefined : playOrToast}
+            className={cn('truncate text-sm font-semibold', emberTitle, unavailable && 'col-span-2 text-muted-foreground @md:col-span-1')}
+          >
+            {track.title}
+          </div>
+          {unavailablePill}
+          <div className={cn('truncate text-xs text-muted-foreground', unavailable && 'hidden @md:col-span-2 @md:block')}>
+            {/* Who added it leads the line, so a narrow row cuts the
+                artist rather than the picture; the name follows the artist
+                where the row is wide enough. */}
+            {addedBy && (
+              <span
+                data-testid="track-row-added-by"
+                title={`Added by ${addedBy.name}`}
+                aria-label={`Added by ${addedBy.name}`}
+                className="mr-inset inline-flex align-text-bottom"
+              >
+                <Avatar
+                  src={addedBy.avatarUrl}
+                  name={addedBy.name}
+                  className="size-3.5 bg-ember text-[8px] text-ember-foreground"
+                />
+              </span>
+            )}
+            {track.artistId && !selecting ? (
+              // stopPropagation so following the artist link never counts as
+              // a click on the row.
+              <Link href={`/artist/${track.artistId}`} onClick={(e) => e.stopPropagation()} className="hover:underline">
+                {track.artist}
+              </Link>
+            ) : (
+              track.artist
+            )}
+            {addedBy && (
+              <span aria-hidden="true" className="hidden @md:inline">
+                {` · added by ${addedBy.name}`}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Both desktop-only cells are always rendered so the 5-column grid
+          keeps its shape; the flags decide what goes in them. Same @3xl
+          switch as the grid-cols above: a plain `hidden md:block` (window
+          width) could show these while the grid itself (now keyed off the
+          container) is still in its 3-column shape, leaving them as
+          unaccounted-for extra grid items. */}
+      <div data-testid="track-row-album-cell" className="hidden @3xl:block truncate text-sm text-muted-foreground">{showAlbum ? track.album : ''}</div>
+      <div className="hidden @3xl:block text-sm text-muted-foreground text-right tabular-nums">{showTime ? duration : ''}</div>
+
+      {selecting ? (
+        // Where the menu and heart were: the duration on a narrow row (its
+        // own column is hidden there), the date added on a wide one.
+        <div className="text-right text-sm tabular-nums text-muted-foreground">
+          <span className="@3xl:hidden">{showTime ? duration : ''}</span>
+          <span data-testid="track-row-added" className="hidden w-20 truncate @3xl:block">{addedLabel ?? ''}</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1">
+          {playControl}
+          {trailing}
+          {like}
+          {replace}
+          {remove}
+        </div>
+      )}
+    </div>
+  );
+}

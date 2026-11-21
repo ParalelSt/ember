@@ -1,0 +1,174 @@
+'use client';
+
+import { useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@legacy/components/ui/dropdown-menu';
+import { CreatePlaylistDialog } from '@legacy/components/track/menus/CreatePlaylistDialog';
+import { CheckIcon, MoreIcon, PlusIcon, RefreshIcon } from '@legacy/components/icons';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { addTracks, createdToast } from '@/hooks/useCreatePlaylistFlow';
+import {
+  useExecuteAddToPlaylist,
+  useExecuteCreatePlaylist,
+  useQueryPlaylists,
+  useQueryPlaylistsContaining,
+} from '@/hooks/useLibrary';
+import { isAlreadyInPlaylist } from '@/lib/playlistAdd';
+import type { Track } from '@/types/track';
+import { cn } from '@/lib/utils';
+
+/** `onRematch`: the track came from an import, so on phones (where the row
+ *  has no room for a separate More button) this menu also offers "Wrong
+ *  song? Re-match". `open`/`onOpenChange` let a parent open the menu from
+ *  elsewhere; with `hiddenTrigger` the + button is only an invisible anchor
+ *  for it (the full-screen player's More sheet opens it, just under its ⋯).
+ *
+ *  `more`: menu items for a caller with no room for its own buttons (the
+ *  desktop player bar on a narrow window, bughunt V1), ending in their own
+ *  separator. They go above the playlists, under an "Add to playlist"
+ *  label, and the trigger becomes a "More" (...) button. */
+export function AddToPlaylistMenu({
+  track,
+  onRematch,
+  open: openProp,
+  onOpenChange,
+  hiddenTrigger,
+  more,
+  triggerClassName,
+}: {
+  track: Track;
+  onRematch?: () => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hiddenTrigger?: boolean;
+  more?: ReactNode;
+  triggerClassName?: string;
+}) {
+  const { user } = useAuth();
+  const { data: playlists = [] } = useQueryPlaylists();
+  const addToPlaylist = useExecuteAddToPlaylist();
+  const createPlaylist = useExecuteCreatePlaylist();
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    onOpenChange?.(next);
+  };
+  const [createOpen, setCreateOpen] = useState(false);
+  // The playlists that already have this song: marked "Added" and not
+  // offered again. Asked for when the menu opens.
+  const { data: containingIds } = useQueryPlaylistsContaining(track.id, open);
+  const containing = new Set(containingIds ?? []);
+
+  if (!user) return null;
+
+  const add = async (id: string, playlistName: string) => {
+    setOpen(false);
+    try {
+      await addToPlaylist.mutateAsync({ id, track });
+      toast.success(`Added "${track.title}" to ${playlistName}`);
+    } catch (e) {
+      // Already there (the server's 409) is an answer, not a failure;
+      // every other failure is real.
+      if (isAlreadyInPlaylist(e)) toast.message(`Already in ${playlistName}`);
+      else toast.error(`Couldn't add "${track.title}", please try again.`);
+    }
+  };
+
+  const openCreate = () => {
+    setOpen(false);     // close the menu so the dialog sits cleanly on top
+    setCreateOpen(true);
+  };
+
+  // Dialog already has the current track pre-selected via initialTracks below,
+  // so handleCreate just iterates over whatever the dialog returns.
+  const handleCreate = async (name: string, tracks: Track[]) => {
+    let playlist;
+    try {
+      playlist = await createPlaylist.mutateAsync(name);
+    } catch (e) {
+      toast.error(`Couldn't create the playlist, please try again.`);
+      // The dialog stays open with what was typed (CreatePlaylistDialog).
+      throw e;
+    }
+    // Made: a song that then fails must not read as "not created".
+    createdToast(playlist.name, tracks.length, await addTracks(playlist.id, tracks, (v) => addToPlaylist.mutateAsync(v)));
+  };
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
+        className={cn(
+          'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors',
+          hiddenTrigger && 'pointer-events-none opacity-0',
+          triggerClassName,
+        )}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={more ? 'More' : 'Add to playlist'}
+        title={more ? 'More' : undefined}
+        aria-hidden={hiddenTrigger || undefined}
+        tabIndex={hiddenTrigger ? -1 : undefined}
+      >
+        {more ? <MoreIcon className="h-4 w-4" /> : <PlusIcon className="h-4 w-4" />}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-56" onClick={(e) => e.stopPropagation()}>
+        {more && (
+          <>
+            {more}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Add to playlist</DropdownMenuLabel>
+            </DropdownMenuGroup>
+          </>
+        )}
+        {onRematch && (
+          <DropdownMenuItem
+            onClick={() => {
+              setOpen(false);
+              onRematch();
+            }}
+            className="md:hidden"
+          >
+            <RefreshIcon className="h-3.5 w-3.5" /> Wrong song? Re-match
+          </DropdownMenuItem>
+        )}
+        {onRematch && <DropdownMenuSeparator className="md:hidden" />}
+        <DropdownMenuItem onClick={openCreate} className="text-ember font-semibold">
+          <PlusIcon className="h-3.5 w-3.5" /> New playlist
+        </DropdownMenuItem>
+        {playlists.length > 0 && <DropdownMenuSeparator />}
+        {playlists.map((p) => {
+          const has = containing.has(p.id);
+          return (
+            <DropdownMenuItem
+              key={p.id}
+              onClick={has ? undefined : () => add(p.id, p.name)}
+              disabled={has}
+              className="truncate"
+            >
+              <span className="truncate">{p.name}</span>
+              {has && (
+                <span className="ml-auto flex shrink-0 items-center gap-inset text-xs text-muted-foreground">
+                  <CheckIcon className="h-3.5 w-3.5" aria-hidden /> Added
+                </span>
+              )}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+      <CreatePlaylistDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreate={handleCreate}
+        initialTracks={[track]}
+      />
+    </DropdownMenu>
+  );
+}

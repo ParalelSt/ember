@@ -1,0 +1,25 @@
+/* The Classic look's own CSS: rules the frozen UI (legacy/) needs that the
+   redesign took out of app/globals.css. Everything else still comes from
+   globals.css and the user's theme, which both looks share. Scoped to
+   html[data-ui=legacy] so none of it can reach the new look; loaded only
+   with the legacy shell (legacy/app/layout.tsx). */
+
+/* "What's new" New tag (components/changelog/NewBadge.tsx). .ember-new-pulse
+   breathes the whole pill (opacity plus an ember glow ring). Reduced motion
+   turns it off, leaving a static pill (.ember-new-dot is still in
+   globals.css, with its own reduced-motion rule). */
+@keyframes ember-new-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--ember) 55%, transparent);
+  }
+  50% {
+    opacity: 0.72;
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--ember) 0%, transparent);
+  }
+}
+html[data-ui="legacy"] .ember-new-pulse { animation: ember-new-pulse 1.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-ui="legacy"] .ember-new-pulse,
+  html[data-ui="legacy"] .ember-new-dot { animation: none !important; }
+}

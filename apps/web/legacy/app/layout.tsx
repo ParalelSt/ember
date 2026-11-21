@@ -1,0 +1,154 @@
+'use client';
+
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Sidebar } from '@legacy/components/nav/Sidebar';
+import { CarRail } from '@legacy/components/nav/CarRail';
+import { TopBar } from '@legacy/components/nav/TopBar';
+import { MobileNav } from '@legacy/components/nav/MobileNav';
+import { Drawer } from '@legacy/components/nav/Drawer';
+import { BackToTop } from '@legacy/components/nav/BackToTop';
+import { DesktopTopBar } from '@legacy/components/nav/DesktopTopBar';
+import { PlayerBar } from '@legacy/components/player/PlayerBar';
+import { NowPlaying } from '@legacy/components/player/NowPlaying';
+import { LYRICS_PANEL_W, LyricsPanel } from '@legacy/components/player/LyricsPanel';
+import { SearchOverlayContainer } from '@legacy/components/search/SearchOverlayContainer';
+import { SessionHostBridge } from '@/components/session/SessionHostBridge';
+import { TransferStatus } from '@legacy/components/import/TransferStatus';
+import { AppUpdatePill } from '@legacy/components/update/AppUpdatePill';
+import { QrScanHost } from '@legacy/components/auth/QrScanHost';
+import { DeviceVersionReporter } from '@/components/DeviceVersionReporter';
+import { ApproveSheetHost } from '@legacy/components/auth/ApproveSheetHost';
+import { hydrateOfflineStore } from '@/lib/offline';
+import { logger } from '@/lib/logger/client';
+import { useUiStore } from '@/stores/useUiStore';
+import { useChangelog } from '@/hooks/useChangelog';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useHeadUnitControls, useIsHeadUnit } from '@/hooks/useHeadUnit';
+import { useReleaseStaleHosting } from '@/hooks/useSession';
+
+export default function AppShellLayout({ children }: { children: ReactNode }) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [scrollerH, setScrollerH] = useState(0);
+  const [barH, setBarH] = useState(0);
+  const setSearchOpen = useUiStore((s) => s.setSearchOpen);
+  const searchOpen = useUiStore((s) => s.searchOpen);
+  const lyricsOpen = useUiStore((s) => s.lyricsOpen);
+  const { hasNew } = useChangelog();
+  // Desktop: the search bar lives INSIDE the scroller (DesktopTopBar).
+  // Phone: the search sheet stays outside it, as before.
+  const isDesktop = useIsDesktop();
+  // A car head unit with the car layout on (hooks/useHeadUnit): a rail of
+  // big icons in place of the sidebar (the player bar has its own car bar).
+  // With it switched off, the sidebar's covers look: big rows, playlist
+  // covers. Phones and computers keep the sidebar as it is.
+  const headUnit = useIsHeadUnit();
+  const carLayout = useHeadUnitControls();
+  // A carlist this device hosted and nobody ended must not keep radio off.
+  useReleaseStaleHosting();
+
+  // Hydrate the offline store on app boot. On Android this subscribes to the
+  // native EmberOffline plugin's pins/trackFiles; elsewhere it reads OPFS
+  // (fills downloaded set + totalBytes, and posts every pinned track's
+  // videoId to the SW so it knows which streams to serve from OPFS offline).
+  // It can fail (the app refusing status(), no OPFS in a private window):
+  // downloads then just show as none, so it is a warning, not a report.
+  useEffect(() => {
+    void hydrateOfflineStore().catch((e: unknown) =>
+      logger.warn('offline', 'hydrate failed', { message: e instanceof Error ? e.message : String(e) }),
+    );
+  }, []);
+
+  // LyricsPanel reads --ember-scroller-h to size itself to one viewport-of-
+  // scroller, so its position:sticky inside the scroller keeps it glued to
+  // the top while the page below it scrolls.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const update = () => setScrollerH(el.clientHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    // h-svh (NOT dvh): dvh tracks the mobile address bar, so hard scrolling in
+    // Firefox Android collapsed the bar and reflowed the whole shell ("layout
+    // moves up"). svh is the stable small-viewport size, the shell never
+    // moves; hiding the bar just shows a brief same-color strip below it.
+    <div className="h-svh flex flex-col md:flex-row overflow-hidden">
+      {carLayout ? <CarRail onSearchClick={() => setSearchOpen(true)} /> : <Sidebar covers={headUnit} />}
+      <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} />
+      <div className="flex-1 min-h-0 flex flex-col min-w-0">
+        <TopBar onMenu={() => setDrawerOpen(true)} menuDot={hasNew} />
+        {/* The content column. --ember-scroller-h is published HERE rather
+            than on the scroller itself so everything in the column can read
+            it: the LyricsPanel sizes itself to it, and the search dropdown
+            caps its panel with it so the results never reach past the
+            player bar. --ember-topbar-h is the desktop top bar's height
+            (0 on a phone and on /search): the things that stick to the
+            scroller's top (the tabs toolbar, the Appearance preview)
+            stick just under the bar instead. The bar stops short of the
+            lyrics panel (--ember-lyrics-w), which runs the scroller's full
+            height beside it. */}
+        <div
+          className="relative flex-1 min-h-0 flex flex-col"
+          style={
+            {
+              ...(scrollerH ? { ['--ember-scroller-h' as string]: `${scrollerH}px` } : null),
+              ['--ember-topbar-h' as string]: `${isDesktop ? barH : 0}px`,
+              ['--ember-lyrics-w' as string]: isDesktop && lyricsOpen ? LYRICS_PANEL_W : '0px',
+            } as CSSProperties
+          }
+        >
+          {/* Phone: nothing in flow, just the full-screen sheet when it is
+              open (the TopBar above has the search button). */}
+          {!isDesktop && <SearchOverlayContainer />}
+          {/* The OUTER scroller owns the scrollbar, from the very top of
+              the column to its bottom, on the far right edge of the
+              viewport past the LyricsPanel. Inside: the desktop top bar
+              (sticky, the page scrolls under it), then a flex row holding
+              <main> (grows tall, drives the scroll) and the LyricsPanel
+              (pulled up beside the bar, sticky at the top). */}
+          <div ref={scrollerRef} data-app-scroller className="flex-1 min-h-0 overflow-y-auto">
+            {isDesktop && (
+              <DesktopTopBar raised={searchOpen} onHeightChange={setBarH}>
+                <SearchOverlayContainer />
+              </DesktopTopBar>
+            )}
+            {/* Fills what is left under the bar, so a short page does not
+                scroll by the bar's height. */}
+            <div className="flex min-w-0 min-h-[calc(100%-var(--ember-topbar-h,0px))]">
+              <main className="flex-1 min-w-0 p-page md:p-page-lg">
+                {/* pb-section: room past the page's last row, so scrolled
+                    to the end nothing is left under Back to top. */}
+                <div className="mx-auto max-w-(--content-max) pb-section">{children}</div>
+              </main>
+              <LyricsPanel />
+            </div>
+          </div>
+          {/* Inside this `relative` column, so it floats a fixed step above
+              the scroller's own bottom edge whether or not the player bar
+              is showing (bughunt V12). */}
+          <BackToTop scrollRef={scrollerRef} />
+          {/* A transfer in the background: its floating pill and its
+              "Transfer done" card, over whatever page is open. */}
+          <TransferStatus />
+          {/* The Android app's update (downloading, ready, tap to install);
+              nothing anywhere else. */}
+          <AppUpdatePill />
+        </div>
+        <PlayerBar />
+        <MobileNav onSearchClick={() => setSearchOpen(true)} />
+      </div>
+      <NowPlaying />
+      <SessionHostBridge />
+      {/* "Scan QR code" (menu, Settings > Devices): the page's own scanner. */}
+      <QrScanHost />
+      <DeviceVersionReporter />
+      {/* The approve sheet for a scanned or typed sign-in code. */}
+      <ApproveSheetHost />
+    </div>
+  );
+}

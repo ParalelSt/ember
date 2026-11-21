@@ -1,0 +1,138 @@
+'use client';
+
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { toast } from 'sonner';
+import { Button } from '@legacy/components/ui/button';
+import { Input } from '@legacy/components/ui/input';
+import { Label } from '@legacy/components/ui/label';
+import { LogOutIcon } from '@legacy/components/icons';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { PrivacyToggles } from '@legacy/components/settings/PrivacyToggles';
+import { Avatar } from '@legacy/components/primitives/Avatar';
+import { api } from '@/lib/api';
+import { SectionHeader } from '@legacy/components/page/SectionHeader';
+
+export default function SettingsProfile() {
+  const { user, name: currentName, avatarUrl, refresh, signOut } = useAuth();
+  // What was typed; until then the field shows the account's name, which
+  // may not be known yet when the page opens (an offline start).
+  const [draft, setDraft] = useState<string | null>(null);
+  const name = draft ?? currentName ?? '';
+  const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [removeAvatar, setRemoveAvatar] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  // A preview holds the picked file in memory until it is let go: when the
+  // next one replaces it, it is removed or saved, or the page closes.
+  useEffect(() => {
+    if (!previewUrl) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  const onPick = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) {
+      toast.error('Image must be under 5 MB');
+      return;
+    }
+    setPendingAvatar(f);
+    setRemoveAvatar(false);
+    setPreviewUrl(URL.createObjectURL(f));
+  };
+
+  const onRemove = () => {
+    setPendingAvatar(null);
+    setPreviewUrl(null);
+    setRemoveAvatar(true);
+  };
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.updateProfile({
+        // Only a name typed here, and only when it changed.
+        name: draft !== null && draft.trim() !== (currentName ?? '') ? draft.trim() : undefined,
+        avatar: pendingAvatar ?? undefined,
+        removeAvatar,
+      });
+      await refresh();
+      setDraft(null);
+      setPendingAvatar(null);
+      setPreviewUrl(null);
+      setRemoveAvatar(false);
+      toast.success('Profile updated');
+    } catch (err) {
+      toast.error(`Couldn't save: ${(err as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const displayedAvatar = previewUrl ?? (removeAvatar ? null : avatarUrl);
+
+  return (
+    <div className="max-w-2xl">
+    <form onSubmit={onSubmit}>
+      <SectionHeader title="Profile" />
+
+      <div className="mt-6 flex items-center gap-5">
+        <Avatar
+          src={displayedAvatar}
+          name={name}
+          email={user?.email}
+          className="h-20 w-20 cover-placeholder text-2xl text-ember-foreground"
+        />
+        <div className="flex flex-col gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+            Upload picture
+          </Button>
+          {(avatarUrl || pendingAvatar) && !removeAvatar && (
+            <Button type="button" variant="ghost" size="sm" onClick={onRemove} className="text-muted-foreground">
+              Remove
+            </Button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPick} />
+          <p className="text-xs text-muted-foreground">JPEG / PNG / WebP / GIF · max 5 MB</p>
+        </div>
+      </div>
+
+      <div className="mt-8 grid gap-2 max-w-sm">
+        <Label htmlFor="username">Username</Label>
+        <Input
+          id="username"
+          maxLength={50}
+          value={name}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={user?.email ?? ''}
+        />
+        <p className="text-xs text-muted-foreground">
+          Shown in the sidebar. Leave blank to show your email.
+        </p>
+      </div>
+
+      <Button type="submit" disabled={busy} variant="ember" className="mt-6">
+        Save changes
+      </Button>
+    </form>
+
+      <PrivacyToggles />
+
+      <div className="mt-12 pt-6 border-t border-border">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Account</h3>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => void signOut()}
+          className="mt-3 text-destructive hover:text-destructive hover:bg-destructive/10"
+        >
+          <LogOutIcon className="h-4 w-4" />
+          Sign out
+        </Button>
+      </div>
+    </div>
+  );
+}

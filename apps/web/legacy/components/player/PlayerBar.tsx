@@ -1,0 +1,319 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Button } from '@legacy/components/ui/button';
+import {
+  LyricsIcon,
+  TabsIcon,
+  QueueIcon,
+  RepeatIcon,
+  RepeatOneIcon,
+  ShareIcon,
+  DevicesIcon,
+} from '@legacy/components/icons';
+import { DropdownMenuItem, DropdownMenuSeparator } from '@legacy/components/ui/dropdown-menu';
+import { LikeButton } from '@legacy/components/primitives/LikeButton';
+import { AddToPlaylistMenu } from '@legacy/components/track/menus/AddToPlaylistMenu';
+import { ShareButton, canShare, shareTrack } from '@legacy/components/track/ShareButton';
+import { QueueSheet } from '@legacy/components/player/QueueSheet';
+import { NowPlayingSummary } from '@legacy/components/player/NowPlayingSummary';
+import { UnplayableMessage, useUnplayableMessage } from '@legacy/components/player/UnplayableMessage';
+import { OfflineBadge } from '@legacy/components/player/OfflineBadge';
+import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@legacy/components/player/PhonePlayerBar';
+import { PlayheadSeekBar } from '@legacy/components/player/SeekBar';
+import { CarPlayerBar } from '@legacy/components/player/CarPlayerBar';
+import { TransportControls } from '@legacy/components/player/TransportControls';
+import { VolumeControl } from '@legacy/components/player/VolumeControl';
+import { DevicesButton, DevicesSheet, useDevicesEntry } from '@legacy/components/player/DevicesButton';
+import { usePlayer } from '@/components/player/PlayerProvider';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useHeadUnitControls } from '@/hooks/useHeadUnit';
+import { usePartyEligible } from '@/hooks/usePartyEligible';
+import { useLikeToggle } from '@/hooks/useLikeToggle';
+import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useUiStore } from '@/stores/useUiStore';
+import { cn } from '@/lib/utils';
+import { isTabsPathFor, tabsHref } from '@/lib/tabSources';
+import { leavePage, notePathname } from '@/lib/inAppHistory';
+import { isLiveTrack } from '@/lib/radio/station';
+
+export function PlayerBar() {
+  const { current, isPlaying, duration, toggle, next, prev, seek, setVolume, retry } = usePlayer();
+  const volume = usePlayerStore((s) => s.volume);
+  // A drag's steps are heard but not saved; its end is (stores/usePlayerStore).
+  const previewVolume = usePlayerStore((s) => s.previewVolume);
+  const { user } = useAuth();
+  // A real media query, not `md:` classes: the two bars share almost no
+  // geometry, and rendering both with one hidden would put two transports,
+  // two queue buttons and two copies of the song name in the page at once
+  // (same reason as the search overlay, see hooks/useIsDesktop).
+  const isDesktop = useIsDesktop();
+  const { liked: isLiked, toggle: toggleLike } = useLikeToggle(current);
+  const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
+  const partyVolume = useSettingsStore((s) => s.partyVolume);
+  // Desktop-only: a mouse-driven browser or Tauri, never a touch device or
+  // the Android app, regardless of window width. See lib/playback/partyDevice.
+  const partyEligible = usePartyEligible();
+  const partyActive = partyVolume && partyEligible;
+  const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
+  const devices = useDevicesEntry();
+  const lyricsOpen = useUiStore((s) => s.lyricsOpen);
+  const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
+  const loopMode = usePlayerStore((s) => s.loopMode);
+  const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
+  const muted = usePlayerStore((s) => s.muted);
+  const toggleMuted = usePlayerStore((s) => s.toggleMuted);
+  // A song that could not play: said in the bar's title area, not a toast.
+  const unplayable = useUnplayableMessage();
+  // A car head unit with the car layout on (owner's pick): its own bar,
+  // big previous, play and next, and a swipe on the cover to skip.
+  const carLayout = useHeadUnitControls();
+
+  // Desktop only, the button is hidden on phones (md:inline-flex), where
+  // lyrics live inside the full-screen NowPlaying view instead.
+  const onLyricsClick = () => setLyricsOpen(!lyricsOpen);
+  const router = useRouter();
+  const pathname = usePathname();
+  // Every page the app shows passes through here: closing the tab page
+  // goes Back only when the page before it was Ember's (lib/inAppHistory).
+  useEffect(() => {
+    notePathname(pathname);
+  }, [pathname]);
+
+  // Only render the bar once playback has actually started. Avoids the
+  // "Nothing playing" placeholder strip and ensures the bar pops in the moment
+  // a song is queued.
+  if (!current) return null;
+  const tabsOpen = isTabsPathFor(pathname, current.id);
+  // A live radio station: no length, and nothing a song has (likes,
+  // playlists, sharing, lyrics, guitar tabs).
+  const live = isLiveTrack(current);
+
+  // Phones get their own bar: artwork, the scrolling song name, play and
+  // next. Previous and the queue live on the full-screen view the bar opens.
+  if (!isDesktop) {
+    return (
+      <footer data-testid="player-bar" className={PLAYER_BAR_CHROME}>
+        <PhonePlayerBar
+          track={current}
+          playing={isPlaying}
+          duration={duration}
+          onToggle={toggle}
+          onSeek={seek}
+          onNext={next}
+          onOpen={() => openNowPlaying(true)}
+          onRetry={retry}
+          onOpenQueue={() => setQueueOpen(true)}
+        />
+        {/* The bar's message opens the queue straight from here, where the
+            songs that could not play are listed with their reasons. */}
+        <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+      </footer>
+    );
+  }
+
+  if (carLayout) {
+    return (
+      <footer data-testid="player-bar" data-layout="car" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom touch-hit')}>
+        <CarPlayerBar
+          track={current}
+          playing={isPlaying}
+          onToggle={toggle}
+          onNext={next}
+          onPrev={prev}
+          onRetry={retry}
+          onOpenQueue={() => setQueueOpen(true)}
+        />
+        <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+      </footer>
+    );
+  }
+
+  // Loop toggle: cycles off, loop playlist (wrap queue, radio suppressed),
+  // loop one song. Desktop only; phones get the same control in the
+  // full-screen NowPlaying transport row.
+  const loopButton = (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={cycleLoopMode}
+      aria-label={
+        loopMode === 'one' ? 'Loop one' : loopMode === 'all' ? 'Loop off' : 'Loop playlist'
+      }
+      aria-pressed={loopMode !== 'off'}
+      title={
+        loopMode === 'one' ? 'Looping current song' : loopMode === 'all' ? 'Looping playlist' : 'Loop off'
+      }
+      className={cn(
+        'hidden md:inline-flex h-8 w-8',
+        loopMode !== 'off'
+          ? 'text-ember hover:text-ember'
+          : 'text-muted-foreground hover:text-foreground',
+      )}
+    >
+      {loopMode === 'one'
+        ? <RepeatOneIcon className="h-4 w-4" />
+        : <RepeatIcon className="h-4 w-4" />}
+    </Button>
+  );
+
+  // Below xl the title's column cannot also hold add and share, so they
+  // move into a "More" menu (the add-to-playlist menu with a ... trigger);
+  // below lg lyrics and tabs join them, since the right column then keeps
+  // only the queue and mute (Devices then opens its sheet from here). Each
+  // item carries the breakpoint its bar button comes back at (bughunt V1).
+  const shareable = canShare(current);
+  const moreItems = (
+    <>
+      {shareable && (
+        <DropdownMenuItem onClick={() => void shareTrack(current)}>
+          <ShareIcon className="h-3.5 w-3.5" /> Share
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuItem onClick={onLyricsClick} className="lg:hidden">
+        <LyricsIcon className="h-3.5 w-3.5" /> {lyricsOpen ? 'Close lyrics' : 'Lyrics'}
+      </DropdownMenuItem>
+      {tabsEnabled && (
+        <DropdownMenuItem
+          onClick={() => (tabsOpen ? leavePage(router) : router.push(tabsHref(current.id)))}
+          className="lg:hidden"
+        >
+          <TabsIcon className="h-3.5 w-3.5" /> {tabsOpen ? 'Close guitar tabs' : 'Guitar tabs'}
+        </DropdownMenuItem>
+      )}
+      {devices.visible && (
+        <DropdownMenuItem onClick={() => setDevicesOpen(true)} className="lg:hidden">
+          <DevicesIcon className="h-3.5 w-3.5" /> {devices.label}
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuSeparator className={shareable ? undefined : 'lg:hidden'} />
+    </>
+  );
+
+  // MobileNav stays mounted but `md:hidden` on this breakpoint, so it
+  // contributes no height and no safe-area lift here: this footer is the
+  // bottom-most visible element on a desktop-width window and must carry
+  // the inset itself (a phone-sized window never reaches this branch, the
+  // phone bar above leaves the inset to MobileNav instead).
+  return (
+    <footer data-testid="player-bar" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom touch-hit')}>
+    {/* The title's column has a floor at every width (13.5rem, 16.5rem,
+        20rem), so the song name always keeps at least ~75px, 120px and
+        140px; from about 1600 wide the old 1fr / 2fr / 1fr split is back
+        unchanged. Below lg the right column is just queue and mute (auto). */}
+    <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[minmax(13.5rem,1fr)_1fr_auto] lg:grid-cols-[minmax(16.5rem,1fr)_2fr_1fr] xl:grid-cols-[minmax(20rem,1fr)_2fr_1fr] gap-4 items-center">
+      {/* Now playing. No tap-to-open here: this bar only renders on an md
+          and wider window, and the phone bar owns that gesture. */}
+      <div className="flex items-center gap-3 min-w-0" data-testid="player-bar-now">
+        {unplayable ? (
+          <UnplayableMessage size="desktop" onRetry={retry} onOpenQueue={() => setQueueOpen(true)} />
+        ) : (
+          <NowPlayingSummary track={current} size="sm" />
+        )}
+        <OfflineBadge />
+        {current && user && !live && (
+          <div className="hidden sm:flex items-center gap-1 shrink-0">
+            <LikeButton liked={isLiked} onToggle={toggleLike} />
+            <AddToPlaylistMenu track={current} triggerClassName="max-xl:hidden" />
+            <ShareButton track={current} className="max-xl:hidden" />
+            <AddToPlaylistMenu track={current} more={moreItems} triggerClassName="xl:hidden" />
+          </div>
+        )}
+      </div>
+
+      {/* Controls */}
+      <div className="flex flex-col items-center gap-1">
+        <TransportControls
+          playing={isPlaying}
+          onToggle={toggle}
+          onNext={next}
+          onPrev={prev}
+          size="sm"
+          left={loopButton}
+        />
+        <PlayheadSeekBar
+          live={live}
+          duration={duration}
+          onSeek={seek}
+          labels="inline"
+          className="hidden md:flex w-full max-w-xl"
+        />
+      </div>
+
+      {/* Right column, Queue always visible; Volume desktop only. */}
+      <div className="flex justify-end items-center gap-2">
+        {!live && <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            'hidden lg:inline-flex h-8 w-8 hover:text-foreground',
+            lyricsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
+          )}
+          onClick={onLyricsClick}
+          aria-label={lyricsOpen ? 'Close lyrics' : 'Lyrics'}
+          aria-pressed={lyricsOpen}
+          title="Lyrics"
+        >
+          <LyricsIcon className="h-4 w-4" />
+        </Button>}
+        {/* Guitar tabs: the tab page for the playing song, and a second
+            click closes it again (Back to where the listener was, or home
+            when they came in from outside Ember). Closing unmounts the
+            page, which stops everything it ran; the music plays on.
+            Phones reach it from the full-screen NowPlaying view. Hidden
+            entirely when the Songsterr integration plugin is switched off
+            in Settings. */}
+        {tabsEnabled && !live && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'hidden lg:inline-flex h-8 w-8 hover:text-foreground',
+              tabsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
+            )}
+            onClick={() => (tabsOpen ? leavePage(router) : router.push(tabsHref(current.id)))}
+            aria-label="Guitar tabs"
+            aria-pressed={tabsOpen}
+            title={tabsOpen ? 'Close guitar tabs' : 'Guitar tabs'}
+          >
+            <TabsIcon className="h-4 w-4" />
+          </Button>
+        )}
+        {/* Devices: where the music plays (this computer's outputs, and
+            cast devices when there are any). Only when there is a choice;
+            below lg it lives in the More menu instead (bughunt V1). */}
+        <DevicesButton variant="bar" className="hidden lg:inline-flex h-8 w-8" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 md:h-8 md:w-8 text-muted-foreground hover:text-foreground"
+          onClick={() => setQueueOpen(true)}
+          aria-label="Queue"
+          title="Queue"
+        >
+          <QueueIcon className="h-5 w-5 md:h-4 md:w-4" />
+        </Button>
+        <VolumeControl
+          volume={volume}
+          muted={muted}
+          max={1}
+          onChange={previewVolume}
+          onCommit={setVolume}
+          onToggleMute={toggleMuted}
+          className="hidden md:flex"
+          // Mute only below lg; a shorter slider below xl.
+          sliderClassName={cn('hidden lg:block', partyActive ? 'w-29.5 xl:w-40' : 'w-20 xl:w-29.5')}
+        />
+      </div>
+    </div>
+
+    <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+    <DevicesSheet open={devicesOpen} onOpenChange={setDevicesOpen} />
+    </footer>
+  );
+}

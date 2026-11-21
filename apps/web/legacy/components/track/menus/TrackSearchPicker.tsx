@@ -1,0 +1,190 @@
+'use client';
+
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { QK } from '@/hooks/useLibrary';
+import { Input } from '@legacy/components/ui/input';
+import { Button } from '@legacy/components/ui/button';
+import { SearchIcon, PlusIcon, RefreshIcon, PlayIcon, PauseIcon } from '@legacy/components/icons';
+import { TrackRow } from '@legacy/components/track/TrackRow';
+import { usePlayer } from '@/components/player/PlayerProvider';
+import { exclusionKeys, identityKeys, isExcluded, MAX_EXCLUDE_KEYS } from '@/lib/trackIdentity';
+import type { Track } from '@/types/track';
+import { cn } from '@/lib/utils';
+
+/** A track's id keys only: the "Added" badge is for this very track, not
+ *  for another version of it. */
+const idKeys = (t: Track) => identityKeys(t).filter((k) => k.startsWith('id:'));
+
+interface Props {
+  /** Tracks already added, shown disabled with an "Added" badge so the user
+   *  doesn't add them twice. */
+  added?: Track[];
+  /** Seed tracks for recommendations when the search bar is empty. The first
+   *  YouTube track's sourceId is used as the seed (an upload's or Jamendo's
+   *  id is none: the server answers it with the chart); with none, it gives
+   *  generic/trending recommendations from the YouTube endpoint. */
+  seeds?: Track[];
+  onAdd: (track: Track) => void;
+  /** Replaces the Add button (a carlist asks Play next or Add to end).
+   *  `isAdded`: the track is in `added` already. */
+  renderAdd?: (track: Track, isAdded: boolean) => ReactNode;
+  className?: string;
+}
+
+/** Search + recommendations panel for picking tracks. Used inside the
+ *  CreatePlaylistDialog and on the playlist detail page. Behaves like the
+ *  main /search page (debounced, same `api.search`), with a recommendations
+ *  fallback when the input is empty. */
+export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, className }: Props) {
+  const { current, isPlaying, playTrack, toggle } = usePlayer();
+  const [q, setQ] = useState('');
+  const [debouncedQ, setDebouncedQ] = useState('');
+  // Bumped by the refresh button, also cycles the active seed across the
+  // available seeds, so each click feels like a fresh pull instead of the
+  // same watch-next list for the same seed.
+  const [refreshNonce, setRefreshNonce] = useState(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const searching = debouncedQ.trim().length > 0;
+
+  const searchQuery = useQuery({
+    queryKey: QK.search(debouncedQ),
+    queryFn: () => api.search(debouncedQ).then((r) => r.tracks),
+    enabled: searching,
+  });
+
+  const ytSeeds = seeds.filter((t) => t.source === 'youtube' && !!t.sourceId);
+  const seed = ytSeeds.length > 0 ? ytSeeds[refreshNonce % ytSeeds.length] : undefined;
+  const seedSourceId = seed?.sourceId;
+  const recsQuery = useQuery({
+    queryKey: [...QK.recommended(seedSourceId), refreshNonce] as const,
+    queryFn: () => api.getRecommended(seedSourceId).then((r) => r.tracks),
+    enabled: !searching,
+  });
+
+  const refreshRecs = () => setRefreshNonce((n) => n + 1);
+
+  // Every key of what is already there (lib/trackIdentity: the id in any
+  // spelling, and the song itself, so another upload of it counts too).
+  const addedKeys = useMemo(() => new Set(exclusionKeys(added)), [added]);
+  const addedIds = useMemo(() => new Set(added.flatMap(idKeys)), [added]);
+  // Recommendations must never suggest a song already in the playlist (by id OR
+  // variant: a different upload of the same track). Search results keep showing
+  // the "Added" badge so a deliberate search still gives feedback.
+  const list = searching
+    ? searchQuery.data
+    : (recsQuery.data ?? []).filter((t) => !isExcluded(t, addedKeys));
+  // Playing one of these previews just that song, then radio carries on
+  // from it: radio must not bring back what is already here either.
+  const preview = (t: Track) =>
+    playTrack(t, undefined, { type: 'single', exclude: exclusionKeys(added, MAX_EXCLUDE_KEYS) });
+  const loading = searching ? searchQuery.isFetching : recsQuery.isFetching;
+
+  return (
+    <div className={cn('flex flex-col gap-3 min-h-0', className)}>
+      <div className="relative">
+        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search for songs to add…"
+          className="pl-10"
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
+          {searching
+            ? `Results for "${debouncedQ}"`
+            : ytSeeds.length > 0
+              ? 'Recommended for this playlist'
+              : 'Recommended'}
+        </div>
+        {!searching && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={refreshRecs}
+            disabled={recsQuery.isFetching}
+            aria-label="Refresh recommendations"
+            title="Refresh recommendations"
+          >
+            <RefreshIcon className={cn('h-3.5 w-3.5', recsQuery.isFetching && 'animate-spin')} />
+          </Button>
+        )}
+      </div>
+
+      {/* Wrapper provides visual padding above + below the scrollable element
+          so the native scrollbar's rounded thumb tips don't touch the edges. */}
+      {/* A shrinkable flex column, so inside a height-capped dialog the list
+          gives up height and scrolls rather than running under the footer
+          (bughunt V7); its own max-h still caps it on a page. */}
+      <div className="flex min-h-0 flex-col py-3">
+        <div className="flex flex-col gap-1 overflow-y-auto max-h-96 md:max-h-[60vh] pr-2">
+          {loading && !list?.length && (
+          <div className="text-sm text-muted-foreground py-6 text-center">Loading…</div>
+        )}
+        {!loading && !list?.length && (
+          <div className="text-sm text-muted-foreground py-6 text-center">
+            {searching ? 'No results.' : 'Nothing to recommend yet.'}
+          </div>
+        )}
+        {(list ?? []).map((t) => {
+          const isAdded = idKeys(t).some((k) => addedIds.has(k));
+          const playing = current?.id === t.id;
+          return (
+            <TrackRow
+              key={t.id}
+              track={t}
+              density="compact"
+              active={playing}
+              // The picker's rows are not click-to-play (a stray click
+              // while adding songs would hijack playback), so it keeps its
+              // own preview button in the trailing slot and passes no
+              // onPlay. The tighter padding and its own hover colour ride
+              // on className.
+              className="px-2 py-1.5 hover:bg-accent/60"
+              trailing={
+                <>
+                  {/* Preview play/pause: plays just this track (then flows into radio,
+                      minus what is already here). */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => (playing ? toggle() : preview(t))}
+                    aria-label={playing && isPlaying ? 'Pause' : 'Play'}
+                    className={cn('h-8 w-8 shrink-0', playing ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground')}
+                  >
+                    {playing && isPlaying ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
+                  </Button>
+                  {renderAdd ? (
+                    renderAdd(t, isAdded)
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onAdd(t)}
+                      disabled={isAdded}
+                      className={cn('h-8 shrink-0 gap-1', isAdded && 'text-muted-foreground')}
+                    >
+                      {isAdded ? 'Added' : (<><PlusIcon className="h-3.5 w-3.5" /> Add</>)}
+                    </Button>
+                  )}
+                </>
+              }
+            />
+          );
+        })}
+        </div>
+      </div>
+    </div>
+  );
+}

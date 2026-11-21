@@ -1,0 +1,936 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
+import { LiveTabScore, type LiveTabScoreProps } from './LiveTabScore';
+
+// AlphaTab needs a real browser, so this is a fake of the few members the
+// tab page uses: the settings it is built with, its events (fired by the
+// test), the external media output the playhead is fed to, the tick lookup
+// a click is resolved through, and the bounds follow-scroll reads.
+const at = vi.hoisted(() => ({
+  apis: [] as FakeApi[],
+  ready: true,
+  /** The score the fake importer reads out of the downloaded bytes. Null:
+   *  the two-track guitar and bass file every other test uses. */
+  score: null as ({ tracks: object[] } & Record<string, unknown>) | null,
+}));
+
+/** A score with one instrument per name. `tab` off is a score-only file (a
+ *  MusicXML export with no string and fret numbers, a drum part), which
+ *  AlphaTab cannot draw with the Tab stave profile alone. */
+function fakeScore(names: string[], tab = true) {
+  return {
+    tempo: 96,
+    masterBars: [{ keySignature: -1, keySignatureType: 1 }],
+    tracks: names.map((name, index) => ({
+      index,
+      name,
+      playbackInfo: { program: index === 0 ? 30 : 33 },
+      staves: [{ tuning: [64, 59, 55, 50, 45, 38], showTablature: tab }],
+    })),
+  };
+}
+
+type Handler = (arg?: unknown) => void;
+class Emitter {
+  fns: Handler[] = [];
+  on(fn: Handler) {
+    this.fns.push(fn);
+  }
+  fire(arg?: unknown) {
+    this.fns.forEach((f) => f(arg));
+  }
+}
+interface FakeApi {
+  settings: {
+    display: Record<string, unknown>;
+    notation: Record<string, unknown>;
+    player: Record<string, unknown>;
+    core: Record<string, unknown>;
+  };
+  scoreLoaded: Emitter;
+  postRenderFinished: Emitter;
+  error: Emitter;
+  playerReady: Emitter;
+  playerPositionChanged: Emitter;
+  beatMouseDown: Emitter;
+  playedBeatChanged: Emitter;
+  player: { output: { handler: Record<string, unknown> | null; updatePosition: ReturnType<typeof vi.fn> } };
+  play: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
+  updateSettings: ReturnType<typeof vi.fn>;
+  render: ReturnType<typeof vi.fn>;
+  renderTracks: ReturnType<typeof vi.fn>;
+  renderScore: (score: { tracks: object[] }, tracks: number[]) => void;
+  playerState: number;
+  score: { tracks: object[] } | null;
+  tracks: object[];
+  tickCache: { findBeat: ReturnType<typeof vi.fn> } & Record<string, unknown>;
+  renderer: { boundsLookup: { getBeatAtPos: ReturnType<typeof vi.fn> } & Record<string, unknown> };
+  tickPosition: number;
+  loaded: { tracks: number[] } | null;
+  /** Every `timePosition` AlphaTab was told to seek to (tab ms). */
+  seeks: number[];
+  midiLoaded: Emitter;
+  isReadyForPlayback: boolean;
+  playbackSpeed: number;
+  highlightPlaybackRange: ReturnType<typeof vi.fn>;
+  clearPlaybackRangeHighlight: ReturnType<typeof vi.fn>;
+}
+
+vi.mock('@coderline/alphatab', () => {
+  const bar2 = { id: 'mb2' };
+  // Two rows of two bars, two beats a bar (host pixels): the geometry the
+  // drag snaps against. Master bar k starts at k * 3840 ticks (2.5 s at
+  // 96 bpm); a bar's second beat is 1920 ticks (1.25 s) in.
+  const beats: { startTick: number; voice: { bar: { masterBar: { start: number } } }; nextBeat?: unknown; previousBeat?: unknown }[] = [];
+  const systems = [0, 1].map((row) => ({
+    realBounds: { x: 0, y: row * 140, w: 400, h: 100 },
+    bars: [0, 1].map((col) => {
+      const masterBar = { start: (row * 2 + col) * 3840 };
+      return {
+        visualBounds: { x: col * 200, y: row * 140 + 10, w: 200, h: 80 },
+        bars: [
+          {
+            beats: [0, 1].map((i) => {
+              const beat = { startTick: i * 1920, voice: { bar: { masterBar } } };
+              beats.push(beat);
+              return { onNotesX: col * 200 + 20 + i * 80, beat };
+            }),
+          },
+        ],
+      };
+    }),
+  }));
+  beats.forEach((b, i) => {
+    b.previousBeat = beats[i - 1] ?? null;
+    b.nextBeat = beats[i + 1] ?? null;
+  });
+  const defaultScore = () => ({
+    tempo: 96,
+    masterBars: [{ keySignature: -1, keySignatureType: 1 }],
+    tracks: [
+      { index: 0, name: 'Guitar', playbackInfo: { program: 30 }, staves: [{ tuning: [64, 59, 55, 50, 45, 38], tuningName: 'Guitar Dropped D Tuning', showTablature: true }] },
+      { index: 1, name: 'Bass', playbackInfo: { program: 33 }, staves: [{ tuning: [43, 38, 33, 26], showTablature: true }] },
+    ],
+  });
+  class AlphaTabApi {
+    settings: FakeApi['settings'];
+    scoreLoaded = new Emitter();
+    postRenderFinished = new Emitter();
+    error = new Emitter();
+    playerReady = new Emitter();
+    playerPositionChanged = new Emitter();
+    beatMouseDown = new Emitter();
+    playedBeatChanged = new Emitter();
+    player = { output: { handler: null, updatePosition: vi.fn() } };
+    play = vi.fn();
+    pause = vi.fn();
+    updateSettings = vi.fn();
+    render = vi.fn();
+    renderTracks = vi.fn();
+    playerState = 0;
+    score: FakeApi['score'] = null;
+    tracks: object[] = [];
+    loaded: FakeApi['loaded'] = null;
+    tickPosition = 0;
+    seeks: number[] = [];
+    midiLoaded = new Emitter();
+    isReadyForPlayback = at.ready;
+    playbackSpeed = 1;
+    highlightPlaybackRange = vi.fn();
+    clearPlaybackRangeHighlight = vi.fn();
+    // A seek, as AlphaTab's own transport takes one: its cursor snaps there.
+    set timePosition(ms: number) {
+      this.seeks.push(ms);
+    }
+    get timePosition() {
+      return this.seeks.at(-1) ?? 0;
+    }
+    tickCache = {
+      masterBars: [{ tempoChanges: [{ tick: 0, tempo: 96 }] }],
+      getMasterBarStart: (mb: { start?: number }) => (mb === bar2 ? 3840 : (mb?.start ?? 0)),
+      getRelativeBeatPlaybackRange: (b: { startTick?: number }) => ({ startTick: b?.startTick ?? 1920 }),
+      // The beat sounding at a tick, as AlphaTab's MidiTickLookup answers.
+      findBeat: vi.fn((_tracks: Set<number>, tick: number) => {
+        const at = [...beats].reverse().find((b) => b.voice.bar.masterBar.start + b.startTick <= tick);
+        return at ? { beat: at } : null;
+      }),
+    };
+    renderer = {
+      boundsLookup: {
+        findBeat: () => ({ barBounds: { masterBarBounds: { visualBounds: { x: 2000, y: 1500, w: 300, h: 120 } } } }),
+        staffSystems: systems,
+        // AlphaTab's own lookup: the beat to the left of x on the row at y.
+        getBeatAtPos: vi.fn((x: number, y: number) => {
+          const sys = systems.find((s) => y >= s.realBounds.y && y <= s.realBounds.y + s.realBounds.h);
+          const all = sys?.bars.flatMap((b) => b.bars[0].beats) ?? [];
+          return [...all].reverse().find((b) => b.onNotesX <= x)?.beat ?? all[0]?.beat ?? null;
+        }),
+      },
+    };
+    constructor(_host: HTMLElement, settings: FakeApi['settings']) {
+      this.settings = {
+        core: settings.core,
+        display: { ...settings.display },
+        notation: { ...settings.notation },
+        player: settings.player,
+      };
+      at.apis.push(this as unknown as FakeApi);
+    }
+    /** AlphaTab's own "read these bytes and draw them" shortcut. */
+    load(_bytes: Uint8Array, tracks: number[]) {
+      this.renderScore(at.score ?? defaultScore(), tracks);
+    }
+    renderScore(score: { tracks: object[] }, tracks: number[]) {
+      this.loaded = { tracks };
+      this.score = score;
+      // AlphaTab renders nothing at all for an index the score has no
+      // instrument for, and then throws inside its layout.
+      this.tracks = tracks.map((i) => score.tracks[i]).filter(Boolean);
+      if (this.tracks.length === 0) {
+        this.error.fire(new Error('can\'t access property "staves", e is undefined'));
+        return;
+      }
+      this.scoreLoaded.fire(score);
+      this.postRenderFinished.fire();
+    }
+    destroy() {}
+  }
+  return {
+    AlphaTabApi,
+    Settings: class {},
+    importer: {
+      ScoreLoader: {
+        loadScoreFromBytes: () => at.score ?? defaultScore(),
+      },
+    },
+    PlayerMode: { EnabledExternalMedia: 3 },
+    ScrollMode: { Off: 0, Continuous: 1 },
+    StaveProfile: { Tab: 'tab', ScoreTab: 'score-tab' },
+    LayoutMode: { Page: 'page', Horizontal: 'horizontal' },
+    TabRhythmMode: { ShowWithBars: 'bars' },
+    NotationElement: new Proxy({}, { get: (_t, k) => String(k) }),
+    _bar2: bar2,
+  };
+});
+
+const bar2Beat = async () => {
+  const mod = (await import('@coderline/alphatab')) as unknown as { _bar2: object };
+  return { playbackStart: 0, voice: { bar: { masterBar: mod._bar2 } } };
+};
+
+const realWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+beforeAll(() => {
+  // AlphaTab waits for its host to have a width before drawing.
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 800 });
+  globalThis.fetch = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]))) as typeof fetch;
+});
+afterAll(() => {
+  if (realWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', realWidth);
+});
+
+beforeEach(() => {
+  at.apis.length = 0;
+  at.ready = true;
+  at.score = null;
+});
+
+function props(over: Partial<LiveTabScoreProps> = {}): LiveTabScoreProps {
+  return {
+    url: '/api/tabs/files/t1/download',
+    staff: 'tab',
+    scroll: 'vertical',
+    track: 0,
+    scale: 0.95,
+    offsetMs: 0,
+    follows: true,
+    playing: false,
+    position: 0,
+    duration: 180,
+    onSeek: vi.fn(),
+    ...over,
+  };
+}
+
+async function mount(over: Partial<LiveTabScoreProps> = {}) {
+  const p = props(over);
+  const view = render(<LiveTabScore {...p} />);
+  await waitFor(() => expect(view.getByTestId('tab-score').dataset.status).toBe('ready'));
+  const api = at.apis[0];
+  api.playerReady.fire();
+  return { view, api, p };
+}
+
+describe('LiveTabScore settings', () => {
+  it('draws in external media mode: AlphaTab never plays, seeks or scrolls on its own', async () => {
+    const { api } = await mount();
+    expect(api.settings.player).toMatchObject({
+      enablePlayer: true,
+      playerMode: 3,
+      enableCursor: true,
+      enableUserInteraction: false,
+      scrollMode: 0,
+    });
+    expect(api.settings.core).toMatchObject({ useWorkers: false, engine: 'svg' });
+  });
+
+  it('Tab, vertical page layout, at the given scale, with Ember colours', async () => {
+    const { api } = await mount();
+    expect(api.settings.display).toMatchObject({ staveProfile: 'tab', layoutMode: 'page', scale: 0.95 });
+    expect(api.settings.display.resources).toMatchObject({ mainGlyphColor: expect.stringMatching(/^rgba\(/) });
+    expect(api.settings.notation.rhythmMode).toBe('bars');
+  });
+
+  // A tab with no tablature in it (a MusicXML export carrying only standard
+  // notation, a drum part) draws nothing at all under AlphaTab's Tab stave
+  // profile: its layout ends up with no staff and throws
+  // (TypeError: can't access property "staves"). The score's own staff is
+  // kept instead, so the page shows the music.
+  it('a file with no tablature keeps its standard staff instead of drawing nothing', async () => {
+    at.score = fakeScore(['Piano'], false);
+    const { view, api } = await mount();
+    expect(api.settings.display.staveProfile).toBe('score-tab');
+    expect(view.getByTestId('tab-score').dataset.status).toBe('ready');
+  });
+
+  it('still draws Tab alone when the file has tablature', async () => {
+    at.score = fakeScore(['Guitar', 'Bass']);
+    const { api } = await mount();
+    expect(api.settings.display.staveProfile).toBe('tab');
+  });
+
+  // The picker is filled from the score on screen, so switching tabs can
+  // carry an instrument index the new file has no track for. AlphaTab then
+  // renders no track at all and throws in its layout.
+  it('clamps an instrument index the file has no track for', async () => {
+    at.score = fakeScore(['Guitar', 'Bass']);
+    const { view, api } = await mount({ track: 5 });
+    expect(api.loaded?.tracks).toEqual([1]);
+    expect(view.getByTestId('tab-score').dataset.status).toBe('ready');
+  });
+
+  it('switching to an instrument the file does not have draws the last one it does', async () => {
+    at.score = fakeScore(['Guitar', 'Bass']);
+    const { view, api, p } = await mount({ track: 0 });
+    view.rerender(<LiveTabScore {...p} track={7} />);
+    await waitFor(() => expect(api.renderTracks).toHaveBeenCalledWith([api.score!.tracks[1]]));
+  });
+
+  it('switching to a score-only instrument keeps its standard staff', async () => {
+    at.score = {
+      tempo: 96,
+      masterBars: [{ keySignature: 0, keySignatureType: 0 }],
+      tracks: [
+        { index: 0, name: 'Guitar', playbackInfo: { program: 30 }, staves: [{ tuning: [64, 59, 55, 50, 45, 38], showTablature: true }] },
+        { index: 1, name: 'Piano', playbackInfo: { program: 1 }, staves: [{ tuning: [], showTablature: false }] },
+      ],
+    };
+    const { view, api, p } = await mount({ track: 0 });
+    expect(api.settings.display.staveProfile).toBe('tab');
+    view.rerender(<LiveTabScore {...p} track={1} />);
+    await waitFor(() => expect(api.renderTracks).toHaveBeenCalled());
+    expect(api.settings.display.staveProfile).toBe('score-tab');
+  });
+
+  it('switching to Horizontal and Tab + Score re-lays out the same score', async () => {
+    const { view, api, p } = await mount();
+    const resources = api.settings.display.resources;
+    view.rerender(<LiveTabScore {...p} scroll="horizontal" staff="score-tab" />);
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
+    // AlphaTab's own RenderingResources instance stays: replacing it with a
+    // plain object made the real re-render throw.
+    expect(api.settings.display.resources).toBe(resources);
+    expect(api.settings.display).toMatchObject({ layoutMode: 'horizontal', staveProfile: 'score-tab' });
+    expect(at.apis).toHaveLength(1);
+    expect(view.getByTestId('tab-score').dataset.scroll).toBe('horizontal');
+  });
+
+  it('loads the chosen track, and switches instrument without reloading', async () => {
+    const { view, api, p } = await mount({ track: 1 });
+    expect(api.loaded?.tracks).toEqual([1]);
+    expect(api.renderTracks).not.toHaveBeenCalled();
+    view.rerender(<LiveTabScore {...p} track={0} />);
+    expect(api.renderTracks).toHaveBeenCalledWith([api.score!.tracks[0]]);
+  });
+
+  it('reports the score for the header', async () => {
+    const onScore = vi.fn();
+    await mount({ onScore });
+    expect(onScore).toHaveBeenCalledWith(expect.objectContaining({ tempo: 96, key: 'D minor' }));
+  });
+});
+
+describe('LiveTabScore sync', () => {
+  it('feeds Ember’s playhead to the cursor, shifted by the offset', async () => {
+    const { api } = await mount({ position: 10, offsetMs: 1500 });
+    // The first position places the line (a seek); after that it is fed.
+    await waitFor(() => expect(api.seeks).toEqual([11_500]));
+    await waitFor(() => expect(api.player.output.updatePosition).toHaveBeenCalledWith(11_500));
+  });
+
+  it('steady playback is fed as playback, not as seeks', async () => {
+    const { api } = await mount({ position: 10, playing: true });
+    // The first placement, and the one that confirms it (below).
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    const fed = api.player.output.updatePosition.mock.calls.length;
+    await waitFor(() => expect(api.player.output.updatePosition.mock.calls.length).toBeGreaterThan(fed + 3));
+    expect(api.seeks).toHaveLength(2);
+  });
+
+  it('playing, a seek is confirmed once AlphaTab has drawn it: seeks arriving while it draws tangled its steps', async () => {
+    // Three quick 5 s jumps left the line a bar off, crawling back over
+    // two seconds (tests/tabs-sync-live.test.mjs). Once the seeks stop,
+    // the line is placed again where the song is.
+    const { view, api, p } = await mount({ position: 30, playing: true });
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    view.rerender(<LiveTabScore {...p} position={35} />);
+    view.rerender(<LiveTabScore {...p} position={40} />);
+    await waitFor(() => expect(api.seeks.length).toBeGreaterThanOrEqual(4));
+    await new Promise((r) => setTimeout(r, 300));
+    const last = api.seeks.at(-1)!;
+    expect(last).toBeGreaterThanOrEqual(40_000);
+    expect(last).toBeLessThan(40_000 + 400);
+    const settled = api.seeks.length;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(api.seeks).toHaveLength(settled);
+  });
+
+  it('a jump a beat ahead reaches AlphaTab as a seek, so the line jumps instead of sliding', async () => {
+    const { view, api, p } = await mount({ position: 30, playing: true });
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    view.rerender(<LiveTabScore {...p} position={30.9} />);
+    await waitFor(() => expect(api.seeks).toHaveLength(3));
+    expect(api.seeks[2]).toBeGreaterThanOrEqual(30_900);
+    expect(api.seeks[2]).toBeLessThan(31_000);
+  });
+
+  it('the sync nudge moves the line at once', async () => {
+    const { view, api, p } = await mount({ position: 30 });
+    await waitFor(() => expect(api.seeks).toEqual([30_000]));
+    view.rerender(<LiveTabScore {...p} offsetMs={500} />);
+    await waitFor(() => expect(api.seeks).toEqual([30_000, 30_500]));
+  });
+
+  it('a fresh layout or a reloaded score places the line again', async () => {
+    const { api } = await mount({ position: 30 });
+    await waitFor(() => expect(api.seeks).toHaveLength(1));
+    api.postRenderFinished.fire();
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    api.midiLoaded.fire();
+    await waitFor(() => expect(api.seeks).toHaveLength(3));
+  });
+
+  it('at a practice speed the line runs on at that speed between reports, and glides at it', async () => {
+    const { view, api, p } = await mount({ position: 30, playing: true, rate: 0.5 });
+    await waitFor(() => expect(api.playbackSpeed).toBe(0.5));
+    await waitFor(() => expect(api.seeks.length).toBeGreaterThan(0));
+    // Half a second of wall clock is a quarter second of song. AlphaTab
+    // is fed its own clock (tab time over its speed): it multiplies by the
+    // speed again to find the tick, so its line is at the song's place.
+    await new Promise((r) => setTimeout(r, 500));
+    const last = api.player.output.updatePosition.mock.lastCall?.[0] as number;
+    expect(last * api.playbackSpeed).toBeGreaterThan(30_150);
+    expect(last * api.playbackSpeed).toBeLessThan(30_450);
+    expect(api.seeks[0] * 0.5).toBeCloseTo(30_000, -2);
+    view.rerender(<LiveTabScore {...p} position={30} playing rate={1} />);
+    await waitFor(() => expect(api.playbackSpeed).toBe(1));
+  });
+
+  it('runs the line on from when the player reported the position, not from when the page rendered it', async () => {
+    // Reported 200 ms before the page got to it (a busy main thread): the
+    // song is already 200 ms further on.
+    const { api } = await mount({ position: 30, playing: true, positionAt: performance.now() - 200 });
+    await waitFor(() => expect(api.seeks.length).toBeGreaterThan(0));
+    expect(api.seeks[0]).toBeGreaterThanOrEqual(30_200);
+    expect(api.seeks[0]).toBeLessThan(30_200 + 150);
+  });
+
+  it('a lined-up tab glides at the pace of the recording against the tab', async () => {
+    // The tab at 96 bpm (2.5 s a bar), the band 4% faster, from 3.2 s.
+    const bar = 2500 / 1.04;
+    const timing = { offsetMs: 3200, bpm: 99.84, confidence: 0.9, bars: [0, 1, 2].map((i) => ({ bar: i, ms: 3200 + i * bar })) };
+    const { api } = await mount({ position: 4, playing: true, timing });
+    api.tickCache.masterBars = [0, 1, 2].map((i) => ({ start: i * 3840, tempoChanges: i ? [] : [{ tick: 0, tempo: 96 }], masterBar: { index: i } }));
+    api.midiLoaded.fire();
+    await waitFor(() => expect(api.playbackSpeed).toBeCloseTo(1.04, 3));
+    // And is fed its own clock at that speed: 0.8 s into the song's bar
+    // 1 is 832 ms of tab.
+    await waitFor(() => expect(api.seeks.length).toBeGreaterThan(0));
+    expect(api.seeks.at(-1)! * api.playbackSpeed).toBeGreaterThan(832 - 1);
+    expect(api.seeks.at(-1)! * api.playbackSpeed).toBeLessThan(832 + 120);
+  });
+
+  it('marks the loop’s bars on the score, and clears the mark', async () => {
+    const beat = (bar: number, i: number) => ({ id: `b${bar}.${i}` });
+    at.score = {
+      tempo: 96,
+      masterBars: [{}],
+      tracks: [
+        {
+          index: 0,
+          name: 'Guitar',
+          playbackInfo: { program: 30 },
+          staves: [
+            {
+              tuning: [64, 59, 55, 50, 45, 40],
+              showTablature: true,
+              bars: [0, 1, 2, 3].map((bar) => ({ voices: [{ beats: [beat(bar, 0), beat(bar, 1), beat(bar, 2)] }] })),
+            },
+          ],
+        },
+      ],
+    };
+    const { view, api, p } = await mount({ highlight: { start: 1, end: 2 } });
+    await waitFor(() => expect(api.highlightPlaybackRange).toHaveBeenCalled());
+    expect(api.highlightPlaybackRange).toHaveBeenLastCalledWith({ id: 'b1.0' }, { id: 'b2.2' });
+    // A new layout draws the score afresh: the mark goes on again.
+    api.highlightPlaybackRange.mockClear();
+    api.postRenderFinished.fire();
+    expect(api.highlightPlaybackRange).toHaveBeenCalledTimes(1);
+    view.rerender(<LiveTabScore {...p} highlight={null} />);
+    await waitFor(() => expect(api.clearPlaybackRangeHighlight).toHaveBeenCalled());
+  });
+
+  it('while choosing a loop, a click on the score picks its bar instead of seeking', async () => {
+    const onBarPick = vi.fn();
+    const onSeek = vi.fn();
+    const { view, api, p } = await mount({ onBarPick, onSeek });
+    api.beatMouseDown.fire({ playbackStart: 0, voice: { bar: { index: 3, masterBar: { index: 3 } } } });
+    expect(onBarPick).toHaveBeenCalledWith(3);
+    expect(onSeek).not.toHaveBeenCalled();
+    // Done choosing: clicks seek again.
+    view.rerender(<LiveTabScore {...p} onBarPick={null} />);
+    api.beatMouseDown.fire(await bar2Beat());
+    expect(onSeek).toHaveBeenCalled();
+    expect(onBarPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands the page the tab timeline (bars and tempo) once the score is loaded', async () => {
+    const onTimeline = vi.fn();
+    const { api } = await mount({ onTimeline });
+    expect(onTimeline).not.toHaveBeenCalled();
+    api.tickCache.masterBars = [
+      { start: 0, end: 3840, tempoChanges: [{ tick: 0, tempo: 96 }], masterBar: { index: 0, timeSignatureNumerator: 4, timeSignatureDenominator: 4, section: { text: 'Intro' } } },
+      { start: 3840, end: 7680, tempoChanges: [{ tick: 3840, tempo: 96 }], masterBar: { index: 1, timeSignatureNumerator: 4, timeSignatureDenominator: 4 } },
+    ];
+    api.midiLoaded.fire();
+    expect(onTimeline).toHaveBeenCalledTimes(1);
+    const t = onTimeline.mock.calls[0][0];
+    expect(t.bars.map((b: { index: number; startMs: number; section: string | null }) => [b.index, b.startMs, b.section])).toEqual([
+      [0, 0, 'Intro'],
+      [1, 2500, null],
+    ]);
+    expect(t.tempos[0]).toEqual({ tick: 0, bpm: 96 });
+  });
+
+  it('nothing is sought before AlphaTab can take a seek', async () => {
+    at.ready = false;
+    const { api } = await mount({ position: 30 });
+    await waitFor(() => expect(api.player.output.updatePosition).toHaveBeenCalledWith(30_000));
+    expect(api.seeks).toEqual([]);
+    api.isReadyForPlayback = true;
+    await waitFor(() => expect(api.seeks).toEqual([30_000]));
+  });
+
+  it('holds the line on the first beat while the song is still before the tab, then runs it', async () => {
+    // An intro the tab does not have: the tab starts 3.2 s in. Told to
+    // play, AlphaTab glided its line through the first beat during the
+    // silence and was 200 ms ahead when the music came in.
+    const { view, api, p } = await mount({ position: 1, playing: true, offsetMs: -3200 });
+    await waitFor(() => expect(api.player.output.updatePosition.mock.calls.length).toBeGreaterThan(2));
+    expect(api.play).not.toHaveBeenCalled();
+    view.rerender(<LiveTabScore {...p} position={4} playing />);
+    await waitFor(() => expect(api.play).toHaveBeenCalled());
+  });
+
+  it('mirrors play and pause, so the cursor runs and stops with the song', async () => {
+    const { view, api, p } = await mount();
+    view.rerender(<LiveTabScore {...p} playing />);
+    await waitFor(() => expect(api.play).toHaveBeenCalled());
+    view.rerender(<LiveTabScore {...p} playing={false} />);
+    await waitFor(() => expect(api.pause).toHaveBeenCalled());
+  });
+
+  it('a seek from the player bar moves the cursor while paused', async () => {
+    const { view, api, p } = await mount({ position: 5 });
+    view.rerender(<LiveTabScore {...p} position={60} />);
+    await waitFor(() => expect(api.seeks.at(-1)).toBe(60_000));
+  });
+
+  it('clicking a beat seeks the song to where it sounds, once', async () => {
+    const onSeek = vi.fn();
+    const { api } = await mount({ onSeek, offsetMs: 1000 });
+    api.beatMouseDown.fire(await bar2Beat());
+    // Bar 2 plus half a bar at 96 bpm is 3.75 s of tab; the tab runs 1 s ahead.
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    expect(onSeek.mock.calls[0][0]).toBeCloseTo(2.75);
+  });
+
+  it('AlphaTab’s own transport calls never reach the player', async () => {
+    const onSeek = vi.fn();
+    const { api } = await mount({ onSeek });
+    const handler = api.player.output.handler as { seekTo: (ms: number) => void; play: () => void; pause: () => void };
+    handler.seekTo(0);
+    handler.play();
+    handler.pause();
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+
+  it('a song that is not playing: no feed, no seek, no cursor', async () => {
+    const onSeek = vi.fn();
+    const { view, api } = await mount({ follows: false, onSeek, position: 30 });
+    api.beatMouseDown.fire(await bar2Beat());
+    await new Promise((r) => setTimeout(r, 120));
+    expect(onSeek).not.toHaveBeenCalled();
+    expect(api.player.output.updatePosition).not.toHaveBeenCalled();
+    expect(view.getByTestId('tab-score').className).toContain('[&_.at-cursor-beat]:hidden');
+  });
+});
+
+describe('LiveTabScore follow-scroll', () => {
+  it('after a re-layout (Horizontal, a resize) it finds the playing beat again', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const { api } = await mount({ getPageScroller: () => page });
+    api.playedBeatChanged.fire({});
+    const before = (page.scrollTo as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    api.postRenderFinished.fire();
+    expect((page.scrollTo as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before + 1);
+  });
+
+  it('paused, a seek brings the line into view (a refresh, the player bar)', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const scrolls = () => (page.scrollTo as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    const { view, api, p } = await mount({ position: 50, getPageScroller: () => page });
+    // Opened (or refreshed) mid-song while paused: the line is shown.
+    await waitFor(() => expect(scrolls()).toBeGreaterThan(0));
+    const before = scrolls();
+    view.rerender(<LiveTabScore {...p} position={70} getPageScroller={() => page} />);
+    await waitFor(() => expect(api.seeks.at(-1)).toBe(70_000));
+    expect(scrolls()).toBeGreaterThan(before);
+  });
+
+  it('after a seek the view goes straight to the line; while it plays on it scrolls smoothly', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const scrollTo = page.scrollTo as unknown as ReturnType<typeof vi.fn>;
+    const { view, api, p } = await mount({ position: 10, playing: true, getPageScroller: () => page });
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    view.rerender(<LiveTabScore {...p} position={60} getPageScroller={() => page} />);
+    await waitFor(() => expect(api.seeks).toHaveLength(3));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: 'instant' }));
+    act(() => api.playedBeatChanged.fire({}));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: 'smooth' }));
+  });
+
+  it('paused, a line already on screen stays put: a click there does not move the page', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    // Tall enough that the line's bar (y 1500..1620 in the fake) is on screen.
+    Object.defineProperty(page, 'clientHeight', { configurable: true, get: () => 2000 });
+    const { view, api, p } = await mount({ position: 50, getPageScroller: () => page });
+    await waitFor(() => expect(api.seeks).toHaveLength(1));
+    view.rerender(<LiveTabScore {...p} position={51} getPageScroller={() => page} />);
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    expect(page.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('paused and left alone, the page is not pulled back to the line', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const scrolls = () => (page.scrollTo as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    await mount({ position: 50, getPageScroller: () => page });
+    await waitFor(() => expect(scrolls()).toBeGreaterThan(0));
+    const before = scrolls();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(scrolls()).toBe(before);
+  });
+
+  it('vertical: scrolls the page scroller down to the playing bar', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const { api } = await mount({ getPageScroller: () => page, getTopInset: () => 60 });
+    api.playedBeatChanged.fire({});
+    expect(page.scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: expect.any(Number), behavior: 'smooth' }));
+    expect((page.scrollTo as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0].left).toBeUndefined();
+  });
+
+  it('horizontal: scrolls its own row sideways, never the page', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const { view, api } = await mount({ scroll: 'horizontal', getPageScroller: () => page });
+    const row = view.getByTestId('tab-score');
+    row.scrollTo = vi.fn() as never;
+    api.playedBeatChanged.fire({});
+    expect(row.scrollTo).toHaveBeenCalledWith(expect.objectContaining({ left: expect.any(Number) }));
+    expect(page.scrollTo).not.toHaveBeenCalled();
+  });
+});
+
+// ── dragging the line ─────────────────────────────────────────────────────
+// Host pixels and client pixels coincide here (happy-dom lays nothing out):
+// row 1 is y 0..100 with beats at x 20, 100 (bar 1) and 220, 300 (bar 2);
+// row 2 is y 140..240 with bars 3 and 4 laid out the same.
+const ptr = (x: number, y: number, pointerId = 1) => ({ pointerId, clientX: x, clientY: y, button: 0, pointerType: 'mouse' });
+
+async function mountForDrag(over: Partial<LiveTabScoreProps> = {}) {
+  const m = await mount(over);
+  const handle = await waitFor(() => m.view.getByTestId('tab-line-handle'));
+  // Opening the page places the line (and scrolls to it) once.
+  await waitFor(() => expect(m.api.seeks.length).toBeGreaterThan(0));
+  return { ...m, handle };
+}
+
+describe('LiveTabScore drag the line', () => {
+  it('a handle rides on the line when this song is playing here', async () => {
+    const { handle } = await mountForDrag();
+    expect(handle.className).toContain('tab-line-handle');
+  });
+
+  it('no handle when another song is playing', async () => {
+    const { view } = await mount({ follows: false });
+    expect(view.queryByTestId('tab-line-handle')).toBeNull();
+  });
+
+  it('dragging shows a ghost snapped to the nearest beat with its time, and seeks once on release', async () => {
+    const onSeek = vi.fn();
+    const { view, handle } = await mountForDrag({ onSeek, offsetMs: 1000 });
+    fireEvent.pointerDown(handle, ptr(20, 50));
+    expect(view.queryByTestId('tab-line-ghost')).toBeNull();
+    // Across the row break: row 2, nearest the beat at x 300 (bar 4, beat 2).
+    fireEvent.pointerMove(handle, ptr(120, 120));
+    fireEvent.pointerMove(handle, ptr(290, 200));
+    const ghost = view.getByTestId('tab-line-ghost');
+    expect(ghost.style.left).toBe('300px');
+    expect(ghost.style.top).toBe('150px');
+    expect(ghost.style.height).toBe('80px');
+    // Bar 4 beat 2 is 3 * 2.5 + 1.25 = 8.75 s of tab; the tab runs 1 s ahead.
+    expect(view.getByTestId('tab-line-time').textContent).toBe('0:07');
+    expect(onSeek).not.toHaveBeenCalled();
+    fireEvent.pointerUp(handle, ptr(290, 200));
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    expect(onSeek.mock.calls[0][0]).toBeCloseTo(7.75);
+    expect(view.queryByTestId('tab-line-ghost')).toBeNull();
+    expect(view.queryByTestId('tab-line-time')).toBeNull();
+  });
+
+  it('the time label follows the snap: the first beat of bar 2 reads 0:02', async () => {
+    const { view, handle } = await mountForDrag();
+    fireEvent.pointerDown(handle, ptr(20, 50));
+    fireEvent.pointerMove(handle, ptr(230, 40));
+    expect(view.getByTestId('tab-line-ghost').style.left).toBe('220px');
+    expect(view.getByTestId('tab-line-time').textContent).toBe('0:02');
+  });
+
+  it('a press that barely moves is a click: it seeks where the press landed, like click-to-seek', async () => {
+    const onSeek = vi.fn();
+    const { api, view, handle } = await mountForDrag({ onSeek });
+    fireEvent.pointerDown(handle, ptr(305, 50));
+    fireEvent.pointerMove(handle, ptr(307, 51));
+    expect(view.queryByTestId('tab-line-ghost')).toBeNull();
+    fireEvent.pointerUp(handle, ptr(307, 51));
+    expect(api.renderer.boundsLookup.getBeatAtPos).toHaveBeenCalledWith(305, 50);
+    // Bar 2, beat 2: 2.5 + 1.25 s.
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    expect(onSeek.mock.calls[0][0]).toBeCloseTo(3.75);
+  });
+
+  it('Escape drops the drag: no seek, no ghost', async () => {
+    const onSeek = vi.fn();
+    const { view, handle } = await mountForDrag({ onSeek });
+    fireEvent.pointerDown(handle, ptr(20, 50));
+    fireEvent.pointerMove(handle, ptr(290, 200));
+    expect(view.getByTestId('tab-line-ghost')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(view.queryByTestId('tab-line-ghost')).toBeNull();
+    fireEvent.pointerUp(handle, ptr(290, 200));
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+
+  it('a cancelled pointer (the browser took the gesture) seeks nothing', async () => {
+    const onSeek = vi.fn();
+    const { view, handle } = await mountForDrag({ onSeek });
+    fireEvent.pointerDown(handle, ptr(20, 50));
+    fireEvent.pointerMove(handle, ptr(290, 200));
+    fireEvent.pointerCancel(handle, ptr(290, 200));
+    fireEvent.pointerUp(handle, ptr(290, 200));
+    expect(onSeek).not.toHaveBeenCalled();
+    expect(view.queryByTestId('tab-line-ghost')).toBeNull();
+  });
+
+  it('touch works the same way', async () => {
+    const onSeek = vi.fn();
+    const { handle } = await mountForDrag({ onSeek });
+    const touch = (x: number, y: number) => ({ ...ptr(x, y, 7), pointerType: 'touch' });
+    fireEvent.pointerDown(handle, touch(20, 50));
+    fireEvent.pointerMove(handle, touch(95, 60));
+    fireEvent.pointerUp(handle, touch(95, 60));
+    expect(onSeek).toHaveBeenCalledTimes(1);
+    expect(onSeek.mock.calls[0][0]).toBeCloseTo(1.25);
+  });
+
+  it('follow-scroll holds still during a drag and picks up again after', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const scrollTo = page.scrollTo as unknown as ReturnType<typeof vi.fn>;
+    const { api, handle } = await mountForDrag({ getPageScroller: () => page });
+    scrollTo.mockClear();
+    fireEvent.pointerDown(handle, ptr(20, 50));
+    fireEvent.pointerMove(handle, ptr(290, 200));
+    act(() => api.playedBeatChanged.fire({}));
+    expect(scrollTo).not.toHaveBeenCalled();
+    fireEvent.pointerUp(handle, ptr(290, 200));
+    act(() => api.playedBeatChanged.fire({}));
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+  });
+
+  it('follow-scroll also resumes after a cancelled drag', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const scrollTo = page.scrollTo as unknown as ReturnType<typeof vi.fn>;
+    const { api, handle } = await mountForDrag({ getPageScroller: () => page });
+    scrollTo.mockClear();
+    fireEvent.pointerDown(handle, ptr(20, 50));
+    fireEvent.pointerMove(handle, ptr(290, 200));
+    act(() => api.playedBeatChanged.fire({}));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    act(() => api.playedBeatChanged.fire({}));
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('LiveTabScore keyboard', () => {
+  it('Right and Left move the line by one beat and seek; the player’s own arrow keys stay out of it', async () => {
+    const onSeek = vi.fn();
+    const { view, api } = await mount({ onSeek });
+    const outside = vi.fn();
+    window.addEventListener('keydown', outside);
+    const score = view.getByTestId('tab-score');
+    expect(score.tabIndex).toBe(0);
+    api.tickPosition = 3840; // bar 2, beat 1
+    fireEvent.keyDown(score, { key: 'ArrowRight' });
+    expect(onSeek).toHaveBeenLastCalledWith(3.75);
+    // A quick second press steps on from there, not from a stale playhead.
+    fireEvent.keyDown(score, { key: 'ArrowRight' });
+    expect(onSeek).toHaveBeenLastCalledWith(5);
+    fireEvent.keyDown(score, { key: 'ArrowLeft' });
+    expect(onSeek).toHaveBeenLastCalledWith(3.75);
+    expect(outside).not.toHaveBeenCalled();
+    window.removeEventListener('keydown', outside);
+  });
+
+  it('with a stale target, Left steps back from where the playhead is', async () => {
+    const onSeek = vi.fn();
+    const { view, api } = await mount({ onSeek });
+    api.tickPosition = 3 * 3840; // bar 4, beat 1
+    fireEvent.keyDown(view.getByTestId('tab-score'), { key: 'ArrowLeft' });
+    expect(onSeek).toHaveBeenCalledWith(6.25);
+    expect(api.tickCache.findBeat).toHaveBeenCalledWith(new Set([0]), 3 * 3840 + 10);
+  });
+
+  it('a song that is not playing here: arrows are left to the page', async () => {
+    const onSeek = vi.fn();
+    const { view } = await mount({ onSeek, follows: false });
+    const score = view.getByTestId('tab-score');
+    expect(score.hasAttribute('tabindex')).toBe(false);
+    fireEvent.keyDown(score, { key: 'ArrowRight' });
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+});
+
+describe('LiveTabScore resize', () => {
+  /** Luka's report, 2026-09-24: "ResizeObserver loop completed with
+   *  undelivered notifications" on /tabs. Our observer re-drew the score
+   *  INSIDE its callback, which changes the host's size while the browser is
+   *  still delivering size changes (AlphaTab observes the same element), so
+   *  the browser gave up on the rest for that frame and raised the error,
+   *  which then went out as an automatic report. The re-draw belongs in the
+   *  next frame. */
+  it('re-draws on a width change in the next frame, not inside the observer callback', async () => {
+    const callbacks: (() => void)[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: () => void) {
+          callbacks.push(cb);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    let width = 800;
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width });
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      frames.push(cb);
+      return frames.length;
+    });
+    try {
+      const { api } = await mount();
+      await waitFor(() => expect(callbacks.length).toBeGreaterThan(0));
+      api.render.mockClear();
+      frames.length = 0;
+
+      width = 500;
+      callbacks.forEach((cb) => cb());
+      expect(api.render).not.toHaveBeenCalled();
+
+      frames.splice(0).forEach((f) => f(0));
+      expect(api.render).toHaveBeenCalledTimes(1);
+    } finally {
+      raf.mockRestore();
+      vi.unstubAllGlobals();
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 800 });
+    }
+  });
+});
+
+describe('LiveTabScore closing', () => {
+  it('the page closing destroys AlphaTab once and stops feeding its cursor', async () => {
+    const { view, api } = await mount({ playing: true, position: 3 });
+    const destroy = vi.spyOn(api as unknown as { destroy: () => void }, 'destroy');
+    await waitFor(() => expect(api.player.output.updatePosition).toHaveBeenCalled());
+    view.unmount();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    const fed = api.player.output.updatePosition.mock.calls.length;
+    const seeks = api.seeks.length;
+    await new Promise((r) => setTimeout(r, 200));
+    expect(api.player.output.updatePosition.mock.calls.length).toBe(fed);
+    expect(api.seeks.length).toBe(seeks);
+    expect(api.play).not.toHaveBeenCalledAfter(destroy);
+  });
+
+  it('a layout change still loading when the page closes is not drawn on the destroyed score', async () => {
+    const { view, api, p } = await mount();
+    const destroy = vi.spyOn(api as unknown as { destroy: () => void }, 'destroy');
+    api.render.mockClear();
+    api.updateSettings.mockClear();
+    view.rerender(<LiveTabScore {...p} staff="score-tab" />);
+    view.unmount();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.updateSettings).not.toHaveBeenCalled();
+    expect(api.render).not.toHaveBeenCalled();
+  });
+
+  it('closing mid-download stops the download', async () => {
+    let signal: AbortSignal | undefined;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    }) as typeof fetch;
+    try {
+      const view = render(<LiveTabScore {...props()} />);
+      await waitFor(() => expect(signal).toBeDefined());
+      expect(signal!.aborted).toBe(false);
+      view.unmount();
+      expect(signal!.aborted).toBe(true);
+      expect(at.apis).toHaveLength(0);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});

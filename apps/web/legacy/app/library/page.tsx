@@ -1,0 +1,101 @@
+'use client';
+
+import { useState } from 'react';
+import { HeaderIconButton } from '@legacy/components/page/HeaderIconButton';
+import { CollectionShelf } from '@legacy/components/library/CollectionShelf';
+import { UploadTrackDialog } from '@legacy/components/track/menus/UploadTrackDialog';
+import { CarlistButton } from '@legacy/components/session/CarlistButton';
+import { UploadIcon } from '@legacy/components/icons';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { useCollections } from '@/hooks/useCollections';
+import { useOfflineStore } from '@/stores/useOfflineStore';
+import { useOnline } from '@/lib/useOnline';
+import { hrefFor, iconFor, refFromPinId } from '@/lib/collections';
+import { EmptyState } from '@legacy/components/page/EmptyState';
+import { PageTitle } from '@legacy/components/page/PageTitle';
+
+export default function LibraryPage() {
+  const { user } = useAuth();
+  const { system, playlists } = useCollections();
+  const isOnline = useOnline();
+  const pins = useOfflineStore((s) => s.pins);
+  const [uploadOpen, setUploadOpen] = useState(false);
+
+  if (!user) return <EmptyState>Sign in to see your library</EmptyState>;
+
+  // Offline: pins are the offline store's own record of what was downloaded,
+  // so this renders correctly even before any online query has ever
+  // succeeded (a cold start with no network yet).
+  if (!isOnline) {
+    return (
+      <div>
+        <PageTitle className="mb-2">Your library</PageTitle>
+        <p className="text-sm text-muted-foreground mb-6">Offline. Showing what is downloaded.</p>
+        <CollectionShelf
+          title="Downloaded"
+          size="md"
+          items={pins.map((p) => {
+            const ref = refFromPinId(p.id);
+            return {
+              title: p.name,
+              subtitle: 'Downloaded',
+              href: hrefFor(ref),
+              cover: { src: null, icon: iconFor(ref) },
+              badge: 'downloaded' as const,
+              size: 'md' as const,
+            };
+          })}
+          empty={
+            <EmptyState>
+              No downloaded playlists. Go online and tap “Download for offline” on a playlist to pin it.
+            </EmptyState>
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <PageTitle>Your library</PageTitle>
+        <div className="flex shrink-0 items-center gap-cluster">
+          <CarlistButton />
+          <HeaderIconButton onClick={() => setUploadOpen(true)} aria-label="Upload songs">
+            <UploadIcon className="size-5" />
+          </HeaderIconButton>
+        </div>
+      </div>
+      <UploadTrackDialog open={uploadOpen} onOpenChange={setUploadOpen} />
+
+      <CollectionShelf
+        title="Your collections"
+        size="lg"
+        items={system.map(({ title, subtitle, href, icon, downloaded }) => ({
+          title,
+          subtitle,
+          href,
+          cover: { src: null, icon },
+          badge: downloaded ? ('downloaded' as const) : undefined,
+          size: 'lg' as const,
+        }))}
+      />
+
+      <CollectionShelf
+        title="Playlists"
+        size="md"
+        items={playlists.map(({ title, subtitle, href, artworkUrl, downloaded, sharing, sharedBy }) => ({
+          title,
+          subtitle,
+          href,
+          cover: { src: artworkUrl, icon: null },
+          badge: downloaded ? ('downloaded' as const) : undefined,
+          shared: !!sharing,
+          sharedBy,
+          size: 'md' as const,
+        }))}
+        empty={<EmptyState>No playlists yet</EmptyState>}
+      />
+    </div>
+  );
+}
