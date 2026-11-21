@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react';
+'use client';
+
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { TrackList, type TrackActions } from '@/components/track/TrackList';
-import { CheckIcon, CopyIcon, ShuffleIcon, SortIcon } from '@/components/icons';
+import { CheckIcon, CopyIcon, SearchIcon, ShuffleIcon, SortIcon } from '@/components/icons';
 import { ReorderList } from '@/components/track/ReorderList';
 import { Checkbox } from '@/components/primitives/Checkbox';
 import { SortMenu } from '@/components/track/SortMenu';
@@ -13,6 +15,9 @@ import { ACTION_CIRCLE, ACTION_CIRCLE_ON, ActionBar } from '@/components/page/Ac
 import { DownloadButton, type DownloadButtonProps } from '@/components/library/DownloadButton';
 import type { CollectionCoverProps } from '@/components/primitives/CollectionCover';
 import { cn } from '@/lib/utils';
+import { filterTracks } from '@/lib/listSearch';
+import { readListSearchDesign, type ListSearchDesign } from '@/lib/listSearchDesign';
+import { ListSearchBox } from '@/components/library/ListSearchBox';
 import type { PlaybackContext, PlaylistPerson, Track } from '@/types/track';
 import { EmptyState, type EmptyStateProps } from '@/components/page/EmptyState';
 
@@ -157,7 +162,23 @@ export function CollectionPage({
   const editingOrder = !!reorder?.editing && !list;
   const canSelect = !!selection && !list && tracks.length > 0 && !editingOrder;
   const selecting = canSelect && selection.selecting;
-  const canReorder = !!reorder && !list && tracks.length > 1 && !selecting;
+  // Search in the list: plain list only (not an import's rows, not select or
+  // edit-order mode, which work on the whole list).
+  const [design, setDesign] = useState<ListSearchDesign>('a');
+  useEffect(() => setDesign(readListSearchDesign()), []);
+  const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const canSearch = !list && tracks.length > 0 && !editingOrder && !selecting;
+  const q = canSearch ? query : '';
+  const filtering = q.trim() !== '';
+  const shown = useMemo(() => filterTracks(tracks, q), [tracks, q]);
+  const boxVisible = canSearch && (design === 'b' || searchOpen || filtering);
+  // Playing a filtered row queues the whole list, starting at that song.
+  const listActions = useMemo<TrackActions>(
+    () => (filtering ? { ...trackActions, onPlay: (t, _l, c) => trackActions.onPlay(t, tracks, c) } : trackActions),
+    [filtering, trackActions, tracks],
+  );
+  const canReorder = !!reorder && !list && tracks.length > 1 && !selecting && !filtering;
   const showSort = !!sort && !list && tracks.length > 0 && !editingOrder;
   // The ⋯ menu: the collection's own modes first, then the page's rows.
   // It steps aside while selecting, for the Done pill.
@@ -170,7 +191,7 @@ export function CollectionPage({
           : []),
         ...(moreActions ?? []),
       ];
-  const hasActions = !hideActions || !!download || !!actions || menu.length > 0 || selecting || showSort;
+  const hasActions = !hideActions || canSearch || !!download || !!actions || menu.length > 0 || selecting || showSort;
   return (
     <div>
       <div className="flex flex-col gap-stack">
@@ -213,6 +234,21 @@ export function CollectionPage({
               >
                 <CheckIcon className="size-4" />
                 Done
+              </button>
+            )}
+            {canSearch && design === 'a' && (
+              <button
+                type="button"
+                data-testid="list-search-toggle"
+                aria-label="Search in this list"
+                aria-pressed={searchOpen}
+                onClick={() => {
+                  if (searchOpen) setQuery('');
+                  setSearchOpen(!searchOpen);
+                }}
+                className={cn(ACTION_CIRCLE, searchOpen && ACTION_CIRCLE_ON)}
+              >
+                <SearchIcon className="h-5 w-5" />
               </button>
             )}
             <MoreMenu actions={menu} label={moreLabel} name={moreName} />
@@ -271,11 +307,23 @@ export function CollectionPage({
                 )}
               </div>
             )}
+            {boxVisible && (
+              <ListSearchBox
+                value={query}
+                onChange={setQuery}
+                onEscape={() => setSearchOpen(false)}
+                autoFocus={design === 'a'}
+              />
+            )}
             {editingOrder && reorder ? (
               <ReorderList tracks={reorder.tracks} onMove={reorder.onMove} />
+            ) : filtering && shown.length === 0 ? (
+              <EmptyState action={{ label: 'Clear', onClick: () => setQuery('') }}>
+                No songs match &ldquo;{q.trim()}&rdquo;
+              </EmptyState>
             ) : (
               <TrackList
-                tracks={tracks}
+                tracks={shown}
                 showRank={showRank}
                 context={context}
                 onRemove={onRemoveTrack}
@@ -284,7 +332,7 @@ export function CollectionPage({
                 selection={canSelect ? selection : undefined}
                 addedLabel={addedLabel}
                 addedBy={addedBy}
-                {...trackActions}
+                {...listActions}
               />
             )}
           </div>

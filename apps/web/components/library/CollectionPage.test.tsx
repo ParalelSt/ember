@@ -439,3 +439,84 @@ describe('CollectionPage empty state', () => {
     expect(screen.queryByRole('heading', { name: 'Nothing liked yet' })).toBeNull();
   });
 });
+
+describe('CollectionPage search in list', () => {
+  const four = [
+    track('a', 'Slow Static'),
+    track('b', 'Harbor Lights', 'Đorđe'),
+    track('c', 'Harbor Rain'),
+    track('d', 'Quiet'),
+  ];
+  const reorderProps = { editing: false, tracks: four, onStart: noop, onDone: noop, onMove: noop };
+
+  function setDesign(d?: 'a' | 'b') {
+    window.localStorage.clear();
+    window.history.replaceState({}, '', d ? `/?listsearch=${d}` : '/');
+  }
+
+  it('variant b shows the box by default; filters as you type on title, artist', () => {
+    setDesign('b');
+    render(<CollectionPage {...props({ tracks: four })} />);
+    const box = screen.getByLabelText('Search in this list');
+    expect(document.activeElement).not.toBe(box);
+    fireEvent.change(box, { target: { value: 'harbor' } });
+    expect(screen.getAllByTestId('track-row')).toHaveLength(2);
+    fireEvent.change(box, { target: { value: 'dorde' } });
+    expect(screen.getAllByTestId('track-row')).toHaveLength(1);
+  });
+
+  it('variant a (the default) hides the box until the icon is tapped, then focuses it', () => {
+    setDesign();
+    render(<CollectionPage {...props({ tracks: four })} />);
+    expect(screen.queryByLabelText('Search in this list', { selector: 'input' })).toBeNull();
+    fireEvent.click(screen.getByTestId('list-search-toggle'));
+    expect(document.activeElement).toBe(screen.getByLabelText('Search in this list', { selector: 'input' }));
+  });
+
+  it('empty state with the query and a Clear button; the x and Escape clear', () => {
+    setDesign('a');
+    render(<CollectionPage {...props({ tracks: four })} />);
+    fireEvent.click(screen.getByTestId('list-search-toggle'));
+    const box = screen.getByLabelText('Search in this list', { selector: 'input' });
+    fireEvent.change(box, { target: { value: 'zzz' } });
+    expect(screen.getByText(/No songs match/).textContent).toContain('“zzz”');
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getAllByTestId('track-row')).toHaveLength(4);
+
+    fireEvent.change(box, { target: { value: 'quiet' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear list search' }));
+    expect(screen.getAllByTestId('track-row')).toHaveLength(4);
+
+    fireEvent.change(box, { target: { value: 'quiet' } });
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(screen.getAllByTestId('track-row')).toHaveLength(4);
+    expect(screen.queryByLabelText('Search in this list', { selector: 'input' })).toBeNull();
+  });
+
+  it('playing a filtered row hands the full list and that song', () => {
+    setDesign('b');
+    const onPlay = vi.fn();
+    render(
+      <CollectionPage
+        {...props({ tracks: four, trackActions: { currentId: null, isPlaying: false, likedIds: new Set(), onPlay, onToggle: noop } })}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Search in this list'), { target: { value: 'rain' } });
+    fireEvent.click(screen.getAllByTestId('track-row')[0]);
+    const [t, list] = onPlay.mock.calls[0];
+    expect(t.id).toBe('t:c');
+    expect(list).toBe(four);
+    expect(list.indexOf(t)).toBe(2);
+  });
+
+  it('Edit order is unavailable while a filter is active', () => {
+    setDesign('b');
+    render(<CollectionPage {...props({ tracks: four, reorder: reorderProps })} />);
+    fireEvent.click(screen.getByTestId('more-menu'));
+    expect(screen.getByRole('menuitem', { name: 'Edit order' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Search in this list'), { target: { value: 'harbor' } });
+    // No other rows in the menu, so the whole ⋯ steps aside.
+    expect(screen.queryByTestId('more-menu')).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Edit order' })).toBeNull();
+  });
+});
