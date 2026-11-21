@@ -1,22 +1,48 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ActionSheet, ActionSheetItem, type MenuAction } from '@/components/ui/action-sheet';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Avatar } from '@/components/primitives/Avatar';
 import { Artwork } from '@/components/primitives/Artwork';
 import { SectionHeader } from '@/components/page/SectionHeader';
-import { CheckIcon, ListPlusIcon, MusicIcon, NextIcon, PlusIcon } from '@/components/icons';
+import { CheckIcon, CopyIcon, ListPlusIcon, MoreIcon, MusicIcon, NextIcon, PlusIcon, ShareIcon } from '@/components/icons';
 import { personLabel, whosePhone, type AddPosition } from '@/lib/carlist';
 import { cn } from '@/lib/utils';
 import type { PlaylistPerson, SessionQueueItem, SessionState, Track } from '@/types/track';
+
+export type CarHead = 'a' | 'b' | 'c' | null;
+const CARHEAD_KEY = 'ember.design.carhead';
+
+/** TEMPORARY design switch: ?carhead=a|b|c (remembered in localStorage).
+ *  No param and nothing stored = today's header. */
+export function useCarHead(): CarHead {
+  const [look, setLook] = useState<CarHead>(null);
+  useEffect(() => {
+    const ok = (v: string | null): v is 'a' | 'b' | 'c' => v === 'a' || v === 'b' || v === 'c';
+    let next: CarHead = null;
+    try {
+      const q = new URLSearchParams(window.location.search).get('carhead');
+      if (ok(q)) {
+        next = q;
+        try {
+          localStorage.setItem(CARHEAD_KEY, q);
+        } catch {}
+      } else if (q === 'off') {
+        try {
+          localStorage.removeItem(CARHEAD_KEY);
+        } catch {}
+      } else {
+        const v = localStorage.getItem(CARHEAD_KEY);
+        if (ok(v)) next = v;
+      }
+    } catch {}
+    setLook(next);
+  }, []);
+  return look;
+}
 
 const AVATAR = 'bg-ember text-ember-foreground';
 
@@ -292,6 +318,14 @@ export function CarlistLive({
   const { session, queue, members } = state;
   const nowItem = queue[session.nowIndex];
   const inCar = Math.max(1, members.length);
+  const look = useCarHead();
+  const canEnd = session.isHost && session.active;
+  const copyCode = () => {
+    try {
+      void navigator.clipboard?.writeText(session.code);
+    } catch {}
+  };
+  const pill = 'h-9 shrink-0 gap-inset rounded-full px-block';
 
   return (
     <div className="flex max-w-2xl flex-col gap-stack pt-block md:pt-0" data-testid="carlist-live-page">
@@ -305,29 +339,112 @@ export function CarlistLive({
               <span className="truncate" data-testid="in-the-car">
                 {inCar} in the car · {whosePhone(session.hostName, session.isHost)}
               </span>
+              {look === 'c' && (
+                <button
+                  type="button"
+                  onClick={copyCode}
+                  data-testid="code-copy"
+                  aria-label={`Copy code ${session.code}`}
+                  className="inline-flex shrink-0 items-center gap-inset rounded-full bg-secondary px-row py-inset font-mono text-xs font-bold tracking-widest text-secondary-foreground hover:bg-secondary/80"
+                >
+                  {session.code} <CopyIcon className="size-3" />
+                </button>
+              )}
             </div>
+            {look === 'a' && (
+              <button
+                type="button"
+                onClick={copyCode}
+                data-testid="code-copy"
+                aria-label={`Copy code ${session.code}`}
+                className="mt-inset text-xs text-muted-foreground hover:text-foreground"
+              >
+                Code <span className="font-mono tracking-widest">{session.code}</span>
+              </button>
+            )}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-cluster">
-            <button
-              type="button"
+          {look === null && (
+            <div className="flex shrink-0 flex-col items-end gap-cluster">
+              <button
+                type="button"
+                onClick={onShare}
+                data-testid="code-chip"
+                aria-label={`Invite: code ${session.code}`}
+                className="rounded-full border border-border px-row py-inset font-mono text-xs font-bold tracking-widest transition-colors hover:bg-card"
+              >
+                {session.code}
+              </button>
+              {session.isHost && session.active && (
+                <Button variant="ghost" size="sm" onClick={onEnd} className="text-muted-foreground hover:text-foreground">
+                  End carlist
+                </Button>
+              )}
+            </div>
+          )}
+          {look === 'a' && (
+            <div className="flex shrink-0 items-center gap-cluster" data-testid="carhead-a">
+              <Button
+                variant="secondary"
+                className={pill}
+                onClick={onShare}
+                data-testid="code-chip"
+                aria-label={`Invite: code ${session.code}`}
+              >
+                <ShareIcon className="size-4" /> Invite
+              </Button>
+              {canEnd && (
+                <Button variant="outline" className={cn(pill, 'text-destructive hover:text-destructive')} onClick={onEnd}>
+                  End
+                </Button>
+              )}
+            </div>
+          )}
+          {look === 'c' && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label="More"
+                data-testid="carhead-more"
+                className="grid size-10 shrink-0 place-items-center rounded-full outline-none hover:bg-card focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <MoreIcon className="size-5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={onShare} data-testid="code-chip" aria-label={`Invite: code ${session.code}`}>
+                  <ShareIcon className="size-4" /> Invite (code {session.code})
+                </DropdownMenuItem>
+                {canEnd && (
+                  <DropdownMenuItem onClick={onEnd} className="text-destructive focus:text-destructive">
+                    End carlist
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+
+        {look === 'b' && (
+          <div className="flex items-center gap-cluster" data-testid="carhead-b">
+            <Button
+              variant="secondary"
+              className={cn(pill, 'flex-1')}
               onClick={onShare}
               data-testid="code-chip"
               aria-label={`Invite: code ${session.code}`}
-              className="rounded-full border border-border px-row py-inset font-mono text-xs font-bold tracking-widest transition-colors hover:bg-card"
             >
-              {session.code}
-            </button>
-            {session.isHost && session.active && (
-              <Button variant="ghost" size="sm" onClick={onEnd} className="text-muted-foreground hover:text-foreground">
+              <ShareIcon className="size-4" /> Invite · <span className="font-mono tracking-widest">{session.code}</span>
+            </Button>
+            {canEnd && (
+              <Button variant="ghost" className={cn(pill, 'flex-1 text-destructive hover:text-destructive')} onClick={onEnd}>
                 End carlist
               </Button>
             )}
           </div>
-        </div>
+        )}
 
         {!session.active && (
           <div className="rounded-md bg-card px-block py-row text-sm text-muted-foreground" data-testid="ended">
-            This carlist has ended.{!saved && ' You can still save the queue as a playlist.'}
+            This carlist has ended.
+            {!saved && ' You can still save the queue as a playlist.'}
           </div>
         )}
 
@@ -371,7 +488,11 @@ export function CarlistLive({
                   data-testid="queue-row"
                   data-state={isNow ? 'now' : isPast ? 'played' : 'next'}
                   aria-current={isNow ? 'true' : undefined}
-                  className={cn('flex items-center gap-row rounded-md px-row py-cluster', isNow && 'bg-card', isPast && 'opacity-40')}
+                  className={cn(
+                    'flex items-center gap-row rounded-md px-row py-cluster',
+                    isNow && 'bg-card',
+                    isPast && 'opacity-40',
+                  )}
                 >
                   <span
                     className={cn('w-6 shrink-0 text-right text-sm tabular-nums', isNow ? 'text-ember' : 'text-muted-foreground')}

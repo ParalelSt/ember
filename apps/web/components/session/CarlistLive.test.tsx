@@ -209,3 +209,70 @@ describe('AddChoice', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 });
+
+describe('CarlistLive: ?carhead= design looks (temporary)', () => {
+  const host = { isHost: true, viewerId: 'u1' };
+  const go = (look: string | null) => {
+    try {
+      localStorage.clear();
+    } catch {}
+    window.history.replaceState({}, '', look ? `/?carhead=${look}` : '/');
+  };
+
+  it('no param: today (code chip + End carlist), no extra controls', () => {
+    go(null);
+    const p = setup({}, host);
+    expect(screen.getByTestId('code-chip')).toHaveTextContent('K7MPQ4');
+    expect(screen.queryByTestId('carhead-a')).toBeNull();
+    expect(screen.queryByTestId('carhead-b')).toBeNull();
+    expect(screen.queryByTestId('carhead-more')).toBeNull();
+    fireEvent.click(screen.getByTestId('code-chip'));
+    fireEvent.click(screen.getByRole('button', { name: 'End carlist' }));
+    expect(p.onShare).toHaveBeenCalledTimes(1);
+    expect(p.onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('a: Invite and End side by side, code as muted text', () => {
+    go('a');
+    const p = setup({}, host);
+    expect(screen.getByTestId('carhead-a')).toBeInTheDocument();
+    expect(screen.getByTestId('code-copy')).toHaveTextContent('Code K7MPQ4');
+    fireEvent.click(screen.getByRole('button', { name: /Invite/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'End' }));
+    expect(p.onShare).toHaveBeenCalledTimes(1);
+    expect(p.onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('b: a full-width row, Invite with the code, End carlist', () => {
+    go('b');
+    const p = setup({}, host);
+    const row = screen.getByTestId('carhead-b');
+    expect(row).toHaveTextContent('Invite · K7MPQ4');
+    fireEvent.click(within(row).getByTestId('code-chip'));
+    fireEvent.click(within(row).getByRole('button', { name: 'End carlist' }));
+    expect(p.onShare).toHaveBeenCalledTimes(1);
+    expect(p.onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('c: a more menu holds Invite and End; a copy pill beside the people line', () => {
+    go('c');
+    const p = setup({}, host);
+    expect(screen.getByTestId('code-copy')).toHaveTextContent('K7MPQ4');
+    fireEvent.click(screen.getByTestId('carhead-more'));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Invite/ }));
+    fireEvent.click(screen.getByTestId('carhead-more'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'End carlist' }));
+    expect(p.onShare).toHaveBeenCalledTimes(1);
+    expect(p.onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('a guest gets Invite but no End in every look', () => {
+    for (const look of ['a', 'b']) {
+      go(look);
+      const { unmount } = render(<CarlistLive {...({ state: state(), progress: 0, saved: false, onSkip() {}, onEnd() {}, onSave() {}, onShare() {} } as CarlistLiveProps)} />);
+      expect(screen.getByTestId('code-chip')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^End/ })).toBeNull();
+      unmount();
+    }
+  });
+});
