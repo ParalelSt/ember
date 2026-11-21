@@ -1,3 +1,8 @@
+# 0.7.48: Play button polish
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).**
+
 # 0.7.47: Intro fix
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

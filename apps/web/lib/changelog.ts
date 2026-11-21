@@ -26,6 +26,16 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'play-centre',
+    version: '0.7.48',
+    date: '2026-11-21',
+    title: 'Play button polish',
+    summary: 'The play arrow now sits centred in every play button.',
+    bullets: [
+      'The play arrow is centred in every play button, not nudged to the side.',
+    ],
+  },
+  {
     id: 'intro-shows',
     version: '0.7.47',
     date: '2026-11-21',
