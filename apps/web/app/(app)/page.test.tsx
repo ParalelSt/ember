@@ -291,6 +291,20 @@ describe('Home filter chips on a phone', () => {
     expect(chip('Playlists')).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('picking a chip scrolls the page back to the top', () => {
+    const scroller = document.createElement('div');
+    scroller.setAttribute('data-app-scroller', '');
+    document.body.appendChild(scroller);
+    render(<HomePage />);
+    scroller.scrollTop = 500;
+    fireEvent.click(chip('Playlists'));
+    expect(scroller.scrollTop).toBe(0);
+    scroller.scrollTop = 300;
+    fireEvent.click(chip('All'));
+    expect(scroller.scrollTop).toBe(0);
+    scroller.remove();
+  });
+
   it('Playlists keeps the quick grid and Your playlists only; All brings everything back', () => {
     render(<HomePage />);
     fireEvent.click(chip('Playlists'));

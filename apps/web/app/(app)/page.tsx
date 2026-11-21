@@ -102,6 +102,13 @@ export default function HomePage() {
   const renderTile = (t: Track, list: Track[]) => renderTrack(t, list, isDesktop ? 'tile-lg' : 'tile');
   const { user } = useAuth();
   const [filter, setFilter] = useState<HomeFilter>('all');
+  // Switching chips (All, Playlists, Mixes, Charts) starts the new view at the
+  // top, not wherever the last one was scrolled to.
+  const pickFilter = (next: HomeFilter) => {
+    setFilter(next);
+    const scroller = document.querySelector<HTMLElement>('[data-app-scroller]');
+    if (scroller) scroller.scrollTop = 0;
+  };
 
   // Reset the scroll position whenever the focus changes, going INTO a
   // focused song box (so you start at its top) and coming back OUT (so the
@@ -328,7 +335,7 @@ export default function HomePage() {
           <RowNavProvider value={{ fit: true, fullRow: true }}>{renderRow(fullRow)}</RowNavProvider>
         ) : (
           <div>
-            {chips.length > 1 && <HomeChips chips={chips} active={view.filter} onChange={setFilter} />}
+            {chips.length > 1 && <HomeChips chips={chips} active={view.filter} onChange={pickFilter} />}
             {view.quickGrid && <QuickGrid items={quick} />}
             <RowNavProvider value={{ fit: true }}>{view.rows.map(renderRow)}</RowNavProvider>
           </div>
@@ -342,7 +349,7 @@ export default function HomePage() {
         // data-home-wide lifts the shell's content width cap (the owner's
         // "full" pick): the desktop Home uses the whole main area.
         <div data-home-wide>
-          {chips.length > 1 && <HomeChips variant="desktop" chips={chips} active={view.filter} onChange={setFilter} />}
+          {chips.length > 1 && <HomeChips variant="desktop" chips={chips} active={view.filter} onChange={pickFilter} />}
           {view.quickGrid && <QuickGrid variant="desktop" items={quick} onPlay={playQuick} isPlaying={quickPlaying} />}
           <RowNavProvider value={{ fit: true }}>{view.rows.map(renderRow)}</RowNavProvider>
         </div>
