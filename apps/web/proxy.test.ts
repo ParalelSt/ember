@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn() } }));
 
-const { default: proxy, isStaticAsset, isBlockedPbPath, isPbAuthPath, isPbSignUpPath, PB_AUTH_LIMIT, PB_SIGNUP_LIMIT } = await import('./proxy');
+const { default: proxy, uiModeSwitch, isStaticAsset, isBlockedPbPath, isPbAuthPath, isPbSignUpPath, PB_AUTH_LIMIT, PB_SIGNUP_LIMIT } = await import('./proxy');
 const { _resetBuckets } = await import('./lib/rateLimitCore');
 
 /** A minimal stand-in for Next's NextURL: proxy() only reads pathname,
@@ -452,5 +452,71 @@ describe('proxy [qr sign-in]: the approve page is a signed-in page', () => {
       const res = await proxy(req(p));
       expect(res.status, p).toBe(200);
     }
+  });
+});
+
+describe('proxy [classic look]: ?ui= switches the device and comes back without it', () => {
+  const uiCookie = (res: Response) => res.headers.getSetCookie().find((c) => c.startsWith('ember_ui='));
+
+  it('sets the cookie for a year and redirects to the same URL without the parameter', async () => {
+    const res = await proxy(req('/library?ui=legacy'));
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get('location')!).pathname).toBe('/library');
+    expect(new URL(res.headers.get('location')!).search).toBe('');
+    const c = uiCookie(res)!;
+    expect(c).toContain('ember_ui=legacy');
+    expect(c).toMatch(/Path=\/(;|$)/);
+    expect(c).toMatch(/Max-Age=31536000/);
+    expect(c).toMatch(/SameSite=Lax/i);
+    expect(c).not.toMatch(/HttpOnly/i);
+  });
+
+  it('keeps the other parameters and switches back with ?ui=new', async () => {
+    const res = await proxy(req('/search?q=abba&ui=new&tab=songs'));
+    const loc = new URL(res.headers.get('location')!);
+    expect(loc.pathname).toBe('/search');
+    expect(loc.searchParams.get('q')).toBe('abba');
+    expect(loc.searchParams.get('tab')).toBe('songs');
+    expect(loc.searchParams.has('ui')).toBe(false);
+    expect(uiCookie(res)).toContain('ember_ui=new');
+  });
+
+  it('marks the cookie Secure behind an https tunnel', async () => {
+    const r = req('/?ui=legacy');
+    r.headers.set('x-forwarded-proto', 'https');
+    expect(uiCookie(await proxy(r))).toMatch(/Secure/);
+  });
+
+  it('signed out: the switch comes first, then the plain URL goes to sign in as before', async () => {
+    const first = await proxy(req('/library?ui=legacy'));
+    expect(new URL(first.headers.get('location')!).pathname).toBe('/library');
+    const second = await proxy(req('/library', { cookie: 'ember_ui=legacy' }));
+    const loc = new URL(second.headers.get('location')!);
+    expect(loc.pathname).toBe('/auth');
+    expect(loc.searchParams.get('next')).toBe('/library');
+  });
+
+  it('a /link/<token> keeps its sign-in stash after the switch', async () => {
+    const TOKEN = 'AbC_-'.repeat(8) + 'xyz';
+    const first = await proxy(req(`/link/${TOKEN}?ui=new`));
+    expect(new URL(first.headers.get('location')!).pathname).toBe(`/link/${TOKEN}`);
+    const second = await proxy(req(`/link/${TOKEN}`));
+    expect(new URL(second.headers.get('location')!).searchParams.get('next')).toBe('/link');
+    expect(second.headers.getSetCookie().some((c) => c.startsWith('ember_link='))).toBe(true);
+  });
+
+  it('leaves unknown values, API calls, /pb and non-GET requests alone', async () => {
+    expect(uiModeSwitch(req('/library?ui=old'))).toBeNull();
+    expect(uiModeSwitch(req('/api/search?ui=legacy'))).toBeNull();
+    expect(uiModeSwitch(req('/pb/api/health?ui=legacy'))).toBeNull();
+    expect(uiModeSwitch(req('/library?ui=legacy', { method: 'POST' }))).toBeNull();
+    const api = await proxy(req('/api/search?q=x&ui=legacy'));
+    expect(api.status).toBe(200);
+    expect(uiCookie(api)).toBeUndefined();
+  });
+
+  it('a page without the parameter sets no ui cookie', async () => {
+    const res = await proxy(req('/auth'));
+    expect(uiCookie(res)).toBeUndefined();
   });
 });
