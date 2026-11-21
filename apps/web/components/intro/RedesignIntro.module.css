@@ -1,0 +1,659 @@
+/* The "new design" intro pop-up. Ported from the owner-approved mockup
+   (docs/redesign-intro-mockup.html): same markup shapes, same keyframes. The
+   mockup's colours map onto the app's tokens so it follows the theme. */
+.root {
+  --i-app: var(--background);
+  --i-panel: var(--popover);
+  --i-card: color-mix(in oklab, var(--foreground) 9%, var(--background));
+  --i-line: var(--border);
+  --i-fg: var(--foreground);
+  --i-muted: var(--muted-foreground);
+  --i-faint: color-mix(in oklab, var(--muted-foreground) 55%, var(--background));
+  --i-ember: var(--ember);
+  --i-ember-soft: color-mix(in oklab, var(--ember) 16%, transparent);
+  --i-edge: color-mix(in oklab, var(--foreground) 18%, var(--background));
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(6, 5, 7, 0.62);
+}
+
+/* Phone: a bottom sheet. Desktop: a centred card (below). */
+.sheet {
+  position: fixed;
+  z-index: 61;
+  left: 10px;
+  right: 10px;
+  bottom: calc(10px + var(--safe-bottom, 0px));
+  top: calc(56px + var(--safe-top, 0px));
+  background: var(--i-panel);
+  color: var(--i-fg);
+  border: 1px solid var(--i-line);
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  outline: none;
+  animation: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (min-width: 768px) {
+  .sheet {
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    margin: auto;
+    width: min(420px, calc(100% - 32px));
+    height: min(640px, calc(100dvh - 64px));
+  }
+}
+@keyframes rise {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px 0;
+}
+.dots {
+  display: flex;
+  gap: 6px;
+}
+.dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--i-faint);
+  transition: all 0.3s;
+}
+.dots span.on {
+  width: 18px;
+  background: var(--i-ember);
+}
+.skip {
+  background: none;
+  border: 0;
+  color: var(--i-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px;
+  cursor: pointer;
+}
+.art {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
+}
+.copy {
+  padding: 4px 22px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--i-ember);
+  font-weight: 600;
+}
+.title {
+  margin: 0;
+  font-family: var(--font-heading, inherit);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-wrap: balance;
+  letter-spacing: -0.01em;
+}
+.text {
+  margin: 0;
+  color: var(--i-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+  padding: 16px;
+}
+.actions button {
+  flex: 1;
+  font: inherit;
+  font-weight: 600;
+  border-radius: 99px;
+  padding: 12px 16px;
+  border: 1px solid var(--i-line);
+  background: var(--i-card);
+  color: var(--i-fg);
+  cursor: pointer;
+}
+.actions button.primary {
+  background: var(--i-ember);
+  border-color: var(--i-ember);
+  color: #160b0a;
+}
+.actions button[hidden] {
+  display: none;
+}
+.root button:focus-visible {
+  outline: 2px solid var(--i-fg);
+  outline-offset: 2px;
+}
+.swap {
+  animation: swap 0.35s ease both;
+}
+@keyframes swap {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+}
+.swapCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* mini phone used in the art */
+.mini {
+  width: 150px;
+  height: 250px;
+  border-radius: 22px;
+  border: 2px solid var(--i-edge);
+  background: var(--i-app);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+.nav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 30px;
+  border-top: 1px solid var(--i-line);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  background: var(--i-app);
+}
+.nav b {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--i-faint);
+  transition: background 0.3s;
+}
+.nav b.on {
+  background: var(--i-ember);
+}
+.pad {
+  position: absolute;
+  inset: 12px 10px 38px;
+}
+.blk {
+  border-radius: 5px;
+  background: var(--i-card);
+}
+
+/* step 1: Home assembles */
+.s1 .blk {
+  opacity: 0;
+  animation: pop 3.6s ease infinite;
+}
+@keyframes pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  12%,
+  82% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+/* step 2: swipe between tabs */
+.strip {
+  position: absolute;
+  inset: 0 0 30px 0;
+  display: flex;
+  width: 300%;
+  animation: strip 6s ease-in-out infinite;
+}
+.strip > div {
+  width: 33.333%;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.strip h5 {
+  margin: 0 0 2px;
+  font-size: 10px;
+  font-family: var(--font-heading, inherit);
+}
+@keyframes strip {
+  0%,
+  20% {
+    transform: translateX(0);
+  }
+  33%,
+  53% {
+    transform: translateX(-33.333%);
+  }
+  66%,
+  86% {
+    transform: translateX(-66.666%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+.finger {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  top: 120px;
+  left: 100px;
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.18);
+  animation: finger 6s ease-in-out infinite;
+}
+@keyframes finger {
+  0%,
+  10% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  14% {
+    opacity: 1;
+  }
+  30% {
+    transform: translateX(-70px);
+    opacity: 1;
+  }
+  33% {
+    opacity: 0;
+  }
+  43% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  47% {
+    opacity: 1;
+  }
+  63% {
+    transform: translateX(-70px);
+    opacity: 1;
+  }
+  66%,
+  100% {
+    opacity: 0;
+  }
+}
+.navcycle b:nth-child(1) {
+  animation: n1 6s infinite;
+}
+.navcycle b:nth-child(2) {
+  animation: n2 6s infinite;
+}
+.navcycle b:nth-child(3) {
+  animation: n3 6s infinite;
+}
+@keyframes n1 {
+  0%,
+  27%,
+  94%,
+  100% {
+    background: var(--i-ember);
+  }
+  33%,
+  88% {
+    background: var(--i-faint);
+  }
+}
+@keyframes n2 {
+  0%,
+  27%,
+  66%,
+  100% {
+    background: var(--i-faint);
+  }
+  33%,
+  60% {
+    background: var(--i-ember);
+  }
+}
+@keyframes n3 {
+  0%,
+  60%,
+  94%,
+  100% {
+    background: var(--i-faint);
+  }
+  66%,
+  88% {
+    background: var(--i-ember);
+  }
+}
+
+/* step 3: tour carousel of three tips */
+.tour {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.tiplabel {
+  font-size: 12px;
+  color: var(--i-muted);
+  min-height: 16px;
+  text-align: center;
+  max-width: 260px;
+}
+.tRows .card {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #5b3a6b, #22182a);
+}
+.tRows .card + .card {
+  background: linear-gradient(135deg, #2e5b5f, #14262a);
+}
+.showall {
+  font-size: 8px;
+  color: var(--i-muted);
+  font-weight: 700;
+  animation: tap 3s ease infinite;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+@keyframes tap {
+  0%,
+  55% {
+    background: transparent;
+    color: var(--i-muted);
+  }
+  62%,
+  75% {
+    background: var(--i-ember-soft);
+    color: var(--i-ember);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.mag {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--i-card);
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  color: var(--i-fg);
+  animation: tap 3s ease infinite;
+}
+.field {
+  height: 16px;
+  border-bottom: 1px solid var(--i-faint);
+  font-size: 8px;
+  color: var(--i-fg);
+  overflow: hidden;
+  white-space: nowrap;
+  width: 0;
+  animation: type 3s steps(10) infinite;
+}
+@keyframes type {
+  0%,
+  40% {
+    width: 0;
+    border-color: var(--i-faint);
+  }
+  75%,
+  100% {
+    width: 100%;
+    border-color: var(--i-ember);
+  }
+}
+.prow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px;
+}
+.prow span {
+  font-size: 10px;
+  color: var(--i-muted);
+}
+.prow .q {
+  animation: pulse 3s ease infinite;
+}
+@keyframes pulse {
+  0%,
+  50%,
+  100% {
+    color: var(--i-muted);
+    transform: none;
+  }
+  62% {
+    color: var(--i-ember);
+    transform: scale(1.35);
+  }
+}
+
+/* step 4: classic switch */
+.legacy {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+.setrow {
+  width: 200px;
+  background: var(--i-card);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+}
+.setrow small {
+  display: block;
+  font-weight: 400;
+  color: var(--i-muted);
+  font-size: 10px;
+  margin-top: 2px;
+}
+.toggle {
+  width: 34px;
+  height: 20px;
+  border-radius: 99px;
+  background: var(--i-faint);
+  position: relative;
+  animation: tbg 5s ease infinite;
+}
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  animation: tknob 5s ease infinite;
+}
+@keyframes tbg {
+  0%,
+  35%,
+  100% {
+    background: var(--i-faint);
+  }
+  45%,
+  85% {
+    background: var(--i-ember);
+  }
+}
+@keyframes tknob {
+  0%,
+  35%,
+  100% {
+    transform: none;
+  }
+  45%,
+  85% {
+    transform: translateX(14px);
+  }
+}
+.pair {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.ui {
+  width: 64px;
+  height: 100px;
+  border-radius: 12px;
+  border: 2px solid var(--i-edge);
+  background: var(--i-app);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: opacity 0.3s;
+}
+.ui.new {
+  animation: uin 5s ease infinite;
+}
+.ui.old {
+  animation: uold 5s ease infinite;
+}
+@keyframes uin {
+  0%,
+  35%,
+  100% {
+    opacity: 1;
+    border-color: var(--i-ember);
+  }
+  45%,
+  85% {
+    opacity: 0.35;
+    border-color: var(--i-edge);
+  }
+}
+@keyframes uold {
+  0%,
+  35%,
+  100% {
+    opacity: 0.35;
+    border-color: var(--i-edge);
+  }
+  45%,
+  85% {
+    opacity: 1;
+    border-color: var(--i-ember);
+  }
+}
+.ui i {
+  display: block;
+  border-radius: 3px;
+  background: var(--i-card);
+}
+.ui.old i {
+  border-radius: 0;
+  background: color-mix(in oklab, var(--i-card) 80%, var(--i-fg));
+}
+.cap {
+  font-size: 10px;
+  color: var(--i-muted);
+  text-align: center;
+  margin-top: 4px;
+}
+
+/* step 5: feedback */
+.fb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.bubble {
+  background: var(--i-card);
+  border-radius: 14px 14px 14px 4px;
+  padding: 10px 12px;
+  font-size: 12px;
+  max-width: 200px;
+  line-height: 1.4;
+  animation: pop2 4s ease infinite;
+}
+.bubble.me {
+  border-radius: 14px 14px 4px 14px;
+  background: var(--i-ember-soft);
+  color: var(--i-fg);
+  align-self: flex-end;
+  animation-delay: 0.6s;
+}
+@keyframes pop2 {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  10%,
+  85% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.fixbtn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 99px;
+  padding: 9px 16px;
+  border: 1px solid var(--i-ember);
+  background: transparent;
+  color: var(--i-ember);
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root *,
+  .root *::before,
+  .root *::after,
+  .sheet {
+    animation: none !important;
+  }
+  .s1 .blk,
+  .bubble {
+    opacity: 1;
+  }
+}

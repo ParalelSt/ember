@@ -59,6 +59,9 @@ interface UiState {
   /** Set by an approval, taken once by Settings > Devices (DevicesPanel). */
   justApproved: JustApproved | null;
   setJustApproved: (device: JustApproved | null) => void;
+  /** The "new design" intro pop-up (components/intro), ephemeral. */
+  introOpen: boolean;
+  setIntroOpen: (open: boolean) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -81,6 +84,8 @@ export const useUiStore = create<UiState>()(
       closeApprove: () => set({ approveRequest: null }),
       justApproved: null,
       setJustApproved: (justApproved) => set({ justApproved }),
+      introOpen: false,
+      setIntroOpen: (introOpen) => set({ introOpen }),
     }),
     {
       name: 'ember.ui.v1',

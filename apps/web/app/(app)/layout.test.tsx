@@ -47,6 +47,7 @@ vi.mock('@/components/import/TransferStatus', () => ({ TransferStatus: () => nul
 vi.mock('@/components/auth/QrScanHost', () => ({ QrScanHost: () => null }));
 vi.mock('@/components/DeviceVersionReporter', () => ({ DeviceVersionReporter: () => <span data-testid="device-version-reporter" /> }));
 vi.mock('@/components/auth/ApproveSheetHost', () => ({ ApproveSheetHost: () => null }));
+vi.mock('@/components/intro/RedesignIntroHost', () => ({ RedesignIntroHost: () => null }));
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 

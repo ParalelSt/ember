@@ -21,6 +21,7 @@ import { UpdateReminder } from '@/components/update/UpdateReminder';
 import { QrScanHost } from '@/components/auth/QrScanHost';
 import { DeviceVersionReporter } from '@/components/DeviceVersionReporter';
 import { ApproveSheetHost } from '@/components/auth/ApproveSheetHost';
+import { RedesignIntroHost } from '@/components/intro/RedesignIntroHost';
 import { hydrateOfflineStore } from '@/lib/offline';
 import { logger } from '@/lib/logger/client';
 import { useUiStore } from '@/stores/useUiStore';
@@ -173,6 +174,8 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
       <DeviceVersionReporter />
       {/* The approve sheet for a scanned or typed sign-in code. */}
       <ApproveSheetHost />
+      {/* The "new design" intro: once per device, and from Settings > Help. */}
+      <RedesignIntroHost />
     </div>
   );
 }

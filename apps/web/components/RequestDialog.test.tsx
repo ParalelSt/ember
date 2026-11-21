@@ -84,6 +84,13 @@ describe('RequestDialog: default kind', () => {
   });
 });
 
+describe('RequestDialog: initialKind', () => {
+  it('opens on the Fix labels when asked', () => {
+    render(<RequestDialog open onOpenChange={() => {}} initialKind="fix" />);
+    expect(screen.getByText('Recommended approach')).toBeInTheDocument();
+  });
+});
+
 describe('RequestDialog: no optional extra box', () => {
   it('has no "Anything else" field on either kind', async () => {
     render(<RequestDialog open onOpenChange={() => {}} />);
