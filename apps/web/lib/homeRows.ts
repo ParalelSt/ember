@@ -6,7 +6,12 @@ export function fitCount(width: number, minTile: number, gap: number): number {
   return Math.max(1, Math.floor((width + gap) / (minTile + gap)));
 }
 
-/** The full grid of one row: Home with `?row=<key>`. */
+/** The full grid of one row of a page: that page with `?row=<key>`. */
+export function rowHref(path: string, key: string): string {
+  return `${path}?row=${encodeURIComponent(key)}`;
+}
+
+/** The full grid of one Home row: Home with `?row=<key>`. */
 export function homeRowHref(key: string): string {
-  return `/?row=${encodeURIComponent(key)}`;
+  return rowHref('/', key);
 }

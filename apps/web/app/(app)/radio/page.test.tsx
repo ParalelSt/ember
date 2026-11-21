@@ -34,6 +34,16 @@ vi.mock('@/components/player/PlayerProvider', () => ({
   usePlayer: () => ({ current: null, isPlaying: false, ...player }),
 }));
 
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => false }));
+const nav = vi.hoisted(() => ({ query: '' }));
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(nav.query),
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+}));
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...rest }: React.ComponentProps<'a'>) => <a href={href} {...rest}>{children}</a>,
+}));
+
 const getCurrentPosition = vi.fn();
 let permission = 'prompt';
 
@@ -44,6 +54,7 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  nav.query = '';
   useUiStore.setState({ radioQuery: '' });
   permission = 'prompt';
   api.radioCountry.mockResolvedValue({ stations: HR });
@@ -114,12 +125,42 @@ describe('Radio page', () => {
     expect(headings.indexOf('Favourites')).toBeLessThan(headings.indexOf('Nearby'));
   });
 
-  it('holds every station of a section in its shelf, with no "Show all"', async () => {
-    const many = Array.from({ length: 14 }, (_, i) => station(i, `Station ${i}`)).map((s, i) => ({ ...s, id: `00000000-0000-4000-8000-0000000001${String(i).padStart(2, '0')}` }));
+  const many = Array.from({ length: 14 }, (_, i) => station(i, `Station ${i}`)).map((s, i) => ({ ...s, id: `00000000-0000-4000-8000-0000000001${String(i).padStart(2, '0')}` }));
+
+  it('shows two whole cards of a long section with "Show all" to its full list (phone)', async () => {
+    api.radioCountry.mockResolvedValue({ stations: many });
+    renderPage();
+    await screen.findByText('Station 0');
+    const row = screen.getByRole('region', { name: 'Croatia' });
+    expect(within(row).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(row).getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/radio?row=nearby');
+  });
+
+  it('?row=nearby lists every station of the row under Back and its title', async () => {
+    nav.query = 'row=nearby';
     api.radioCountry.mockResolvedValue({ stations: many });
     renderPage();
     await screen.findByText('Station 13');
-    expect(within(screen.getByRole('region', { name: 'Croatia' })).getAllByRole('listitem')).toHaveLength(14);
+    const row = screen.getByRole('region', { name: 'Croatia' });
+    expect(within(row).getAllByRole('listitem')).toHaveLength(14);
+    expect(within(row).getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/radio');
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+    expect(screen.queryByPlaceholderText('Search stations')).toBeNull();
+  });
+
+  it('?row=favourites opens the favourites alone', async () => {
+    nav.query = 'row=favourites';
+    api.radioFavorites.mockResolvedValue({ stations: many });
+    renderPage();
+    await screen.findByText('Station 13');
+    const row = screen.getByRole('region', { name: 'Favourites' });
+    expect(within(row).getAllByRole('listitem')).toHaveLength(14);
+    expect(screen.queryByRole('region', { name: 'Croatia' })).toBeNull();
+  });
+
+  it('has no "Show all" when both stations fit', async () => {
+    renderPage();
+    await screen.findByText('Otvoreni');
     expect(screen.queryByText('Show all')).toBeNull();
   });
 

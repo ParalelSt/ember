@@ -7,11 +7,11 @@ import { pickThumbnail } from '@/lib/artwork';
 import type { AlbumSummary } from '@/types/track';
 
 /** An artist's albums on Home's shelf: plain cover tiles linking to the
- *  album, every one of them in the row (no cap, no Show all). */
-export function AlbumShelf({ title, albums }: { title: string; albums: AlbumSummary[] }) {
+ *  album, whole cards only inside a RowNavProvider with fit (Show all opens `showAllHref`). */
+export function AlbumShelf({ title, albums, showAllHref }: { title: string; albums: AlbumSummary[]; showAllHref?: string }) {
   const isDesktop = useIsDesktop();
   return (
-    <RowShelf title={title} variant={isDesktop ? 'desktop' : 'phone'} limit={Infinity}>
+    <RowShelf title={title} variant={isDesktop ? 'desktop' : 'phone'} limit={Infinity} showAllHref={showAllHref}>
       {albums.map((a) => (
         <CollectionCard
           key={a.browseId}

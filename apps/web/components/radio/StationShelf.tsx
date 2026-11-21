@@ -17,6 +17,8 @@ export interface StationShelfProps {
   variant: 'phone' | 'desktop';
   /** Beside the title (Nearby's "Use my location"). */
   action?: ReactNode;
+  /** Where "Show all" opens this row's full list. */
+  showAllHref?: string;
 }
 
 /** A section of stations as a Home style shelf (the owner's "Shelves"
@@ -24,11 +26,11 @@ export interface StationShelfProps {
  *  row is the only way to them, so it holds them all). A tap plays the
  *  station, and Next and Previous move through the section as it is shown;
  *  a tap on the one playing pauses or resumes it. */
-export function StationShelf({ title, stations, name, favoriteIds, onToggleFavorite, variant, action }: StationShelfProps) {
+export function StationShelf({ title, stations, name, favoriteIds, onToggleFavorite, variant, action, showAllHref }: StationShelfProps) {
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   const tracks = useMemo(() => stations.map((s) => s.track), [stations]);
   return (
-    <RowShelf title={title} variant={variant} limit={Infinity} action={action}>
+    <RowShelf title={title} variant={variant} limit={Infinity} action={action} showAllHref={showAllHref}>
       {stations.map((s) => {
         const active = current?.id === s.track.id;
         const favorite = favoriteIds.has(s.id);
