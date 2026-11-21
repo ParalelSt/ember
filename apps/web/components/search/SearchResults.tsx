@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { TrackRow } from '@/components/track/TrackRow';
 import type { TrackActions } from '@/components/track/TrackList';
 import { Artwork } from '@/components/primitives/Artwork';
 import { EmptyState } from '@/components/page/EmptyState';
-import { ArtistIcon, ChevronRightIcon } from '@/components/icons';
+import { ArtistIcon, ChevronRightIcon, PlayIcon } from '@/components/icons';
+import { SectionHeader } from '@/components/page/SectionHeader';
 import { cn } from '@/lib/utils';
 import { canonicalId } from '@/lib/trackIdentity';
 import { songPageHref } from '@/lib/songPage';
@@ -136,6 +137,97 @@ export function SearchArtists({
   );
 }
 
+/** TEMPORARY design switch: `?searchartists=a|b|c` (remembered in
+ *  localStorage `ember.design.searchartists`). No value = today's layout. */
+export type SearchArtistsVariant = 'a' | 'b' | 'c';
+const VARIANT_KEY = 'ember.design.searchartists';
+const asVariant = (v: string | null | undefined): SearchArtistsVariant | null => (v === 'a' || v === 'b' || v === 'c' ? v : null);
+
+export function useSearchArtistsVariant(): SearchArtistsVariant | null {
+  const [variant, setVariant] = useState<SearchArtistsVariant | null>(null);
+  useEffect(() => {
+    let v: SearchArtistsVariant | null = null;
+    try {
+      const q = new URLSearchParams(window.location.search).get('searchartists');
+      v = asVariant(q);
+      if (v) window.localStorage.setItem(VARIANT_KEY, v);
+      else if (q === null) v = asVariant(window.localStorage.getItem(VARIANT_KEY));
+    } catch {
+      /* storage blocked: fall back to whatever the URL gave */
+    }
+    setVariant(v);
+  }, []);
+  return variant;
+}
+
+const ARTIST_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const artistHref = (a: SearchArtist) => `/artist/${encodeURIComponent(a.id)}`;
+
+function ArtistPhoto({ a, className, iconClass }: { a: SearchArtist; className: string; iconClass: string }) {
+  return (
+    <Artwork src={a.artworkUrl} alt="" shape="round" loading="lazy" className={cn('grid shrink-0 place-items-center bg-art text-foreground/30', className)}>
+      <ArtistIcon className={iconClass} />
+    </Artwork>
+  );
+}
+
+/** Look a: the first artist as a big "top result" card. */
+function TopArtistCard({ a }: { a: SearchArtist }) {
+  return (
+    <Link
+      href={artistHref(a)}
+      data-testid="search-artist-top"
+      className={cn('group relative flex min-w-0 flex-col gap-3 rounded-xl bg-card p-5 transition-colors hover:bg-accent', ARTIST_FOCUS)}
+    >
+      <ArtistPhoto a={a} className="size-24" iconClass="h-10 w-10" />
+      <span className="truncate text-3xl font-bold tracking-tight">{a.name}</span>
+      <span className="w-fit rounded-full bg-secondary px-3 py-0.5 text-xs font-semibold">Artist</span>
+      <span aria-hidden className="absolute bottom-5 right-5 grid size-12 place-items-center rounded-full bg-primary text-primary-foreground opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+        <PlayIcon className="h-5 w-5" />
+      </span>
+    </Link>
+  );
+}
+
+/** Looks a (the other artists) and b: round cards, a picture over the name. */
+function ArtistCards({ artists, photo }: { artists: SearchArtist[]; photo: 'size-[120px]' | 'size-[140px]' }) {
+  return (
+    <div className="flex flex-wrap gap-4" data-testid="search-artist-cards">
+      {artists.map((a) => (
+        <Link
+          key={a.id}
+          href={artistHref(a)}
+          data-testid="search-artist-card"
+          className={cn('flex w-40 min-w-0 flex-col items-center gap-2 rounded-xl p-3 text-center transition-colors hover:bg-card', ARTIST_FOCUS)}
+        >
+          <ArtistPhoto a={a} className={photo} iconClass="h-10 w-10" />
+          <span className="w-full truncate text-sm font-semibold">{a.name}</span>
+          <span className="text-xs text-muted-foreground">Artist</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** Look c: pill chips in one row. */
+function ArtistChips({ artists }: { artists: SearchArtist[] }) {
+  return (
+    <div className="flex flex-wrap gap-2" data-testid="search-artist-chips">
+      {artists.map((a) => (
+        <Link
+          key={a.id}
+          href={artistHref(a)}
+          data-testid="search-artist-chip"
+          className={cn('flex min-w-0 items-center gap-2 rounded-full bg-secondary py-1 pl-1 pr-4 text-sm font-semibold transition-colors hover:bg-accent', ARTIST_FOCUS)}
+        >
+          <ArtistPhoto a={a} className="size-8" iconClass="h-4 w-4" />
+          <span className="truncate">{a.name}</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 /** Presentational: the search results as they arrive, from a SearchView
  *  (lib/search/view). Rows only ever join at the end, and each one fades in
  *  a moment after the one above it, counted from the first row of the
@@ -158,6 +250,7 @@ export function SearchResults({
 }: SearchResultsProps) {
   // The row count the last render saw and where the newest arrival began
   // ("adjusting state while rendering": settled before anything mounts).
+  const variantOn = useSearchArtistsVariant();
   const count = view.rows.length;
   const [seen, setSeen] = useState({ count: 0, batchStart: 0 });
   const batchStart = seen.count === count ? seen.batchStart : count > seen.count ? seen.count : 0;
@@ -166,7 +259,87 @@ export function SearchResults({
   if (!count) return <EmptyState className="text-sm">No tracks</EmptyState>;
 
   const desktop = platform === 'desktop';
+  // The design switch applies to the search page's desktop list only.
+  const variant = desktop && !trailingPlayControl ? variantOn : null;
   const delayFor = (i: number) => Math.min(Math.max(0, i - batchStart), MAX_STAGGER_ROWS) * STAGGER_MS;
+
+  const renderTrack = (row: Extract<SearchView['rows'][number], { kind: 'track' }>, i: number, index: number) => {
+    const t = row.track;
+    return (
+      <Arrival key={row.key} delayMs={delayFor(i)}>
+        <TrackRow
+          track={t}
+          index={index}
+          density="list"
+          active={currentId === t.id}
+          playing={isPlaying}
+          liked={onLike ? likedIds.has(canonicalId(t.id)) : undefined}
+          artworkSrc={artworkSrcFor?.(t) ?? undefined}
+          onPlay={() => onPlay(t, view.tracks, context)}
+          onToggle={onToggle}
+          onLike={onLike ? () => onLike(t) : undefined}
+          trailing={trailing?.(t)}
+          trailingPlayControl={trailingPlayControl}
+          unavailable={!!isUnavailable?.(t)}
+          songHref={songPageHref(t)}
+          titleOpensSong={desktop}
+          marqueeTitle
+        />
+      </Arrival>
+    );
+  };
+
+  if (variant) {
+    const artists = view.rows.find((r) => r.kind === 'artists')?.artists ?? [];
+    const songs: ReactNode[] = [];
+    let n = 0;
+    view.rows.forEach((row, i) => {
+      if (row.kind === 'track') songs.push(renderTrack(row, i, n++));
+    });
+    const artistsSection = (list: SearchArtist[], body: ReactNode) =>
+      list.length > 0 && (
+        <section aria-label="Artists" data-testid="search-artists" data-layout={`variant-${variant}`} className="py-cluster">
+          <SectionHeader title="Artists" className="px-row pb-inset" />
+          {body}
+        </section>
+      );
+    const songsSection = (title: string, list: ReactNode[]) =>
+      list.length > 0 && (
+        <section aria-label={title} data-testid="search-songs" className="py-cluster">
+          <SectionHeader title={title} className="px-row pb-inset" />
+          {list}
+        </section>
+      );
+    return (
+      <div className="@container flex flex-col" data-testid="search-variant" data-variant={variant}>
+        {variant === 'a' ? (
+          <>
+            <div className="grid grid-cols-1 gap-6 py-cluster @3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+              {artists[0] && (
+                <section aria-label="Top result" className="min-w-0">
+                  <SectionHeader title="Top result" className="px-row pb-inset" />
+                  <TopArtistCard a={artists[0]} />
+                </section>
+              )}
+              {songs.length > 0 && (
+                <section aria-label="Songs" data-testid="search-songs" className="min-w-0">
+                  <SectionHeader title="Songs" className="px-row pb-inset" />
+                  {songs.slice(0, 4)}
+                </section>
+              )}
+            </div>
+            {artistsSection(artists.slice(1), <ArtistCards artists={artists.slice(1)} photo="size-[120px]" />)}
+            {songsSection('More songs', songs.slice(4))}
+          </>
+        ) : (
+          <>
+            {artistsSection(artists, variant === 'b' ? <ArtistCards artists={artists} photo="size-[140px]" /> : <ArtistChips artists={artists} />)}
+            {songsSection('Songs', songs)}
+          </>
+        )}
+      </div>
+    );
+  }
 
   let trackIndex = 0;
   return (

@@ -250,3 +250,58 @@ describe('SearchResults: rows fade in one after another', () => {
     });
   });
 });
+
+describe('SearchResults: ?searchartists design switch (desktop search page)', () => {
+  const artistView = () =>
+    buildSearchView(
+      'x',
+      parts({
+        uploads: [],
+        artists: [
+          { id: 'UC1', name: 'Alpha', artworkUrl: null },
+          { id: 'UC2', name: 'Beta', artworkUrl: null },
+          { id: 'UC3', name: 'Gamma', artworkUrl: null },
+        ] as SearchParts['artists'],
+        songs: ['s1', 's2', 's3', 's4', 's5', 's6'].map((id) => t(id)),
+        videos: [],
+      }),
+    );
+  // renderResults passes trailingPlayControl (overlay); the page does not.
+  const renderPage = (qs: string, platform: SearchResultsPlatform = 'desktop') => {
+    window.localStorage.clear();
+    window.history.replaceState(null, '', `/search${qs}`);
+    return render(
+      <SearchResults view={artistView()} platform={platform} currentId={null} isPlaying={false} likedIds={new Set()} onPlay={vi.fn()} onToggle={vi.fn()} />,
+    );
+  };
+
+  it.each(['a', 'b', 'c'])('look %s: artists are links, Songs heading present', (v) => {
+    renderPage(`?searchartists=${v}`);
+    for (const n of ['Alpha', 'Beta', 'Gamma']) {
+      const link = screen.getByRole('link', { name: new RegExp(n) });
+      expect(link.getAttribute('href')).toMatch(/^\/artist\/UC/);
+    }
+    expect(screen.getByRole('heading', { name: 'Songs' })).toBeTruthy();
+    expect(screen.getByTestId('search-variant').getAttribute('data-variant')).toBe(v);
+    expect(screen.queryByTestId('search-artist-arrow')).toBeNull();
+  });
+
+  it('look a splits songs 4 / rest', () => {
+    renderPage('?searchartists=a');
+    expect(screen.getByRole('heading', { name: 'Top result' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'More songs' })).toBeTruthy();
+    expect(screen.getAllByTestId('search-row')).toHaveLength(6);
+  });
+
+  it('no param: today unchanged', () => {
+    renderPage('');
+    expect(screen.queryByTestId('search-variant')).toBeNull();
+    expect(screen.getAllByTestId('search-artist-row')).toHaveLength(3);
+  });
+
+  it('phone: unchanged even with the param', () => {
+    renderPage('?searchartists=b', 'phone');
+    expect(screen.queryByTestId('search-variant')).toBeNull();
+    expect(screen.getByTestId('search-artists').getAttribute('data-layout')).toBe('grid');
+  });
+});
