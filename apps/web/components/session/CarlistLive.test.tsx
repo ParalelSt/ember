@@ -134,6 +134,33 @@ describe('CarlistLive: the bottom (queue and add)', () => {
     expect(p.onPlayItem).toHaveBeenCalledWith('q3', expect.objectContaining({ id: 'q3' }));
   });
 
+  it('Remove: the host sees it on every row but the playing one, and it calls the handler', () => {
+    const p = setup({ onRemoveItem: vi.fn() }, { isHost: true, viewerId: 'u1' });
+    const rows = screen.getAllByTestId('queue-row');
+    expect(within(rows[1]).queryByTestId('queue-remove')).toBeNull();
+    expect(within(rows[0]).getByRole('button', { name: 'Remove Motion Sickness from the carlist' })).toBeInTheDocument();
+    fireEvent.click(within(rows[2]).getByRole('button', { name: 'Remove Electric Feel from the carlist' }));
+    expect(p.onRemoveItem).toHaveBeenCalledWith('q3', expect.objectContaining({ id: 'q3' }));
+  });
+
+  it('Remove: a member sees it only on their own songs (and not on the playing one)', () => {
+    // Viewer is Marko (u2): q2 is his but is playing now.
+    setup({ onRemoveItem: vi.fn() });
+    expect(screen.queryByTestId('queue-remove')).toBeNull();
+  });
+
+  it('Remove: a member sees it on their own song when it is not playing', () => {
+    setup({ onRemoveItem: vi.fn() }, { nowIndex: 0 });
+    const rows = screen.getAllByTestId('queue-row');
+    expect(within(rows[1]).getByTestId('queue-remove')).toBeInTheDocument();
+    expect(within(rows[2]).queryByTestId('queue-remove')).toBeNull();
+  });
+
+  it('no Remove buttons once ended or without a handler', () => {
+    setup({ onRemoveItem: vi.fn() }, { active: false, isHost: true });
+    expect(screen.queryByTestId('queue-remove')).toBeNull();
+  });
+
   it('no Play buttons once ended, or without a handler', () => {
     setup({ onPlayItem: vi.fn() }, { active: false });
     expect(screen.queryByTestId('queue-play')).toBeNull();

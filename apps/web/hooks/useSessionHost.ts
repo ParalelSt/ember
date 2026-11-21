@@ -6,7 +6,7 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
-import { mergeIntoPlayerQueue, parsePlayCommand, playerIndexFor, sessionIndexFor } from '@/lib/carlist';
+import { dropFromPlayerQueue, mergeIntoPlayerQueue, parsePlayCommand, playerIndexFor, sessionIndexFor } from '@/lib/carlist';
 import { useQuerySession } from '@/hooks/useSession';
 import type { SessionState } from '@/types/track';
 
@@ -22,6 +22,7 @@ const COMMAND_POLL_MS = 2500;
  *    (idempotent id-diff, so refreshes and repeat polls are safe; a track
  *    added twice to one session queues once on the host, an accepted v1
  *    limitation);
+ *  - drops songs removed from the carlist from the player queue;
  *  - consumes guest commands (skip → player.next(); play → player.playAt());
  *  - publishes the playing session row so guests' screens track it;
  *  - drops the hosting flag (which also suppresses radio auto-extend) once
@@ -75,6 +76,33 @@ export function useSessionHost() {
       added: merged.queue.length - store.queue.length,
       total: merged.queue.length,
     });
+  }, [isActiveHost, state]);
+
+  // Removals: a song that left the carlist since the last answer leaves the
+  // player queue too (unless it is the one playing, which is never removable
+  // from the carlist). Compared against the previous answer for this carlist,
+  // so the host's own songs from before it are never touched.
+  const prevItems = useRef<{ sessionId: string; items: Map<string, string> } | null>(null);
+  useEffect(() => {
+    if (!isActiveHost || !state) {
+      prevItems.current = null;
+      return;
+    }
+    const items = new Map(state.queue.map((q) => [q.id, q.track.id]));
+    const prev = prevItems.current;
+    prevItems.current = { sessionId: state.session.id, items };
+    if (!prev || prev.sessionId !== state.session.id) return;
+    const still = new Set(items.values());
+    const gone = new Set<string>();
+    for (const [itemId, trackId] of prev.items) {
+      if (!items.has(itemId) && !still.has(trackId)) gone.add(trackId);
+    }
+    if (gone.size === 0) return;
+    const store = usePlayerStore.getState();
+    const dropped = dropFromPlayerQueue(store.queue, store.index, gone);
+    if (!dropped) return;
+    usePlayerStore.setState(dropped);
+    logger.breadcrumb('session', 'host-queue-drop', { removed: store.queue.length - dropped.queue.length });
   }, [isActiveHost, state]);
 
   // Guest commands: poll + execute.

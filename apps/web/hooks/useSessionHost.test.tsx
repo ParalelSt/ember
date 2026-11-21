@@ -64,6 +64,24 @@ describe('useSessionHost (app shell, no session page open)', () => {
     expect(api.getSession).toHaveBeenCalledWith('s1');
   });
 
+  it('drops a song removed from the carlist from the player queue and keeps the playing one', async () => {
+    const c = makeTrack({ id: 'youtube:c', sourceId: 'c', title: 'C' });
+    const before = state({}, [a, b, c]);
+    const after = state({}, [a, c]);
+    // Item ids stay with their songs: only q1 (b) is gone.
+    after.queue[1].id = 'q2';
+    api.getSession.mockResolvedValue(before);
+    usePlayerStore.setState({ queue: [a], index: 0 });
+    const { result: _r } = renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual(['youtube:a', 'youtube:b', 'youtube:c']));
+    api.getSession.mockResolvedValue(after);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    await waitFor(() => expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual(['youtube:a', 'youtube:c']));
+    expect(usePlayerStore.getState().index).toBe(0);
+  });
+
   it("carries out a guest's skip from any page", async () => {
     api.getSession.mockResolvedValue(state());
     api.consumeSessionCommands.mockResolvedValue({ commands: [{ type: 'skip' }] });

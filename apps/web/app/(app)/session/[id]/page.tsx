@@ -10,6 +10,7 @@ import {
   useExecuteAddToSession,
   useExecuteSkipSession,
   useExecutePlaySessionItem,
+  useExecuteRemoveSessionItem,
   useExecuteEndSession,
   useExecuteSaveSession,
 } from '@/hooks/useSession';
@@ -25,6 +26,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const addToSession = useExecuteAddToSession(id);
   const skip = useExecuteSkipSession(id);
   const playItem = useExecutePlaySessionItem(id);
+  const removeItem = useExecuteRemoveSessionItem(id);
   const end = useExecuteEndSession(id);
   const save = useExecuteSaveSession(id);
   const [saved, setSaved] = useState(false);
@@ -73,6 +75,18 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     });
   };
 
+  const handleRemoveItem = (itemId: string, item: SessionQueueItem) => {
+    removeItem.mutate(itemId, {
+      onSuccess: () => toast.message(`Removed "${item.track.title}"`),
+      onError: (e) =>
+        toast.error(
+          (e as { status?: number }).status === 409
+            ? 'That song is playing now. Skip it instead.'
+            : "Couldn't remove that song. Please try again.",
+        ),
+    });
+  };
+
   const handleSave = () => {
     save.mutate(undefined, {
       onSuccess: ({ playlist }) => {
@@ -99,6 +113,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         skipping={skip.isPending}
         onSkip={handleSkip}
         onPlayItem={handlePlayItem}
+        onRemoveItem={handleRemoveItem}
         onEnd={handleEnd}
         onSave={handleSave}
         onShare={() => setShareOpen(true)}
