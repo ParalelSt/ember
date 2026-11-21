@@ -75,29 +75,32 @@ function Pager({ page, count, newPages }: { page: number; count: number; newPage
       icon === 'prev' ? (
         <>
           <ChevronLeftIcon className="size-4" />
-          {label}
+          <span className="max-md:sr-only">{label}</span>
         </>
       ) : (
         <>
-          {label}
+          <span className="max-md:sr-only">{label}</span>
           <ChevronRightIcon className="size-4" />
         </>
       );
     return to < 1 || to > count ? (
-      <span aria-disabled="true" className={cn(CHIP, CHIP_DISABLED)}>
+      <span aria-disabled="true" aria-label={label} className={cn(CHIP, CHIP_DISABLED)}>
         {content}
       </span>
     ) : (
-      <Link href={whatsNewHref(to)} rel={icon} className={cn(CHIP, CHIP_OFF)}>
+      <Link href={whatsNewHref(to)} rel={icon} aria-label={label} className={cn(CHIP, CHIP_OFF)}>
         {content}
       </Link>
     );
   };
   return (
-    <nav aria-label="What's new pages" data-testid="changelog-pager" className="mt-stack flex flex-wrap items-center justify-center gap-cluster">
+    <nav aria-label="What's new pages" data-testid="changelog-pager" className="mt-stack flex flex-nowrap items-center justify-center gap-cluster">
       {step(page - 1, 'Previous', 'prev')}
-      {pageWindow(count, page).map((n) => {
+      {pageWindow(count, page).map((n, _i, all) => {
         const on = n === page;
+        // Phones show the 5 pages nearest the current one, so Previous, the
+        // numbers and Next stay on one row (Previous and Next as arrows).
+        const far = all.length > 5 && [...all].sort((a, b) => Math.abs(b - page) - Math.abs(a - page) || b - a).slice(0, all.length - 5).includes(n);
         const hasNew = newPages.has(n);
         return (
           <Link
@@ -105,7 +108,7 @@ function Pager({ page, count, newPages }: { page: number; count: number; newPage
             href={whatsNewHref(n)}
             aria-current={on ? 'page' : undefined}
             aria-label={`Page ${n}${hasNew ? ', has new updates' : ''}`}
-            className={cn(CHIP, 'relative px-cluster', on ? CHIP_ON : CHIP_OFF)}
+            className={cn(CHIP, 'relative px-cluster', on ? CHIP_ON : CHIP_OFF, far && 'max-md:hidden')}
           >
             {n}
             {hasNew && !on && (

@@ -283,7 +283,7 @@ describe('ChangelogPage pages', () => {
     render(<ChangelogPage entries={many} newIds={new Set()} {...plain} />);
     expect(shownTitles()).toEqual(many.slice(0, 10).map((e) => e.title));
     const nav = pager();
-    const prev = within(nav).getByText('Previous');
+    const prev = within(nav).getByLabelText('Previous');
     expect(prev.closest('a')).toBeNull();
     expect(prev).toHaveAttribute('aria-disabled', 'true');
     const pages = within(nav).getAllByRole('link', { name: /^Page / });
@@ -304,7 +304,7 @@ describe('ChangelogPage pages', () => {
     rerender(<ChangelogPage entries={many} newIds={new Set()} page={3} {...plain} />);
     expect(shownTitles()).toEqual(many.slice(20).map((e) => e.title));
     expect(within(pager()).queryByRole('link', { name: /Next/ })).toBeNull();
-    expect(within(pager()).getByText('Next')).toHaveAttribute('aria-disabled', 'true');
+    expect(within(pager()).getByLabelText('Next')).toHaveAttribute('aria-disabled', 'true');
     expect(within(pager()).getByRole('link', { name: 'Page 3' })).toHaveAttribute('aria-current', 'page');
   });
 
@@ -356,5 +356,19 @@ describe('ChangelogPage pages', () => {
     render(<ChangelogEntryPage entry={many[12]} entries={many} listHref="/whats-new?page=2" />);
     expect(screen.getByTestId('changelog-back')).toHaveAttribute('href', '/whats-new?page=2');
     expect(screen.getByTestId('changelog-back-desktop')).toHaveAttribute('href', '/whats-new?page=2');
+  });
+});
+
+describe('ChangelogPage pager on a phone', () => {
+  it('keeps one row: arrow-only Previous and Next, and only 5 page numbers below md', () => {
+    const many = Array.from({ length: 95 }, (_, i) => ({ ...entries[0], id: `e${i}`, title: `Entry ${i}` }));
+    render(<ChangelogPage entries={many} newIds={new Set()} page={1} {...plain} />);
+    const nav = screen.getByTestId('changelog-pager');
+    expect(nav).toHaveClass('flex-nowrap');
+    expect(within(nav).getByText('Next')).toHaveClass('max-md:sr-only');
+    const pages = within(nav).getAllByRole('link', { name: /^Page / }).concat(within(nav).queryAllByRole('link', { current: 'page' }));
+    const hiddenOnPhone = within(nav).getAllByRole('link').filter((a) => a.className.includes('max-md:hidden'));
+    expect(hiddenOnPhone.map((a) => a.textContent)).toEqual(['6', '7']);
+    expect(pages.length).toBeGreaterThan(0);
   });
 });
