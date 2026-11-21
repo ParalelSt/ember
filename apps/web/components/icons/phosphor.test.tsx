@@ -25,6 +25,15 @@ describe('Phosphor icons', () => {
     });
   }
 
+  it('centres the play triangle in its box (Phosphor sits it 24u right)', () => {
+    // The triangle spans x 64-240 (bbox centre 152) in a 256 box, so without a
+    // shift it renders right of centre in every round play button. The path is
+    // nudged left by 24 so its bbox centres on 128. Guards the optical fix.
+    const { container } = render(<icons.PlayIcon />);
+    const path = container.querySelector('.phosphor-play path');
+    expect(path).toHaveAttribute('transform', 'translate(-24,0)');
+  });
+
   it('bold icons use the official bold geometry and a distinct class', () => {
     const { container } = render(<><icons.ArrowLeftIcon /><icons.ArrowRightIcon /></>);
     expect(container.querySelector('.phosphor-arrow-left-bold')).not.toBeNull();

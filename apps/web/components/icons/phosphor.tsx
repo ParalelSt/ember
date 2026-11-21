@@ -56,7 +56,10 @@ export function PlayIcon({ size = 24, width = size, height = size, strokeWidth: 
       viewBox="0 0 256 256" fill="currentColor" {...props}
       className={['phosphor-play', className].filter(Boolean).join(' ')}
       aria-hidden={props['aria-label'] !== undefined ? undefined : (props['aria-hidden'] ?? true)}>
-      <path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"/>
+      {/* Phosphor's triangle sits at x 64-240 (centre 152) in a 256 box, so it
+          renders 24 units right of centre. Shift left by 24 so the triangle is
+          dead-centre in every round play button (it is already centred on y). */}
+      <path transform="translate(-24,0)" d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"/>
     </svg>
   );
 }
