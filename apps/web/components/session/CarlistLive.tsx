@@ -2,18 +2,13 @@
 
 import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ActionSheet, ActionSheetItem, type MenuAction } from '@/components/ui/action-sheet';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Avatar } from '@/components/primitives/Avatar';
 import { Artwork } from '@/components/primitives/Artwork';
 import { SectionHeader } from '@/components/page/SectionHeader';
-import { CheckIcon, ListPlusIcon, MusicIcon, NextIcon, PlusIcon } from '@/components/icons';
+import { CheckIcon, ListPlusIcon, MusicIcon, NextIcon, PlusIcon, ShareIcon } from '@/components/icons';
 import { personLabel, whosePhone, type AddPosition } from '@/lib/carlist';
 import { cn } from '@/lib/utils';
 import type { PlaylistPerson, SessionQueueItem, SessionState, Track } from '@/types/track';
@@ -292,6 +287,13 @@ export function CarlistLive({
   const { session, queue, members } = state;
   const nowItem = queue[session.nowIndex];
   const inCar = Math.max(1, members.length);
+  const canEnd = session.isHost && session.active;
+  const copyCode = () => {
+    try {
+      void navigator.clipboard?.writeText(session.code);
+    } catch {}
+  };
+  const pill = 'h-9 shrink-0 gap-inset rounded-full px-block';
 
   return (
     <div className="flex max-w-2xl flex-col gap-stack pt-block md:pt-0" data-testid="carlist-live-page">
@@ -306,20 +308,29 @@ export function CarlistLive({
                 {inCar} in the car · {whosePhone(session.hostName, session.isHost)}
               </span>
             </div>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-cluster">
             <button
               type="button"
+              onClick={copyCode}
+              data-testid="code-copy"
+              aria-label={`Copy code ${session.code}`}
+              className="mt-inset text-xs text-muted-foreground hover:text-foreground"
+            >
+              Code <span className="font-mono tracking-widest">{session.code}</span>
+            </button>
+          </div>
+          <div className="flex shrink-0 items-center gap-cluster">
+            <Button
+              variant="secondary"
+              className={pill}
               onClick={onShare}
               data-testid="code-chip"
               aria-label={`Invite: code ${session.code}`}
-              className="rounded-full border border-border px-row py-inset font-mono text-xs font-bold tracking-widest transition-colors hover:bg-card"
             >
-              {session.code}
-            </button>
-            {session.isHost && session.active && (
-              <Button variant="ghost" size="sm" onClick={onEnd} className="text-muted-foreground hover:text-foreground">
-                End carlist
+              <ShareIcon className="size-4" /> Invite
+            </Button>
+            {canEnd && (
+              <Button variant="outline" className={cn(pill, 'text-destructive hover:text-destructive')} onClick={onEnd}>
+                End
               </Button>
             )}
           </div>
@@ -327,7 +338,8 @@ export function CarlistLive({
 
         {!session.active && (
           <div className="rounded-md bg-card px-block py-row text-sm text-muted-foreground" data-testid="ended">
-            This carlist has ended.{!saved && ' You can still save the queue as a playlist.'}
+            This carlist has ended.
+            {!saved && ' You can still save the queue as a playlist.'}
           </div>
         )}
 
@@ -371,7 +383,11 @@ export function CarlistLive({
                   data-testid="queue-row"
                   data-state={isNow ? 'now' : isPast ? 'played' : 'next'}
                   aria-current={isNow ? 'true' : undefined}
-                  className={cn('flex items-center gap-row rounded-md px-row py-cluster', isNow && 'bg-card', isPast && 'opacity-40')}
+                  className={cn(
+                    'flex items-center gap-row rounded-md px-row py-cluster',
+                    isNow && 'bg-card',
+                    isPast && 'opacity-40',
+                  )}
                 >
                   <span
                     className={cn('w-6 shrink-0 text-right text-sm tabular-nums', isNow ? 'text-ember' : 'text-muted-foreground')}
