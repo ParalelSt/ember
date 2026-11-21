@@ -163,7 +163,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'app/(app)/search/loading.tsx': 8,
   'app/(app)/search/page.tsx': 6,
   'app/(app)/settings/downloads/page.tsx': 5,
-  'app/(app)/settings/help/page.tsx': 12,
+  'app/(app)/settings/help/page.tsx': 10,
   'app/(app)/settings/plugins/page.tsx': 14,
   'app/(app)/settings/profile/page.tsx': 7,
   'app/auth/page.tsx': 18,
@@ -339,6 +339,7 @@ describe('colour ratchet', () => {
   // green), mock covers, and the example in the hex field's hint. Nothing else.
   const LITERAL_COLOUR_ALLOWED: Record<string, string> = {
     'components/import/parts.tsx': 'SOURCE_DOT brand dots',
+    'components/intro/RedesignIntro.tsx': 'mock cover gradients in the intro art (the approved mockup)',
     'components/library/LikedSongsCover.tsx': 'the Liked songs cover art, fixed ember wine whatever the theme',
     'components/library/libraryIcons.ts': 'the phone Library badge, tile and downloaded-mark colours, fixed art whatever the theme',
     'components/settings/appearance/previewData.ts': 'mock covers in the theme preview',

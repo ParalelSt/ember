@@ -1,40 +1,49 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
-import { BugIcon, RequestIcon } from '@/components/icons';
+import { BugIcon, RequestIcon, SparklesIcon } from '@/components/icons';
 import { useUiStore } from '@/stores/useUiStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { ToggleRow } from '@/components/ui/switch';
 import { RequestDialog } from '@/components/RequestDialog';
 
+function HelpCard({ title, text, children }: { title: string; text: string; children: ReactNode }) {
+  return (
+    <div className="mt-6 rounded-2xl bg-card p-6 shadow-soft">
+      <div className="font-semibold">{title}</div>
+      <p className="mt-1 text-sm text-muted-foreground">{text}</p>
+      {children}
+    </div>
+  );
+}
+
 export default function SettingsHelp() {
   const openBugReport = useUiStore((s) => s.setBugReportOpen);
+  const openIntro = useUiStore((s) => s.setIntroOpen);
   const [requestOpen, setRequestOpen] = useState(false);
   const autoReportEnabled = useSettingsStore((s) => s.autoReportEnabled);
   const setAutoReportEnabled = useSettingsStore((s) => s.setAutoReportEnabled);
   return (
     <section className="max-w-2xl">
-      <div className="mt-6 rounded-2xl bg-card p-6 shadow-soft">
-        <div className="font-semibold">Report a bug</div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Send your last session&apos;s diagnostics with an optional note. Goes straight to the project&apos;s Discord.
-        </p>
+      <HelpCard title="Report a bug" text="Send your last session's diagnostics with an optional note. Goes straight to the project's Discord.">
         <Button onClick={() => openBugReport(true)} variant="ember" className="mt-4">
           <BugIcon className="h-4 w-4" />
           Report a bug
         </Button>
-      </div>
-      <div className="mt-6 rounded-2xl bg-card p-6 shadow-soft">
-        <div className="font-semibold">Send a request</div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Suggest a new feature or a fix. Goes straight to the project&apos;s Discord.
-        </p>
+      </HelpCard>
+      <HelpCard title="Send a request" text="Suggest a new feature or a fix. Goes straight to the project's Discord.">
         <Button onClick={() => setRequestOpen(true)} variant="ember" className="mt-4">
           <RequestIcon className="h-4 w-4" />
           Send a request
         </Button>
-      </div>
+      </HelpCard>
+      <HelpCard title="Tour the new design" text="A quick look at what changed and where things moved.">
+        <Button onClick={() => openIntro(true)} variant="ember" className="mt-4">
+          <SparklesIcon className="h-4 w-4" />
+          Tour the new design
+        </Button>
+      </HelpCard>
 
       <ToggleRow
         rowClassName="mt-4 rounded-2xl bg-card p-6 shadow-soft flex items-start justify-between gap-4"

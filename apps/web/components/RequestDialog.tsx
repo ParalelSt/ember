@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { Popup } from '@/components/ui/popup';
 import { Input } from '@/components/ui/input';
@@ -50,10 +50,15 @@ const COPY: Record<Kind, Copy> = {
 interface RequestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The tab it opens on (the intro opens it on 'fix'). */
+  initialKind?: Kind;
 }
 
-export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
-  const [kind, setKind] = useState<Kind>('feature');
+export function RequestDialog({ open, onOpenChange, initialKind = 'feature' }: RequestDialogProps) {
+  const [kind, setKind] = useState<Kind>(initialKind);
+  useEffect(() => {
+    if (open) setKind(initialKind);
+  }, [open, initialKind]);
   const [name, setName] = useState('');
   const [main, setMain] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -65,7 +70,7 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
     name.trim().length > 0 && main.trim().length > 0 && !busy && attachmentProblem(files) === null;
 
   const reset = () => {
-    setKind('feature');
+    setKind(initialKind);
     setName('');
     setMain('');
     setFiles([]);

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { BlockIcon, BugIcon, MusicIcon, RequestIcon, UploadIcon } from '@/components/icons';
+import { BlockIcon, BugIcon, MusicIcon, RequestIcon, SparklesIcon, UploadIcon } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
 import { EqualizerPanel } from '@/components/settings/EqualizerPanel';
 import { RequestDialog } from '@/components/RequestDialog';
@@ -66,6 +66,7 @@ export function PluginsSection() {
 
 export function HelpSection() {
   const openBugReport = useUiStore((s) => s.setBugReportOpen);
+  const openIntro = useUiStore((s) => s.setIntroOpen);
   const [requestOpen, setRequestOpen] = useState(false);
   const autoReportEnabled = useSettingsStore((s) => s.autoReportEnabled);
   const setAutoReportEnabled = useSettingsStore((s) => s.setAutoReportEnabled);
@@ -88,6 +89,16 @@ export function HelpSection() {
           <Button variant="outline" onClick={() => setRequestOpen(true)}>
             <RequestIcon className="size-4" />
             Send a request
+          </Button>
+        }
+      />
+      <SettingsRow
+        title="Tour the new design"
+        description="A quick look at what changed and where things moved."
+        control={
+          <Button variant="outline" onClick={() => openIntro(true)}>
+            <SparklesIcon className="size-4" />
+            Tour the new design
           </Button>
         }
       />
