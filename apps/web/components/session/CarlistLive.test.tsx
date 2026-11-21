@@ -79,8 +79,8 @@ describe('CarlistLive: the top (head and now-playing card)', () => {
     expect(screen.getByText('Carlist')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Road trip');
     expect(screen.getByTestId('in-the-car')).toHaveTextContent("3 in the car · Hana's phone plays");
-    fireEvent.click(screen.getByTestId('code-chip'));
-    expect(screen.getByTestId('code-chip')).toHaveTextContent('K7MPQ4');
+    expect(screen.getByTestId('code-copy')).toHaveTextContent('Code K7MPQ4');
+    fireEvent.click(screen.getByRole('button', { name: /Invite/ }));
     expect(p.onShare).toHaveBeenCalledTimes(1);
   });
 
@@ -99,13 +99,13 @@ describe('CarlistLive: the top (head and now-playing card)', () => {
   it('the host: "your phone plays" and End carlist', () => {
     const p = setup({}, { isHost: true, viewerId: 'u1' });
     expect(screen.getByTestId('in-the-car')).toHaveTextContent('3 in the car · your phone plays');
-    fireEvent.click(screen.getByRole('button', { name: 'End carlist' }));
+    fireEvent.click(screen.getByRole('button', { name: 'End' }));
     expect(p.onEnd).toHaveBeenCalledTimes(1);
   });
 
   it('a guest has no End', () => {
     setup();
-    expect(screen.queryByRole('button', { name: 'End carlist' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'End' })).toBeNull();
   });
 });
 
@@ -138,7 +138,7 @@ describe('CarlistLive: the bottom (queue and add)', () => {
     setup({}, { active: false, isHost: true, viewerId: 'u1' });
     expect(screen.getByTestId('ended')).toHaveTextContent('This carlist has ended.');
     expect(screen.queryByTestId('skip')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'End carlist' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'End' })).toBeNull();
     expect(screen.queryByTestId('add-slot')).toBeNull();
   });
 
@@ -210,69 +210,32 @@ describe('AddChoice', () => {
   });
 });
 
-describe('CarlistLive: ?carhead= design looks (temporary)', () => {
+describe('CarlistLive: the header (Invite, End, code)', () => {
   const host = { isHost: true, viewerId: 'u1' };
-  const go = (look: string | null) => {
-    try {
-      localStorage.clear();
-    } catch {}
-    window.history.replaceState({}, '', look ? `/?carhead=${look}` : '/');
-  };
 
-  it('no param: today (code chip + End carlist), no extra controls', () => {
-    go(null);
+  it('Invite triggers share, End triggers end', () => {
     const p = setup({}, host);
-    expect(screen.getByTestId('code-chip')).toHaveTextContent('K7MPQ4');
-    expect(screen.queryByTestId('carhead-a')).toBeNull();
-    expect(screen.queryByTestId('carhead-b')).toBeNull();
-    expect(screen.queryByTestId('carhead-more')).toBeNull();
-    fireEvent.click(screen.getByTestId('code-chip'));
-    fireEvent.click(screen.getByRole('button', { name: 'End carlist' }));
-    expect(p.onShare).toHaveBeenCalledTimes(1);
-    expect(p.onEnd).toHaveBeenCalledTimes(1);
-  });
-
-  it('a: Invite and End side by side, code as muted text', () => {
-    go('a');
-    const p = setup({}, host);
-    expect(screen.getByTestId('carhead-a')).toBeInTheDocument();
-    expect(screen.getByTestId('code-copy')).toHaveTextContent('Code K7MPQ4');
     fireEvent.click(screen.getByRole('button', { name: /Invite/ }));
     fireEvent.click(screen.getByRole('button', { name: 'End' }));
     expect(p.onShare).toHaveBeenCalledTimes(1);
     expect(p.onEnd).toHaveBeenCalledTimes(1);
   });
 
-  it('b: a full-width row, Invite with the code, End carlist', () => {
-    go('b');
-    const p = setup({}, host);
-    const row = screen.getByTestId('carhead-b');
-    expect(row).toHaveTextContent('Invite · K7MPQ4');
-    fireEvent.click(within(row).getByTestId('code-chip'));
-    fireEvent.click(within(row).getByRole('button', { name: 'End carlist' }));
-    expect(p.onShare).toHaveBeenCalledTimes(1);
-    expect(p.onEnd).toHaveBeenCalledTimes(1);
+  it('the code is muted text under the people line and copies on tap', () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    setup({}, host);
+    fireEvent.click(screen.getByTestId('code-copy'));
+    expect(writeText).toHaveBeenCalledWith('K7MPQ4');
   });
 
-  it('c: a more menu holds Invite and End; a copy pill beside the people line', () => {
-    go('c');
-    const p = setup({}, host);
-    expect(screen.getByTestId('code-copy')).toHaveTextContent('K7MPQ4');
-    fireEvent.click(screen.getByTestId('carhead-more'));
-    fireEvent.click(screen.getByRole('menuitem', { name: /Invite/ }));
-    fireEvent.click(screen.getByTestId('carhead-more'));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'End carlist' }));
-    expect(p.onShare).toHaveBeenCalledTimes(1);
-    expect(p.onEnd).toHaveBeenCalledTimes(1);
+  it('End only for the host while the carlist is active', () => {
+    setup();
+    expect(screen.queryByRole('button', { name: 'End' })).toBeNull();
   });
 
-  it('a guest gets Invite but no End in every look', () => {
-    for (const look of ['a', 'b']) {
-      go(look);
-      const { unmount } = render(<CarlistLive {...({ state: state(), progress: 0, saved: false, onSkip() {}, onEnd() {}, onSave() {}, onShare() {} } as CarlistLiveProps)} />);
-      expect(screen.getByTestId('code-chip')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /^End/ })).toBeNull();
-      unmount();
-    }
+  it('the host of an ended carlist has no End', () => {
+    setup({}, { ...host, active: false });
+    expect(screen.queryByRole('button', { name: 'End' })).toBeNull();
   });
 });
