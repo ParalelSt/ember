@@ -17,7 +17,14 @@ export const INTRO_RETRY_MS = 1500;
 function otherModalOpen(): boolean {
   const s = useUiStore.getState();
   if (s.bugReportOpen || s.searchOpen || s.qrScan !== 'idle' || s.approveRequest) return true;
-  return document.querySelector('[role="dialog"]:not([data-redesign-intro]), [role="alertdialog"]') !== null;
+  // A closed dialog can still sit in the DOM (the full-screen player keeps its
+  // role="dialog" node mounted, just aria-hidden and translated off-screen), so
+  // only an OPEN one counts, never such a hidden node.
+  return (
+    document.querySelector(
+      '[role="dialog"]:not([data-redesign-intro]):not([aria-hidden="true"]), [role="alertdialog"]:not([aria-hidden="true"])',
+    ) !== null
+  );
 }
 
 /** Opens the "new design" intro once per device, on the first app open for a

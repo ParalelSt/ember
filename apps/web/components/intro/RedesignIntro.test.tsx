@@ -211,6 +211,18 @@ describe('RedesignIntroHost', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
+  it('still shows past a closed dialog that stays in the DOM (the full-screen player)', () => {
+    // NowPlaying keeps a role="dialog" node mounted, aria-hidden when closed.
+    const player = document.createElement('div');
+    player.setAttribute('role', 'dialog');
+    player.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(player);
+    render(<RedesignIntroHost />);
+    advance(INTRO_DELAY_MS + 10);
+    expect(title()).toBe('The new Ember is here');
+    player.remove();
+  });
+
   it('Send a fix request closes the intro and opens the request dialog on Fix', () => {
     render(<RedesignIntroHost />);
     advance(INTRO_DELAY_MS + 10);
