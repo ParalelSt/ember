@@ -11,7 +11,6 @@ import { PrivacyToggles } from '@/components/settings/PrivacyToggles';
 import { Avatar } from '@/components/primitives/Avatar';
 import { BlockedSongsCard } from '@/components/settings/PhoneLibraryCards';
 import { api } from '@/lib/api';
-import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function SettingsProfile() {
   const { user, name: currentName, avatarUrl, refresh, signOut } = useAuth();
@@ -78,7 +77,6 @@ export default function SettingsProfile() {
   return (
     <div className="max-w-2xl">
     <form onSubmit={onSubmit}>
-      <SectionHeader title="Profile" />
 
       <div className="mt-6 flex items-center gap-5">
         <Avatar

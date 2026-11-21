@@ -22,7 +22,6 @@ export default function DownloadsSettingsPage() {
   return (
     <section className="space-y-6">
       <header>
-        <SectionHeader title="Downloads" />
         <p className="text-meta">
           {native ? DOWNLOADS_NATIVE_TEXT : DOWNLOADS_BROWSER_TEXT}
         </p>

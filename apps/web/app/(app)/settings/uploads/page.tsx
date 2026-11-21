@@ -1,7 +1,6 @@
 'use client';
 
 import { PlusIcon, UploadIcon } from '@/components/icons';
-import { SectionHeader } from '@/components/page/SectionHeader';
 import { EmptyState } from '@/components/page/EmptyState';
 import { UploadDropZone } from '@/components/uploads/UploadDropZone';
 import { UploadProgressCard } from '@/components/uploads/UploadProgressCard';
@@ -28,7 +27,6 @@ export default function UploadsPage() {
   return (
     <section className="flex flex-col gap-block">
       <header>
-        <SectionHeader title="Uploads" />
         <p className="text-meta">{UPLOADS_SHARED_TEXT}</p>
       </header>
 

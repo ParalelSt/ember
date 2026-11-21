@@ -111,9 +111,9 @@ describe('Settings > Uploads layout', () => {
     expect(screen.getByTestId('settings-transfer-button')).toHaveAttribute('href', `/transfer?from=${encodeURIComponent('/settings/uploads')}`);
   });
 
-  it('puts the header, then the Upload songs bar, then Your uploads', async () => {
+  it('puts the description, then the Upload songs bar, then Your uploads (the page name is the layout title only)', async () => {
     renderPage();
-    expect(screen.getByRole('heading', { name: 'Uploads' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Uploads' })).toBeNull();
     expect(screen.getByText(/shared with everyone on this server/)).toBeInTheDocument();
     const bar = screen.getByRole('button', { name: 'Upload songs' });
     const library = screen.getByRole('heading', { name: 'Your uploads' });

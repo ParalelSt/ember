@@ -6,7 +6,6 @@ import { BugIcon, RequestIcon } from '@/components/icons';
 import { useUiStore } from '@/stores/useUiStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { ToggleRow } from '@/components/ui/switch';
-import { SectionHeader } from '@/components/page/SectionHeader';
 import { RequestDialog } from '@/components/RequestDialog';
 
 export default function SettingsHelp() {
@@ -16,7 +15,6 @@ export default function SettingsHelp() {
   const setAutoReportEnabled = useSettingsStore((s) => s.setAutoReportEnabled);
   return (
     <section className="max-w-2xl">
-      <SectionHeader title="Help" />
       <div className="mt-6 rounded-2xl bg-card p-6 shadow-soft">
         <div className="font-semibold">Report a bug</div>
         <p className="mt-1 text-sm text-muted-foreground">

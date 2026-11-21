@@ -2,7 +2,6 @@
 
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { ToggleRow } from '@/components/ui/switch';
-import { SectionHeader } from '@/components/page/SectionHeader';
 import { EqualizerPanel } from '@/components/settings/EqualizerPanel';
 import { useDesktopPlugins } from '@/hooks/useDesktopPlugins';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
@@ -29,7 +28,6 @@ export default function SettingsPlugins() {
 
   return (
     <section className="max-w-2xl">
-      <SectionHeader title="Plugins" />
       <p className="mt-1 text-sm text-muted-foreground">
         Optional add-ons that layer on top of the player. More to come.
       </p>
