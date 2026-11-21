@@ -46,11 +46,6 @@ export function libraryChips(hasMixes: boolean): { id: LibraryChip; label: strin
   ];
 }
 
-/** Tapping the active chip clears it; any other chip takes its place. */
-export function nextChip(active: LibraryChip | null, tapped: LibraryChip): LibraryChip | null {
-  return active === tapped ? null : tapped;
-}
-
 function matchesChip(item: LibraryItem, chip: LibraryChip | null): boolean {
   if (!chip) return true;
   if (chip === 'playlists') return item.kind === 'playlist';

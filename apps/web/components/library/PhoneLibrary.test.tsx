@@ -102,9 +102,10 @@ describe('PhoneLibrary', () => {
     expect(row('playlist:p1').querySelector('.size-14')).not.toBeNull();
   });
 
-  it('chips filter, and tapping the active chip clears it; Mixes only when there are mixes', () => {
+  it('All is on first; chips switch between views and never toggle off; Mixes only when there are mixes', () => {
     setup();
     expect(screen.queryByRole('button', { name: 'Mixes' })).toBeNull();
+    expect(chip('All')).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(chip('Playlists'));
     expect(chip('Playlists')).toHaveAttribute('aria-pressed', 'true');
     expect(titles()).toEqual(['Zebra', 'apple', 'Mango']);
@@ -112,6 +113,10 @@ describe('PhoneLibrary', () => {
     expect(chip('Playlists')).toHaveAttribute('aria-pressed', 'false');
     expect(titles()).toEqual(['apple']);
     fireEvent.click(chip('Downloaded'));
+    expect(chip('Downloaded')).toHaveAttribute('aria-pressed', 'true');
+    expect(titles()).toEqual(['apple']);
+    fireEvent.click(chip('All'));
+    expect(chip('All')).toHaveAttribute('aria-pressed', 'true');
     expect(chip('Downloaded')).toHaveAttribute('aria-pressed', 'false');
     expect(titles()).toHaveLength(7);
   });

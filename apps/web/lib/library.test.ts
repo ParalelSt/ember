@@ -6,7 +6,6 @@ import {
   buildLibraryItems,
   firstArts,
   libraryChips,
-  nextChip,
   readLibraryView,
   writeLibraryView,
   type LibraryItem,
@@ -30,16 +29,10 @@ function build(over: Partial<Parameters<typeof buildLibraryItems>[0]> = {}) {
   });
 }
 
-describe('libraryChips / nextChip', () => {
+describe('libraryChips', () => {
   it('Playlists and Downloaded always; Mixes only when there are mixes', () => {
     expect(libraryChips(false).map((c) => c.label)).toEqual(['Playlists', 'Downloaded']);
     expect(libraryChips(true).map((c) => c.label)).toEqual(['Playlists', 'Mixes', 'Downloaded']);
-  });
-
-  it('tapping the active chip clears it, another chip replaces it', () => {
-    expect(nextChip(null, 'playlists')).toBe('playlists');
-    expect(nextChip('playlists', 'playlists')).toBeNull();
-    expect(nextChip('playlists', 'downloaded')).toBe('downloaded');
   });
 });
 

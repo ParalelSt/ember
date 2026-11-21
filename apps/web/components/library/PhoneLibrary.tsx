@@ -10,7 +10,6 @@ import { LibraryItemRow } from '@/components/library/LibraryItemRow';
 import {
   arrangeLibrary,
   libraryChips,
-  nextChip,
   type LibraryChip,
   type LibraryItem,
   type LibrarySort,
@@ -58,6 +57,13 @@ export function PhoneLibrary({
   importPlaylistHref,
 }: PhoneLibraryProps) {
   const [chip, setChip] = useState<LibraryChip | null>(null);
+  // Chips switch between views (All is its own chip), never toggle off, and
+  // each switch starts the list at the top.
+  const pickChip = (next: LibraryChip | null) => {
+    setChip(next);
+    const scroller = document.querySelector<HTMLElement>('[data-app-scroller]');
+    if (scroller) scroller.scrollTop = 0;
+  };
   const [sort, setSort] = useState<LibrarySort>('recents');
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -128,14 +134,14 @@ export function PhoneLibrary({
         data-library-chips
         className="sticky top-0 z-10 -mx-page flex gap-cluster overflow-x-auto bg-background px-page pt-inset pb-[10px] scrollbar-none"
       >
-        {chips.map((c) => {
+        {[{ id: null, label: 'All' } as { id: LibraryChip | null; label: string }, ...chips].map((c) => {
           const on = c.id === chip;
           return (
             <button
-              key={c.id}
+              key={c.id ?? 'all'}
               type="button"
               aria-pressed={on}
-              onClick={() => setChip(nextChip(chip, c.id))}
+              onClick={() => pickChip(c.id)}
               className={cn(
                 'shrink-0 whitespace-nowrap rounded-full px-[14px] py-[7px] text-[13px] font-semibold transition-colors',
                 on ? 'bg-ember text-ember-foreground' : 'bg-secondary text-foreground hover:bg-accent',
