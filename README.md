@@ -10,7 +10,7 @@ over a Tailscale Funnel URL. Dark + ember-red theme.
 - **Desktop app:** Tauri 2 shell with a native Rust audio engine (`apps/desktop`)
 - **Android app:** Capacitor shell with native background audio (`apps/mobile`)
 
-Setup and hosting: **[SETUP.md](SETUP.md)**. Native builds, signing, Discord id: **[docs/APPS.md](docs/APPS.md)**. Ports: **[docs/PORTS.md](docs/PORTS.md)**. Tests: **[tests/README.md](tests/README.md)**.
+Setup and hosting: **[SETUP.md](SETUP.md)**. Native builds, signing, Discord id: **[docs/APPS.md](docs/APPS.md)**. Ports: **[docs/PORTS.md](docs/PORTS.md)**. Tests: **[tests/README.md](tests/README.md)**. The Classic look (the old UI, kept frozen) and its rules: **[docs/classic-look.md](docs/classic-look.md)**.
 
 ## What it does
 

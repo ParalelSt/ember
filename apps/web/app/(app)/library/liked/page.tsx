@@ -27,6 +27,8 @@ import { EmptyState } from '@/components/page/EmptyState';
 import { HeartIcon, UploadIcon } from '@/components/icons';
 import type { ImportItem } from '@/lib/import/types';
 import type { CollectionTrack, Track } from '@/types/track';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 const REF = { kind: 'liked' } as const;
 const NO_TRACKS: CollectionTrack[] = [];
@@ -34,7 +36,7 @@ const NO_TRACKS: CollectionTrack[] = [];
 const LIKED_TRANSFER_HREF = `/transfer?from=${encodeURIComponent('/library/liked')}`;
 const addedLabel = (t: Track) => formatAddedDate((t as Partial<CollectionTrack>).addedAt);
 
-export default function LikedPage() {
+function NewLikedPage() {
   const { user } = useAuth();
   const isOnline = useOnline();
   const { data: rawTracks = NO_TRACKS, isLoading, isError } = useQueryLikes();
@@ -173,3 +175,9 @@ export default function LikedPage() {
     </CollectionPage>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacyLikedPage = dynamic(() => import('@legacy/app/library/liked/page'));
+
+export default uiSwitch(NewLikedPage, LegacyLikedPage);

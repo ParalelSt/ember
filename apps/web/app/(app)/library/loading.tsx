@@ -1,8 +1,9 @@
 import { Skeleton } from '@/components/ui/skeleton';
+import { serverUiMode } from '@/components/providers/serverUiMode';
 
 /** Shown while /library's own chunk and payload are loading. Mirrors the
  *  real page: title, the row of action buttons, and a shelf of cover cards. */
-export default function LibraryLoading() {
+function NewLibraryLoading() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between gap-4">
@@ -24,4 +25,14 @@ export default function LibraryLoading() {
       </div>
     </div>
   );
+}
+
+/** The new look's loading, or on a device on the Classic look the frozen one
+ *  (docs/classic-look.md), imported only then. */
+export default async function LibraryLoading() {
+  if ((await serverUiMode()) === 'legacy') {
+    const { default: Legacy } = await import('@legacy/app/library/loading');
+    return <Legacy />;
+  }
+  return NewLibraryLoading();
 }

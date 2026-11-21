@@ -13,10 +13,12 @@ import {
   pinProgressText,
   useDownloadsSettings,
 } from '@/components/settings/useDownloadsSettings';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 /** Settings > Downloads on a phone (desktop draws the same as rows, see
  *  components/settings/desktop/DownloadsSection). */
-export default function DownloadsSettingsPage() {
+function NewDownloadsSettingsPage() {
   const { pins, totalBytes, cacheBytes, native, count, retry, pendingClear, setPendingClear } = useDownloadsSettings();
 
   return (
@@ -75,3 +77,9 @@ export default function DownloadsSettingsPage() {
     </section>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacyDownloadsSettingsPage = dynamic(() => import('@legacy/app/settings/downloads/page'));
+
+export default uiSwitch(NewDownloadsSettingsPage, LegacyDownloadsSettingsPage);

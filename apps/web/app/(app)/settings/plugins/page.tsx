@@ -5,6 +5,8 @@ import { ToggleRow } from '@/components/ui/switch';
 import { EqualizerPanel } from '@/components/settings/EqualizerPanel';
 import { useDesktopPlugins } from '@/hooks/useDesktopPlugins';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 const PLACEHOLDERS = [
   {
@@ -13,7 +15,7 @@ const PLACEHOLDERS = [
   },
 ];
 
-export default function SettingsPlugins() {
+function NewSettingsPlugins() {
   const desktopPlugins = useDesktopPlugins();
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const setPartyVolume = useSettingsStore((s) => s.setPartyVolume);
@@ -111,3 +113,9 @@ function PluginToggle({ name, description, on, onToggle, tag }: ToggleProps) {
     </ToggleRow>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacySettingsPlugins = dynamic(() => import('@legacy/app/settings/plugins/page'));
+
+export default uiSwitch(NewSettingsPlugins, LegacySettingsPlugins);

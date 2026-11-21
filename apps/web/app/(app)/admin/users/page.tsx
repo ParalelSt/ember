@@ -19,8 +19,10 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 import { UserTable } from '@/components/admin/UserTable';
 import { UserCards } from '@/components/admin/UserCards';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
-export default function AdminUsersPage() {
+function NewAdminUsersPage() {
   const { user: actor, signOut } = useAuth();
   const { data: users = [], isLoading, error } = useQueryAdminUsers();
   const updateUser = useExecuteUpdateAdminUser();
@@ -183,3 +185,9 @@ export default function AdminUsersPage() {
     </section>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacyAdminUsersPage = dynamic(() => import('@legacy/app/admin/users/page'));
+
+export default uiSwitch(NewAdminUsersPage, LegacyAdminUsersPage);

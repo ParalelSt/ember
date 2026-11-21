@@ -23,6 +23,8 @@ import { useCreatePlaylistFlow } from '@/hooks/useCreatePlaylistFlow';
 import { useQueryLiveCarlist } from '@/hooks/useSession';
 import { useRouter } from 'next/navigation';
 import { LIBRARY_IMPORT_HREF, LIBRARY_IMPORT_PLAYLIST_HREF } from '@/lib/library';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 /** The phone Library's composition root: its data, the remembered view and
  *  the + menu's flows (New playlist, the carlist start dialog, Transfer). */
@@ -55,7 +57,7 @@ function PhoneLibraryPage() {
   );
 }
 
-export default function LibraryPage() {
+function NewLibraryPage() {
   const { user } = useAuth();
   const { system, playlists } = useCollections();
   const isOnline = useOnline();
@@ -153,3 +155,9 @@ export default function LibraryPage() {
     </div>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacyLibraryPage = dynamic(() => import('@legacy/app/library/page'));
+
+export default uiSwitch(NewLibraryPage, LegacyLibraryPage);

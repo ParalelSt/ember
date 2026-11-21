@@ -9,12 +9,14 @@ import { api } from '@/lib/api';
 import { liveCarlistKey } from '@/hooks/useSession';
 import { normalizeCode } from '@/lib/carlist';
 import { EmptyState } from '@/components/page/EmptyState';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 /** A carlist join link (/session/join/<code>, the host's QR code and "Copy
  *  link"). Signed out, proxy.ts sends the browser to sign in first and back
  *  here after. Signed in, it asks the server to add you (a POST, so a link
  *  preview never joins anyone) and opens the live carlist. */
-export default function JoinCarlistPage({ params }: { params: Promise<{ code: string }> }) {
+function NewJoinCarlistPage({ params }: { params: Promise<{ code: string }> }) {
   const { code: raw } = use(params);
   const router = useRouter();
   const qc = useQueryClient();
@@ -59,3 +61,9 @@ function safeDecode(value: string): string {
     return '';
   }
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacyJoinCarlistPage = dynamic(() => import('@legacy/app/session/join/[code]/page'));
+
+export default uiSwitch(NewJoinCarlistPage, LegacyJoinCarlistPage);

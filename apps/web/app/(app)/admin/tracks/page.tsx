@@ -21,8 +21,10 @@ import { TrackGrid } from '@/components/admin/TrackGrid';
 import type { AdminTrack } from '@/lib/api';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
-export default function AdminTracksPage() {
+function NewAdminTracksPage() {
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [committedSearch, setCommittedSearch] = useState('');
@@ -276,3 +278,9 @@ function Pagination({
     </div>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacyAdminTracksPage = dynamic(() => import('@legacy/app/admin/tracks/page'));
+
+export default uiSwitch(NewAdminTracksPage, LegacyAdminTracksPage);

@@ -1,0 +1,472 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@legacy/components/ui/dialog';
+import { Button } from '@legacy/components/ui/button';
+import { Textarea } from '@legacy/components/ui/textarea';
+import { ArrowDownIcon, ArrowUpIcon, CloseIcon } from '@legacy/components/icons';
+import { Artwork } from '@legacy/components/primitives/Artwork';
+import { usePlayer, usePlayerPosition } from '@/components/player/PlayerProvider';
+import { useQueryLyrics, type LyricsLine } from '@/hooks/useLyrics';
+import { centerLine, useLyricsFollow, type FollowDirection } from '@/hooks/useLyricsFollow';
+import { cn } from '@/lib/utils';
+import { GATEWAY_STATUSES, NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
+import { loadDeviceInfo } from '@/lib/versions/device';
+
+interface Props {
+  /** Active flag drives the lazy fetch, only goes to /api/lyrics while
+   *  the wrapping panel/sheet is actually visible. */
+  active: boolean;
+  /** Wrapping context provides the close affordance, sheet has its own
+   *  built-in via the overlay, the desktop panel renders an inline X. */
+  onClose?: () => void;
+  showHeader?: boolean;
+  /** The report form, when a parent opens it from elsewhere too (the
+   *  full-screen player's More menu). Uncontrolled without these. */
+  reportOpen?: boolean;
+  onReportOpenChange?: (open: boolean) => void;
+}
+
+export function LyricsBody({ active, onClose, showHeader = true, reportOpen: reportOpenProp, onReportOpenChange }: Props) {
+  const { current, seek } = usePlayer();
+  const { data, isLoading, error } = useQueryLyrics(current, active);
+
+  const [reportOpenState, setReportOpenState] = useState(false);
+  const reportOpen = reportOpenProp ?? reportOpenState;
+  const setReportOpen = (open: boolean) => {
+    setReportOpenState(open);
+    onReportOpenChange?.(open);
+  };
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  // The song the form was opened on, kept while it is open: the next song
+  // starting meanwhile must not turn the note into a report about that one.
+  // Set while rendering (React's "adjusting state when a prop changes").
+  const [reportFor, setReportFor] = useState<{ title: string; artist: string; source: string; lyrics: string } | null>(null);
+  if (reportOpen && !reportFor && current) {
+    setReportFor({ title: current.title, artist: current.artist, source: data?.source ?? 'unknown', lyrics: data?.lyrics ?? '' });
+  } else if (!reportOpen && reportFor) {
+    setReportFor(null);
+  }
+
+  // Ref to the scrolling lyrics container, passed down to SyncedLyrics
+  // so its active-line auto-scroll only moves THIS element, not the
+  // outer app shell (search page, home, etc.).
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+
+  const submitReport = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!reportFor) return;
+    setSubmitting(true);
+    try {
+      const device = await loadDeviceInfo();
+      const res = await fetch('/api/lyrics-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          context: {
+            appVersion: device.webVersion,
+            shellPlatform: device.platform,
+            shellVersion: device.shellVersion,
+          },
+          trackTitle: reportFor.title,
+          trackArtist: reportFor.artist,
+          source: reportFor.source,
+          note,
+          lyrics: reportFor.lyrics,
+        }),
+      });
+      // The route answers JSON: anything else came from something in its
+      // place (a Wi-Fi sign-in page, the Funnel's 502), and the report never
+      // arrived. As "sent" it cleared the note.
+      const j = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!j && (res.ok || GATEWAY_STATUSES.includes(res.status))) throw new Error(NO_ANSWER_MESSAGE);
+      if (!res.ok) throw new Error(j?.error || `Request failed: ${res.status}`);
+      toast.success('Report sent, thanks');
+      setNote('');
+      setReportOpen(false);
+    } catch (err) {
+      toast.error(`Couldn't send: ${(err as Error).message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const hasLyrics = !!current && !!data?.lyrics;
+  const synced = data?.synced && data.synced.length > 0 ? data.synced : null;
+
+  return (
+    <>
+      {showHeader && (
+        <header className="px-4 py-4 border-b border-sidebar-border flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Lyrics</h2>
+          {onClose && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              aria-label="Close lyrics"
+              className="h-7 w-7 text-sidebar-foreground/70 hover:text-sidebar-foreground"
+            >
+              <CloseIcon className="h-4 w-4" />
+            </Button>
+          )}
+        </header>
+      )}
+
+      {current && (
+        <div className="px-4 py-3 border-b border-sidebar-border flex items-center gap-3">
+          {current.artworkUrl && (
+            <Artwork src={current.artworkUrl} size="sm" className="rounded shrink-0 bg-art" />
+          )}
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{current.title}</div>
+            <div className="truncate text-xs text-sidebar-foreground/55">{current.artist}</div>
+          </div>
+        </div>
+      )}
+
+      <div ref={scrollerRef} className="flex-1 overflow-y-auto px-4 py-5 scrollbar-none [&::-webkit-scrollbar]:hidden">
+        {!current && (
+          <div className="text-sidebar-foreground/55 text-sm py-12 text-center">
+            Play a track to see its lyrics.
+          </div>
+        )}
+
+        {current && isLoading && (
+          <div className="text-sidebar-foreground/55 text-sm py-12 text-center">
+            Looking up the lyrics…
+          </div>
+        )}
+
+        {current && error && (
+          <div className="text-destructive text-sm py-12 text-center">
+            Couldn&apos;t fetch lyrics: {(error as Error).message}
+          </div>
+        )}
+
+        {current && data && synced && (
+          <SyncedLyrics lines={synced} onSeek={seek} scrollerRef={scrollerRef} songKey={current.id} />
+        )}
+
+        {current && data && !synced && data.lyrics && (
+          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-sidebar-foreground">
+            {data.lyrics}
+          </pre>
+        )}
+
+        {current && data && !synced && data.lyrics && data.url && (
+          <a
+            href={data.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-6 inline-block text-xs uppercase tracking-widest text-sidebar-foreground/55 hover:text-sidebar-foreground transition-colors"
+          >
+            Source: Genius
+          </a>
+        )}
+
+        {current && data && synced && (
+          <div className="mt-8 text-[10px] uppercase tracking-widest text-sidebar-foreground/40">
+            Synced from LRCLib
+          </div>
+        )}
+
+        {current && data && !data.lyrics && !synced && (
+          <div className="text-sidebar-foreground/55 text-sm py-12 text-center">
+            No lyrics found for this track.
+          </div>
+        )}
+      </div>
+
+      {hasLyrics && (
+        <div className="border-t border-sidebar-border px-4 py-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setReportOpen(true)}
+            className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
+          >
+            Report incorrect lyrics
+          </Button>
+        </div>
+      )}
+
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={submitReport}>
+            <DialogHeader>
+              <DialogTitle>Report wrong lyrics</DialogTitle>
+              <DialogDescription>
+                What&apos;s wrong with the lyrics for &quot;{reportFor?.title ?? current?.title}&quot;? Goes to the project&apos;s Discord channel.
+              </DialogDescription>
+            </DialogHeader>
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="e.g. The chorus is wrong / different song / wrong artist / missing the second verse…"
+              maxLength={1000}
+              rows={5}
+              className="mt-4"
+            />
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="ghost" onClick={() => setReportOpen(false)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting || !note.trim()} variant="ember">
+                Send
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/** Compensates for two compounding sources of perceived delay on
+ *  the synced lyric highlight:
+ *    - audio output latency from `audio.currentTime` to the speakers
+ *      (~100-150ms wired, ~200-300ms Bluetooth)
+ *    - the ~250ms granularity of the `timeupdate` event we read
+ *      `position` from
+ *  0.2s pulls the average highlight moment closer to the audible
+ *  vocal start without going meaningfully early on well-timed LRCs. */
+const LOOKAHEAD_SEC = 0.2;
+
+/** How long after the Follow pill is pressed a tap on a lyric line is
+ *  ignored, so the end of the same touch or the glide back to the current
+ *  line can never seek somewhere else. */
+const PILL_GUARD_MS = 600;
+
+/** Karaoke-style lyric scroller: lines dim by distance from the current
+ *  position, the active line is highlighted, and the active line is
+ *  smooth-scrolled into the center of the lyrics scroller as the song
+ *  plays, unless the user has scrolled away to read (see useLyricsFollow).
+ *  Clicking a line seeks playback to that timestamp. */
+function SyncedLyrics({
+  lines,
+  onSeek,
+  scrollerRef,
+  songKey,
+}: {
+  lines: LyricsLine[];
+  onSeek: (t: number) => void;
+  /** Changes with the song; a new song starts out following. */
+  songKey: string;
+  /** The overflow-y-auto container that wraps the lyrics. Auto-scroll
+   *  is math-applied to THIS element directly, scrollIntoView walks
+   *  up the ancestor chain and was yanking the main app scroller
+   *  (search page, home, etc.) every time the active line changed. */
+  scrollerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const position = usePlayerPosition();
+
+  // Binary search for the latest line whose timestamp is <= current position.
+  const activeIdx = useMemo(() => {
+    // Apply LOOKAHEAD_SEC to compensate for audio-output latency and
+    // timeupdate granularity. See the constant's JSDoc above.
+    const t = position + LOOKAHEAD_SEC;
+    let lo = 0;
+    let hi = lines.length - 1;
+    let ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (lines[mid].time <= t) {
+        ans = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return ans;
+  }, [lines, position]);
+
+  const lineRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const prevActiveIdxRef = useRef<number>(-1);
+  // When the Follow pill was last pressed. A tap on the pill must never also
+  // seek: the pill disappears under the finger and the scroll glides, so a
+  // late click or the end of the same touch can land on a lyric line.
+  const pillPressedAtRef = useRef(0);
+  const follow = useLyricsFollow({ scrollerRef, lineRefs, activeIdx, resetKey: songKey });
+  const { followingRef, relock, behavior } = follow;
+
+  // Only render + auto-scroll the lyric lines while the scroller is actually on
+  // screen. Off-screen (the user is up at the artwork), the ~4×/sec activeIdx
+  // churn would otherwise re-render every line and fire scrollTo on a hidden
+  // container, wasted "random updates" the user can't see. The lyrics data is
+  // still prefetched, so when scrolled into view the lines pop in already on
+  // the right line. Seeking only happens by clicking a line that's in view.
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setInView(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        setInView(entry.isIntersecting);
+        // Re-entry should land on the active line immediately, not glide
+        // across the lines it missed while hidden.
+        if (!entry.isIntersecting) prevActiveIdxRef.current = -1;
+      },
+      { threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [scrollerRef]);
+
+  useEffect(() => {
+    if (!inView) return;
+    const prev = prevActiveIdxRef.current;
+    // A big seek (a jump back, a skip of more than two lines, or landing
+    // past the first line from nowhere) brings the reader back to the song.
+    // Plain playback, which can skip a line when two are very close, can't.
+    const bigSeek = prev >= 0 ? activeIdx < prev || activeIdx - prev > 2 : activeIdx > 0;
+    if (bigSeek) relock();
+    // The user scrolled away to read: leave the view where they put it.
+    if (!followingRef.current) {
+      prevActiveIdxRef.current = activeIdx;
+      return;
+    }
+    if (activeIdx < 0) {
+      // No line active, playback is before lines[0].time (intro).
+      // If the user rewound here from a later line, snap the scroller
+      // back to the top so the lyric panel doesn't leave them stuck
+      // wherever they were when activeIdx flipped to -1.
+      const container = scrollerRef.current;
+      if (container) {
+        container.scrollTo({ top: 0, behavior: 'auto' });
+      }
+      prevActiveIdxRef.current = activeIdx;
+      return;
+    }
+    const el = lineRefs.current[activeIdx];
+    const container = scrollerRef.current;
+    if (!el || !container) {
+      prevActiveIdxRef.current = activeIdx;
+      return;
+    }
+
+    // Normal playback advances activeIdx by exactly 1 per line. Anything
+    // else, initial activation from -1, a forward jump >1, any
+    // backward step, is a seek-style transition where we want the
+    // scroll to LAND immediately rather than glide across multiple
+    // lines while the highlight has already moved.
+    const isSeek = prev < 0 || activeIdx - prev !== 1;
+
+    // First line special-case: there's nothing above line 0 to centre
+    // against, and rewinding to near the start of the song should
+    // visually return to the top of the lyrics list, not leave the
+    // container half-scrolled from the centring math.
+    if (activeIdx === 0) {
+      container.scrollTo({ top: 0, behavior: behavior(!isSeek) });
+      prevActiveIdxRef.current = activeIdx;
+      return;
+    }
+
+    // Scroll ONLY this container, not its ancestors.
+    centerLine(container, el, behavior(!isSeek));
+
+    prevActiveIdxRef.current = activeIdx;
+  }, [activeIdx, scrollerRef, inView, followingRef, relock, behavior]);
+
+  return (
+    <>
+      <div className="flex flex-col gap-2 py-2">
+        {inView && lines.map((line, i) => {
+          const isActive = i === activeIdx;
+          const isPast = i < activeIdx;
+          const text = line.text || '♪';
+          return (
+            <button
+              key={`${line.time}-${i}`}
+              type="button"
+              ref={(el) => {
+                lineRefs.current[i] = el;
+              }}
+              // Blur after the click so Space (play/pause) doesn't replay
+              // this button's onClick and seek the audio back to its
+              // timestamp; the global Space handler can then pause instead.
+              onClick={(e) => {
+                e.currentTarget.blur();
+                if (Date.now() - pillPressedAtRef.current < PILL_GUARD_MS) return;
+                relock();
+                onSeek(line.time);
+              }}
+              className={cn(
+                'text-left rounded-md px-2 py-1.5 text-sm transition-all duration-100',
+                'leading-relaxed cursor-pointer outline-none',
+                'focus-visible:bg-sidebar-foreground/10',
+                // Keep font-size constant across all states so a long
+                // active line doesn't re-wrap and shove the lines below it
+                // out of view. Scale is a GPU transform: visible pop
+                // without touching layout.
+                isActive
+                  ? 'text-foreground font-semibold scale-[1.02] origin-left'
+                  : isPast
+                    ? 'text-sidebar-foreground/30'
+                    : 'text-sidebar-foreground/65 hover:text-sidebar-foreground',
+              )}
+            >
+              {text}
+            </button>
+          );
+        })}
+      </div>
+      {inView && !follow.following && (
+        <FollowPill
+          direction={follow.direction}
+          onPress={() => {
+            pillPressedAtRef.current = Date.now();
+          }}
+          onClick={follow.resume}
+        />
+      )}
+    </>
+  );
+}
+
+/** Floats at the bottom of the lyrics scroller while following is off.
+ *  Sticky inside the scroller with zero height, so it never adds to the
+ *  scrollable length; the arrow points toward the current line. */
+function FollowPill({
+  direction,
+  onPress,
+  onClick,
+}: {
+  direction: FollowDirection;
+  onPress: () => void;
+  onClick: () => void;
+}) {
+  const Arrow = direction === 'up' ? ArrowUpIcon : ArrowDownIcon;
+  return (
+    <div className="pointer-events-none sticky bottom-3 z-10 flex h-0 justify-center">
+      <button
+        type="button"
+        onPointerDown={onPress}
+        onClick={(e) => {
+          e.stopPropagation();
+          onPress();
+          onClick();
+        }}
+        aria-label="Follow lyrics, back to the current line"
+        data-direction={direction}
+        className="pointer-events-auto relative flex -translate-y-full items-center gap-inset rounded-full bg-ember px-row py-block before:absolute before:-inset-3 before:rounded-full before:content-[''] text-xs font-semibold text-ember-foreground shadow-lg transition-colors hover:bg-ember-soft"
+      >
+        <Arrow className="h-3.5 w-3.5" aria-hidden />
+        Follow lyrics
+      </button>
+    </div>
+  );
+}

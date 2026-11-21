@@ -20,8 +20,10 @@ import { FloatingActionButton } from '@/components/ui/floating-action-button';
 import { AdminSheet } from '@/components/admin/AdminSheet';
 import { Popup } from '@/components/ui/popup';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
-export default function AdminInvitesPage() {
+function NewAdminInvitesPage() {
   const { data: invites = [], isLoading, error } = useQueryAdminInvites();
   const addInvite = useExecuteAddAdminInvite();
   const deleteInvite = useExecuteDeleteAdminInvite();
@@ -192,3 +194,9 @@ export default function AdminInvitesPage() {
     </section>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacyAdminInvitesPage = dynamic(() => import('@legacy/app/admin/invites/page'));
+
+export default uiSwitch(NewAdminInvitesPage, LegacyAdminInvitesPage);

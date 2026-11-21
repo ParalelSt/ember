@@ -4,6 +4,7 @@ import { serverLogger } from '@/lib/logger/server';
 import { PUBLIC_PATHS, isPublicPage as isPublicPath } from '@/lib/publicPaths';
 import { checkRateLimit, clientIp, type RateLimitConfig } from '@/lib/rateLimitCore';
 import { linkCookie } from '@/lib/qrLogin/codes';
+import { UI_MODE_PARAM, parseUiMode, uiModeSetCookie } from '@/lib/uiMode';
 
 // Middleware runs server-side, so it needs an absolute URL. The public
 // NEXT_PUBLIC_POCKETBASE_URL may be the relative `/pb` proxy path; fall back to
@@ -174,12 +175,40 @@ function withoutCookie(header: string, name: string): string {
     .join('; ');
 }
 
+/** The original request was https: TLS ends at the tunnel, so trust
+ *  X-Forwarded-Proto for the scheme the browser used. */
+function requestIsHttps(req: NextRequest): boolean {
+  return req.headers.get('x-forwarded-proto') === 'https' || req.nextUrl.protocol === 'https:';
+}
+
+/** `?ui=legacy` or `?ui=new` on a page: set this device's UI cookie
+ *  (lib/uiMode) and send the browser to the same URL without the parameter.
+ *  The sign-in checks run on that next request, so /auth?next= and /link
+ *  work as they would without it. null when the request is not a switch:
+ *  no parameter, an unknown value, a non-GET, or an API, /pb or static path. */
+export function uiModeSwitch(req: NextRequest): NextResponse | null {
+  const mode = parseUiMode(req.nextUrl.searchParams.get(UI_MODE_PARAM));
+  if (!mode) return null;
+  if (req.method !== 'GET' && req.method !== 'HEAD') return null;
+  const path = req.nextUrl.pathname;
+  if (path.startsWith('/api/') || path === '/pb' || path.startsWith('/pb/') || isStaticAsset(path)) return null;
+  const url = req.nextUrl.clone();
+  url.searchParams.delete(UI_MODE_PARAM);
+  const redirect = NextResponse.redirect(url);
+  redirect.headers.append('set-cookie', uiModeSetCookie(mode, requestIsHttps(req)));
+  return redirect;
+}
+
 export default async function proxy(req: NextRequest) {
   // The superuser surface never goes through the public app (bughunt W14):
   // anyone who reached it could try the superuser password from the internet.
   if (isBlockedPbPath(req.nextUrl.pathname)) {
     return new NextResponse('Not found', { status: 404 });
   }
+
+  // `?ui=legacy` / `?ui=new`: switch this device's look, then come back.
+  const uiSwitch = uiModeSwitch(req);
+  if (uiSwitch) return uiSwitch;
 
   // Sign-in and recovery attempts through /pb, counted per client IP. The
   // body is PocketBase's own error shape, so the sign-in form shows the
@@ -214,8 +243,7 @@ export default async function proxy(req: NextRequest) {
   // The TLS terminates at the tunnel; trust X-Forwarded-Proto for the
   // original scheme so we match Secure correctly behind Tailscale Funnel
   // / Cloudflare Tunnel / any reverse proxy.
-  const fwdProto = req.headers.get('x-forwarded-proto');
-  const isHttps = (fwdProto === 'https') || req.nextUrl.protocol === 'https:';
+  const isHttps = requestIsHttps(req);
   const cookieOpts = { httpOnly: false, secure: isHttps, sameSite: 'lax' } as const;
   const setCookies: string[] = [];
   /** PocketBase could not be asked at all (down, unreachable): the session

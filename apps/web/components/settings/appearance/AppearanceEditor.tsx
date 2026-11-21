@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ApplyBar } from '@/components/settings/appearance/ApplyBar';
+import { ClassicLookRow } from '@/components/settings/appearance/ClassicLookRow';
 import { ColourEditor } from '@/components/settings/appearance/ColourEditor';
 import { InspectorPanel, InspectorTabStrip, type InspectorTab } from '@/components/settings/appearance/InspectorTabs';
 import { ThemeLibrary, type LibraryView } from '@/components/settings/appearance/ThemeLibrary';
@@ -30,7 +31,8 @@ import { THEME_CAP } from '@/lib/theme/saved';
  *  Nothing on it moves on its own (layout-shift pass): the Apply bar keeps
  *  one height in every state, the status line keeps its room, every card
  *  keeps a line for its tags, a list still loading shows stand-in cards,
- *  and a tab is never shorter than the window. */
+ *  and a tab is never shorter than the window.
+ *  Above it all, the Classic look switch (ClassicLookRow). */
 export function AppearanceEditor({ rows }: { rows?: boolean }) {
   const editor = useThemeEditor();
   const [tab, setTab] = useState<InspectorTab>('presets');
@@ -72,6 +74,8 @@ export function AppearanceEditor({ rows }: { rows?: boolean }) {
 
   return (
     <section data-testid="appearance" className="flex flex-col gap-block">
+      {/* The previous design, for this device (docs/classic-look.md). */}
+      <ClassicLookRow rows={rows} />
       <div data-testid="appearance-layout" className="flex flex-col gap-stack xl:flex-row xl:items-start">
         <ThemePreview
           vars={derive(editor.inputs).vars}

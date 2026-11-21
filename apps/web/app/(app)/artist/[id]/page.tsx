@@ -18,8 +18,10 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 import { RowNavProvider } from '@/components/page/RowNavContext';
 import { useScrollTopOnChange } from '@/hooks/useScrollTopOnChange';
 import { rowHref } from '@/lib/homeRows';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
-export default function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
+function NewArtistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   return (
     <OnlineOnly>
@@ -97,3 +99,9 @@ function ArtistView({ id }: { id: string }) {
     </div>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacyArtistPage = dynamic(() => import('@legacy/app/artist/[id]/page'));
+
+export default uiSwitch(NewArtistPage, LegacyArtistPage);

@@ -19,7 +19,7 @@ const { compareDevices, listDevices, MAX_DEVICES_PER_USER, newestReleases, parse
 const { serverLogger } = await import('@/lib/logger/server');
 
 const NOW = Date.UTC(2026, 9, 30, 12);
-const report = { deviceId: 'device-aaaa', platform: 'android' as const, shellVersion: '0.4.28', webVersion: '0.7.34' };
+const report = { deviceId: 'device-aaaa', platform: 'android' as const, shellVersion: '0.4.28', webVersion: '0.7.34', uiMode: null };
 
 function fakePb(rows: Record<string, unknown>[], { createThrows = false, afterCreateFail = [] as unknown[] } = {}) {
   const devices = {
@@ -63,6 +63,14 @@ describe('parseDeviceReport', () => {
     expect(parseDeviceReport({ ...body, shellVersion: '<@1>', webVersion: 7 })).toEqual({ ...report, shellVersion: null, webVersion: null });
   });
 
+  it('takes the look the device shows, and nothing but the two looks', () => {
+    expect(parseDeviceReport({ ...body, uiMode: 'legacy' })!.uiMode).toBe('legacy');
+    expect(parseDeviceReport({ ...body, uiMode: 'new' })!.uiMode).toBe('new');
+    expect(parseDeviceReport({ ...body, uiMode: 'retro' })!.uiMode).toBeNull();
+    // An older build says nothing about it: still a good note.
+    expect(parseDeviceReport(body)!.uiMode).toBeNull();
+  });
+
   it('a browser has no shell, whatever it says', () => {
     expect(parseDeviceReport({ ...body, platform: 'browser' })!.shellVersion).toBeNull();
   });
@@ -96,6 +104,27 @@ describe('saveDeviceSeen', () => {
     const { pb, devices } = fakePb([row()]);
     expect(await saveDeviceSeen(pb, 'u1', { ...report, webVersion: '0.7.35' }, NOW)).toBe(true);
     expect(devices.update).toHaveBeenCalledWith('r1', expect.objectContaining({ web_version: '0.7.35' }), { requestKey: null });
+  });
+
+  it('stores the look a device shows, and writes at once when it changes', async () => {
+    const created = fakePb([]);
+    await saveDeviceSeen(created.pb, 'u1', { ...report, uiMode: 'legacy' }, NOW);
+    expect(created.devices.create).toHaveBeenCalledWith(expect.objectContaining({ ui_mode: 'legacy' }), { requestKey: null });
+
+    const same = fakePb([row({ ui_mode: 'legacy' })]);
+    expect(await saveDeviceSeen(same.pb, 'u1', { ...report, uiMode: 'legacy' }, NOW)).toBe(false);
+
+    const switched = fakePb([row({ ui_mode: 'legacy' })]);
+    expect(await saveDeviceSeen(switched.pb, 'u1', { ...report, uiMode: 'new' }, NOW)).toBe(true);
+    expect(switched.devices.update).toHaveBeenCalledWith('r1', expect.objectContaining({ ui_mode: 'new' }), { requestKey: null });
+  });
+
+  it('an older build that does not say leaves the stored look alone', async () => {
+    const { pb, devices } = fakePb([row({ ui_mode: 'legacy', last_seen: pbDate(NOW - SEEN_WRITE_EVERY_MS) })]);
+    expect(await saveDeviceSeen(pb, 'u1', report, NOW)).toBe(true);
+    expect((devices.update.mock.calls[0] as unknown[])[1]).not.toHaveProperty('ui_mode');
+    const quiet = fakePb([row({ ui_mode: 'legacy' })]);
+    expect(await saveDeviceSeen(quiet.pb, 'u1', report, NOW)).toBe(false);
   });
 
   it('stores a missing shell version as empty', async () => {

@@ -1,11 +1,15 @@
+'use client';
+
 import type { ReactNode } from 'react';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 import { SettingsHeader, SettingsContent } from '@/components/settings/SettingsHeader';
 import { BuildStamp } from '@/components/settings/BuildStamp';
 import { AppUpdateCard } from '@/components/settings/AppUpdateCard';
 import { SettingsFrame } from '@/components/settings/desktop/DesktopSettings';
 import { UpdatesCard } from '@/components/settings/UpdatesCard';
 
-export default function SettingsLayout({ children }: { children: ReactNode }) {
+function NewSettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div>
       {/* Desktop (lg and up) draws its own menu layout (components/
@@ -38,3 +42,10 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+/** The Classic look's Settings frame (docs/classic-look.md), loaded only
+ *  on a device that chose it. A client switch, not a server one: every
+ *  piece of either frame is a client component already. */
+const LegacySettingsLayout = dynamic(() => import('@legacy/app/settings/layout'));
+
+export default uiSwitch(NewSettingsLayout, LegacySettingsLayout);

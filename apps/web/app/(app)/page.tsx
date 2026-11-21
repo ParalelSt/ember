@@ -50,6 +50,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { POPULAR_COLOR, POPULAR_SLUG, tileCovers } from '@/lib/chartsView';
 import { MusicIcon } from '@/components/icons';
 import { RowNavProvider } from '@/components/page/RowNavContext';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 /** A song with no cover art (an upload without one, a track whose source
  *  gave none) gets a music note in its box, not a bare black square that
@@ -64,7 +66,7 @@ interface Section {
   hidden?: boolean;
 }
 
-export default function HomePage() {
+function NewHomePage() {
   const search = useSearchParams();
   const focus = search.get('focus');
   // "Show all" on a row opens that row alone as a full grid (?row=<key>).
@@ -357,3 +359,9 @@ export default function HomePage() {
     </OnlineOnly>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacyHomePage = dynamic(() => import('@legacy/app/page'));
+
+export default uiSwitch(NewHomePage, LegacyHomePage);

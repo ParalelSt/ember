@@ -52,7 +52,14 @@ describe('POST /api/devices/seen', () => {
       platform: 'android',
       shellVersion: '0.4.28',
       webVersion: '0.7.34',
+      uiMode: null,
     });
+  });
+
+  it('takes the look the device shows along with its versions', async () => {
+    const res = await post({ ...good, uiMode: 'legacy' });
+    expect(res.status).toBe(200);
+    expect(save).toHaveBeenCalledWith({}, 'u1', expect.objectContaining({ uiMode: 'legacy' }));
   });
 
   it('refuses someone signed out, without touching storage', async () => {

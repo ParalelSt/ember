@@ -13,6 +13,8 @@ import { RegisterSW } from '@/components/RegisterSW';
 import { BugReportDialog } from '@/components/BugReportDialog';
 import { Toaster } from '@/components/ui/sonner';
 import { ThemeApplier } from '@/components/providers/ThemeApplier';
+import { UiModeProvider } from '@/components/providers/UiModeProvider';
+import { serverUiMode } from '@/components/providers/serverUiMode';
 import { themeFromRecord } from '@/lib/theme/fromRecord';
 import { htmlProps, themeColor } from '@/lib/theme/css';
 import { DEFAULT_THEME, type ThemeDoc } from '@/lib/theme/model';
@@ -73,9 +75,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // no theme script, nothing to race, no flash. Ember adds nothing at all.
   const theme = initialUser ? themeFromRecord(pb.authStore.record) : null;
   const html = htmlProps(inter.variable, theme ?? DEFAULT_THEME);
+  // This device's look (lib/uiMode): the redesign or the Classic look.
+  // data-ui scopes the Classic look's own CSS (legacy/legacy.css).
+  const uiMode = await serverUiMode();
 
   return (
-    <html lang="en" className={html.className} style={html.style as React.CSSProperties} suppressHydrationWarning>
+    <html lang="en" data-ui={uiMode} className={html.className} style={html.style as React.CSSProperties} suppressHydrationWarning>
       <head>
         {/* Car screens are tagged before first paint so the rotate lock never flashes. */}
         <script dangerouslySetInnerHTML={{ __html: CAR_CLASS_SCRIPT }} />
@@ -88,19 +93,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <p className="text-lg font-semibold">Rotate your phone to portrait</p>
           <p className="text-meta">Ember is built for portrait on phones.</p>
         </div>
-        <QueryProvider>
-          <AuthProvider initialUser={initialUser}>
-            <ThemeApplier initial={theme} stripped={initialUser !== null && theme === null} />
-            <LoggerInit />
-            <ExternalLinks />
-            <VersionLog />
-            <RegisterSW />
-            <PlayerProvider>
-              <AppErrorBoundary>{children}</AppErrorBoundary>
-            </PlayerProvider>
-          </AuthProvider>
-          <BugReportDialog />
-        </QueryProvider>
+        <UiModeProvider mode={uiMode}>
+          <QueryProvider>
+            <AuthProvider initialUser={initialUser}>
+              <ThemeApplier initial={theme} stripped={initialUser !== null && theme === null} />
+              <LoggerInit />
+              <ExternalLinks />
+              <VersionLog />
+              <RegisterSW />
+              <PlayerProvider>
+                <AppErrorBoundary>{children}</AppErrorBoundary>
+              </PlayerProvider>
+            </AuthProvider>
+            <BugReportDialog />
+          </QueryProvider>
+        </UiModeProvider>
         <Toaster position="bottom-center" />
       </body>
     </html>

@@ -17,10 +17,12 @@ import { SearchNoResults } from '@/components/search/SearchNoResults';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { cameBySwipe } from '@/lib/tabSwipe';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
 
-export default function SearchPage() {
+function NewSearchPage() {
   const fieldRef = useRef<HTMLDivElement>(null);
   // A swipe from another tab shows Search without the keyboard; tapping
   // the Search tab still focuses the box.
@@ -168,3 +170,9 @@ export default function SearchPage() {
     </OnlineOnly>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacySearchPage = dynamic(() => import('@legacy/app/search/page'));
+
+export default uiSwitch(NewSearchPage, LegacySearchPage);

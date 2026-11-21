@@ -28,6 +28,8 @@ import {
 } from '@/hooks/useRadio';
 import type { RadioStation } from '@/lib/radio/station';
 import { useUiStore } from '@/stores/useUiStore';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -38,7 +40,7 @@ const SEARCH_DEBOUNCE_MS = 300;
  *  its finds as rows. The
  *  location is only ever read when they tap "Use my location", or when this
  *  site already has their permission (which asks nothing). */
-export default function RadioPage() {
+function NewRadioPage() {
   const { user } = useAuth();
   // "Show all" on a row opens that row alone as a full grid (?row=<key>).
   const rowParam = useSearchParams().get('row');
@@ -190,3 +192,9 @@ export default function RadioPage() {
     </OnlineOnly>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacyRadioPage = dynamic(() => import('@legacy/app/radio/page'));
+
+export default uiSwitch(NewRadioPage, LegacyRadioPage);

@@ -1,10 +1,11 @@
 import { Skeleton } from '@/components/ui/skeleton';
+import { serverUiMode } from '@/components/providers/serverUiMode';
 
 /** Shown for the moment /search's own chunk and payload are loading: the
  *  nav opens the search overlay instantly instead, so this only fires for a
  *  deep link straight to /search. Same shape as the real page: title, the
  *  rounded search-bar pill, and a few row placeholders. */
-export default function SearchLoading() {
+function NewSearchLoading() {
   return (
     <div className="pt-4 md:pt-0">
       <Skeleton className="h-8 w-32 mb-6" />
@@ -23,4 +24,14 @@ export default function SearchLoading() {
       </div>
     </div>
   );
+}
+
+/** The new look's loading, or on a device on the Classic look the frozen one
+ *  (docs/classic-look.md), imported only then. */
+export default async function SearchLoading() {
+  if ((await serverUiMode()) === 'legacy') {
+    const { default: Legacy } = await import('@legacy/app/search/loading');
+    return <Legacy />;
+  }
+  return NewSearchLoading();
 }

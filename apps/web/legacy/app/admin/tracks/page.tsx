@@ -1,0 +1,265 @@
+'use client';
+
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { Input } from '@legacy/components/ui/input';
+import { Button } from '@legacy/components/ui/button';
+import { ConfirmDialog } from '@legacy/components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@legacy/components/ui/dialog';
+import { Label } from '@legacy/components/ui/label';
+import { MoreIcon, TrashIcon } from '@legacy/components/icons';
+import {
+  useExecuteDeleteAdminTrack,
+  useExecuteUpdateAdminTrack,
+  useQueryAdminTracks,
+} from '@/hooks/useAdmin';
+import type { AdminTrack } from '@/lib/api';
+import { EmptyState } from '@legacy/components/page/EmptyState';
+import { SectionHeader } from '@legacy/components/page/SectionHeader';
+
+export default function AdminTracksPage() {
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const [committedSearch, setCommittedSearch] = useState('');
+
+  const { data, isLoading, isFetching, error } = useQueryAdminTracks(page, committedSearch);
+  const deleteTrack = useExecuteDeleteAdminTrack();
+  // The last page emptied (its last track deleted): step back to the new
+  // last page, or the empty list hides the pager and there is no way back.
+  if (data && data.tracks.length === 0 && page > 1 && data.totalPages < page) {
+    setPage(Math.max(1, data.totalPages));
+  }
+
+  const [pendingDelete, setPendingDelete] = useState<AdminTrack | null>(null);
+
+  const submitSearch = () => {
+    setPage(1);
+    setCommittedSearch(searchInput.trim());
+  };
+
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <SectionHeader title={`Tracks${data ? ` · ${data.totalItems}` : ''}`} />
+        <form
+          onSubmit={(e) => { e.preventDefault(); submitSearch(); }}
+          className="flex gap-2"
+        >
+          <Input
+            placeholder="Search title or artist…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="max-w-xs"
+          />
+          <Button type="submit" variant="outline" size="sm">Search</Button>
+        </form>
+      </div>
+
+      {isLoading && <EmptyState>Loading…</EmptyState>}
+      {error && <EmptyState>Couldn&apos;t load tracks: {(error as Error).message}</EmptyState>}
+      {!isLoading && data && data.tracks.length === 0 && (
+        <EmptyState>No tracks match.</EmptyState>
+      )}
+
+      {data && data.tracks.length > 0 && (
+        <>
+          <div className="flex flex-col gap-1">
+            {data.tracks.map((t) => (
+              <TrackRow key={t.recordId} track={t} onDelete={() => setPendingDelete(t)} />
+            ))}
+          </div>
+
+          <Pagination
+            page={data.page}
+            totalPages={data.totalPages}
+            busy={isFetching}
+            onChange={setPage}
+          />
+        </>
+      )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title={pendingDelete ? `Delete "${pendingDelete.title}"?` : ''}
+        description="This also removes the track from any playlist that contains it and clears its like / play history."
+        confirmLabel="Delete track"
+        variant="destructive"
+        onConfirm={async () => {
+          if (!pendingDelete) return;
+          try {
+            await deleteTrack.mutateAsync(pendingDelete.recordId);
+            toast.success(`Deleted "${pendingDelete.title}"`);
+            setPendingDelete(null);
+          } catch (e) {
+            toast.error(`Couldn't delete: ${(e as Error).message}`);
+            throw e;
+          }
+        }}
+      />
+    </section>
+  );
+}
+
+function TrackRow({ track, onDelete }: { track: AdminTrack; onDelete: () => void }) {
+  const [editOpen, setEditOpen] = useState(false);
+
+  return (
+    <div className="grid grid-cols-[40px_minmax(0,2fr)_minmax(0,1.2fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md hover:bg-card transition-colors">
+      <div className="relative h-10 w-10 rounded bg-art overflow-hidden shrink-0">
+        {track.artworkUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={track.artworkUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        )}
+      </div>
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold">{track.title}</div>
+        <div className="truncate text-xs text-muted-foreground">{track.artist}</div>
+      </div>
+      <div className="truncate text-sm text-muted-foreground">{track.album ?? ''}</div>
+      {track.missing ? (
+        <div className="text-xs font-semibold uppercase text-destructive" title="The uploaded file was deleted: this song no longer plays">
+          Missing
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground uppercase">{track.source}</div>
+      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        aria-label="Edit"
+        onClick={() => setEditOpen(true)}
+      >
+        <MoreIcon className="h-4 w-4" />
+      </Button>
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit track</DialogTitle>
+          </DialogHeader>
+          {/* The fields live inside the dialog, so each opening starts from
+              the track, not from an edit that was closed without saving. */}
+          <TrackEditFields
+            track={track}
+            onDone={() => setEditOpen(false)}
+            onDelete={() => { setEditOpen(false); onDelete(); }}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function TrackEditFields({ track, onDone, onDelete }: { track: AdminTrack; onDone: () => void; onDelete: () => void }) {
+  const updateTrack = useExecuteUpdateAdminTrack();
+  const [title, setTitle] = useState(track.title);
+  const [artist, setArtist] = useState(track.artist);
+  const [album, setAlbum] = useState(track.album ?? '');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await updateTrack.mutateAsync({
+        recordId: track.recordId,
+        patch: {
+          title: title !== track.title ? title : undefined,
+          artist: artist !== track.artist ? artist : undefined,
+          album: album !== (track.album ?? '') ? album : undefined,
+        },
+      });
+      toast.success('Track updated');
+      onDone();
+    } catch (e) {
+      toast.error(`Couldn't save: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="grid gap-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor={`t-title-${track.recordId}`}>Title</Label>
+          <Input id={`t-title-${track.recordId}`} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`t-artist-${track.recordId}`}>Artist</Label>
+          <Input id={`t-artist-${track.recordId}`} value={artist} onChange={(e) => setArtist(e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`t-album-${track.recordId}`}>Album</Label>
+          <Input id={`t-album-${track.recordId}`} value={album} onChange={(e) => setAlbum(e.target.value)} />
+        </div>
+      </div>
+      <DialogFooter className="flex justify-between items-center sm:justify-between mt-4">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onDelete}
+          className="text-destructive hover:text-destructive"
+        >
+          <TrashIcon className="h-4 w-4" />
+          Delete
+        </Button>
+        <Button
+          type="button"
+          onClick={save}
+          disabled={busy}
+          size="sm"
+          variant="ember"
+        >
+          {busy ? '…' : 'Save'}
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+function Pagination({
+  page,
+  totalPages,
+  busy,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  busy: boolean;
+  onChange: (n: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 mt-6">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={page === 1 || busy}
+        onClick={() => onChange(page - 1)}
+      >
+        ‹ Prev
+      </Button>
+      <span className="text-sm text-muted-foreground tabular-nums">
+        Page {page} of {totalPages}
+      </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={page >= totalPages || busy}
+        onClick={() => onChange(page + 1)}
+      >
+        Next ›
+      </Button>
+    </div>
+  );
+}

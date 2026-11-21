@@ -5,6 +5,7 @@ import { serverLogger } from '@/lib/logger/server';
 import { parsePbDate, pbDate } from '@/lib/pocketbase/dates';
 import { isNewer } from '@/lib/semver';
 import { RELEASE_PLATFORMS } from '@/lib/updatePolicy';
+import { parseUiMode, type UiMode } from '@/lib/uiMode';
 import { sanitizePlatform, sanitizeVersion, type DevicePlatform } from './label';
 
 /** The user_devices collection: which versions each member's devices run.
@@ -27,6 +28,9 @@ export interface DeviceReport {
   platform: DevicePlatform;
   shellVersion: string | null;
   webVersion: string | null;
+  /** Which look the device shows (lib/uiMode); null from a device whose
+   *  web build is older than the Classic look switch. */
+  uiMode: UiMode | null;
 }
 
 /** Checks a device's note; null when it is not one. A browser has no shell,
@@ -42,6 +46,7 @@ export function parseDeviceReport(body: unknown): DeviceReport | null {
     platform,
     shellVersion: platform === 'browser' ? null : sanitizeVersion(b.shellVersion),
     webVersion: sanitizeVersion(b.webVersion),
+    uiMode: parseUiMode(b.uiMode),
   };
 }
 
@@ -55,19 +60,24 @@ export async function saveDeviceSeen(
 ): Promise<boolean> {
   const devices = pb.collection('user_devices');
   const rows = await devices.getFullList({ filter: `user = "${userId}"`, sort: '-last_seen', requestKey: null });
-  const fields = {
+  const fields: Record<string, string> = {
     platform: report.platform,
     shell_version: report.shellVersion ?? '',
     web_version: report.webVersion ?? '',
     last_seen: pbDate(now),
   };
+  // Only a device that says which look it shows sets it: an older build's
+  // note leaves what is stored alone. A PocketBase without the field yet
+  // (migration 1793100000 not applied) ignores it.
+  if (report.uiMode) fields.ui_mode = report.uiMode;
 
   const existing = rows.find((r) => r.device_key === report.deviceId);
   if (existing) {
     const unchanged =
       existing.platform === fields.platform &&
       (existing.shell_version ?? '') === fields.shell_version &&
-      (existing.web_version ?? '') === fields.web_version;
+      (existing.web_version ?? '') === fields.web_version &&
+      (!fields.ui_mode || existing.ui_mode === fields.ui_mode);
     const age = now - parsePbDate(existing.last_seen);
     if (unchanged && age >= 0 && age < SEEN_WRITE_EVERY_MS) return false;
     await devices.update(existing.id, fields, { requestKey: null });

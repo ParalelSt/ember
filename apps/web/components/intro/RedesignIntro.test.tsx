@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, type ComponentProps, type PropsWithChildren } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { INTRO_SEEN_KEY, introBlockedPath, introSteps } from '@/lib/redesignIntro';
+import { CLASSIC_LAYOUT_AVAILABLE, INTRO_SEEN_KEY, introBlockedPath, introSteps } from '@/lib/redesignIntro';
 import { useUiStore } from '@/stores/useUiStore';
 
 // @base-ui reaches a second React copy in tests (see RequestDialog.test), so
@@ -69,10 +69,11 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('introSteps', () => {
-  it('phone has swipe, desktop does not; Classic is gated by the flag', () => {
-    expect(introSteps({ desktop: false })).toEqual(['new', 'swipe', 'tour', 'fix']);
-    expect(introSteps({ desktop: true })).toEqual(['new', 'tour', 'fix']);
-    expect(introSteps({ desktop: false, classic: true })).toEqual(['new', 'swipe', 'tour', 'classic', 'fix']);
+  it('phone has swipe, desktop does not; Classic shows now that its switch exists', () => {
+    expect(CLASSIC_LAYOUT_AVAILABLE).toBe(true);
+    expect(introSteps({ desktop: false })).toEqual(['new', 'swipe', 'tour', 'classic', 'fix']);
+    expect(introSteps({ desktop: true })).toEqual(['new', 'tour', 'classic', 'fix']);
+    expect(introSteps({ desktop: false, classic: false })).toEqual(['new', 'swipe', 'tour', 'fix']);
   });
   it('blocks auth, link and legal pages only', () => {
     for (const p of ['/auth', '/link/abc', '/privacy', '/terms']) expect(introBlockedPath(p)).toBe(true);
@@ -95,8 +96,8 @@ describe('RedesignIntro steps', () => {
     expect(title()).toBe('The new Ember is here');
   });
 
-  it('walks Next and Back through the phone steps; Classic is hidden', () => {
-    renderIntro();
+  it('walks Next and Back through the phone steps; Classic can be hidden', () => {
+    renderIntro({ classic: false });
     const seen = [title()];
     for (let i = 0; i < 3; i++) {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -108,11 +109,13 @@ describe('RedesignIntro steps', () => {
     expect(title()).toBe('A few things that moved');
   });
 
-  it('shows the Classic step once the flag is on', () => {
-    renderIntro({ classic: true });
+  it('shows the Classic step by default, pointing at Settings > Appearance > Classic look', () => {
+    renderIntro();
     for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(title()).toBe('Prefer the old look?');
-    expect(screen.getByText('Classic layout')).toBeInTheDocument();
+    expect(screen.getByText('Classic look')).toBeInTheDocument();
+    expect(screen.getByText('Use the previous design')).toBeInTheDocument();
+    expect(screen.getByText(/Settings > Appearance > Classic look/)).toBeInTheDocument();
   });
 
   it('desktop skips the swipe step', () => {

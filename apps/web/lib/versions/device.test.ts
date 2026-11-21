@@ -126,6 +126,15 @@ describe('reportDeviceSeen', () => {
     });
   });
 
+  it('says which look the device shows, and a switch is news at once', async () => {
+    expect(await reportDeviceSeen('u1', NOW, 'legacy')).toBe(true);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({ uiMode: 'legacy', webVersion: '0.7.34' });
+    expect(await reportDeviceSeen('u1', NOW + 1000, 'legacy')).toBe(false);
+    expect(await reportDeviceSeen('u1', NOW + 2000, 'new')).toBe(true);
+    expect(JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string).uiMode).toBe('new');
+  });
+
   it('stays quiet until the time is up', async () => {
     await reportDeviceSeen('u1', NOW);
     expect(await reportDeviceSeen('u1', NOW + SEEN_EVERY_MS - 1)).toBe(false);

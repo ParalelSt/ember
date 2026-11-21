@@ -3,8 +3,9 @@ import type { ReactNode } from 'react';
 import { ForbiddenError, requireAdmin, UnauthorizedError } from '@/lib/auth';
 import { AdminTabs } from '@/components/admin/AdminTabs';
 import { AdminHeader } from '@/components/admin/AdminHeader';
+import { serverUiMode } from '@/components/providers/serverUiMode';
 
-export default async function AdminLayout({ children }: { children: ReactNode }) {
+async function NewAdminLayout({ children }: { children: ReactNode }) {
   try {
     await requireAdmin();
   } catch (e) {
@@ -21,4 +22,14 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       </div>
     </div>
   );
+}
+
+/** The new look's layout, or on a device on the Classic look the frozen one
+ *  (docs/classic-look.md), imported only then. */
+export default async function AdminLayout(props: Parameters<typeof NewAdminLayout>[0]) {
+  if ((await serverUiMode()) === 'legacy') {
+    const { default: Legacy } = await import('@legacy/app/admin/layout');
+    return <Legacy {...props} />;
+  }
+  return await NewAdminLayout(props);
 }

@@ -1,0 +1,114 @@
+'use client';
+
+import { useState } from 'react';
+import { Slider } from '@legacy/components/ui/slider';
+import { usePlayerPosition } from '@/components/player/PlayerProvider';
+import { LiveBadge } from '@legacy/components/player/LiveBadge';
+import { formatTime } from '@/lib/format';
+import { cn } from '@/lib/utils';
+
+/** Where the two times sit. 'inline' is the player bar's desktop row (elapsed
+ *  left of the slider, total right of it), 'below' is the full-screen view
+ *  (both under the slider), 'none' is the bare phone strip at the bottom edge
+ *  of the bar. A boolean cannot express the two label layouts, which is why
+ *  this is a variant rather than `showLabels`. */
+export type SeekBarLabels = 'none' | 'inline' | 'below';
+
+export interface SeekBarProps {
+  position: number;
+  duration: number;
+  onSeek: (sec: number) => void;
+  labels?: SeekBarLabels;
+  className?: string;
+}
+
+/** The playback progress slider, with the scrub state it needs. The thumb
+ *  follows the finger / cursor on every intermediate value while the audio
+ *  keeps playing from `position`; the seek fires once, on release. */
+export function SeekBar({ position, duration, onSeek, labels = 'none', className }: SeekBarProps) {
+  // Non-null only while a drag is in flight, so the slider snaps back to the
+  // real playback position the moment the seek is handed over.
+  const [scrubPct, setScrubPct] = useState<number | null>(null);
+  // Held to the bar: the catalog's length can be shorter than the file
+  // (lib/playback/chooseDuration), and the slider does not clamp an array
+  // value, so the thumb ran off the end.
+  const playbackPct = duration ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0;
+  const displayPct = scrubPct ?? playbackPct;
+  const displaySec = (displayPct / 100) * (duration || 0);
+
+  const readPct = (v: number | readonly number[]) => (Array.isArray(v) ? v[0] ?? 0 : (v as number));
+
+  const onValueChange = (v: number | readonly number[]) => {
+    setScrubPct(readPct(v));
+  };
+  const onValueCommitted = (v: number | readonly number[]) => {
+    setScrubPct(null);
+    // No length, no way to turn a spot on the bar into a time: seeking would
+    // land on 0:00. The slider is disabled then; this covers a stray commit.
+    if (!duration) return;
+    onSeek((readPct(v) / 100) * duration);
+  };
+
+  const slider = (
+    <Slider
+      value={[displayPct]}
+      onValueChange={onValueChange}
+      onValueCommitted={onValueCommitted}
+      max={100}
+      step={0.1}
+      smooth
+      disabled={!duration}
+      className={labels === 'inline' ? 'flex-1' : undefined}
+      thumbLabel="Seek"
+      // A screen reader read a bare percentage ("42 percent") by default,
+      // which says nothing about where in the song that is. "1:23 of 3:45"
+      // is what the visible labels already say.
+      getAriaValueText={(_formatted, pct) => `${formatTime((pct / 100) * (duration || 0))} of ${formatTime(duration)}`}
+    />
+  );
+
+  if (labels === 'inline') {
+    return (
+      <div className={cn('flex items-center gap-2', className)}>
+        <span className="text-[10px] text-muted-foreground tabular-nums w-9 text-right">{formatTime(displaySec)}</span>
+        {slider}
+        <span className="text-[10px] text-muted-foreground tabular-nums w-9">{formatTime(duration)}</span>
+      </div>
+    );
+  }
+
+  if (labels === 'below') {
+    return (
+      <div className={className}>
+        {slider}
+        <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground tabular-nums">
+          <span>{formatTime(displaySec)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return <div className={className}>{slider}</div>;
+}
+
+/** SeekBar on the player's own playhead. It reads the position itself, so
+ *  the view that holds it (the player bars, the full-screen player, which
+ *  stays mounted while closed) does not re-render on every report. A live
+ *  station (`live`) has nothing to seek: the bar gives way to the LIVE
+ *  badge, or to nothing on the phone bar's bare strip. */
+export function PlayheadSeekBar({ live = false, ...props }: Omit<SeekBarProps, 'position'> & { live?: boolean }) {
+  if (live) {
+    if (!props.labels || props.labels === 'none') return null;
+    return (
+      <div data-testid="seek-live" className={cn('flex justify-center', props.className)}>
+        <LiveBadge />
+      </div>
+    );
+  }
+  return <PlayheadSeekBarInner {...props} />;
+}
+
+function PlayheadSeekBarInner(props: Omit<SeekBarProps, 'position'>) {
+  return <SeekBar position={usePlayerPosition()} {...props} />;
+}

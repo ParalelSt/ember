@@ -19,8 +19,10 @@ import { useCarlistProgress } from '@/hooks/useCarlistProgress';
 import { addedMessage, type AddPosition } from '@/lib/carlist';
 import type { SessionQueueItem, Track } from '@/types/track';
 import { EmptyState } from '@/components/page/EmptyState';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
-export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
+function NewSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data, isLoading, error, dataUpdatedAt } = useQuerySession(id);
   const addToSession = useExecuteAddToSession(id);
@@ -137,3 +139,9 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     </>
   );
 }
+
+/** The Classic look's page (docs/classic-look.md), loaded only on a
+ *  device that chose it. */
+const LegacySessionPage = dynamic(() => import('@legacy/app/session/[id]/page'));
+
+export default uiSwitch(NewSessionPage, LegacySessionPage);

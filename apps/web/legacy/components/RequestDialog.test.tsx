@@ -1,0 +1,332 @@
+import type { ComponentProps, PropsWithChildren } from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { RequestDialog } from './RequestDialog';
+import { NO_ANSWER_MESSAGE } from '@/lib/connectionBlip';
+
+vi.mock('@/lib/versions/device', () => ({
+  loadDeviceInfo: vi.fn(async () => ({ platform: 'android', shellVersion: '0.4.28', webVersion: '1.0.0' })),
+}));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+vi.mock('@/lib/logger/client', () => ({
+  logger: {
+    snapshot: () => ({
+      current: [],
+      previous: [],
+      sessionId: 's1',
+      context: { appVersion: '1.0.0', shell: 'capacitor', shellPlatform: 'android', shellVersion: '0.4.28', route: '/settings/help', platform: 'MacIntel' },
+    }),
+  },
+}));
+
+// @base-ui components reach the repo root's hoisted React 18 through their own
+// node_modules copy (see BugReportDialog.test.tsx), so render plain elements
+// for anything built on it: this test is about state and the request body,
+// not the chrome.
+vi.mock('@legacy/components/ui/dialog', () => ({
+  Dialog: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  DialogContent: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  DialogHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  DialogFooter: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
+  DialogDescription: ({ children }: PropsWithChildren) => <p>{children}</p>,
+}));
+vi.mock('@legacy/components/ui/button', () => ({
+  Button: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
+}));
+vi.mock('@legacy/components/ui/input', () => ({
+  Input: (props: ComponentProps<'input'>) => <input {...props} />,
+}));
+
+// Stand-in for base-ui's Tabs.Root/Tab: captures the live onValueChange in a
+// hoisted ref so TabsTrigger's click handler (a separate mocked component)
+// can call it, without needing React context or base-ui's own wiring.
+const tabsState = vi.hoisted(() => ({ onValueChange: (_v: string) => {} }));
+vi.mock('@legacy/components/ui/tabs', () => ({
+  Tabs: ({ children, onValueChange }: PropsWithChildren<{ onValueChange: (v: string) => void }>) => {
+    tabsState.onValueChange = onValueChange;
+    return <div>{children}</div>;
+  },
+  TabsList: ({ children }: PropsWithChildren) => <div role="tablist">{children}</div>,
+  TabsTrigger: ({ children, value }: PropsWithChildren<{ value: string }>) => (
+    <button type="button" role="tab" onClick={() => tabsState.onValueChange(value)}>
+      {children}
+    </button>
+  ),
+}));
+
+function mockFetch(ok = true, body: unknown = { ok: true }) {
+  const fetchMock = vi.fn().mockResolvedValue({ ok, json: async () => body, statusText: 'error' });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+function requestBody(fetchMock: ReturnType<typeof vi.fn>) {
+  const [, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+  return JSON.parse(String(init.body));
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('RequestDialog: default kind', () => {
+  it('shows the feature labels and placeholders', () => {
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    expect(screen.getByPlaceholderText('Short name, e.g. Sleep timer')).toBeInTheDocument();
+    expect(screen.getByText('Description')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('RequestDialog: no optional extra box', () => {
+  it('has no "Anything else" field on either kind', async () => {
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    expect(screen.queryByText(/Anything else/i)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('textbox')).toHaveLength(2);
+    await userEvent.click(screen.getByRole('tab', { name: 'Fix' }));
+    expect(screen.queryByText(/Anything else/i)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('textbox')).toHaveLength(2);
+  });
+
+  it('does not send an extra field', async () => {
+    const fetchMock = mockFetch();
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(requestBody(fetchMock)).not.toHaveProperty('extra');
+  });
+});
+
+describe('RequestDialog: switching kind', () => {
+  it('changes labels and placeholders and keeps typed text', async () => {
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    const nameInput = screen.getByPlaceholderText('Short name, e.g. Sleep timer');
+    await userEvent.type(nameInput, 'Something');
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Fix' }));
+
+    expect(screen.getByPlaceholderText('What needs fixing, e.g. Queue jumps to the top')).toHaveValue('Something');
+    expect(screen.getByText('Recommended approach')).toBeInTheDocument();
+  });
+});
+
+describe('RequestDialog: Send disabled state', () => {
+  it('disables Send until name and main are filled', async () => {
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    const sendButton = screen.getByRole('button', { name: 'Send' });
+    expect(sendButton).toBeDisabled();
+
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    expect(sendButton).toBeDisabled();
+
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+    expect(sendButton).not.toBeDisabled();
+  });
+});
+
+describe('RequestDialog: submit', () => {
+  it('posts the right body', async () => {
+    const fetchMock = mockFetch();
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    expect(url).toBe('/api/requests');
+    expect(init.method).toBe('POST');
+    const body = requestBody(fetchMock);
+    expect(body).toMatchObject({
+      kind: 'feature',
+      name: 'Sleep timer',
+      main: 'Stop after 30 min',
+      context: { appVersion: '1.0.0', shell: 'capacitor', shellPlatform: 'android', shellVersion: '0.4.28', route: '/settings/help', platform: 'MacIntel' },
+    });
+  });
+
+  it('shows the API error text on failure', async () => {
+    mockFetch(false, { error: 'Requests are not set up on this server' });
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByText('Requests are not set up on this server')).toBeInTheDocument();
+  });
+
+  it('closes and resets on success', async () => {
+    const fetchMock = mockFetch();
+    const onOpenChange = vi.fn();
+    render(<RequestDialog open onOpenChange={onOpenChange} />);
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+});
+
+describe('RequestDialog: something other than the server answers', () => {
+  it('a Wi-Fi sign-in page answering 200 is not "request sent": the dialog stays open and says so', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<!DOCTYPE html><p>Sign in to the Wi-Fi</p>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    })));
+    const onOpenChange = vi.fn();
+    render(<RequestDialog open onOpenChange={onOpenChange} />);
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByText(NO_ANSWER_MESSAGE)).toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(screen.getByPlaceholderText('Short name, e.g. Sleep timer')).toHaveValue('Sleep timer');
+  });
+});
+
+describe('RequestDialog: attachments', () => {
+  const MB = 1024 * 1024;
+  const fakeFile = (name: string, type: string, size = 1000) => {
+    const f = new File(['x'], name, { type });
+    Object.defineProperty(f, 'size', { value: size });
+    return f;
+  };
+  const fill = async () => {
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+  };
+  const attach = (files: File[]) => userEvent.upload(screen.getByTestId('attachment-input'), files);
+
+  beforeEach(() => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('sends the files as multipart with the JSON in a payload part', async () => {
+    const fetchMock = mockFetch();
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    await fill();
+    await userEvent.click(screen.getByRole('tab', { name: 'Fix' }));
+    await attach([fakeFile('shot.png', 'image/png'), fakeFile('clip.mp4', 'video/mp4')]);
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    expect(url).toBe('/api/requests');
+    expect(init.headers).toBeUndefined();
+    const form = init.body as FormData;
+    expect(form).toBeInstanceOf(FormData);
+    expect(JSON.parse(form.get('payload') as string)).toMatchObject({
+      kind: 'fix',
+      name: 'Sleep timer',
+      main: 'Stop after 30 min',
+    });
+    expect((form.getAll('attachments') as File[]).map((f) => f.name)).toEqual(['shot.png', 'clip.mp4']);
+  });
+
+  it('disables Send while the files are too big', async () => {
+    mockFetch();
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    await fill();
+    const send = screen.getByRole('button', { name: 'Send' });
+    expect(send).not.toBeDisabled();
+    await attach([fakeFile('long.mp4', 'video/mp4', 11 * MB)]);
+    expect(screen.getByTestId('attach-problem')).toBeInTheDocument();
+    expect(send).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Remove long.mp4' }));
+    expect(send).not.toBeDisabled();
+  });
+
+  it('clears the files on close', async () => {
+    const onOpenChange = vi.fn();
+    render(<RequestDialog open onOpenChange={onOpenChange} />);
+    await attach([fakeFile('shot.png', 'image/png')]);
+    expect(screen.getAllByTestId('attach-thumb')).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryAllByTestId('attach-thumb')).toHaveLength(0);
+  });
+
+  it('clears the files after a successful send', async () => {
+    mockFetch();
+    const onOpenChange = vi.fn();
+    render(<RequestDialog open onOpenChange={onOpenChange} />);
+    await fill();
+    await attach([fakeFile('shot.png', 'image/png')]);
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(screen.queryAllByTestId('attach-thumb')).toHaveLength(0);
+  });
+});
+
+describe('RequestDialog: attachments Discord would not take', () => {
+  it('says the request went without them', async () => {
+    const { toast } = await import('sonner');
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    mockFetch(true, { ok: true, attachmentsDropped: true });
+    const onOpenChange = vi.fn();
+    render(<RequestDialog open onOpenChange={onOpenChange} />);
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+    await userEvent.upload(screen.getByTestId('attachment-input'), new File(['x'], 'shot.png', { type: 'image/png' }));
+    vi.mocked(toast.success).mockClear();
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Sent, but the attachments were too big for Discord'));
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    vi.restoreAllMocks();
+  });
+});

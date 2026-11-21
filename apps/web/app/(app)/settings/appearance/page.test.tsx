@@ -186,7 +186,8 @@ describe('Settings > Appearance', () => {
     tab('Colours');
     expect(screen.getAllByTestId('colour-swatch')).toHaveLength(8);
     expect(screen.getAllByTestId('colour-row')).toHaveLength(1);
-    expect(screen.queryByRole('switch')).toBeNull();
+    // No share switch in the panels (the Classic look switch sits above them).
+    expect(within(screen.getByTestId('inspector-panels')).queryByRole('switch')).toBeNull();
     expect(screen.queryByTestId('theme-library')).toBeNull();
   });
 
@@ -488,7 +489,7 @@ describe('Settings > Appearance', () => {
       const presets = screen.getByRole('radiogroup', { name: 'Presets' });
       expect(within(presets).queryByRole('switch')).toBeNull();
       tab('My themes');
-      expect(screen.getAllByRole('switch')).toHaveLength(1);
+      expect(within(screen.getByTestId('inspector-panels')).getAllByRole('switch')).toHaveLength(1);
       tab('Shared');
       await screen.findByText('Cold brew');
       const others = screen.getByRole('region', { name: 'Shared by others' });
@@ -630,6 +631,28 @@ describe('Settings > Appearance', () => {
     expect(hexField('Accent').value).toBe('#3aa0ff');
     apply();
     await waitFor(() => expect(api.updateSavedTheme).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('Settings > Appearance > Classic look', () => {
+  it('the phone page opens with the Classic look switch, off, above the editor', async () => {
+    start();
+    await loaded();
+    const row = screen.getByTestId('classic-look');
+    expect(within(row).getByText('Classic look')).toBeInTheDocument();
+    expect(within(row).getByText('Use the previous design')).toBeInTheDocument();
+    expect(within(row).getByRole('switch', { name: 'Turn on Classic look' })).toHaveAttribute('aria-checked', 'false');
+    expect(row.compareDocumentPosition(screen.getByTestId('appearance-layout')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('desktop rows have it too, as a settings row', async () => {
+    server.active = DEFAULT_THEME;
+    useThemeStore.setState({ doc: DEFAULT_THEME, draft: null, userId: 'u1', loaded: true });
+    render(<AppearanceEditor rows />);
+    await loaded();
+    const row = screen.getByTestId('classic-look');
+    expect(row.querySelector('[data-settings-row]')).not.toBeNull();
+    expect(within(row).getByRole('switch', { name: 'Turn on Classic look' })).toBeInTheDocument();
   });
 });
 

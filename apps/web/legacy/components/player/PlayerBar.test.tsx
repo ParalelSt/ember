@@ -1,0 +1,413 @@
+import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { PlayerBar } from './PlayerBar';
+import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useUiStore } from '@/stores/useUiStore';
+import type { Track } from '@/types/track';
+
+const TRACK: Track = {
+  id: 't1',
+  source: 'youtube',
+  sourceId: 'v1',
+  title: 'Yes Sir, I Can Boogie',
+  artist: 'Baccara',
+  artistId: 'a1',
+  album: 'Baccara',
+  albumId: 'al1',
+  durationSec: 264,
+  artworkUrl: 'https://example.test/art.jpg',
+  streamUrl: 'https://example.test/s.mp3',
+};
+
+// Everything the bar reads that is not the bar: the player, the account, the
+// like state and the two menus/sheets that open portals. The subject here is
+// the bar's own geometry.
+const skip = vi.hoisted(() => ({ next: vi.fn(), prev: vi.fn() }));
+vi.mock('@/components/player/PlayerProvider', () => ({
+  usePlayer: () => ({
+    current: TRACK,
+    isPlaying: true,
+    duration: 264,
+    toggle: vi.fn(),
+    next: skip.next,
+    prev: skip.prev,
+    seek: vi.fn(),
+    setVolume: vi.fn(),
+  }),
+  usePlayerPosition: () => 92,
+}));
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuth: () => ({ user: { id: 'u1', email: 'a@b.c', name: 'A', avatarUrl: null, isAdmin: false } }),
+}));
+vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, toggle: vi.fn() }) }));
+// The window size decides which bar renders. A real media query, so the page
+// only ever holds one transport (see hooks/useIsDesktop).
+const desktop = vi.hoisted(() => ({ value: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
+// A car head unit with the car layout on (hooks/useHeadUnit).
+const car = vi.hoisted(() => ({ value: false }));
+vi.mock('@/hooks/useHeadUnit', () => ({ useHeadUnitControls: () => car.value }));
+// Party mode (the wider, uncapped slider) is desktop-only: a mouse browser or
+// Tauri, never a touch device or the Android app. See lib/playback/partyDevice.
+const partyEligible = vi.hoisted(() => ({ value: true }));
+vi.mock('@/hooks/usePartyEligible', () => ({ usePartyEligible: () => partyEligible.value }));
+// The add menu draws its trigger's class and, for the "More" variant, the
+// items the bar hands it.
+vi.mock('@legacy/components/track/menus/AddToPlaylistMenu', () => ({
+  AddToPlaylistMenu: ({ more, triggerClassName }: { more?: ReactNode; triggerClassName?: string }) => (
+    <div data-testid={more ? 'more-menu' : 'add-menu'} className={triggerClassName}>{more}</div>
+  ),
+}));
+const shareTrack = vi.hoisted(() => vi.fn());
+vi.mock('@legacy/components/track/ShareButton', () => ({
+  ShareButton: ({ className }: { className?: string }) => <button type="button" aria-label="Share" className={className} />,
+  canShare: (t: Track) => t.source === 'youtube',
+  shareTrack,
+}));
+vi.mock('@legacy/components/player/QueueSheet', () => ({ QueueSheet: () => null }));
+// The Devices sheet (opened from the More menu below lg) is base-ui's dialog.
+vi.mock('@legacy/components/ui/sheet', () => import('@/test-utils/dialogMock'));
+// base-ui's menu brings the root's second React into a test render (see
+// QueueSheet.test.tsx): the Devices menu is a plain box here.
+vi.mock('@legacy/components/ui/dropdown-menu', () => {
+  const Box = ({ children, ...rest }: { children?: React.ReactNode }) => <div {...rest}>{children}</div>;
+  return {
+    DropdownMenu: Box,
+    DropdownMenuTrigger: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
+    DropdownMenuContent: () => null,
+    DropdownMenuGroup: Box,
+    DropdownMenuLabel: Box,
+    DropdownMenuItem: ({ children, onClick, className }: PropsWithChildren<{ onClick?: () => void; className?: string }>) => (
+      <div role="menuitem" onClick={onClick} className={className}>{children}</div>
+    ),
+    DropdownMenuSeparator: ({ className }: { className?: string }) => <hr className={className} />,
+  };
+});
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/',
+  useRouter: () => ({ push: vi.fn() }),
+}));
+// next/link reads the app router context, which no test renders.
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...rest }: ComponentProps<'a'>) => (
+    <a href={href} {...rest}>{children}</a>
+  ),
+}));
+// base-ui's Slider reaches the repo root's hoisted React 18 through its own
+// copy and cannot render under happy-dom (see SeekBar.test.tsx).
+vi.mock('@legacy/components/ui/slider', () => ({
+  Slider: ({ className, max }: { className?: string; max?: number }) => (
+    <input type="range" aria-label="progress" className={className} data-max={max} readOnly />
+  ),
+}));
+
+const bar = () => screen.getByTestId('player-bar');
+/** Render the desktop bar and hand it back. `desktop` already defaults to
+ *  true in beforeEach, so this is just render-and-find. */
+const desktopBar = () => {
+  render(<PlayerBar />);
+  return bar();
+};
+
+beforeEach(() => {
+  desktop.value = true;
+  car.value = false;
+  skip.next.mockClear();
+  skip.prev.mockClear();
+  partyEligible.value = true;
+  useSettingsStore.setState({ tabsEnabled: true, partyVolume: false });
+});
+
+/** The volume slider is the last "progress"-labelled input: SeekBar's own
+ *  slider sits in the middle column, ahead of it in the DOM. */
+const volumeSlider = () => screen.getAllByLabelText('progress').at(-1) as HTMLElement;
+
+describe('PlayerBar', () => {
+  // A car head unit's touch screen gets the desktop bar: its 32px buttons
+  // get 44px hit boxes there (globals.css, .touch-hit).
+  it('the desktop bar gives its controls touch-sized hit boxes', () => {
+    expect(desktopBar()).toHaveClass('touch-hit');
+  });
+
+  // The owner's pick for a car head unit (carlayout2, option G): a bar of
+  // its own, with the cover, title and artist, then previous, play and next
+  // big enough to tap while driving, and a swipe on the cover to skip.
+  it('on a car head unit, the car bar: cover, title, artist and big previous, play and next', () => {
+    car.value = true;
+    const b = desktopBar();
+    expect(b).toHaveAttribute('data-layout', 'car');
+    expect(b).toHaveClass('touch-hit', 'safe-area-bottom');
+    expect(within(b).getByRole('button', { name: 'Previous' })).toHaveClass('h-16', 'w-16');
+    expect(within(b).getByRole('button', { name: 'Next' })).toHaveClass('h-16', 'w-16');
+    expect(within(b).getByRole('button', { name: 'Pause' })).toHaveClass('h-18', 'w-18');
+    const now = within(b).getByTestId('player-bar-now');
+    expect(within(now).getByText(TRACK.title)).toBeInTheDocument();
+    expect(within(now).getByText(TRACK.artist)).toBeInTheDocument();
+    expect(now.querySelector('img')).toHaveAttribute('src', TRACK.artworkUrl);
+    // Nothing else: no seek bar, volume, loop or queue buttons.
+    expect(within(b).queryByLabelText('progress')).toBeNull();
+    expect(within(b).queryByRole('button', { name: 'Queue' })).toBeNull();
+    expect(within(b).queryByRole('button', { name: /Loop/ })).toBeNull();
+    expect(within(b).getAllByRole('button')).toHaveLength(3);
+  });
+
+  it('on a car head unit, swiping the cover skips', () => {
+    car.value = true;
+    desktopBar();
+    const now = screen.getByTestId('player-bar-now');
+    fireEvent.pointerDown(now, { pointerId: 1, clientX: 300, clientY: 40 });
+    fireEvent.pointerUp(now, { pointerId: 1, clientX: 200, clientY: 44 });
+    expect(skip.next).toHaveBeenCalledTimes(1);
+    fireEvent.pointerDown(now, { pointerId: 2, clientX: 200, clientY: 40 });
+    fireEvent.pointerUp(now, { pointerId: 2, clientX: 300, clientY: 40 });
+    expect(skip.prev).toHaveBeenCalledTimes(1);
+  });
+
+  it('a head unit narrower than the desktop bar keeps the phone bar', () => {
+    car.value = true;
+    desktop.value = false;
+    render(<PlayerBar />);
+    expect(screen.getByTestId('phone-player-bar')).toBeInTheDocument();
+    expect(bar()).not.toHaveAttribute('data-layout');
+  });
+
+  it('elsewhere the bar keeps its mouse-sized controls and no swipe', () => {
+    const b = desktopBar();
+    expect(b).not.toHaveAttribute('data-layout');
+    expect(within(b).getByRole('button', { name: 'Previous' })).not.toHaveClass('h-16');
+    expect(within(b).getByRole('button', { name: 'Pause' })).toHaveClass('h-10', 'w-10');
+    const now = screen.getByTestId('player-bar-now');
+    fireEvent.pointerDown(now, { pointerId: 1, clientX: 300, clientY: 40 });
+    fireEvent.pointerUp(now, { pointerId: 1, clientX: 200, clientY: 40 });
+    expect(skip.next).not.toHaveBeenCalled();
+  });
+
+  it('renders exactly one bar, the one the window calls for', () => {
+    desktop.value = false;
+    const { unmount } = render(<PlayerBar />);
+    expect(screen.getAllByTestId('player-bar')).toHaveLength(1);
+    expect(screen.getByTestId('phone-player-bar')).toBeInTheDocument();
+    // One footer, one transport: suites that reach for `footer` still find
+    // a single bar, and no control is in the page twice.
+    expect(screen.getAllByRole('button', { name: 'Pause' })).toHaveLength(1);
+    unmount();
+
+    desktop.value = true;
+    render(<PlayerBar />);
+    expect(screen.getAllByTestId('player-bar')).toHaveLength(1);
+    expect(screen.queryByTestId('phone-player-bar')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Pause' })).toHaveLength(1);
+  });
+
+  // The desktop bar keeps the footer, the three columns in the same order and
+  // the control sizes it had before the phone bar was split out of it. The
+  // grid's columns changed for bughunt V1 (the title's floor, below).
+  describe('the md layout', () => {
+    it('keeps the footer and the grid it always had', () => {
+      const footer = desktopBar();
+      expect(footer.tagName).toBe('FOOTER');
+      expect(footer).toHaveClass('shrink-0', 'bg-sidebar', 'border-t', 'border-sidebar-border', 'flex', 'flex-col');
+      const grid = footer.firstElementChild!;
+      expect(grid.className).toBe(
+        'px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[minmax(13.5rem,1fr)_1fr_auto] lg:grid-cols-[minmax(16.5rem,1fr)_2fr_1fr] xl:grid-cols-[minmax(20rem,1fr)_2fr_1fr] gap-4 items-center',
+      );
+      expect(grid.children).toHaveLength(3);
+    });
+
+    it('keeps the three columns and their contents in order', () => {
+      const [left, middle, right] = [...desktopBar().firstElementChild!.children] as HTMLElement[];
+
+      // Left: the now-playing cluster plus the per-track actions.
+      expect(left).toHaveTextContent(TRACK.title);
+      expect(left).toHaveTextContent(TRACK.artist);
+      expect(within(left).getByRole('button', { name: 'Like' })).toBeInTheDocument();
+
+      // Middle: the small transport over the inline, labelled seek bar.
+      expect(within(middle).getByRole('button', { name: 'Pause' })).toHaveClass('h-10', 'w-10');
+      expect(within(middle).getByRole('button', { name: 'Loop playlist' })).toHaveClass('hidden', 'md:inline-flex');
+      // The inline seek bar: its own wrapper carries the md gate and the
+      // elapsed / total labels the desktop bar has always shown.
+      const seek = middle.children[1] as HTMLElement;
+      expect(seek).toHaveClass('hidden', 'md:flex', 'w-full', 'max-w-xl');
+      expect(seek).toHaveTextContent('1:32');
+      expect(seek).toHaveTextContent('4:24');
+
+      // Right: lyrics, tabs, queue, volume.
+      expect(
+        [...right.querySelectorAll('button')].map((b) => b.getAttribute('aria-label')),
+      ).toEqual(['Lyrics', 'Guitar tabs', 'Queue', 'Mute']);
+      expect(within(right).getByRole('button', { name: 'Queue' })).toHaveClass('h-10', 'w-10', 'md:h-8', 'md:w-8');
+    });
+
+    it('has no phone-only leftovers inside it', () => {
+      // The grid, and the queue sheet the mock renders as nothing: the
+      // unlabelled phone progress strip that used to sit under the grid
+      // moved into the phone bar.
+      const footer = desktopBar();
+      expect(footer.children).toHaveLength(1);
+      // The scrolling title belongs only to the phone bar.
+      expect(footer.querySelectorAll('[data-testid="marquee"]')).toHaveLength(0);
+    });
+  });
+
+  // Bughunt V1: on a narrow desktop window the title had no room left.
+  describe('below xl, the title keeps its room', () => {
+    it('keeps add and share beside the title from xl up only', () => {
+      const [left] = [...desktopBar().firstElementChild!.children] as HTMLElement[];
+      expect(within(left).getByTestId('add-menu')).toHaveClass('max-xl:hidden');
+      expect(within(left).getByRole('button', { name: 'Share' })).toHaveClass('max-xl:hidden');
+      expect(within(left).getByTestId('more-menu')).toHaveClass('xl:hidden');
+    });
+
+    it('puts share, and below lg lyrics and tabs, in the More menu', () => {
+      const more = within(desktopBar()).getByTestId('more-menu');
+      const items = within(more).getAllByRole('menuitem');
+      expect(items.map((i) => i.textContent?.trim())).toEqual(['Share', 'Lyrics', 'Guitar tabs']);
+      expect(items[0]).not.toHaveClass('lg:hidden');
+      expect(items[1]).toHaveClass('lg:hidden');
+      expect(items[2]).toHaveClass('lg:hidden');
+
+      fireEvent.click(items[0]);
+      expect(shareTrack).toHaveBeenCalledWith(TRACK);
+      useUiStore.getState().setLyricsOpen(false);
+      fireEvent.click(items[1]);
+      expect(useUiStore.getState().lyricsOpen).toBe(true);
+      useUiStore.getState().setLyricsOpen(false);
+    });
+
+    it('leaves only queue and mute on the right below lg', () => {
+      const [, , right] = [...desktopBar().firstElementChild!.children] as HTMLElement[];
+      expect(within(right).getByRole('button', { name: 'Lyrics' })).toHaveClass('hidden', 'lg:inline-flex');
+      expect(within(right).getByRole('button', { name: 'Guitar tabs' })).toHaveClass('hidden', 'lg:inline-flex');
+      // The volume slider's box: gone below lg, shorter below xl.
+      expect(volumeSlider().parentElement).toHaveClass('hidden', 'lg:block', 'w-20', 'xl:w-29.5');
+    });
+
+    it('moves Devices into the More menu below lg, when there is a choice', async () => {
+      const { useCastStore } = await import('@/stores/useCastStore');
+      useCastStore.setState({ path: 'google', availability: 'available', connection: 'idle', deviceName: null });
+      const more = within(desktopBar()).getByTestId('more-menu');
+      const item = within(more).getAllByRole('menuitem').find((i) => i.textContent?.includes('Devices'));
+      expect(item).toHaveClass('lg:hidden');
+      expect(screen.getByTestId('devices-button')).toHaveClass('hidden', 'lg:inline-flex');
+      useCastStore.setState({ path: null, availability: 'none' });
+    });
+
+    it('leaves the tabs item out of the More menu when the plugin is off', () => {
+      useSettingsStore.setState({ tabsEnabled: false });
+      const more = within(desktopBar()).getByTestId('more-menu');
+      expect(within(more).getAllByRole('menuitem').map((i) => i.textContent?.trim())).toEqual(['Share', 'Lyrics']);
+    });
+  });
+
+  it('stands the desktop bar off the bottom edge itself, with no inline padding', () => {
+    // MobileNav is mounted but `md:hidden` at this width, so it lifts
+    // nothing here: the desktop footer is the bottom-most visible element
+    // and carries the safe-area class itself.
+    desktop.value = true;
+    const { unmount } = render(<PlayerBar />);
+    expect(bar()).toHaveClass('safe-area-bottom');
+    expect(bar().getAttribute('style')).toBeNull();
+    unmount();
+  });
+
+  it('leaves the safe-area lift to MobileNav on a phone, not the phone bar', () => {
+    // MobileNav renders below the phone bar in the real shell (app/(app)/layout.tsx)
+    // and is the bottom-most element there, so it alone carries the inset.
+    desktop.value = false;
+    const { unmount } = render(<PlayerBar />);
+    expect(bar()).not.toHaveClass('safe-area-bottom');
+    expect(bar().getAttribute('style')).toBeNull();
+    unmount();
+  });
+
+  it('hides the tabs button when the plugin is off', () => {
+    useSettingsStore.setState({ tabsEnabled: false });
+    render(<PlayerBar />);
+    expect(screen.queryByRole('button', { name: 'Guitar tabs' })).toBeNull();
+  });
+
+  describe('on a phone', () => {
+    beforeEach(() => {
+      desktop.value = false;
+      usePlayerStore.getState().setNowPlayingOpen(false);
+    });
+
+    it('draws the one-row bar: Open player (the title), then play and next', () => {
+      render(<PlayerBar />);
+      const footer = bar();
+      expect(within(footer).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open player', 'Pause', 'Next']);
+      // MobileNav under it carries the inset instead: see the dedicated
+      // 'leaves the safe-area lift to MobileNav' test above.
+      expect(footer).not.toHaveClass('safe-area-bottom');
+    });
+
+    it('opens the full-screen view on a tap, but not from play or next', () => {
+      render(<PlayerBar />);
+      fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+      expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
+      fireEvent.click(screen.getByTestId('phone-player-row'));
+      expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
+    });
+  });
+
+  describe('party mode is desktop-only', () => {
+    it('reaches 100% with the plugin off, and gets a wider track with the plugin on, on an eligible device', () => {
+      const { unmount } = render(<PlayerBar />);
+      expect(volumeSlider()).toHaveAttribute('data-max', '100');
+      expect(volumeSlider().parentElement).toHaveClass('xl:w-29.5');
+      unmount();
+
+      useSettingsStore.setState({ partyVolume: true });
+      render(<PlayerBar />);
+      expect(volumeSlider()).toHaveAttribute('data-max', '100');
+      expect(volumeSlider().parentElement).toHaveClass('xl:w-40');
+    });
+
+    it('still reaches 100% (narrow track) with the plugin on when this device is not party-eligible (touch, or the Android app)', () => {
+      useSettingsStore.setState({ partyVolume: true });
+      partyEligible.value = false;
+      desktopBar();
+      expect(volumeSlider()).toHaveAttribute('data-max', '100');
+      expect(volumeSlider().parentElement).toHaveClass('xl:w-29.5');
+    });
+
+    it('has no volume slider at all on a phone, eligible or not (only the seek bar remains)', () => {
+      desktop.value = false;
+      useSettingsStore.setState({ partyVolume: true });
+      partyEligible.value = true;
+      render(<PlayerBar />);
+      expect(screen.getAllByLabelText('progress')).toHaveLength(1);
+      expect(document.querySelector('.w-40, .w-29\\.5')).toBeNull();
+    });
+  });
+});
+
+describe('PlayerBar: devices button', () => {
+  it('sits in the desktop bar when there is a choice (a cast device around, or outputs to switch), and not otherwise', async () => {
+    const { useCastStore } = await import('@/stores/useCastStore');
+    const { useOutputStore } = await import('@/stores/useOutputStore');
+    desktop.value = true;
+    useCastStore.setState({ path: 'google', availability: 'none', connection: 'idle', deviceName: null });
+    const { unmount } = render(<PlayerBar />);
+    expect(screen.queryByTestId('devices-button')).toBeNull();
+    unmount();
+    useCastStore.setState({ availability: 'available' });
+    const second = render(<PlayerBar />);
+    expect(screen.getByTestId('devices-button')).toBeInTheDocument();
+    second.unmount();
+    useCastStore.setState({ path: null, availability: 'none' });
+    useOutputStore.setState({
+      platform: 'desktop',
+      devices: [{ id: 'system-default', name: 'System default', kind: 'computer' }],
+      currentId: 'system-default',
+    });
+    render(<PlayerBar />);
+    expect(screen.getByTestId('devices-button')).toBeInTheDocument();
+    useOutputStore.setState({ platform: null, devices: [], currentId: null });
+  });
+});

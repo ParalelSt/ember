@@ -1,6 +1,7 @@
 import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
 import { shellAppVersion } from '@/lib/shellVersion';
+import type { UiMode } from '@/lib/uiMode';
 import { sanitizeVersion, type DevicePlatform } from './label';
 
 /** This device's half of "who runs what": what it is, and one rare, silent
@@ -114,22 +115,27 @@ function writeLastSeen(sig: string, at: number): void {
 let sending = false;
 
 /** Tells the server what this device runs, when a version changed or the last
- *  note is old enough. Resolves true only when a note was taken. Never
- *  throws. */
-export async function reportDeviceSeen(userId: string, now: number = Date.now()): Promise<boolean> {
+ *  note is old enough. `uiMode`, which look it shows (lib/uiMode), rides
+ *  along and counts as a change too. Resolves true only when a note was
+ *  taken. Never throws. */
+export async function reportDeviceSeen(
+  userId: string,
+  now: number = Date.now(),
+  uiMode: UiMode | null = null,
+): Promise<boolean> {
   if (sending) return false;
   sending = true;
   try {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
     const info = await loadDeviceInfo();
-    const sig = [userId, info.platform, info.shellVersion, info.webVersion].join('|');
+    const sig = [userId, info.platform, info.shellVersion, info.webVersion, ...(uiMode ? [uiMode] : [])].join('|');
     const last = readLastSeen();
     if (last && last.sig === sig && last.at <= now && now - last.at < SEEN_EVERY_MS) return false;
     const res = await fetch('/api/devices/seen', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ deviceId: deviceId(), ...info }),
+      body: JSON.stringify({ deviceId: deviceId(), ...info, ...(uiMode ? { uiMode } : {}) }),
     });
     const body = (await res.json().catch(() => null)) as { ok?: unknown } | null;
     if (!res.ok || body?.ok !== true) return false;
