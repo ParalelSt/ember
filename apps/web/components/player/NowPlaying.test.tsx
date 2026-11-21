@@ -326,11 +326,22 @@ describe('NowPlaying: the More sheet', () => {
     expect(within(view()).getByRole('button', { name: 'Options' })).toHaveAttribute('title', 'Options');
   });
 
-  it('the action row is icon-only, with Queue and Lyrics together', () => {
+  it('the action row is icon-only: Queue at the left edge, Lyrics at the right, Devices between', () => {
     render(<NowPlaying />);
     const row = screen.getByTestId('player-action-row');
-    expect(within(row).getByRole('button', { name: 'Queue' })).toHaveTextContent('');
-    expect(within(row).getByRole('button', { name: 'Lyrics' })).toHaveTextContent('');
+    expect(row).toHaveClass('grid', 'grid-cols-[1fr_auto_1fr]');
+    const [left, middle, right] = Array.from(row.children) as HTMLElement[];
+    expect(within(left).getByRole('button', { name: 'Queue' })).toHaveTextContent('');
+    expect(within(right).getByRole('button', { name: 'Lyrics' })).toHaveTextContent('');
+    expect(left).toHaveClass('justify-start');
+    expect(middle).toHaveClass('justify-center');
+    expect(right).toHaveClass('justify-end');
+  });
+
+  it('the Options sheet says Options at the top', () => {
+    render(<NowPlaying />);
+    fireEvent.click(within(view()).getByRole('button', { name: 'Options' }));
+    expect(screen.getByTestId('now-playing-options-heading')).toHaveTextContent('Options');
   });
 
   it('the Lyrics button scrolls down to the lyrics card', () => {

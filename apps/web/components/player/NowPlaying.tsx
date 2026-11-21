@@ -390,6 +390,7 @@ export function NowPlaying() {
           {/* The player's own sheet: its shortcuts keep working (OPEN_MODAL). */}
           <SheetContent data-player-view side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0" data-testid="now-playing-more-sheet">
             <SheetHeader className="px-block pt-block pb-cluster">
+              <div className="text-eyebrow" data-testid="now-playing-options-heading">Options</div>
               <div className="flex min-w-0 items-center gap-row">
                 <Artwork src={art} className="size-12 shrink-0 rounded-md bg-art">
                   <div className="grid h-full w-full place-items-center text-foreground/30">
@@ -497,8 +498,8 @@ export function NowPlaying() {
           right={loopButton}
         />
 
-        {/* One icon-only action row right under the transport: Devices
-            left, Queue and Lyrics right. */}
+        {/* One icon-only action row right under the transport: Queue at
+            the left edge, Lyrics at the right, Devices centred when shown. */}
         {current && (() => {
           const btn = 'inline-flex items-center justify-center rounded-md transition-colors hover:text-foreground';
           const devicesBtn = devices.visible ? (
@@ -539,9 +540,10 @@ export function NowPlaying() {
             </button>
           ) : null;
           return (
-            <div data-testid="player-action-row" className="mt-block flex items-center justify-between gap-block">
-              {devicesBtn ?? <span />}
-              <div className="flex items-center gap-cluster">{queueBtn}{lyricsBtn}</div>
+            <div data-testid="player-action-row" className="mt-block grid grid-cols-[1fr_auto_1fr] items-center gap-block">
+              <div className="flex justify-start">{queueBtn}</div>
+              <div className="flex min-w-0 justify-center">{devicesBtn}</div>
+              <div className="flex justify-end">{lyricsBtn}</div>
             </div>
           );
         })()}
