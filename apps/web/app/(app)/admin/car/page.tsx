@@ -9,6 +9,8 @@ import { useQueryAdminNativeLog, useQueryAdminUsers } from '@/hooks/useAdmin';
 import type { NativeDevice, NativeEvent } from '@/lib/logger/nativeLog';
 import type { NativeSurface } from '@/lib/logger/types';
 import { cn } from '@/lib/utils';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 const SURFACE_LABELS: Record<NativeSurface, string> = {
   phone: 'Phone',
@@ -105,7 +107,7 @@ function DeviceCard({ d, who }: { d: NativeDevice; who: string }) {
  *  page is open, so this is the only log of it. Per device, the latest heard
  *  first, each newest event first; errors in red, warnings in the ember accent, and
  *  the app's last runs that ended in an ANR or a crash at the top. */
-export default function AdminCarPage() {
+function NewAdminCarPage() {
   const [surface, setSurface] = useState<NativeSurface | undefined>(undefined);
   const [hours, setHours] = useState<24 | 48>(48);
   const { data, isLoading, error } = useQueryAdminNativeLog(surface, hours);
@@ -159,3 +161,9 @@ export default function AdminCarPage() {
     </section>
   );
 }
+
+/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+ *  device that chose it. */
+const LegacyAdminCarPage = dynamic(() => import('@legacy/app/admin/car/page'));
+
+export default uiSwitch(NewAdminCarPage, LegacyAdminCarPage);

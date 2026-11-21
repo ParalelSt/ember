@@ -1,4 +1,4 @@
-import { TransferReview } from '@legacy/components/import/TransferReview';
+import { TransferReview } from '@legacy/app/lazy';
 
 /** The songs a transfer was not sure about, on one page. `?job=` names the
  *  transfer; without it, the one the progress chip follows. */

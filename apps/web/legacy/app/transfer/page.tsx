@@ -1,4 +1,4 @@
-import { TransferFlow } from '@legacy/components/import/TransferFlow';
+import { TransferFlow } from '@legacy/app/lazy';
 
 /** Transfer songs into Ember: one page, opened from the Transfer button on
  *  Liked songs and from Settings > Library. `?to=playlist` starts on the

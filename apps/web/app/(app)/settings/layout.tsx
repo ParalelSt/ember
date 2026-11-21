@@ -4,8 +4,9 @@ import { BuildStamp } from '@/components/settings/BuildStamp';
 import { AppUpdateCard } from '@/components/settings/AppUpdateCard';
 import { SettingsFrame } from '@/components/settings/desktop/DesktopSettings';
 import { UpdatesCard } from '@/components/settings/UpdatesCard';
+import { serverUiMode } from '@/components/providers/serverUiMode';
 
-export default function SettingsLayout({ children }: { children: ReactNode }) {
+function NewSettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div>
       {/* Desktop (lg and up) draws its own menu layout (components/
@@ -37,4 +38,14 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
       />
     </div>
   );
+}
+
+/** The new look's layout, or on a device on the Classic look the frozen one
+ *  (RULES.md "Classic look"), imported only then. */
+export default async function SettingsLayout(props: Parameters<typeof NewSettingsLayout>[0]) {
+  if ((await serverUiMode()) === 'legacy') {
+    const { default: Legacy } = await import('@legacy/app/settings/layout');
+    return <Legacy {...props} />;
+  }
+  return NewSettingsLayout(props);
 }

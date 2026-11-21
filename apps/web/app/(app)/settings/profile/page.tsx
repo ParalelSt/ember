@@ -11,8 +11,10 @@ import { PrivacyToggles } from '@/components/settings/PrivacyToggles';
 import { Avatar } from '@/components/primitives/Avatar';
 import { BlockedSongsCard } from '@/components/settings/PhoneLibraryCards';
 import { api } from '@/lib/api';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
-export default function SettingsProfile() {
+function NewSettingsProfile() {
   const { user, name: currentName, avatarUrl, refresh, signOut } = useAuth();
   // What was typed; until then the field shows the account's name, which
   // may not be known yet when the page opens (an offline start).
@@ -137,3 +139,9 @@ export default function SettingsProfile() {
     </div>
   );
 }
+
+/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+ *  device that chose it. */
+const LegacySettingsProfile = dynamic(() => import('@legacy/app/settings/profile/page'));
+
+export default uiSwitch(NewSettingsProfile, LegacySettingsProfile);

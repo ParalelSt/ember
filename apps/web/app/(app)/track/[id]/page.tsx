@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { fetchTrackMeta } from '@/lib/trackMeta';
 import { TrackPageClient } from '@/components/track/TrackPageClient';
+import { serverUiMode } from '@/components/providers/serverUiMode';
 
 /** Discord / Messenger / iMessage embed cards for shared song links. Runs
  *  server-side for crawlers too (the /track path is public in proxy.ts,
@@ -34,7 +35,17 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 }
 
-export default async function TrackPage({ params }: { params: Promise<{ id: string }> }) {
+async function NewTrackPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   return <TrackPageClient videoId={id} />;
+}
+
+/** The new look's page, or on a device on the Classic look the frozen one
+ *  (RULES.md "Classic look"), imported only then. */
+export default async function TrackPage(props: Parameters<typeof NewTrackPage>[0]) {
+  if ((await serverUiMode()) === 'legacy') {
+    const { default: Legacy } = await import('@legacy/app/track/[id]/page');
+    return <Legacy {...props} />;
+  }
+  return await NewTrackPage(props);
 }

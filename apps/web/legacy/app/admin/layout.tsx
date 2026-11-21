@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { requireUser, UnauthorizedError } from '@/lib/auth';
-import { AdminTabs } from '@legacy/components/admin/AdminTabs';
+import { AdminTabs } from '@legacy/app/lazy';
 import { PageTitle } from '@legacy/components/page/PageTitle';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {

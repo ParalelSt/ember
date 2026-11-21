@@ -11,10 +11,12 @@ import { useOfflinePin } from '@/hooks/useOfflinePin';
 import { useQueryHistory } from '@/hooks/useLibrary';
 import { EmptyState } from '@/components/page/EmptyState';
 import { ClockIcon } from '@/components/icons';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 const REF = { kind: 'recent' } as const;
 
-export default function RecentPage() {
+function NewRecentPage() {
   const { user } = useAuth();
   const isOnline = useOnline();
   const { data: tracks = [], isLoading, isError } = useQueryHistory();
@@ -54,3 +56,9 @@ export default function RecentPage() {
     />
   );
 }
+
+/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+ *  device that chose it. */
+const LegacyRecentPage = dynamic(() => import('@legacy/app/library/recent/page'));
+
+export default uiSwitch(NewRecentPage, LegacyRecentPage);

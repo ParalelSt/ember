@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import { cookies } from 'next/headers';
 import { Inter } from 'next/font/google';
 import { createClient } from '@/lib/pocketbase/server';
 import { fileUrl } from '@/lib/pocketbase/fileUrl';
@@ -15,7 +14,7 @@ import { BugReportDialog } from '@/components/BugReportDialog';
 import { Toaster } from '@/components/ui/sonner';
 import { ThemeApplier } from '@/components/providers/ThemeApplier';
 import { UiModeProvider } from '@/components/providers/UiModeProvider';
-import { UI_MODE_COOKIE, resolveUiMode } from '@/lib/uiMode';
+import { serverUiMode } from '@/components/providers/serverUiMode';
 import { themeFromRecord } from '@/lib/theme/fromRecord';
 import { htmlProps, themeColor } from '@/lib/theme/css';
 import { DEFAULT_THEME, type ThemeDoc } from '@/lib/theme/model';
@@ -78,7 +77,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const html = htmlProps(inter.variable, theme ?? DEFAULT_THEME);
   // This device's look (lib/uiMode): the redesign or the Classic look.
   // data-ui scopes the Classic look's own CSS (legacy/legacy.css).
-  const uiMode = resolveUiMode((await cookies()).get(UI_MODE_COOKIE)?.value);
+  const uiMode = await serverUiMode();
 
   return (
     <html lang="en" data-ui={uiMode} className={html.className} style={html.style as React.CSSProperties} suppressHydrationWarning>

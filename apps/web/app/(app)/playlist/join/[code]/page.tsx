@@ -10,13 +10,15 @@ import type { InvitePreview } from '@/lib/collab';
 import { QK } from '@/hooks/useLibrary';
 import { EmptyState } from '@/components/page/EmptyState';
 import { InvitePreviewCard } from '@/components/library/InvitePreviewCard';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 /** An invite link: /playlist/join/<code>. Signed out, proxy.ts sends the
  *  browser to sign in first and back here after. Signed in, it shows what
  *  the link leads to (a read that adds nobody), and only Join asks the
  *  server to add you (a POST, so a link preview never joins anyone). Not
  *  now leaves the link working. Someone already on it goes straight in. */
-export default function JoinPlaylistPage({ params }: { params: Promise<{ code: string }> }) {
+function NewJoinPlaylistPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
   const router = useRouter();
   const qc = useQueryClient();
@@ -68,3 +70,9 @@ export default function JoinPlaylistPage({ params }: { params: Promise<{ code: s
   if (!preview) return <EmptyState>Opening the invite…</EmptyState>;
   return <InvitePreviewCard preview={preview} busy={joining} onJoin={() => void join()} onDecline={decline} />;
 }
+
+/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+ *  device that chose it. */
+const LegacyJoinPlaylistPage = dynamic(() => import('@legacy/app/playlist/join/[code]/page'));
+
+export default uiSwitch(NewJoinPlaylistPage, LegacyJoinPlaylistPage);

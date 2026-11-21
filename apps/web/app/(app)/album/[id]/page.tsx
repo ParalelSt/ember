@@ -14,8 +14,10 @@ import { EmptyState } from '@/components/page/EmptyState';
 import { BrowseError } from '@/components/page/BrowseError';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
 import { ActionBar } from '@/components/page/ActionBar';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
-export default function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
+function NewAlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   return (
     <OnlineOnly>
@@ -76,3 +78,9 @@ function AlbumView({ id }: { id: string }) {
     </div>
   );
 }
+
+/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+ *  device that chose it. */
+const LegacyAlbumPage = dynamic(() => import('@legacy/app/album/[id]/page'));
+
+export default uiSwitch(NewAlbumPage, LegacyAlbumPage);

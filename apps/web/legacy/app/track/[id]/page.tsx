@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { fetchTrackMeta } from '@/lib/trackMeta';
-import { TrackPageClient } from '@legacy/components/track/TrackPageClient';
+import { TrackPageClient } from '@legacy/app/lazy';
 
 /** Discord / Messenger / iMessage embed cards for shared song links. Runs
  *  server-side for crawlers too (the /track path is public in proxy.ts,

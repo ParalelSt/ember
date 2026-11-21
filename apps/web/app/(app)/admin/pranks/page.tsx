@@ -24,6 +24,8 @@ import {
   useQueryPrankSounds,
 } from '@/hooks/useAdmin';
 import { intervalWords } from '@/lib/pranks/copy';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 const fail = (what: string) => (e: unknown) => toast.error(`${what}: ${(e as Error).message}`);
 
@@ -31,7 +33,7 @@ const fail = (what: string) => (e: unknown) => toast.error(`${what}: ${(e as Err
  *  what they play on the left, the composer on the right filling in as a
  *  person is picked, the log as a table below. Sounds only: a library sound
  *  over their music or with it turned down, once or on repeat. */
-export default function AdminPranksPage() {
+function NewAdminPranksPage() {
   const { data: people = [], isLoading: peopleLoading } = useQueryPrankPeople();
   const { data: log, isLoading: logLoading } = useQueryPrankLog();
   const { data: settings } = useQueryPrankSettings();
@@ -167,3 +169,9 @@ export default function AdminPranksPage() {
     </section>
   );
 }
+
+/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+ *  device that chose it. */
+const LegacyAdminPranksPage = dynamic(() => import('@legacy/app/admin/pranks/page'));
+
+export default uiSwitch(NewAdminPranksPage, LegacyAdminPranksPage);

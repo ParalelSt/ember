@@ -7,6 +7,8 @@ import { useUiStore } from '@/stores/useUiStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { ToggleRow } from '@/components/ui/switch';
 import { RequestDialog } from '@/components/RequestDialog';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 function HelpCard({ title, text, children }: { title: string; text: string; children: ReactNode }) {
   return (
@@ -18,7 +20,7 @@ function HelpCard({ title, text, children }: { title: string; text: string; chil
   );
 }
 
-export default function SettingsHelp() {
+function NewSettingsHelp() {
   const openBugReport = useUiStore((s) => s.setBugReportOpen);
   const openIntro = useUiStore((s) => s.setIntroOpen);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -63,3 +65,9 @@ export default function SettingsHelp() {
     </section>
   );
 }
+
+/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+ *  device that chose it. */
+const LegacySettingsHelp = dynamic(() => import('@legacy/app/settings/help/page'));
+
+export default uiSwitch(NewSettingsHelp, LegacySettingsHelp);

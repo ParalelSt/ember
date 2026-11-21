@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { TabsPage } from '@legacy/components/tabs/TabsPage';
+import { TabsPage } from '@legacy/app/lazy';
 import { trackIdFromParam } from '@/lib/tabSources';
 
 export const metadata: Metadata = { title: 'Guitar tab · Ember' };

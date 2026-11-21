@@ -1,5 +1,4 @@
-import { DevicesPanel } from '@legacy/components/settings/DevicesPanel';
-import { HeadUnitSettings } from '@legacy/components/settings/HeadUnitSettings';
+import { DevicesPanel, HeadUnitSettings } from '@legacy/app/lazy';
 
 export default function SettingsDevices() {
   return (

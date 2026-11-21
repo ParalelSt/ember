@@ -58,13 +58,15 @@ import {
 import type { CollectionTrack, Track } from '@/types/track';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import dynamic from 'next/dynamic';
+import { uiSwitch } from '@/components/providers/uiSwitch';
 
 const NO_TRACKS: CollectionTrack[] = [];
 const NO_ITEMS: ImportItem[] = [];
 const addedLabel = (t: Track) => formatAddedDate((t as CollectionTrack).addedAt);
 const addedBy = (t: Track) => (t as CollectionTrack).addedBy;
 
-export default function PlaylistPage({ params }: { params: Promise<{ id: string }> }) {
+function NewPlaylistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const { data, isLoading, error, refetch } = useQueryPlaylist(id);
@@ -461,3 +463,9 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
     </CollectionPage>
   );
 }
+
+/** The Classic look's page (RULES.md "Classic look"), loaded only on a
+ *  device that chose it. */
+const LegacyPlaylistPage = dynamic(() => import('@legacy/app/playlist/[id]/page'));
+
+export default uiSwitch(NewPlaylistPage, LegacyPlaylistPage);

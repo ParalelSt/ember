@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { ApproveLinkView } from '@legacy/components/auth/ApproveLinkView';
+import { ApproveLinkView } from '@legacy/app/lazy';
 // A plain module: a value imported from a 'use client' file is only a
 // client reference on the server.
 import { LINK_COOKIE, LINK_TOKEN_RE } from '@/lib/qrLogin/codes';
