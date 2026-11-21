@@ -1,3 +1,8 @@
+# 0.7.46: The new Ember
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).**
+
 # 0.7.45: Show what you play on Discord (Android) (android 0.4.35)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

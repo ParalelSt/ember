@@ -26,6 +26,29 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'new-design',
+    version: '0.7.46',
+    date: '2026-11-21',
+    title: 'The new Ember',
+    summary: 'A fresh look for the whole app, with a Classic look switch if you prefer the old one.',
+    bullets: [
+      'A new design across Home, Library, Search, playlists, the player and Settings, on phones and computers.',
+      'A short tour shows you around the first time you open the app. Replay it any time in Settings > Help.',
+      'Prefer the old look? Turn on Settings > Appearance > Classic look. You can switch back whenever you like.',
+      'On a phone, swipe sideways to move between Home, Search and Library.',
+      'Home rows show whole cards, and Show all opens the full list. Artist pages and Radio work the same way.',
+      'Your mixes and charts on Home, made from what you listen to.',
+      'Search inside any playlist, Liked songs, Recently played or your uploads.',
+      'Search shows artists first, then songs. Press Enter for the full results.',
+      'The player has Queue and Lyrics right under the play buttons. Its menu is now called Options.',
+      'Swipe the mini player left or right to skip songs.',
+      'Block songs you never want to hear in mixes and recommendations, and unblock them in Settings.',
+      'Carlists: play any queued song, remove songs from the queue, and an Invite button with the code to copy.',
+      'Edit your uploads\' details and covers in Settings > Uploads.',
+      'A heart now only shows on the exact song you liked, never on another version of it.',
+    ],
+  },
+  {
     id: 'android-discord-status',
     version: '0.7.45',
     date: '2026-11-15',
