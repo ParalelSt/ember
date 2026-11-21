@@ -163,30 +163,6 @@ describe('SearchResults: the Artists section', () => {
     expect(within(link).getByText('Demetori')).toHaveClass('truncate', 'font-semibold');
   });
 
-  it('desktop search page: the songs have a play column on the left, and the artist rows keep it too', () => {
-    const view = buildSearchView('demetori', parts({ uploads: [], artists, songs: [t('a1')], videos: [] }));
-    render(
-      <SearchResults
-        view={view}
-        platform="desktop"
-        context={{ type: 'search', query: 'demetori' }}
-        trailingPlayControl={false}
-        currentId={null}
-        isPlaying={false}
-        likedIds={new Set()}
-        onPlay={vi.fn()}
-        onToggle={vi.fn()}
-      />,
-    );
-    const link = screen.getAllByTestId('search-artist-row')[0];
-    expect(link.className).toContain('@3xl:grid-cols-[40px_minmax(0,1fr)_auto]');
-    expect(screen.getByTestId('track-row').className).toContain('@3xl:grid-cols-[40px_');
-    const spacer = link.firstElementChild as HTMLElement;
-    expect(spacer).toHaveAttribute('aria-hidden');
-    expect(spacer).toHaveClass('hidden', '@3xl:block', 'size-8');
-    expect(link.lastElementChild).toBe(within(link).getByTestId('search-artist-arrow'));
-  });
-
   it('phone: the artists stay side by side as circles, with no arrow', () => {
     renderResults(buildSearchView('demetori', parts({ uploads: [], artists, songs: [t('a1')], videos: [] })), 'phone');
     const section = screen.getByTestId('search-artists');
@@ -251,57 +227,30 @@ describe('SearchResults: rows fade in one after another', () => {
   });
 });
 
-describe('SearchResults: ?searchartists design switch (desktop search page)', () => {
-  const artistView = () =>
-    buildSearchView(
-      'x',
-      parts({
-        uploads: [],
-        artists: [
-          { id: 'UC1', name: 'Alpha', artworkUrl: null },
-          { id: 'UC2', name: 'Beta', artworkUrl: null },
-          { id: 'UC3', name: 'Gamma', artworkUrl: null },
-        ] as SearchParts['artists'],
-        songs: ['s1', 's2', 's3', 's4', 's5', 's6'].map((id) => t(id)),
-        videos: [],
-      }),
-    );
-  // renderResults passes trailingPlayControl (overlay); the page does not.
-  const renderPage = (qs: string, platform: SearchResultsPlatform = 'desktop') => {
-    window.localStorage.clear();
-    window.history.replaceState(null, '', `/search${qs}`);
-    return render(
-      <SearchResults view={artistView()} platform={platform} currentId={null} isPlaying={false} likedIds={new Set()} onPlay={vi.fn()} onToggle={vi.fn()} />,
-    );
-  };
+describe('SearchResults: the search page (desktop)', () => {
+  const artists = [
+    { id: 'UC1', name: 'Alpha', artworkUrl: null },
+    { id: 'UC2', name: 'Beta', artworkUrl: null },
+    { id: 'UC3', name: 'Gamma', artworkUrl: null },
+  ] as SearchParts['artists'];
 
-  it.each(['a', 'b', 'c'])('look %s: artists are links, Songs heading present', (v) => {
-    renderPage(`?searchartists=${v}`);
+  it('artists are links to their pages, then a Songs heading, with no arrows', () => {
+    render(
+      <SearchResults
+        view={buildSearchView('x', parts({ uploads: [], artists, songs: [t('s1'), t('s2')], videos: [] }))}
+        platform="desktop"
+        currentId={null}
+        isPlaying={false}
+        likedIds={new Set()}
+        onPlay={vi.fn()}
+        onToggle={vi.fn()}
+      />,
+    );
     for (const n of ['Alpha', 'Beta', 'Gamma']) {
       const link = screen.getByRole('link', { name: new RegExp(n) });
       expect(link.getAttribute('href')).toMatch(/^\/artist\/UC/);
     }
     expect(screen.getByRole('heading', { name: 'Songs' })).toBeTruthy();
-    expect(screen.getByTestId('search-variant').getAttribute('data-variant')).toBe(v);
     expect(screen.queryByTestId('search-artist-arrow')).toBeNull();
-  });
-
-  it('look a splits songs 4 / rest', () => {
-    renderPage('?searchartists=a');
-    expect(screen.getByRole('heading', { name: 'Top result' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'More songs' })).toBeTruthy();
-    expect(screen.getAllByTestId('search-row')).toHaveLength(6);
-  });
-
-  it('no param: today unchanged', () => {
-    renderPage('');
-    expect(screen.queryByTestId('search-variant')).toBeNull();
-    expect(screen.getAllByTestId('search-artist-row')).toHaveLength(3);
-  });
-
-  it('phone: unchanged even with the param', () => {
-    renderPage('?searchartists=b', 'phone');
-    expect(screen.queryByTestId('search-variant')).toBeNull();
-    expect(screen.getByTestId('search-artists').getAttribute('data-layout')).toBe('grid');
   });
 });
