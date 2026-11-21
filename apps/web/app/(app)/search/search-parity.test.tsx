@@ -167,4 +167,14 @@ describe('search page vs. search overlay parity', () => {
     expect(input).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
   });
+
+  it('focuses the box when opened by tapping, not after a tab swipe', async () => {
+    const { markTabSwipe } = await import('@/lib/tabSwipe');
+    const tapped = renderWith(<SearchPage />);
+    expect(screen.getByPlaceholderText('What do you want to listen to?')).toHaveFocus();
+    tapped.unmount();
+    markTabSwipe();
+    renderWith(<SearchPage />);
+    expect(screen.getByPlaceholderText('What do you want to listen to?')).not.toHaveFocus();
+  });
 });

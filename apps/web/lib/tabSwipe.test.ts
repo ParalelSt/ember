@@ -132,3 +132,12 @@ describe('hasOpenOverlay', () => {
     expect(hasOpenOverlay(document)).toBe(true);
   });
 });
+
+describe('cameBySwipe', () => {
+  it('is true just after a swipe and false later', async () => {
+    const { markTabSwipe, cameBySwipe } = await import('./tabSwipe');
+    markTabSwipe(10_000);
+    expect(cameBySwipe(10_500)).toBe(true);
+    expect(cameBySwipe(12_000)).toBe(false);
+  });
+});

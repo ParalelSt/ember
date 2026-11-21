@@ -4,7 +4,7 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useUiStore } from '@/stores/useUiStore';
-import { hasOpenOverlay, isTabSwipeBlocked, tabSwipeTarget, type TabSwipeDir } from '@/lib/tabSwipe';
+import { hasOpenOverlay, markTabSwipe, isTabSwipeBlocked, tabSwipeTarget, type TabSwipeDir } from '@/lib/tabSwipe';
 
 /** How long the new tab's slide-in may take before its class comes off
  *  regardless (an animation that never ends must not stay on <main>). */
@@ -62,6 +62,7 @@ export function useTabSwipe(areaRef: RefObject<HTMLElement | null>): void {
       });
       if (!target) return;
       pending.current = target;
+      markTabSwipe();
       router.push(target.href);
     };
     const onCancel = () => {

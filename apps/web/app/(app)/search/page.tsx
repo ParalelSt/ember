@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -16,11 +16,15 @@ import { EmptyState } from '@/components/page/EmptyState';
 import { SearchNoResults } from '@/components/search/SearchNoResults';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { cameBySwipe } from '@/lib/tabSwipe';
 
 const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
 
 export default function SearchPage() {
   const fieldRef = useRef<HTMLDivElement>(null);
+  // A swipe from another tab shows Search without the keyboard; tapping
+  // the Search tab still focuses the box.
+  const [focusBox] = useState(() => !cameBySwipe());
   // The overlay's Enter key lands here with the query as ?q=; it is the
   // initial value, so the page opens already searching.
   const initialQ = useSearchParams()?.get('q') ?? '';
@@ -109,7 +113,7 @@ export default function SearchPage() {
         <div ref={fieldRef} className="relative max-w-xl">
           <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
-            autoFocus
+            autoFocus={focusBox}
             // The overlay hands "/" and the sidebar's Search to this box.
             data-search-page-box
             value={q}

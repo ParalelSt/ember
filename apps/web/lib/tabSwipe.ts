@@ -102,3 +102,15 @@ export function hasOpenOverlay(doc: Document): boolean {
     '[role="dialog"]:not([aria-hidden="true"]), [role="alertdialog"]:not([aria-hidden="true"]), [role="menu"]',
   );
 }
+
+/** When the last tab swipe happened (ms since page load), so a page reached
+ *  by a swipe can skip things meant for a tap, like Search's keyboard. */
+let lastSwipeAt = -Infinity;
+export function markTabSwipe(now = performance.now()): void {
+  lastSwipeAt = now;
+}
+/** True for a short moment after a tab swipe (long enough for the new page
+ *  to mount; read without clearing so React's double render agrees). */
+export function cameBySwipe(now = performance.now()): boolean {
+  return now - lastSwipeAt < 1500;
+}
