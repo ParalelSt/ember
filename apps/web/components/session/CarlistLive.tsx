@@ -389,19 +389,18 @@ export function CarlistLive({
                   className={cn(
                     'group flex items-center gap-row rounded-md px-row py-cluster',
                     isNow && 'bg-card',
-                    isPast && 'opacity-40',
                   )}
                 >
                   <span
-                    className={cn('w-6 shrink-0 text-right text-sm tabular-nums', isNow ? 'text-ember' : 'text-muted-foreground')}
+                    className={cn('w-6 shrink-0 text-right text-sm tabular-nums', isNow ? 'text-ember' : 'text-muted-foreground', isPast && 'opacity-40')}
                   >
                     {i + 1}
                   </span>
-                  <div className="min-w-0 flex-1">
+                  <div className={cn('min-w-0 flex-1', isPast && 'opacity-40')}>
                     <div className={cn('truncate text-sm font-medium', isNow && 'text-ember')}>{item.track.title}</div>
                     <div className="truncate text-xs text-muted-foreground">{item.track.artist}</div>
                   </div>
-                  <span className="max-w-28 shrink-0 truncate text-xs text-muted-foreground" data-testid="added-by">
+                  <span className={cn('max-w-28 shrink-0 truncate text-xs text-muted-foreground', isPast && 'opacity-40')} data-testid="added-by">
                     {label}
                   </span>
                   {session.active && onPlayItem && !isNow && (
@@ -411,7 +410,7 @@ export function CarlistLive({
                       onClick={() => onPlayItem(item.id, item)}
                       aria-label={`Play ${item.track.title}`}
                       data-testid="queue-play"
-                      className="size-8 shrink-0 text-muted-foreground hover:text-foreground focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+                      className="size-8 shrink-0 text-foreground hover:bg-accent focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 [@media(hover:none)]:opacity-100"
                     >
                       <PlayIcon className="size-3.5" />
                     </Button>

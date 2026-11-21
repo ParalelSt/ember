@@ -114,7 +114,11 @@ describe('CarlistLive: the bottom (queue and add)', () => {
     setup();
     const rows = screen.getAllByTestId('queue-row');
     expect(rows.map((r) => r.getAttribute('data-state'))).toEqual(['played', 'now', 'next']);
-    expect(rows[0].className).toMatch(/opacity-40/);
+    // A played row dims its text, never its play button (replay must look tappable).
+    expect(rows[0].className).not.toMatch(/opacity-40/);
+    expect(within(rows[0]).getByTestId('added-by').className).toMatch(/opacity-40/);
+    const replay = within(rows[0]).queryByTestId('queue-play');
+    if (replay) expect(replay.className).not.toMatch(/opacity-40|text-muted-foreground/);
     expect(rows[1]).toHaveAttribute('aria-current', 'true');
     expect(rows[1].className).toMatch(/bg-card/);
     expect(rows.map((r) => within(r).getByTestId('added-by').textContent)).toEqual(['Hana', 'You', 'Unnamed member']);
