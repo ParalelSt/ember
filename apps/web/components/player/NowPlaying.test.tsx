@@ -326,27 +326,11 @@ describe('NowPlaying: the More sheet', () => {
     expect(within(view()).getByRole('button', { name: 'Options' })).toHaveAttribute('title', 'Options');
   });
 
-  it('variant a: icon-only action row with Queue and Lyrics together', () => {
+  it('the action row is icon-only, with Queue and Lyrics together', () => {
     render(<NowPlaying />);
     const row = screen.getByTestId('player-action-row');
-    expect(row).toHaveAttribute('data-variant', 'a');
     expect(within(row).getByRole('button', { name: 'Queue' })).toHaveTextContent('');
     expect(within(row).getByRole('button', { name: 'Lyrics' })).toHaveTextContent('');
-  });
-
-  it('variant b (?playerrow=b) shows a label under each icon and remembers it', () => {
-    window.history.pushState({}, '', '/?playerrow=b');
-    try {
-      render(<NowPlaying />);
-      const row = screen.getByTestId('player-action-row');
-      expect(row).toHaveAttribute('data-variant', 'b');
-      expect(within(row).getByRole('button', { name: 'Queue' })).toHaveTextContent('Queue');
-      expect(within(row).getByRole('button', { name: 'Lyrics' })).toHaveTextContent('Lyrics');
-      expect(window.localStorage.getItem('ember.design.playerrow')).toBe('b');
-    } finally {
-      window.history.pushState({}, '', '/');
-      window.localStorage.removeItem('ember.design.playerrow');
-    }
   });
 
   it('the Lyrics button scrolls down to the lyrics card', () => {
