@@ -68,7 +68,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
   const handlePlayItem = (itemId: string, item: SessionQueueItem) => {
     playItem.mutate(itemId, {
-      onSuccess: () => toast.message(`Playing "${item.track.title}" next on the host's phone`),
+      onSuccess: () => toast.message(`Playing "${item.track.title}" now on the host's phone`),
       onError: () => toast.error("Couldn't play that song. Please try again."),
     });
   };
