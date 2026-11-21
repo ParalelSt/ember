@@ -26,6 +26,16 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'intro-shows',
+    version: '0.7.47',
+    date: '2026-11-21',
+    title: 'Intro fix',
+    summary: 'The tour of the new design shows again when you first open the app.',
+    bullets: [
+      'The "new design" tour now appears on first open. It was being blocked and never showed.',
+    ],
+  },
+  {
     id: 'new-design',
     version: '0.7.46',
     date: '2026-11-21',

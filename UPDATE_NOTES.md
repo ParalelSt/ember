@@ -1,3 +1,8 @@
+# 0.7.47: Intro fix
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).**
+
 # 0.7.46: The new Ember
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
