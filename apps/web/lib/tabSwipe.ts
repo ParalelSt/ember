@@ -1,7 +1,8 @@
 /** Swiping sideways on a phone tab page moves between the bottom tabs, in
  *  the bottom bar's order (components/nav/MobileNav, kept in step by
  *  components/nav/MobileNav.test): finger right to left is the next tab,
- *  left to right the one before, no wrap at either end. Only the tab pages
+ *  left to right the one before, wrapping round at the ends (back from Home
+ *  is Library, on from Library is Home). Only the tab pages
  *  themselves; a sub page or a sub view of one (Home's ?focus=) never
  *  swipes away. */
 
@@ -51,8 +52,9 @@ export function tabSwipeTarget({
   const index = tabIndexFor(pathname, search);
   if (index < 0) return null;
   const dir: TabSwipeDir = dx < 0 ? 'next' : 'prev';
-  const href = PHONE_TABS[index + (dir === 'next' ? 1 : -1)];
-  return href ? { href, dir } : null;
+  const n = PHONE_TABS.length;
+  const href = PHONE_TABS[(index + (dir === 'next' ? 1 : -1) + n) % n];
+  return { href, dir };
 }
 
 /** Places a swipe may not start: typing, sliders, sheets and menus, and

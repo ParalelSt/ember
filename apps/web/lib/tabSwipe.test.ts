@@ -10,7 +10,7 @@ import {
 
 /** A sideways swipe on a phone tab page goes to the tab beside it in the
  *  bottom bar: left (finger right to left) is the next tab, right the one
- *  before, no wrap; a scroll, a short drag or a sub page goes nowhere. */
+ *  before, wrapping at the ends; a scroll, a short drag or a sub page goes nowhere. */
 
 const swipe = (dx: number, pathname: string, extra: { dy?: number; search?: string; blocked?: boolean } = {}) =>
   tabSwipeTarget({ dx, dy: extra.dy ?? 0, pathname, search: extra.search, blocked: extra.blocked });
@@ -30,9 +30,9 @@ describe('tabSwipeTarget', () => {
     expect(tabIndexFor('/artist/UC1', '?row=albums')).toBe(-1);
   });
 
-  it('does not wrap at either end', () => {
-    expect(swipe(80, '/')).toBeNull();
-    expect(swipe(-80, '/library')).toBeNull();
+  it('wraps round: back from Home is Library, on from Library is Home', () => {
+    expect(swipe(80, '/')).toEqual({ href: '/library', dir: 'prev' });
+    expect(swipe(-80, '/library')).toEqual({ href: '/', dir: 'next' });
   });
 
   it('needs a long enough, clearly sideways drag', () => {

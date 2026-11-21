@@ -60,15 +60,16 @@ describe('TabSwipe', () => {
     expect(route.push).toHaveBeenLastCalledWith('/library');
   });
 
-  it('does not wrap past Library or before Home', () => {
+  it('wraps round: on from Library goes Home, back from Home goes to Library', () => {
     route.pathname = '/library';
     const { unmount } = render(<Shell />);
     swipe(screen.getByTestId('content'), -120);
+    expect(route.push).toHaveBeenLastCalledWith('/');
     unmount();
     route.pathname = '/';
     render(<Shell />);
     swipe(screen.getByTestId('content'), 120);
-    expect(route.push).not.toHaveBeenCalled();
+    expect(route.push).toHaveBeenLastCalledWith('/library');
   });
 
   it('a vertical drag (a scroll) or a short one does nothing', () => {
