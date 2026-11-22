@@ -33,6 +33,8 @@ export interface TrackActions {
 
 interface Props extends TrackActions {
   tracks: Track[];
+  /** Rows before this slice (a paged list), so rank numbers keep counting. */
+  indexOffset?: number;
   showAlbum?: boolean;
   /** Show a 1-based rank number in the leading column, hidden on hover so
    *  the play/pause button takes over. Used on the artist "Popular" list. */
@@ -65,6 +67,7 @@ interface Props extends TrackActions {
  *  result. Every piece of state arrives as props. */
 export function TrackList({
   tracks,
+  indexOffset = 0,
   showAlbum = true,
   showRank = true,
   onRemove,
@@ -115,7 +118,7 @@ export function TrackList({
           key={t.id}
           className="px-row @3xl:col-span-full @3xl:grid-cols-subgrid"
           track={t}
-          index={i}
+          index={indexOffset + i}
           density="list"
           showRank={showRank}
           showAlbum={showAlbum}

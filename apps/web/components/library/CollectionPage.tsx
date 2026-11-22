@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { TrackList, type TrackActions } from '@/components/track/TrackList';
-import { CheckIcon, CopyIcon, SearchIcon, ShuffleIcon, SortIcon } from '@/components/icons';
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CopyIcon, SearchIcon, ShuffleIcon, SortIcon } from '@/components/icons';
 import { ReorderList } from '@/components/track/ReorderList';
 import { Checkbox } from '@/components/primitives/Checkbox';
 import { SortMenu } from '@/components/track/SortMenu';
@@ -116,6 +116,22 @@ export interface CollectionPageProps {
   };
 }
 
+const PAGE_SIZE = 50;
+
+/** Page numbers to show: always first, last and the current one with a
+ *  neighbour each side, gaps as null, so the pager fits a 390px phone. */
+export function pageItems(page: number, count: number): (number | null)[] {
+  if (count <= 7) return Array.from({ length: count }, (_, i) => i + 1);
+  const keep = new Set([1, count, page - 1, page, page + 1]);
+  const nums = [...keep].filter((n) => n >= 1 && n <= count).sort((a, b) => a - b);
+  const out: (number | null)[] = [];
+  nums.forEach((n, i) => {
+    if (i > 0 && n - nums[i - 1] > 1) out.push(null);
+    out.push(n);
+  });
+  return out;
+}
+
 /** Presentational only: the header, action bar and track list shared by
  *  every collection page: header, gutter-aligned actions, then the list. Play/shuffle/download logic lives in the hooks
  *  the caller passes in (`playback`, `download`); this component just
@@ -174,10 +190,45 @@ export function CollectionPage({
   // Desktop: the box is always there. Phone: the icon reveals it.
   const boxVisible = canSearch && (isDesktop || searchOpen || filtering);
   // Desktop: soft box in the action row. Phone: underline box above the songs.
-  // Playing a filtered row queues the whole list, starting at that song.
+  // Pages of 50 on the plain list only; edit order works on the whole list.
+  const paginated = !list && !editingOrder && shown.length > PAGE_SIZE;
+  const pageCount = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
+  const sortKey = sort ? JSON.stringify(sort.value) : '';
+  // Back to page 1 when the list's inputs change. Compared during render so
+  // the old page never paints against the new list.
+  const [pageState, setPageState] = useState({ page: 1, tracks, q, sortKey });
+  const stale = pageState.tracks !== tracks || pageState.q !== q || pageState.sortKey !== sortKey;
+  if (stale) setPageState({ page: 1, tracks, q, sortKey });
+  // Clamped: removing songs can leave the stored page past the new last one.
+  const page = stale ? 1 : Math.min(pageState.page, pageCount);
+  const pageTracks = useMemo(
+    () => (paginated ? shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : shown),
+    [paginated, shown, page],
+  );
+  // Only the pager's own clicks scroll: a reset from searching must not.
+  const listAnchor = useRef<HTMLDivElement>(null);
+  const scrollPending = useRef(false);
+  useEffect(() => {
+    if (!scrollPending.current) return;
+    scrollPending.current = false;
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    listAnchor.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  }, [page]);
+  const goTo = (n: number) => {
+    if (n === page) return;
+    scrollPending.current = true;
+    setPageState({ page: n, tracks, q, sortKey });
+  };
+  // Playing a filtered or paged row queues the whole list, starting at that
+  // song. A paged list queues `shown` (what paging reaches), never the
+  // 50-song slice; an unpaged search keeps queueing every track.
+  const queue = paginated ? shown : tracks;
   const listActions = useMemo<TrackActions>(
-    () => (filtering ? { ...trackActions, onPlay: (t, _l, c) => trackActions.onPlay(t, tracks, c) } : trackActions),
-    [filtering, trackActions, tracks],
+    () =>
+      filtering || paginated
+        ? { ...trackActions, onPlay: (t, _l, c) => trackActions.onPlay(t, queue, c) }
+        : trackActions,
+    [filtering, paginated, trackActions, queue],
   );
   const canReorder = !!reorder && !list && tracks.length > 1 && !selecting && !filtering;
   const showSort = !!sort && !list && tracks.length > 0 && !editingOrder;
@@ -331,18 +382,71 @@ export function CollectionPage({
                 No songs match &ldquo;{q.trim()}&rdquo;
               </EmptyState>
             ) : (
-              <TrackList
-                tracks={shown}
-                showRank={showRank}
-                context={context}
-                onRemove={onRemoveTrack}
-                onReplace={onReplaceTrack}
-                trailing={trailing}
-                selection={canSelect ? selection : undefined}
-                addedLabel={addedLabel}
-                addedBy={addedBy}
-                {...listActions}
-              />
+              // Scrolls to the first row, not the page top, so the cover
+              // header stays off screen; clears the sticky desktop bar.
+              <div ref={listAnchor} className="flex scroll-mt-[var(--ember-topbar-h,0px)] flex-col gap-stack">
+                <TrackList
+                  tracks={pageTracks}
+                  indexOffset={paginated ? (page - 1) * PAGE_SIZE : 0}
+                  showRank={showRank}
+                  context={context}
+                  onRemove={onRemoveTrack}
+                  onReplace={onReplaceTrack}
+                  trailing={trailing}
+                  selection={canSelect ? selection : undefined}
+                  addedLabel={addedLabel}
+                  addedBy={addedBy}
+                  {...listActions}
+                />
+                {paginated && (
+                  <nav aria-label="Pages" data-testid="pager" className="flex flex-col items-center gap-cluster pt-cluster">
+                    <p data-testid="pager-range" className="text-sm text-muted-foreground">
+                      Songs {(page - 1) * PAGE_SIZE + 1} to {Math.min(page * PAGE_SIZE, shown.length)} of {shown.length}
+                    </p>
+                    <div className="flex items-center gap-inset">
+                      <button
+                        type="button"
+                        aria-label="Previous page"
+                        disabled={page === 1}
+                        onClick={() => goTo(page - 1)}
+                        className="inline-flex h-10 items-center gap-inset rounded-full px-row text-sm hover:bg-foreground/10 disabled:opacity-40"
+                      >
+                        <ChevronLeftIcon className="size-4" />
+                        <span className="hidden sm:inline">Previous</span>
+                      </button>
+                      {pageItems(page, pageCount).map((n, i) =>
+                        n === null ? (
+                          <span key={`gap-${i}`} aria-hidden className="px-inset text-sm text-muted-foreground">&hellip;</span>
+                        ) : (
+                          <button
+                            key={n}
+                            type="button"
+                            aria-label={`Page ${n}`}
+                            aria-current={n === page ? 'page' : undefined}
+                            onClick={() => goTo(n)}
+                            className={cn(
+                              'inline-flex h-10 min-w-10 items-center justify-center rounded-full px-inset text-sm tabular-nums hover:bg-foreground/10',
+                              n === page && 'bg-foreground text-background hover:bg-foreground',
+                            )}
+                          >
+                            {n}
+                          </button>
+                        ),
+                      )}
+                      <button
+                        type="button"
+                        aria-label="Next page"
+                        disabled={page === pageCount}
+                        onClick={() => goTo(page + 1)}
+                        className="inline-flex h-10 items-center gap-inset rounded-full px-row text-sm hover:bg-foreground/10 disabled:opacity-40"
+                      >
+                        <span className="hidden sm:inline">Next</span>
+                        <ChevronRightIcon className="size-4" />
+                      </button>
+                    </div>
+                  </nav>
+                )}
+              </div>
             )}
           </div>
         ))}
