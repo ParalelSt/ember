@@ -7,8 +7,10 @@ import { UnplayableMessage, useUnplayableMessage } from '@/components/player/Unp
 import { useSwipeSlide } from '@/hooks/player/useSwipeSlide';
 import { Artwork } from '@/components/primitives/Artwork';
 import { Button } from '@/components/ui/button';
-import { NextIcon, PauseIcon, PlayIcon } from '@/components/icons';
+import { NextIcon, PauseIcon, PlayIcon, ShuffleIcon } from '@/components/icons';
 import { useTrackArtSrc } from '@/lib/offlineNative';
+import { usePlayerStore } from '@/stores/usePlayerStore';
+import { cn } from '@/lib/utils';
 import { isLiveTrack } from '@/lib/radio/station';
 import type { Track } from '@/types/track';
 
@@ -56,7 +58,7 @@ export interface PhonePlayerBarProps {
   onNext: () => void;
   /** A swipe right on the bar. */
   onPrev: () => void;
-  /** Opens the full-screen view: a tap anywhere on the row except the two
+  /** Opens the full-screen view: a tap anywhere on the row except the
    *  buttons. Previous and the queue live there. */
   onOpen: () => void;
   /** The bar's message about a song that could not play: a tap on a
@@ -69,10 +71,11 @@ export interface PhonePlayerBarProps {
  * The phone player bar: the old one-row shape, stripped to what a glance
  * needs. A 56px artwork, the song name (16px, scrolling with MarqueeText
  * when it overflows) and artist (14px), play/pause (a 40px disc in a 48px
- * hit box) and next (a plain 24px glyph in a 48px hit box); the thin seek
- * line under all of it. Previous and the queue are not here: they live on
- * the full-screen NowPlaying view, which a tap on the bar opens. The name
- * gets about 176px at a 390px phone (146px at 360).
+ * hit box), shuffle just left of it and next just right (plain 24px glyphs
+ * in 48px hit boxes); the thin seek line under all of it. Previous and the
+ * queue are not here: they live on the full-screen NowPlaying view, which a
+ * tap on the bar opens. The name gets about 128px at a 390px phone (98px at
+ * 360): the always-there shuffle took 48px off it.
  *
  * The strip's own background, border and safe-area stand-off are not here:
  * they are PLAYER_BAR_CHROME above, on the <footer> that holds whichever of
@@ -100,6 +103,10 @@ export function PhonePlayerBar({
   // follows the finger, slides out past the threshold with the new song
   // sliding in, and springs back short of it.
   const swipe = useSwipeSlide({ onNext, onPrev });
+  // The store's own toggle, same as the full-screen player's: it keeps the
+  // current song playing and shuffles only what is upcoming.
+  const shuffleOn = usePlayerStore((s) => s.shuffle);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
 
   // The whole row opens the full-screen view, except the buttons: pressing
   // play must only play, and next only skip.
@@ -145,6 +152,22 @@ export function PhonePlayerBar({
 
         {/* Hit boxes touch: the glyphs' own margins space them. */}
         <div className="flex shrink-0 items-center">
+          {/* Always here, on any queue (not only playlists, unlike the
+              full-screen player's): the bar's whole point is a shuffle
+              within reach. A real button, so openUnlessButton ignores it. */}
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={toggleShuffle}
+            aria-label={shuffleOn ? 'Shuffle off' : 'Shuffle'}
+            aria-pressed={shuffleOn}
+            className={cn(
+              'size-12 shrink-0 rounded-full',
+              shuffleOn ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <ShuffleIcon className="size-6" />
+          </Button>
           <BarPlayButton playing={playing} onToggle={onToggle} />
           <Button
             size="icon"

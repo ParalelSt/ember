@@ -105,6 +105,7 @@ vi.mock('@/components/ui/slider', () => ({
 }));
 
 const bar = () => screen.getByTestId('player-bar');
+const shuffleBtn = (name: 'Shuffle' | 'Shuffle off' = 'Shuffle') => screen.getByRole('button', { name });
 /** Render the desktop bar and hand it back. `desktop` already defaults to
  *  true in beforeEach, so this is just render-and-find. */
 const desktopBar = () => {
@@ -119,6 +120,7 @@ beforeEach(() => {
   skip.prev.mockClear();
   partyEligible.value = true;
   useSettingsStore.setState({ tabsEnabled: true, partyVolume: false });
+  usePlayerStore.setState({ shuffle: false });
 });
 
 /** The volume slider is the last "progress"-labelled input: SeekBar's own
@@ -353,7 +355,7 @@ describe('PlayerBar', () => {
     it('draws the one-row bar: Open player (the title), then play and next', () => {
       render(<PlayerBar />);
       const footer = bar();
-      expect(within(footer).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open player', 'Pause', 'Next']);
+      expect(within(footer).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open player', 'Shuffle', 'Pause', 'Next']);
       // MobileNav under it carries the inset instead: see the dedicated
       // 'leaves the safe-area lift to MobileNav' test above.
       expect(footer).not.toHaveClass('safe-area-bottom');
@@ -399,6 +401,35 @@ describe('PlayerBar', () => {
       expect(screen.getAllByLabelText('progress')).toHaveLength(1);
       expect(document.querySelector('.w-40, .w-29\\.5')).toBeNull();
     });
+  });
+});
+
+describe('PlayerBar: shuffle button', () => {
+  beforeEach(() => {
+    desktop.value = true;
+    car.value = false;
+    usePlayerStore.setState({ shuffle: false });
+  });
+
+  it('is always there, leftmost of the transport row, before loop', () => {
+    render(<PlayerBar />);
+    const row = screen.getByRole('button', { name: 'Previous' }).parentElement as HTMLElement;
+    expect(row.firstElementChild).toBe(shuffleBtn());
+    expect(row.children[1]).toBe(screen.getByRole('button', { name: 'Loop playlist' }));
+    expect(shuffleBtn()).toHaveClass('hidden', 'md:inline-flex');
+  });
+
+  it('toggles the store both ways, with aria and title following', () => {
+    render(<PlayerBar />);
+    expect(shuffleBtn()).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(shuffleBtn());
+    expect(usePlayerStore.getState().shuffle).toBe(true);
+    expect(shuffleBtn('Shuffle off')).toHaveAttribute('aria-pressed', 'true');
+    expect(shuffleBtn('Shuffle off')).toHaveAttribute('title', 'Shuffling');
+    expect(shuffleBtn('Shuffle off')).toHaveClass('text-ember');
+    fireEvent.click(shuffleBtn('Shuffle off'));
+    expect(usePlayerStore.getState().shuffle).toBe(false);
+    expect(shuffleBtn()).toHaveAttribute('aria-pressed', 'false');
   });
 });
 

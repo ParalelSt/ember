@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from './PhonePlayerBar';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import type { Track } from '@/types/track';
 
 // base-ui's Slider reaches the repo root's hoisted React 18 through its own
@@ -70,14 +71,14 @@ function fontPx(el: Element): number {
 }
 
 describe('PhonePlayerBar', () => {
-  it('draws the artwork, the name, the artist and two controls: play/pause, then next', () => {
+  it('draws the artwork, the name, the artist and three controls: shuffle, play/pause, then next', () => {
     const { container } = setup();
     const bar = screen.getByTestId('phone-player-bar');
     const titleRow = within(bar).getByTestId('phone-player-title-row');
     // The artwork sits beside the name, in one row, the old bar's shape.
     expect(titleRow.querySelector('.size-art-bar')).not.toBeNull();
     expect(titleRow).toHaveTextContent(TRACK.artist);
-    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open player', 'Pause', 'Next']);
+    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open player', 'Shuffle', 'Pause', 'Next']);
     // Previous and the queue live on the full-screen view.
     for (const name of ['Previous', 'Queue']) {
       expect(within(bar).queryByRole('button', { name })).toBeNull();
@@ -379,5 +380,47 @@ describe('PhonePlayerBar swipe to skip', () => {
     } finally {
       window.matchMedia = orig;
     }
+  });
+});
+
+describe('PhonePlayerBar: shuffle', () => {
+  const shuffleBtn = (name: 'Shuffle' | 'Shuffle off' = 'Shuffle') => screen.getByRole('button', { name });
+
+  it('is always there, immediately left of play', () => {
+    usePlayerStore.setState({ shuffle: false });
+    setup();
+    const group = screen.getByRole('button', { name: 'Pause' }).parentElement as HTMLElement;
+    expect(group.firstElementChild).toBe(shuffleBtn());
+    expect(group.children[1]).toBe(screen.getByRole('button', { name: 'Pause' }));
+  });
+
+  it('toggles the store both ways, with aria following', () => {
+    usePlayerStore.setState({ shuffle: false });
+    setup();
+    expect(shuffleBtn()).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(shuffleBtn());
+    expect(usePlayerStore.getState().shuffle).toBe(true);
+    expect(shuffleBtn('Shuffle off')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(shuffleBtn('Shuffle off'));
+    expect(usePlayerStore.getState().shuffle).toBe(false);
+    expect(shuffleBtn()).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('does not open the full-screen player', () => {
+    usePlayerStore.setState({ shuffle: false });
+    const { onOpen } = setup();
+    fireEvent.click(shuffleBtn());
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('is ember when on and muted when off', () => {
+    usePlayerStore.setState({ shuffle: true });
+    const { unmount } = setup();
+    expect(shuffleBtn('Shuffle off')).toHaveClass('text-ember');
+    unmount();
+    usePlayerStore.setState({ shuffle: false });
+    setup();
+    expect(shuffleBtn()).toHaveClass('text-muted-foreground');
+    expect(shuffleBtn()).not.toHaveClass('text-ember');
   });
 });

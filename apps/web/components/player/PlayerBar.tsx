@@ -8,6 +8,7 @@ import {
   TabsIcon,
   QueueIcon,
   RepeatIcon,
+  ShuffleIcon,
   RepeatOneIcon,
   ShareIcon,
   DevicesIcon,
@@ -67,6 +68,8 @@ export function PlayerBar() {
   const devices = useDevicesEntry();
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
   const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
+  const shuffleOn = usePlayerStore((s) => s.shuffle);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const loopMode = usePlayerStore((s) => s.loopMode);
   const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
   const muted = usePlayerStore((s) => s.muted);
@@ -142,6 +145,26 @@ export function PlayerBar() {
       </footer>
     );
   }
+
+  // Shuffle toggle: the store's own, so it keeps the current song and
+  // shuffles only what is upcoming. Always shown, on any queue. Desktop
+  // only, like loop; phones have it in PhonePlayerBar.
+  const shuffleButton = (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={toggleShuffle}
+      aria-label={shuffleOn ? 'Shuffle off' : 'Shuffle'}
+      aria-pressed={shuffleOn}
+      title={shuffleOn ? 'Shuffling' : 'Shuffle off'}
+      className={cn(
+        'hidden md:inline-flex h-8 w-8',
+        shuffleOn ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+      )}
+    >
+      <ShuffleIcon className="h-4 w-4" />
+    </Button>
+  );
 
   // Loop toggle: cycles off, loop playlist (wrap queue, radio suppressed),
   // loop one song. Desktop only; phones get the same control in the
@@ -243,7 +266,7 @@ export function PlayerBar() {
           onNext={next}
           onPrev={prev}
           size="sm"
-          left={loopButton}
+          left={<>{shuffleButton}{loopButton}</>}
         />
         <PlayheadSeekBar
           live={live}
