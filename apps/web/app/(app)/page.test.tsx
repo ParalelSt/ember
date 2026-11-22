@@ -186,14 +186,14 @@ describe('Home on a phone', () => {
     expect(within(grid).getAllByRole('link').map((a) => a.textContent)).toEqual(['Liked songs', 'Recently played', 'Friday drive', 'Gym', 'Road trip']);
   });
 
-  it('orders the rows like the owner\'s order B, with Popular now and no "From your liked songs"', () => {
+  it('orders the rows like the owner\'s order B, Friends first, with Popular now and no "From your liked songs"', () => {
     render(<HomePage />);
     expect(headings()).toEqual([
+      'Friends are listening to',
       'Recently played',
       'Because you played "hist song 0"',
       'Popular now',
       'Your playlists',
-      'Friends are listening to',
     ]);
     expect(screen.queryByText('Trending right now')).toBeNull();
     expect(screen.queryByText('From your liked songs')).toBeNull();
@@ -203,7 +203,7 @@ describe('Home on a phone', () => {
   it('hides empty rows', () => {
     Object.assign(state, { history: [], liked: [], trending: [], playlists: [] });
     render(<HomePage />);
-    expect(headings()).toEqual(['Recommended for you', 'Friends are listening to']);
+    expect(headings()).toEqual(['Friends are listening to', 'Recommended for you']);
     // Liked songs stays in the quick grid even with no likes yet.
     expect(within(screen.getByRole('list', { name: 'Your collections' })).getAllByRole('link')).toHaveLength(1);
   });
@@ -314,11 +314,11 @@ describe('Home filter chips on a phone', () => {
     expect(headings()).toEqual(['Your playlists']);
     fireEvent.click(chip('All'));
     expect(headings()).toEqual([
+      'Friends are listening to',
       'Recently played',
       'Because you played "hist song 0"',
       'Popular now',
       'Your playlists',
-      'Friends are listening to',
     ]);
   });
 
@@ -435,14 +435,14 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
     expect(names.slice(0, 2)).toEqual(['Liked songs', 'List 0']);
   });
 
-  it('orders the rows like the phone (order B), with Popular now and no "From your liked songs"', () => {
+  it('orders the rows like the phone (order B, Friends first), with Popular now and no "From your liked songs"', () => {
     render(<HomePage />);
     expect(headings()).toEqual([
+      'Friends are listening to',
       'Recently played',
       'Because you played "hist song 0"',
       'Popular now',
       'Your playlists',
-      'Friends are listening to',
     ]);
     expect(screen.queryByText('Trending right now')).toBeNull();
     expect(screen.queryByText('From your liked songs')).toBeNull();
@@ -656,17 +656,17 @@ describe('Popular now chart tiles on Home', () => {
 describe('Your mixes on Home', () => {
   const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name });
 
-  it('puts Your mixes first under the quick grid (order B), Radio cards linking to each mix', () => {
+  it('puts Your mixes under Friends and the quick grid (order B), Radio cards linking to each mix', () => {
     state.mixes = someMixes();
     state.charts = someCharts();
     render(<HomePage />);
     expect(headings()).toEqual([
+      'Friends are listening to',
       'Your mixes',
       'Recently played',
       'Because you played "hist song 0"',
       'Popular now',
       'Your playlists',
-      'Friends are listening to',
     ]);
     state.query = 'row=mixes';
     cleanup();

@@ -135,17 +135,24 @@ describe('filter chips and order B', () => {
     expect(homeChips(later).map((c) => c.label)).toEqual(['All', 'Playlists', 'Mixes', 'Charts']);
   });
 
-  it('All is order B: Recently played, Because you played, Popular now, Your playlists, Friends', () => {
+  it('All is order B with Friends first: Friends, Recently played, Because you played, Popular now, Your playlists', () => {
     expect(phoneHomeView('all', today)).toEqual({
       filter: 'all',
       quickGrid: true,
-      rows: ['history', 'recommended', 'charts', 'playlists', 'friends'],
+      rows: ['friends', 'history', 'recommended', 'charts', 'playlists'],
     });
   });
 
-  it('puts Your mixes right after the grid, and the Popular now tile row after Because you played', () => {
+  it('keeps Friends ahead of Your mixes, and the Popular now tile row after Because you played', () => {
     const later = new Set<HomeRowKey>([...today, 'mixes']);
-    expect(phoneHomeView('all', later).rows).toEqual(['mixes', 'history', 'recommended', 'charts', 'playlists', 'friends']);
+    expect(phoneHomeView('all', later).rows).toEqual(['friends', 'mixes', 'history', 'recommended', 'charts', 'playlists']);
+  });
+
+  it('leaves Friends out of every chip but All', () => {
+    const later = new Set<HomeRowKey>([...today, 'mixes']);
+    for (const chip of ['playlists', 'mixes', 'charts'] as const) {
+      expect(phoneHomeView(chip, later).rows).not.toContain('friends');
+    }
   });
 
   it('the Charts chip keeps the Popular now tile row only, with no quick grid', () => {

@@ -112,14 +112,17 @@ export function rowStep(clientWidth: number): number {
  *  appears once either has content, and the Charts chip keeps it. */
 export type HomeRowKey = 'mixes' | 'history' | 'recommended' | 'charts' | 'playlists' | 'friends';
 
-/** The owner's order B: mixes and discovery early, your playlists late. */
+/** The owner's order B: mixes and discovery early, your playlists late.
+ *  Friends are listening to leads (his 2026-11-22 pick): the first row
+ *  under the quick grid, since it is the row you glance at. It renders
+ *  nothing while nobody is listening, so the row below simply moves up. */
 export const PHONE_ORDER: readonly HomeRowKey[] = [
+  'friends',
   'mixes',
   'history',
   'recommended',
   'charts',
   'playlists',
-  'friends',
 ];
 
 export type HomeFilter = 'all' | 'playlists' | 'mixes' | 'charts';
