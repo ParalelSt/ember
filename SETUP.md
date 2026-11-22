@@ -731,8 +731,8 @@ the daily cleanup of tracks nobody has played.
 
 Once a day the server deletes tracks **nobody has played in 14 days**, along
 with their cached audio in `my_music/`. Anything liked, in a playlist, in a
-live session, or in someone's recent searches is kept regardless of age, as
-is anything played inside the window and every member upload.
+live session, in someone's recent searches or blocked is kept regardless of
+age, as is anything played inside the window and every member upload.
 
 It runs an hour after boot and then daily. To disable, set `CLEANUP_DISABLED=1`
 in `apps/web/.env.local`.
