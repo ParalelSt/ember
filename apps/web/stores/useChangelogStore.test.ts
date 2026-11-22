@@ -122,7 +122,7 @@ describe('useChangelogStore', () => {
   });
 
   describe('answers that arrive out of order', () => {
-    type Patch = { seenVersion?: string; hideNew?: boolean };
+    type Patch = { seenVersion?: string; hideNew?: boolean; readIds?: string[] };
     /** Every write waits until the test answers it, in any order. */
     function heldWrites() {
       const held: { patch: Patch; answer: () => void; fail: () => void }[] = [];
@@ -131,13 +131,39 @@ describe('useChangelogStore', () => {
           new Promise((resolve, reject) => {
             held.push({
               patch,
-              answer: () => resolve({ seenVersion: patch.seenVersion ?? '0.0.1', hideNew: patch.hideNew ?? false }),
+              answer: () => resolve({ seenVersion: patch.seenVersion ?? '0.0.1', hideNew: patch.hideNew ?? false, readIds: patch.readIds ?? [] }),
               fail: () => reject(new Error('offline')),
             });
           }),
       );
       return held;
     }
+
+    it('opening two entries fast keeps both read when the first reply comes last', async () => {
+      useChangelogStore.setState({ seenVersion: '0.0.1', loaded: true, readIds: [] });
+      const held = heldWrites();
+      const [a, b] = [CHANGELOG[0].id, CHANGELOG[1].id];
+      const first = useChangelogStore.getState().markRead(a);
+      const second = useChangelogStore.getState().markRead(b);
+      held[1].answer();
+      await second;
+      held[0].answer();
+      await first;
+      expect(useChangelogStore.getState().readIds).toEqual([a, b]);
+    });
+
+    it('a failed earlier read does not undo a later one', async () => {
+      useChangelogStore.setState({ seenVersion: '0.0.1', loaded: true, readIds: [] });
+      const held = heldWrites();
+      const [a, b] = [CHANGELOG[0].id, CHANGELOG[1].id];
+      const first = useChangelogStore.getState().markRead(a);
+      const second = useChangelogStore.getState().markRead(b);
+      held[1].answer();
+      await second;
+      held[0].fail();
+      await first;
+      expect(useChangelogStore.getState().readIds).toEqual([a, b]);
+    });
 
     it('flipping the New tags switch twice fast ends where it was flipped to', async () => {
       useChangelogStore.setState({ seenVersion: '0.0.1', loaded: true, hideNew: false });
