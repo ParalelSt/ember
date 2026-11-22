@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { BlockIcon, MusicIcon, UploadIcon } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
 import { useBlockedTracks } from '@/hooks/useBlockedTracks';
 import { cn } from '@/lib/utils';
+import type { Track } from '@/types/track';
 
 /** The Transfer page, returning to Settings > Uploads when it is done or left. */
 export const PHONE_TRANSFER_HREF = `/transfer?from=${encodeURIComponent('/settings/uploads')}`;
@@ -41,6 +43,10 @@ export function TransferCard() {
  *  suggestions, to unblock. */
 export function BlockedSongsCard() {
   const { blocked, unblock } = useBlockedTracks();
+  // A failed unblock rejects (the route answers it as one): say so, as the
+  // song menus do, instead of an unhandled error and the song quietly staying.
+  const unblockSong = (t: Track) =>
+    void unblock(t).catch(() => toast.error(`Couldn't unblock "${t.title}", please try again.`));
   return (
     <div className="rounded-2xl bg-card p-stack shadow-soft" data-testid="blocked-songs">
       <div className="font-semibold">Blocked songs</div>
@@ -65,7 +71,7 @@ export function BlockedSongsCard() {
                 <div className="truncate text-sm font-medium">{t.title}</div>
                 <div className="truncate text-xs text-muted-foreground">{t.artist}</div>
               </div>
-              <Button variant="outline" size="sm" onClick={() => void unblock(t)} aria-label={`Unblock ${t.title}`}>
+              <Button variant="outline" size="sm" onClick={() => unblockSong(t)} aria-label={`Unblock ${t.title}`}>
                 Unblock
               </Button>
             </li>

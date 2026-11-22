@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { BlockIcon, BugIcon, MusicIcon, RequestIcon, SparklesIcon, UploadIcon } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
@@ -13,6 +14,7 @@ import { usePartyEligible } from '@/hooks/usePartyEligible';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
+import type { Track } from '@/types/track';
 import { SettingsGroup, SettingsRow, SettingsSwitchRow } from './rows';
 
 /* The desktop row versions of Plugins, Help and the phone's Library page
@@ -138,6 +140,10 @@ export function TransferRow() {
  *  phone has them under Settings > Library; desktop keeps them in Account). */
 export function BlockedSongsGroup() {
   const { blocked, unblock } = useBlockedTracks();
+  // A failed unblock rejects (the route answers it as one): say so, as the
+  // song menus do, instead of an unhandled error and the song quietly staying.
+  const unblockSong = (t: Track) =>
+    void unblock(t).catch(() => toast.error(`Couldn't unblock "${t.title}", please try again.`));
   return (
     <SettingsGroup
       title="Blocked songs"
@@ -166,7 +172,7 @@ export function BlockedSongsGroup() {
             title={<span className="block truncate text-sm">{t.title}</span>}
             description={<span className="block truncate text-xs">{t.artist}</span>}
             control={
-              <Button variant="outline" size="sm" onClick={() => void unblock(t)} aria-label={`Unblock ${t.title}`}>
+              <Button variant="outline" size="sm" onClick={() => unblockSong(t)} aria-label={`Unblock ${t.title}`}>
                 Unblock
               </Button>
             }

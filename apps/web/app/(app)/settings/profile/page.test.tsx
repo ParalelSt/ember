@@ -21,7 +21,8 @@ vi.mock('@/lib/api', () => ({ api }));
 vi.mock('@/components/settings/PrivacyToggles', () => ({ PrivacyToggles: () => null }));
 const blocking = vi.hoisted(() => ({ blocked: [] as { id: string; title: string; artist: string; artworkUrl: null }[], unblock: vi.fn(async () => {}) }));
 vi.mock('@/hooks/useBlockedTracks', () => ({ useBlockedTracks: () => ({ blocked: blocking.blocked, unblock: blocking.unblock }) }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: toastError } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -110,5 +111,21 @@ describe('SettingsProfile blocked songs (moved from Library)', () => {
     expect(within(list).getByText('Bad Song')).toBeInTheDocument();
     fireEvent.click(within(list).getByRole('button', { name: 'Unblock Bad Song' }));
     expect(blocking.unblock).toHaveBeenCalledWith(song);
+  });
+  it('an unblock the server refuses says so, instead of the song quietly staying', async () => {
+    const song = { id: 'youtube:a', title: 'Bad Song', artist: 'Someone', artworkUrl: null };
+    blocking.blocked = [song];
+    blocking.unblock.mockRejectedValueOnce(new Error('PocketBase down'));
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      render(<SettingsProfile />);
+      fireEvent.click(within(screen.getByTestId('blocked-songs')).getByRole('button', { name: 'Unblock Bad Song' }));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith(`Couldn't unblock "Bad Song", please try again.`));
+      await new Promise((r) => setTimeout(r, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 });

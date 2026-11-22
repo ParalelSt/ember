@@ -15,8 +15,9 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 }));
 const api = vi.hoisted(() => ({ updateProfile: vi.fn(async () => ({ ok: true })), updatePrivacy: vi.fn(), getPrivacy: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-const blockedTracks = vi.hoisted(() => ({ blocked: [] as { id: string; title: string; artist: string; artworkUrl: null }[], unblock: vi.fn() }));
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: toastError } }));
+const blockedTracks = vi.hoisted(() => ({ blocked: [] as { id: string; title: string; artist: string; artworkUrl: null }[], unblock: vi.fn<(t: unknown) => Promise<void>>(async () => {}) }));
 vi.mock('@/hooks/useBlockedTracks', () => ({ useBlockedTracks: () => blockedTracks }));
 
 beforeEach(() => {
@@ -89,5 +90,14 @@ describe('blocked songs (the phone keeps them under Settings > Library)', () => 
     expect(within(group).getByText('Loud song')).toBeInTheDocument();
     fireEvent.click(within(group).getByRole('button', { name: 'Unblock Loud song' }));
     expect(blockedTracks.unblock).toHaveBeenCalledWith(blockedTracks.blocked[0]);
+  });
+
+  it('an unblock the server refuses says so', async () => {
+    blockedTracks.blocked = [{ id: 't1', title: 'Loud song', artist: 'Band', artworkUrl: null }];
+    blockedTracks.unblock.mockRejectedValueOnce(new Error('PocketBase down'));
+    render(<AccountSection />);
+    const group = screen.getByRole('region', { name: 'Blocked songs' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Unblock Loud song' }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(`Couldn't unblock "Loud song", please try again.`));
   });
 });
