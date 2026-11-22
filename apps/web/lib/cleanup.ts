@@ -36,11 +36,13 @@ export interface CleanupReport {
 }
 
 /** The collections whose rows keep a track (their `track` relation). */
-const PROTECTING = ['likes', 'playlist_tracks', 'session_tracks', 'recent_searches'] as const;
+const PROTECTING = ['likes', 'playlist_tracks', 'session_tracks', 'recent_searches', 'blocked_tracks'] as const;
 
 /** Every track id referenced by something a user would miss. Liked songs,
- *  playlist entries, live-session queues and recent searches are all kept
- *  regardless of age, deleting those would visibly break someone's library. */
+ *  playlist entries, live-session queues, recent searches and blocked songs
+ *  are all kept regardless of age, deleting those would visibly break
+ *  someone's library. A blocked song is never played again, so it would
+ *  always look stale, and its block goes with the row (cascade). */
 async function protectedTrackIds(pb: PocketBase): Promise<Set<string>> {
   const keep = new Set<string>();
   const collect = async (collection: string, field = 'track') => {

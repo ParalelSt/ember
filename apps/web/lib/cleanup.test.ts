@@ -166,6 +166,23 @@ describe('orphan cache file sweep (bughunt S06)', () => {
 });
 
 describe('stale-track sweep', () => {
+  it('keeps a blocked song: deleting its row would drop the block with it', async () => {
+    const dir = tmpMusicDir();
+    writeCacheFile(dir, `${VIDEO_A}.m4a`);
+    const { runCleanup } = await freshCleanup(dir);
+    // Blocked, so never played again: nothing but the block refers to it.
+    const { pb } = fakePocketBase({
+      tracks: [{ id: 't1', external_id: `youtube:${VIDEO_A}` }],
+      blocked_tracks: [{ user: 'u1', track: 't1' }],
+    });
+
+    const report = await runCleanup(pb);
+
+    expect(report.deletedRows).toBe(0);
+    expect(report.protectedCount).toBe(1);
+    expect(fs.existsSync(path.join(dir, `${VIDEO_A}.m4a`))).toBe(true);
+  });
+
   it('stops without deleting anything when the likes cannot be read', async () => {
     const dir = tmpMusicDir();
     writeCacheFile(dir, `${VIDEO_A}.m4a`);
