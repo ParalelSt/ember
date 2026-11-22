@@ -1,3 +1,9 @@
+# 0.7.49: Bug fixes
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** It restarts PocketBase, which turns on the new
+account rule (members can no longer delete their account through /pb).
+
 # 0.7.48: Play button polish
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

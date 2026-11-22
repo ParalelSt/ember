@@ -26,6 +26,22 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'bug-fixes-1122',
+    version: '0.7.49',
+    date: '2026-11-22',
+    title: 'Bug fixes',
+    summary: 'A batch of fixes for blocking songs, uploads, covers and dates.',
+    bullets: [
+      "If blocking or unblocking a song fails, you're now told, instead of nothing happening or it claiming it worked.",
+      'Unblocking works from any upload of a blocked song, and the daily cleanup no longer quietly unblocks songs.',
+      'Uploads: a file type that can\'t be used is refused before it uploads, and a cover change that fails no longer leaves the song without a cover.',
+      '"Yesterday" and "Built today" are right again around the clock change.',
+      'After clicking a song, Space pauses it instead of starting it over.',
+      'A failed "Save as playlist" no longer leaves an empty playlist behind.',
+      'Safer handling of cover images and accounts.',
+    ],
+  },
+  {
     id: 'play-centre',
     version: '0.7.48',
     date: '2026-11-21',
