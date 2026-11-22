@@ -29,6 +29,7 @@ export const QK = {
   playlist: (id: string) => ['playlist', id] as const,
   trending: ['trending'] as const,
   charts: ['charts'] as const,
+  newReleases: ['new-releases'] as const,
   chart: (slug: string) => ['chart', slug] as const,
   mixes: ['mixes'] as const,
   mix: (key: string) => ['mix', key] as const,
@@ -229,6 +230,18 @@ export function useQueryCharts() {
   return useQuery({
     queryKey: QK.charts,
     queryFn: () => api.getCharts(),
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** The Home "New releases" row. No polling: the server refreshes its ledger
+ *  once a day and the row is picked from it per load. */
+export function useQueryNewReleases() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: QK.newReleases,
+    queryFn: () => api.getNewReleases(),
     enabled: !!user,
     staleTime: 5 * 60_000,
   });

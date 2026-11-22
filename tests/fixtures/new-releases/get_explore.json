@@ -1,0 +1,10 @@
+{
+  "new_releases": [
+    {"title": "Nova pjesma", "type": "Single", "artists": [{"name": "Dragana Mirković", "id": "UCdragana00000000000000"}], "browseId": "MPREb_explore001AAA", "audioPlaylistId": "OLAK5uy_a", "isExplicit": false,
+     "thumbnails": [{"url": "https://lh3.googleusercontent.com/e1=w60-h60", "width": 60, "height": 60}, {"url": "https://lh3.googleusercontent.com/e1=w226-h226", "width": 226, "height": 226}]},
+    {"title": "Cijeli album", "type": "Album", "artists": [{"name": "Miroslav Škoro", "id": "UCskoro0000000000000000"}, {"name": "Gost", "id": null}], "browseId": "MPREb_explore002BBB", "audioPlaylistId": "OLAK5uy_b", "isExplicit": false,
+     "thumbnails": [{"url": "https://lh3.googleusercontent.com/e2=w226-h226", "width": 226, "height": 226}]},
+    {"title": "Bez browseId", "type": "Single", "artists": [{"name": "Nitko", "id": null}], "isExplicit": false, "thumbnails": []}
+  ],
+  "top_songs": {"results": []}
+}

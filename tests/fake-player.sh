@@ -209,6 +209,34 @@ case "$CMD" in
       '
     fi
     ;;
+  new-releases)
+    # Stand-in for player.py new-releases. $FAKE_NEW_RELEASES_FIXTURE (a JSON
+    # file shaped like the real output) wins; otherwise one single per asked
+    # artist plus two explore items when --explore is given.
+    # FAKE_FAIL_NEW_RELEASES=1 fails like player.py when nothing came back.
+    if [ "${FAKE_FAIL_NEW_RELEASES:-0}" = "1" ]; then
+      echo "ERROR: new-releases: nothing came back" >&2
+      exit 1
+    fi
+    if [ -n "${FAKE_NEW_RELEASES_FIXTURE:-}" ]; then
+      cat "$FAKE_NEW_RELEASES_FIXTURE"
+    else
+      node -e '
+        const args = process.argv.slice(1);
+        const ids = (args.find((a) => a.startsWith("--artists=")) || "--artists=").slice(10).split(",").filter(Boolean);
+        const explore = args.includes("--explore");
+        const artists = ids.map((id) => ({
+          id, name: `Artist ${id}`,
+          releases: [{ browseId: `MPREb_fake${id}`.slice(0, 24), title: `New single by ${id}`, year: String(new Date().getFullYear()), type: "Single", artworkUrl: "" }],
+        }));
+        const items = explore ? ["A", "B"].map((x) => ({
+          browseId: `MPREb_fakeexplore${x}`, title: `Explore release ${x}`, type: "Album",
+          artist: `Explore Artist ${x}`, artistId: `UCfakeexplore${x}000000000`, artworkUrl: "",
+        })) : null;
+        process.stdout.write(JSON.stringify({ artists, explore: items, failed: [] }));
+      ' -- "$@"
+    fi
+    ;;
   radio-batch)
     # Stand-in for player.py radio-batch. The seeds come as --seeds=a,b,c.
     # $FAKE_RADIO_FIXTURE (JSON: { "<seed>": [track, ...] }) gives a seed's

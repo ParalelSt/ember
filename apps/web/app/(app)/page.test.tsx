@@ -34,6 +34,7 @@ const state = vi.hoisted(() => ({
   toggle: vi.fn(),
   playCollection: vi.fn(),
   collectionPlaying: null as string | null,
+  releases: [] as unknown[],
   mixes: undefined as undefined | { eligible: boolean; building: boolean; mixes: { key: string; kind?: string; title: string; subtitle: string; cover: { artworkUrls: string[]; color: string }; builtAt: string; count: number }[] },
   charts: undefined as undefined | { popular: unknown; genres: { slug: string; title: string; color: string; artworkUrls: string[]; count: number; fetchedAt: string | null; stale: boolean }[] },
 }));
@@ -56,6 +57,7 @@ vi.mock('@/hooks/useLibrary', () => ({
   },
   useQueryCharts: () => ({ data: state.charts }),
   useQueryMixes: () => ({ data: state.mixes }),
+  useQueryNewReleases: () => ({ data: { releases: state.releases, refreshedAt: null, stale: false } }),
 }));
 vi.mock('@/hooks/useCollections', () => ({
   useCollections: () => ({
@@ -137,6 +139,7 @@ beforeEach(() => {
     collectionPlaying: null,
     charts: undefined,
     mixes: undefined,
+    releases: [],
   });
 });
 
@@ -897,5 +900,45 @@ describe('Home rows on a phone', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Recently played' })).toBeInTheDocument();
     expect(region('Recently played').getAllByRole('listitem')).toHaveLength(12);
     expect(screen.queryByRole('region', { name: 'Your mixes' })).toBeNull();
+  });
+});
+
+describe('New releases on Home', () => {
+  const rel = (id: string, from: 'liked' | 'similar') => ({
+    browseId: `MPREb_${id}`, title: `Release ${id}`, kind: 'single', artist: `Artist ${id}`, artistId: `UC${id}`,
+    artworkUrl: null, year: 2026, firstSeenAt: '2026-11-20T00:00:00.000Z', from,
+  });
+
+  for (const desktop of [false, true]) {
+    it(`sits after the recommendations and before Popular now on a ${desktop ? 'desktop' : 'phone'}`, () => {
+      state.desktop = desktop;
+      state.releases = [rel('a', 'liked'), rel('b', 'similar')];
+      render(<HomePage />);
+      const h = headings();
+      expect(h.indexOf('New releases')).toBe(h.indexOf('Because you played "hist song 0"') + 1);
+      expect(h.indexOf('New releases')).toBe(h.indexOf('Popular now') - 1);
+      expect(screen.getByRole('region', { name: 'New releases' })).toBeInTheDocument();
+    });
+  }
+
+  it('has no heading and no empty region without releases', () => {
+    render(<HomePage />);
+    expect(screen.queryByRole('heading', { name: 'New releases' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'New releases' })).toBeNull();
+  });
+
+  it('a tile opens its album', () => {
+    state.releases = [rel('a', 'liked')];
+    render(<HomePage />);
+    const region = within(screen.getByRole('region', { name: 'New releases' }));
+    expect(region.getByRole('link', { name: /Release a/ })).toHaveAttribute('href', `/album/${encodeURIComponent('MPREb_a')}`);
+    expect(region.getByText('Single · Artist a')).toBeInTheDocument();
+  });
+
+  it('is not kept by the Playlists chip', () => {
+    state.releases = [rel('a', 'liked')];
+    render(<HomePage />);
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name: 'Playlists' }));
+    expect(screen.queryByRole('region', { name: 'New releases' })).toBeNull();
   });
 });

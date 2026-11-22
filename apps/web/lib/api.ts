@@ -18,6 +18,7 @@ import type { DevicePlatform } from '@/lib/versions/label';
 import type { TabTiming } from '@/lib/tabSync';
 import type { ChartPayload, ChartsPayload } from '@/lib/chartsView';
 import type { MixPayload, MixesPayload } from '@/lib/mixesView';
+import type { NewReleasesPayload } from '@/lib/newReleasesView';
 import type { StoredPlugins } from '@/lib/pluginSettings';
 import type { NavPatch, NavPrefs } from '@/lib/navPlaylists';
 import type { PresetId, ThemeDoc, ThemeInputs } from '@/lib/theme/model';
@@ -397,6 +398,7 @@ export const api = {
   getTrending: () =>
     req<{ tracks: Track[]; title: string | null; country: string; fetchedAt: string | null; stale: boolean }>('/youtube/trending'),
   getCharts: () => req<ChartsPayload>('/charts'),
+  getNewReleases: () => req<NewReleasesPayload>('/new-releases'),
   getChart: (slug: string) => req<ChartPayload>(`/charts/${encodeURIComponent(slug)}`, { expected: [404] }),
   getMixes: () => req<MixesPayload>('/mixes'),
   getMix: (key: string) => req<MixPayload>(`/mixes/${encodeURIComponent(key)}`, { expected: [404] }),

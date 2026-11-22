@@ -729,6 +729,134 @@ export async function fetchGenreCharts(): Promise<{ charts: GenreChartFetch[]; f
   return parseGenreCharts(raw);
 }
 
+/** One album, single or EP in the new-releases answer. `kind` is lower case
+ *  so the rest of the app never sees YouTube's spelling. */
+export interface NewReleaseItem {
+  browseId: string;
+  title: string;
+  kind: 'album' | 'ep' | 'single';
+  /** YouTube gives a year and nothing finer, or nothing at all. */
+  year: number | null;
+  artworkUrl: string | null;
+}
+
+export interface NewReleasesArtist {
+  id: string;
+  name: string;
+  releases: NewReleaseItem[];
+}
+
+/** An item of YouTube's "New albums & singles" shelf, which names its artist. */
+export interface NewReleasesExploreItem extends NewReleaseItem {
+  artist: string;
+  artistId: string | null;
+}
+
+export interface NewReleasesFetch {
+  artists: NewReleasesArtist[];
+  /** null when the shelf was not asked for or its call failed ("explore" is then in `failed`). */
+  explore: NewReleasesExploreItem[] | null;
+  failed: string[];
+}
+
+interface RawRelease {
+  browseId?: unknown;
+  title?: unknown;
+  year?: unknown;
+  type?: unknown;
+  artworkUrl?: unknown;
+  artist?: unknown;
+  artistId?: unknown;
+}
+
+interface RawNewReleases {
+  artists?: { id?: unknown; name?: unknown; releases?: RawRelease[] | null }[] | null;
+  explore?: RawRelease[] | null;
+  failed?: unknown;
+}
+
+// Same alphabet as a liked artist's channel id (lib/newReleases/rules.ts).
+const NEW_RELEASES_ARTIST_ID_RE = /^[A-Za-z0-9_-]{8,40}$/;
+const RELEASE_BROWSE_ID_RE = /^[A-Za-z0-9_-]{6,64}$/;
+
+function releaseKind(type: unknown, otherwise: NewReleaseItem['kind']): NewReleaseItem['kind'] {
+  const t = typeof type === 'string' ? type.trim().toLowerCase() : '';
+  return t === 'album' || t === 'ep' || t === 'single' ? t : otherwise;
+}
+
+function releaseYear(year: unknown): number | null {
+  const n = typeof year === 'number' ? year : typeof year === 'string' && /^\d{4}$/.test(year.trim()) ? Number(year.trim()) : NaN;
+  return Number.isInteger(n) && n >= 1900 && n <= 2200 ? n : null;
+}
+
+function parseRelease(r: RawRelease | null | undefined, otherwise: NewReleaseItem['kind']): NewReleaseItem | null {
+  if (!r || typeof r.browseId !== 'string' || !RELEASE_BROWSE_ID_RE.test(r.browseId)) return null;
+  const title = typeof r.title === 'string' ? r.title.trim() : '';
+  if (!title) return null;
+  return {
+    browseId: r.browseId,
+    title,
+    kind: releaseKind(r.type, otherwise),
+    year: releaseYear(r.year),
+    artworkUrl: typeof r.artworkUrl === 'string' && r.artworkUrl ? r.artworkUrl : null,
+  };
+}
+
+/** Player output to releases: bad artist ids and bad browseIds dropped,
+ *  duplicates dropped (first wins), kind normalised. A type that is none of
+ *  the three falls back to the shelf it came from: an artist's page only
+ *  names a type on singles, so an unknown one is a single there, and the
+ *  explore shelf is "albums & singles", so an unknown one is an album. */
+export function parseNewReleases(raw: RawNewReleases | null | undefined): NewReleasesFetch {
+  const artists: NewReleasesArtist[] = [];
+  const seenArtists = new Set<string>();
+  for (const a of raw?.artists ?? []) {
+    if (!a || typeof a.id !== 'string' || !NEW_RELEASES_ARTIST_ID_RE.test(a.id) || seenArtists.has(a.id)) continue;
+    seenArtists.add(a.id);
+    const seen = new Set<string>();
+    const releases: NewReleaseItem[] = [];
+    for (const r of a.releases ?? []) {
+      const item = parseRelease(r, 'single');
+      if (!item || seen.has(item.browseId)) continue;
+      seen.add(item.browseId);
+      releases.push(item);
+    }
+    artists.push({ id: a.id, name: typeof a.name === 'string' ? a.name : '', releases });
+  }
+
+  let explore: NewReleasesExploreItem[] | null = null;
+  if (Array.isArray(raw?.explore)) {
+    explore = [];
+    const seen = new Set<string>();
+    for (const r of raw.explore) {
+      const item = parseRelease(r, 'album');
+      if (!item || seen.has(item.browseId)) continue;
+      seen.add(item.browseId);
+      const artistId = typeof r.artistId === 'string' && NEW_RELEASES_ARTIST_ID_RE.test(r.artistId) ? r.artistId : null;
+      explore.push({ ...item, artist: typeof r.artist === 'string' ? r.artist : '', artistId });
+    }
+  }
+  const failed = Array.isArray(raw?.failed) ? raw.failed.filter((s): s is string => typeof s === 'string') : [];
+  return { artists, explore, failed };
+}
+
+/** The newest releases of several artists, plus YouTube's own new-releases
+ *  shelf when `explore`, in one paced player run on the bulk lane (one live
+ *  call per artist and one for the shelf, 3 s apart). Invalid ids are never
+ *  sent; with nothing to ask it answers without spawning. Throws when
+ *  nothing at all came back. */
+export async function fetchNewReleases(artistIds: string[], { explore = false }: { explore?: boolean } = {}): Promise<NewReleasesFetch> {
+  const valid = [...new Set(artistIds.filter((id) => NEW_RELEASES_ARTIST_ID_RE.test(id)))];
+  if (valid.length === 0 && !explore) return { artists: [], explore: null, failed: [] };
+  const calls = valid.length + (explore ? 1 : 0);
+  // `--artists=<list>` so a hyphen-leading channel id is not read as an option.
+  const args = ['new-releases'];
+  if (valid.length > 0) args.push(`--artists=${valid.join(',')}`);
+  if (explore) args.push('--explore');
+  const raw = await runPython<RawNewReleases>(args, { timeoutMs: 30_000 + calls * 15_000, lane: 'bulk' });
+  return parseNewReleases(raw);
+}
+
 /** The radio of several seeds in one paced player run, on the bulk lane:
  *  `{ radios: [{ seed, tracks }], failed }`. Invalid seeds are never sent.
  *  Throws when every seed failed. */

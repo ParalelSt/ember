@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QUICK_MAX, QUICK_MAX_DESKTOP, homeChips, phoneHomeView, quickPicks, recentFirst, rowEnds, rowStep, type HomeRowKey } from './home';
+import { QUICK_MAX, QUICK_MAX_DESKTOP, PHONE_ORDER, homeChips, phoneHomeView, quickPicks, recentFirst, rowEnds, rowStep, type HomeRowKey } from './home';
 import { toSummary } from './collections';
 
 const liked = toSummary({ kind: 'liked' }, { count: 3 });
@@ -146,6 +146,27 @@ describe('filter chips and order B', () => {
   it('keeps Friends ahead of Your mixes, and the Popular now tile row after Because you played', () => {
     const later = new Set<HomeRowKey>([...today, 'mixes']);
     expect(phoneHomeView('all', later).rows).toEqual(['friends', 'mixes', 'history', 'recommended', 'charts', 'playlists']);
+  });
+
+  it('puts New releases right after Because you played and right before Popular now', () => {
+    const withReleases = new Set<HomeRowKey>([...today, 'releases']);
+    const rows = phoneHomeView('all', withReleases).rows;
+    expect(rows).toEqual(['friends', 'history', 'recommended', 'releases', 'charts', 'playlists']);
+    expect(PHONE_ORDER.indexOf('releases')).toBe(PHONE_ORDER.indexOf('recommended') + 1);
+    expect(PHONE_ORDER.indexOf('releases')).toBe(PHONE_ORDER.indexOf('charts') - 1);
+  });
+
+  it('shows New releases only when it is available', () => {
+    expect(phoneHomeView('all', today).rows).not.toContain('releases');
+  });
+
+  it('the Playlists, Mixes and Charts chips never keep New releases, and it adds no chip', () => {
+    const all = new Set<HomeRowKey>([...today, 'mixes', 'releases']);
+    for (const chip of ['playlists', 'mixes', 'charts'] as const) {
+      expect(phoneHomeView(chip, all).rows).not.toContain('releases');
+    }
+    expect(homeChips(all).map((c) => c.label)).toEqual(['All', 'Playlists', 'Mixes', 'Charts']);
+    expect(homeChips(new Set<HomeRowKey>(['releases'])).map((c) => c.label)).toEqual(['All']);
   });
 
   it('leaves Friends out of every chip but All', () => {
