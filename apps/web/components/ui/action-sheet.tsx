@@ -126,11 +126,6 @@ export function ActionSheetItem({
   );
 }
 
-/** A small heading inside an ActionSheet. */
-export function ActionSheetLabel({ children }: { children: ReactNode }) {
-  return <div className="px-row pt-row pb-inset text-xs font-medium text-muted-foreground">{children}</div>;
-}
-
 /** A thin line between groups of rows in an ActionSheet. */
 export function ActionSheetSeparator() {
   return <div role="separator" className="mx-row my-inset h-px shrink-0 bg-border" />;
