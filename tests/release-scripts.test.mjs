@@ -180,7 +180,7 @@ test('UPDATE_NOTES gets the host block on top, naming each app version and tag',
   });
   assert.match(apps, /^# 0\.7\.31: X \(android, windows 0\.4\.25, macos 0\.4\.26\)/);
   const flat = apps.replace(/\n/g, ' ');
-  assert.match(flat, /Restart PocketBase too\. New apps: Android 0\.4\.25 \(versionCode 30\), Windows 0\.4\.25, macOS 0\.4\.26\./);
+  assert.match(flat, /Restart PocketBase too\.\*\* New apps: Android 0\.4\.25 \(versionCode 30\), Windows 0\.4\.25, macOS 0\.4\.26\./);
   assert.match(flat, /Unchanged: iOS 0\.4\.24, Linux 0\.4\.25\./);
   assert.match(flat, /Tags: `android-v0\.4\.25`, `windows-v0\.4\.25`, `macos-v0\.4\.26`\./);
   assert.doesNotMatch(flat, /`v0\.4/);

@@ -270,8 +270,11 @@ export function appsSummary(released) {
  *  and the tags to push. */
 export function insertUpdateNotes(text, { version, title, released = [], unchanged = [], host }) {
   const heading = `# ${version}: ${title}${released.length ? ` (${appsSummary(released)})` : ''}`;
-  let body = '**Host: run `./update.sh` as usual (no new packages, nothing new in `.env.local`).**';
-  if (host) body += ` ${host}`;
+  // A host step goes INSIDE the bold: the release ping reads only the bold
+  // text to decide whether the host must act, so outside it never pinged.
+  let body = host
+    ? `**Host: run \`./update.sh\` as usual. ${host}**`
+    : '**Host: run `./update.sh` as usual (no new packages, nothing new in `.env.local`).**';
   if (released.length) {
     const apps = released.map((a) => `${OS_LABEL[a.os]} ${a.version}${a.os === 'android' ? ` (versionCode ${a.versionCode})` : ''}`);
     body += ` New apps: ${apps.join(', ')}.`;

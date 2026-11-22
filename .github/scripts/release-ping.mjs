@@ -66,7 +66,7 @@ export function extraNotes(src, sinceVersion) {
     const rest = text
       .replace(/host:/i, '')
       .replace(/run\s+`?\.\/update\.sh`?(\s+as usual)?/i, '')
-      .replace(/\(no new packages\)/i, '')
+      .replace(/\(no new packages(,\s*nothing new in\s+`?\.env\.local`?)?\)/i, '')
       .replace(/[\s.,;:]+/g, ' ')
       .trim();
     if (rest) out.push(text);

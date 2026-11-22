@@ -80,8 +80,12 @@ test('message: never prank, short', () => {
 });
 
 // Flow with fake git and fetch.
-function fakeEnv({ tag = null, head = 'h2' } = {}) {
-  const state = { tag, head, posts: [], pushed: 0, fetched: 0 };
+// headVer/baseVer let a test say what the new release and the previous one
+// are, so extraNotes (which only reads sections newer than baseVer) sees the
+// right note. Default: 0.7.19 over 0.7.18, i.e. the NOTES section with a real
+// host action, so these flows ping.
+function fakeEnv({ tag = null, head = 'h2', headVer = '0.7.19', baseVer = '0.7.18', notes = NOTES } = {}) {
+  const state = { tag, head, headVer, baseVer, notes, posts: [], pushed: 0, fetched: 0 };
   const git = (...a) => {
     const j = a.join(' ');
     if (j === 'rev-parse HEAD') return state.head;
@@ -91,8 +95,11 @@ function fakeEnv({ tag = null, head = 'h2' } = {}) {
     if (j.startsWith('tag -l --format')) return state.tag.date;
     if (j === 'rev-parse HEAD~1') return 'h1';
     if (a[0] === 'diff') return state.diff ?? 'apps/web/a.ts';
-    if (a[0] === 'show' && a[1].endsWith('package.json')) return JSON.stringify({ version: '0.7.20' });
-    if (a[0] === 'show') return NOTES;
+    if (a[0] === 'show' && a[1].endsWith('package.json')) {
+      const rev = a[1].split(':')[0];
+      return JSON.stringify({ version: rev === state.head ? state.headVer : state.baseVer });
+    }
+    if (a[0] === 'show') return state.notes;
     if (a[0] === 'tag' && a[1] === '--merged') {
       // git's own --list glob, so the pattern the script asks for matters.
       const glob = a[a.indexOf('--list') + 1];
@@ -108,7 +115,7 @@ function fakeEnv({ tag = null, head = 'h2' } = {}) {
   return { state, deps: { git, fetch, env, log: () => {} } };
 }
 
-test('run: after 19:00 every new push pings right away', async () => {
+test('run: after 19:00 a release needing host action pings right away', async () => {
   const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
   const r1 = await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') });
   assert.equal(r1.pinged, true);
@@ -123,6 +130,17 @@ test('run: after 19:00 every new push pings right away', async () => {
   // the same commit again (a scheduled run) does not ping
   assert.equal((await run({ ...f.deps, now: at('2026-10-06T20:00:00Z') })).pinged, false);
   assert.equal(f.state.posts.length, 2);
+});
+test('run: a routine release (no host action in the notes) moves the tag but does not ping', async () => {
+  // 0.7.20 over 0.7.19: the 0.7.20 note is just "run ./update.sh as usual", so
+  // extraNotes is empty and the host, who auto-updates, is not pinged.
+  const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' }, headVer: '0.7.20', baseVer: '0.7.19' });
+  const r = await run({ ...f.deps, now: at('2026-10-06T19:10:00Z') });
+  assert.equal(r.pinged, false);
+  assert.equal(r.reason, 'routine update');
+  assert.equal(f.state.posts.length, 0);
+  // still accounted for, so it does not re-announce next run
+  assert.equal(f.state.tag.commit, 'h2');
 });
 test('run: changes before 19:00 sleep until 19:00, then ping the newest main', async () => {
   const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
@@ -191,7 +209,7 @@ test('run: names the newest apps release tag, 0.5 and later included', async () 
 });
 
 test('run: lists each app version once the apps are released on their own', async () => {
-  const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+  const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' }, headVer: '0.7.20', baseVer: '0.7.18' });
   f.state.tags = ['v0.4.24', 'android-v0.4.25', 'windows-v0.4.25', 'macos-v0.4.25', 'linux-v0.4.25', 'notified/main'];
   const r = await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') });
   assert.match(r.text, /^<@123456789> New version available: web 0\.7\.20 \(apps: android 0\.4\.25, ios 0\.4\.24, windows 0\.4\.25, macos 0\.4\.25, linux 0\.4\.25\)/);
@@ -226,4 +244,16 @@ test('run: the apps, tests and docs alone still do not ping', async () => {
     f.state.diff = p;
     assert.equal((await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') })).pinged, false, p);
   }
+});
+
+// The note the release script itself writes for a routine release must read
+// as routine here, or every release pings the host (it did: the filter only
+// knew "(no new packages)", the script writes "(no new packages, nothing new
+// in `.env.local`)"). Built with the real insertUpdateNotes so they cannot drift.
+test('extraNotes: the release script\'s own routine note is not a host action', async () => {
+  const { insertUpdateNotes } = await import('../scripts/release/releaseLib.mjs');
+  const routine = insertUpdateNotes('', { version: '0.9.1', title: 'Fixes' });
+  assert.deepEqual(extraNotes(routine, '0.9.0'), []);
+  const withHost = insertUpdateNotes('', { version: '0.9.1', title: 'Fixes', host: 'Add FOO to .env.local.' });
+  assert.equal(extraNotes(withHost, '0.9.0').length, 1);
 });
