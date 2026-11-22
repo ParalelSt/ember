@@ -198,21 +198,33 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "ss01" on, "cv11" on;
   }
-  /* Custom scrollbar, thin, on-brand. */
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  /* Custom scrollbar, thin, on-brand: the owner's "Thin ember" pick
+     (2026-11-22). A 6px rounded ember thumb on no track.
+
+     BOTH engines, always. This rule used to be `::-webkit-scrollbar` only,
+     so Chrome and Safari got the thin bar while Firefox fell back to its
+     own fat default: that was the "the scrollbar looks wrong" report, and
+     the style was never reaching the browser he uses. `scrollbar-width`
+     and `scrollbar-color` are the Firefox half, and nothing here may set
+     one half without the other. Firefox offers only `thin` or `auto`, so
+     6px is as near as it gets there; webkit draws the exact 6px. */
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--ember) 55%, transparent) transparent;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-thumb {
-    background: color-mix(in oklab, var(--foreground) 14%, transparent);
+    background: color-mix(in oklab, var(--ember) 55%, transparent);
     border-radius: 999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
+    border: 0;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklab, var(--foreground) 24%, transparent);
-    background-clip: padding-box;
+    background: color-mix(in oklab, var(--ember) 80%, transparent);
   }
   ::-webkit-scrollbar-track { background: transparent; }
   ::selection { background: color-mix(in oklab, var(--ember) 35%, transparent); }
 }
+
 
 /* Ember utility classes (small set, used in JSX). 8px scale, soft shadows. */
 @layer utilities {
