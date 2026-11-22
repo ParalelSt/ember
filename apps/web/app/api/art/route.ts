@@ -9,6 +9,36 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
  *  hosts files anyone can upload). */
 const RASTER = /^image\/(jpeg|png|webp|gif|avif)$/;
 
+/** The body, or null once it passes `max` bytes: read in chunks so an
+ *  oversized file is dropped as soon as it is too big, never held whole. */
+async function readCapped(res: Response, max: number): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (Number(res.headers.get('content-length') ?? 0) > max) {
+    await res.body?.cancel().catch(() => {});
+    return null;
+  }
+  if (!res.body) return new Uint8Array(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
+  }
+  return out;
+}
+
 /** GET /api/art?url=: a cover image from YouTube's image hosts, served from
  *  this origin so the page can sample its color (lib/artProxy). Signed-in
  *  members only, allowed hosts only, raster images only. */
@@ -24,8 +54,13 @@ export const GET = withRequestLog('art', async (request: NextRequest) => {
   const res = await fetch(target, { redirect: 'error', signal: AbortSignal.timeout(8000) }).catch(() => null);
   const type = (res?.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
   if (!res?.ok || !RASTER.test(type)) return jsonError('cover unavailable', 502);
-  const body = await res.arrayBuffer();
-  if (body.byteLength > ART_MAX_BYTES) return jsonError('cover too large', 502);
+  let body: Uint8Array<ArrayBuffer> | null;
+  try {
+    body = await readCapped(res, ART_MAX_BYTES);
+  } catch {
+    return jsonError('cover unavailable', 502);
+  }
+  if (!body) return jsonError('cover too large', 502);
   return new Response(body, {
     headers: {
       'content-type': type,

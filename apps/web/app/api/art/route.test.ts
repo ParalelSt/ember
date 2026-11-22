@@ -17,6 +17,7 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
 }));
 
 const { GET } = await import('./route');
+const { ART_MAX_BYTES } = await import('@/lib/artProxy');
 const call = (url: string) => (GET as (r: NextRequest) => Promise<Response>)(new NextRequest(`http://app.test/api/art?url=${encodeURIComponent(url)}`));
 const fetchMock = vi.fn();
 
@@ -70,5 +71,36 @@ describe('GET /api/art', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/webp');
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+});
+
+describe('GET /api/art, size', () => {
+  it('drops a cover that says it is too big without reading it', async () => {
+    const pull = vi.fn((c: ReadableStreamDefaultController<Uint8Array>) => {
+      c.enqueue(new Uint8Array([1]));
+      c.close();
+    });
+    const body = new ReadableStream<Uint8Array>({ pull }, { highWaterMark: 0 });
+    fetchMock.mockResolvedValue(
+      new Response(body, { headers: { 'content-type': 'image/jpeg', 'content-length': String(ART_MAX_BYTES + 1) } }),
+    );
+    expect((await call('https://i.ytimg.com/vi/abc/hq.jpg')).status).toBe(502);
+    expect(pull).not.toHaveBeenCalled();
+  });
+
+  it('stops reading a cover with no length once it passes the cap', async () => {
+    const chunk = new Uint8Array(512 * 1024);
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        sent++;
+        if (sent > 100) c.close();
+        else c.enqueue(chunk);
+      },
+    });
+    fetchMock.mockResolvedValue(new Response(body, { headers: { 'content-type': 'image/jpeg' } }));
+    expect((await call('https://i.ytimg.com/vi/abc/hq.jpg')).status).toBe(502);
+    // 2 MB is four of these: it gave up on the fifth, not at the end.
+    expect(sent).toBeLessThan(10);
   });
 });
