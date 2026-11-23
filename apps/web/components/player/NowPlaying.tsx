@@ -20,6 +20,7 @@ import { UnplayableMessage, useUnplayableMessage } from '@/components/player/Unp
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { EqualizerSheet } from '@/components/player/EqualizerSheet';
 import { PlayheadSeekBar } from '@/components/player/SeekBar';
+import { PlayheadFrozenContext } from '@/components/player/playheadFrozen';
 import { isLiveTrack } from '@/lib/radio/station';
 import { TransportControls } from '@/components/player/TransportControls';
 import { DevicesSheet, useDevicesEntry } from '@/components/player/DevicesButton';
@@ -327,7 +328,10 @@ export function NowPlaying() {
     </Button>
   );
 
+  // Closed, it stays mounted (for the slide) but out of sight: the seek bar
+  // and the synced lyrics stop following the playhead until it opens.
   return (
+    <PlayheadFrozenContext.Provider value={!open}>
     <div
       data-testid="now-playing"
       // Its own gestures, never a tab swipe (hooks/useTabSwipe).
@@ -581,5 +585,6 @@ export function NowPlaying() {
       </div>
       </div>
     </div>
+    </PlayheadFrozenContext.Provider>
   );
 }

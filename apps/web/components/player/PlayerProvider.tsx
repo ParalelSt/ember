@@ -80,6 +80,7 @@ import { musicLevel } from '@/lib/pranks/mix';
 import { isLiveTrack } from '@/lib/radio/station';
 import { PrankReceiver } from './PrankReceiver';
 import { UnplayableAnnouncer } from './UnplayableMessage';
+import { PlayheadFrozenContext } from './playheadFrozen';
 import { setPlaybackElsewhereProbe, setUpdatePause, takeAppUpdateResume, takeUpdateResume, updateAtSongEnd, type ResumeTarget } from '@/lib/update/apply';
 
 interface PlayerControls {
@@ -2023,5 +2024,11 @@ export function usePlayer() {
  *  reader (each track list page among them) re-rendered with it. The volume
  *  is not either (a slider drag is as busy): read the store for it. */
 export function usePlayerPosition(): number {
-  return usePlayerStore((s) => s.position);
+  const frozen = useContext(PlayheadFrozenContext);
+  const last = useRef(0);
+  // Frozen (a closed view): the selector answers the last value, so the
+  // store's reports re-render nothing; open again, it reads the live one.
+  const position = usePlayerStore((s) => (frozen ? last.current : s.position));
+  last.current = position;
+  return position;
 }

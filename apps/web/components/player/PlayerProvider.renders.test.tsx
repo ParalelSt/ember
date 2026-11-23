@@ -5,6 +5,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { PlayerProvider, usePlayer, usePlayerPosition } from './PlayerProvider';
+import { PlayheadFrozenContext } from './playheadFrozen';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
 import type { AudioBackendEvents } from '@/lib/playback/types';
@@ -85,6 +86,31 @@ describe('playhead reports', () => {
     // The position's own reader still follows every report.
     expect(clockRendered.mock.calls.length).toBeGreaterThan(clockBefore + 30);
     expect(clockRendered).toHaveBeenLastCalledWith(10);
+  });
+});
+
+describe('playhead reports and a closed view (the full-screen player)', () => {
+  it('re-render nothing inside it while closed, and it follows again once open', () => {
+    const view = (open: boolean) => (
+      <PlayerProvider>
+        <PlayheadFrozenContext.Provider value={!open}>
+          <Clock />
+        </PlayheadFrozenContext.Provider>
+      </PlayerProvider>
+    );
+    const { rerender } = render(view(true));
+    act(() => events!.onTime(2));
+    expect(clockRendered).toHaveBeenLastCalledWith(2);
+    rerender(view(false));
+    const closedAt = clockRendered.mock.calls.length;
+    for (let s = 3; s <= 10; s += 0.25) act(() => events!.onTime(s));
+    expect(clockRendered).toHaveBeenCalledTimes(closedAt);
+    // Held where it was while closed (no jump during the slide out).
+    expect(clockRendered).toHaveBeenLastCalledWith(2);
+    rerender(view(true));
+    expect(clockRendered).toHaveBeenLastCalledWith(10);
+    act(() => events!.onTime(11));
+    expect(clockRendered).toHaveBeenLastCalledWith(11);
   });
 });
 
