@@ -187,6 +187,29 @@ describe('usePrankInbox (realtime)', () => {
     return { link, subscribe };
   }
 
+  it('a reconnect while hidden catches up once the page is shown, even with the link live', async () => {
+    const { link, subscribe } = fakeRealtime();
+    const { inbox, deps } = fakeDeps(subscribe);
+    const setHidden = (hidden: boolean) => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    try {
+      renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: () => DELIVERED, deps }));
+      await flush();
+      setHidden(true);
+      inbox.push(ping('sent-in-the-gap'));
+      await act(async () => { link.onDisconnect!(); link.onConnect!(); });
+      await flush();
+      expect(deps.ack).not.toHaveBeenCalledWith('sent-in-the-gap', DELIVERED);
+      await act(async () => { setHidden(false); });
+      await flush();
+      expect(deps.ack).toHaveBeenCalledWith('sent-in-the-gap', DELIVERED);
+    } finally {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    }
+  });
+
   it('subscribes for this user, handles pushed rows, and stops polling while live', async () => {
     const { link, subscribe } = fakeRealtime();
     const { inbox, deps } = fakeDeps(subscribe);

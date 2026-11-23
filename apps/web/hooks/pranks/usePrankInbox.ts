@@ -222,8 +222,13 @@ export function usePrankInbox({
     };
     void tick();
     // Shown again: one check at once, then the poll resumes.
+    // Always one fetch on coming back, live link or not: a reconnect while
+    // hidden skipped its catch-up, and a live link never polls after it.
     const onVisible = () => {
-      if (!document.hidden) void tick();
+      if (!document.hidden) {
+        void catchUp.current(true);
+        void tick();
+      }
       else clearTimeout(timer);
     };
     document.addEventListener('visibilitychange', onVisible);
