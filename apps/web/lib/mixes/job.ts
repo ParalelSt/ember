@@ -92,7 +92,7 @@ export interface MemberBuild {
 /** Artist genres as the mixes read them. A looked-up artist's sub-genre is
  *  read again from their stored tags, so a sub-genre added to the taxonomy
  *  applies without looking anyone up again. */
-function toGenreOf(rows: ReadonlyMap<string, ArtistGenre>): Map<string, GenreOf> {
+export function toGenreOf(rows: ReadonlyMap<string, ArtistGenre>): Map<string, GenreOf> {
   const out = new Map<string, GenreOf>();
   for (const [k, r] of rows) {
     const fromTags = r.source === 'lastfm' || r.source === 'musicbrainz';
