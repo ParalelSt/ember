@@ -1,14 +1,36 @@
 'use client';
 
-import { useRef, useState, type TouchEvent } from 'react';
+import { useEffect, useRef, useState, type TouchEvent } from 'react';
 import { CloseIcon, DownloadIcon, RefreshIcon } from '@/components/icons';
 import { ProgressRing } from '@/components/primitives/ProgressRing';
 import { useAppUpdate } from '@/hooks/useAppUpdate';
-import { installAppUpdate, openInstallSettings, updatePill } from '@/lib/appUpdate';
+import {
+  appUpdateAvailable,
+  appUpdateWaitsForTap,
+  installAppUpdate,
+  openInstallSettings,
+  updatePill,
+} from '@/lib/appUpdate';
 
 /** How far a sideways swipe has to go to put the card away, like a
  *  notification (px). */
 export const SWIPE_DISMISS_PX = 80;
+
+/** An Android app from before 0.4.34: its updater fetches by itself and has
+ *  no `download()` (lib/appUpdate.ts). Newer apps use the update reminder. */
+export function legacyAppUpdater(): boolean {
+  return appUpdateAvailable() && !appUpdateWaitsForTap();
+}
+
+/** Mounts the pill only in an Android app from before 0.4.34, so nowhere
+ *  else does it follow the updater's state (every download percent). Read
+ *  once after mount: the plugin is there from the start, and the server
+ *  render has no window. */
+export function AppUpdatePillHost() {
+  const [legacy, setLegacy] = useState(false);
+  useEffect(() => setLegacy(legacyAppUpdater()), []);
+  return legacy ? <AppUpdatePill /> : null;
+}
 
 /** The Android app's update, as a rounded card floating under the top bar:
  *  a progress ring around the icon while it downloads, an Install button

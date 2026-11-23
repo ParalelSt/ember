@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { AppUpdatePill, SWIPE_DISMISS_PX } from './AppUpdatePill';
+import { AppUpdatePill, AppUpdatePillHost, SWIPE_DISMISS_PX } from './AppUpdatePill';
 import { AppUpdateCard } from '@/components/settings/AppUpdateCard';
 
 /** The Android app's update, as the page shows it: the floating pill over
@@ -27,6 +27,31 @@ function fakePlugin(initial: Record<string, unknown>) {
 
 afterEach(() => {
   delete (window as W).Capacitor;
+});
+
+describe('AppUpdatePillHost', () => {
+  it('does not mount the pill, nor follow the updater, in an app from 0.4.34 on', async () => {
+    const { plugin } = fakePlugin({ status: 'downloading', progress: 0.5, latest: '0.4.36' });
+    (plugin as Record<string, unknown>).download = vi.fn(async () => ({}));
+    const { container } = render(<AppUpdatePillHost />);
+    await act(async () => {});
+    expect(container).toBeEmptyDOMElement();
+    expect(plugin.addListener).not.toHaveBeenCalled();
+    expect(plugin.getState).not.toHaveBeenCalled();
+  });
+
+  it('mounts it in an app from before 0.4.34', async () => {
+    const { plugin } = fakePlugin({ status: 'ready', latest: '0.4.33', waiting: 'tap' });
+    render(<AppUpdatePillHost />);
+    expect(await screen.findByTestId('app-update-pill')).toBeInTheDocument();
+    expect(plugin.addListener).toHaveBeenCalled();
+  });
+
+  it('mounts nothing in a browser', async () => {
+    const { container } = render(<AppUpdatePillHost />);
+    await act(async () => {});
+    expect(container).toBeEmptyDOMElement();
+  });
 });
 
 describe('AppUpdatePill', () => {

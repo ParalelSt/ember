@@ -17,7 +17,7 @@ import { LYRICS_PANEL_W, LyricsPanel } from '@/components/player/LyricsPanel';
 import { SearchOverlayContainer } from '@/components/search/SearchOverlayContainer';
 import { SessionHostBridge } from '@/components/session/SessionHostBridge';
 import { TransferStatus } from '@/components/import/TransferStatus';
-import { AppUpdatePill } from '@/components/update/AppUpdatePill';
+import { AppUpdatePillHost } from '@/components/update/AppUpdatePill';
 import { UpdateReminder } from '@/components/update/UpdateReminder';
 import { QrScanHost } from '@/components/auth/QrScanHost';
 import { DeviceVersionReporter } from '@/components/DeviceVersionReporter';
@@ -166,9 +166,9 @@ function NewAppShell({ children }: { children: ReactNode }) {
             {/* A transfer in the background: its floating pill and its
                 "Transfer done" card, over whatever page is open. */}
             <TransferStatus />
-            {/* The Android app's update (downloading, ready, tap to install);
-                nothing anywhere else. */}
-            <AppUpdatePill />
+            {/* The update of an Android app from before 0.4.34 (downloading,
+                ready, tap to install); not even mounted anywhere else. */}
+            <AppUpdatePillHost />
             {/* A newer Ember (web build or desktop app), said briefly under
                 the top bar; a tap updates once the song ends. Not in the
                 Android app, which has the pill above. */}
