@@ -468,6 +468,41 @@ curl -X POST http://localhost:3000/api/admin/digest \
 It answers `{"posted": true, "groups": [...]}`, or `{"posted": false,
 "reason": "quiet"}` on a day with no errors at all.
 
+#### Performance logging
+
+Every signed-in member's app measures how it performs (launch, page changes,
+taps that took long, freezes, long tasks, memory) and sends a small summary,
+at most 2 KB, every 5 minutes while it is open and when it is hidden (at
+most 14 an hour). Only timings, sizes and page paths with ids taken out are
+sent, never what anyone plays, searches or types. A phone with "Automatic
+reports" switched off in Settings sends none.
+
+The host keeps them in `logs/perf-YYYY-MM-DD.jsonl` for 7 days, at most
+256 KB per member per day. The server also times its own requests and once
+every 5 minutes writes one `perf` line (slowest routes, event loop delay,
+load, memory, running downloads and Python jobs) to the error log, plus a
+warning for any request over 2 s. The daily digest gets a "Performance"
+section from both.
+
+Only an admin can read them back, from a Mac or on the host:
+
+```bash
+npm run perf                     # every member's sessions of the last 7 days
+npm run perf -- <session>        # one session, a line per 5 minutes
+npm run perf -- --user ana@example.com --days 2 --json
+```
+
+It signs in as `PERF_ADMIN_EMAIL` / `PERF_ADMIN_PASSWORD` (an admin account)
+from `~/.ember-tools/sandbox.env` and asks `EMBER_HOST_URL` (or `--host`).
+
+The kill switch, in `apps/web/.env.local`, then restart:
+
+```bash
+EMBER_PERF_LOG=off       # no request timing, no Server-Timing headers, and
+                         # every app stops its perf log for the session
+EMBER_PERF_SAMPLE=0.5    # optional: only this share of app sessions log (default 1)
+```
+
 ### Feature and fix requests → your Discord channels
 
 There's a "Send a request" button next to Report a bug under `/settings/help`.

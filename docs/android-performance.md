@@ -1,7 +1,8 @@
 # Android performance: diagnosis and plan
 
-Status: plan only, nothing built yet. Branch `fix/android-perf`. Written 2026-11-23
-against Android app 0.4.35 and web 0.7.50.
+Status: slices 1, 2, 3 and 5 built on `fix/android-perf` (see "What was built"
+at the end of section 7); the rest is still a plan. Written 2026-11-23 against
+Android app 0.4.35 and web 0.7.50.
 
 Path short forms used below:
 `A/` = `apps/mobile/android/app/src/main/java/app/ember/music/`, `W/` = `apps/web/`.
@@ -233,9 +234,10 @@ watchdog, renderer unresponsive callbacks and memory samples.
 - Aggregate in place: counters, fixed histograms, small rings. Never one log
   line per event. Never `JSON.stringify` outside a flush.
 - Fixed budgets: page perf state at most 16 KB in memory, one digest at most
-  2 KB, at most 7 uploads an hour per device, native buffer reuses
+  2 KB, at most 14 uploads an hour per device, native buffer reuses
   `PlaybackLog` (200 events, batches of 25, `A/PlaybackLog.kt:153`).
-- Flush in idle time, on `visibilitychange` hidden, and at most every 10 min.
+- Flush on `visibilitychange` hidden and every 5 min while the page is open
+  (the owner wants every member's sessions, 2026-11-23).
 - Timers only while the page is visible. Native memory reads off the main
   thread, at most every 5 min.
 - Target cost: under 1 ms of main thread per minute. Slice 6 checks this.
@@ -312,9 +314,13 @@ timed at all. Add `W/lib/perf/serverTiming.ts`, registered from
   (launch record, last navigations, slow interactions, long task summary,
   memory samples, event rates). The reporter's native perf events come with the
   server entries as today.
-- **Periodic digest**: one small record per 10 min of foreground use and on
-  hide, to a new rate-limited `POST /api/perf-log` (`sendBeacon` on hide),
-  stored under category `perf` in the daily server log.
+- **Periodic digest**: one small record every 5 min while the app is open and
+  on hide, from every signed-in member, to a rate-limited `POST /api/perf-log`
+  (`sendBeacon` on hide). Stored in its own files, `logs/perf-YYYY-MM-DD.jsonl`,
+  kept 7 days, at most 256 KB per member per day, tagged with the member's
+  id, the page session id, the app version, the shell and the device. Only an
+  admin reads them back: `GET /api/admin/perf` (sessions, or one session's
+  timeline) and `npm run perf`.
 - **Automatic perf report**, at most one per kind per session: launch over
   15 s, navigation over 8 s, freeze over 5 s, renderer gone or unresponsive.
 - **Daily digest** (`W/lib/reports/digest.ts`): a short perf section with
@@ -324,9 +330,14 @@ timed at all. Add `W/lib/perf/serverTiming.ts`, registered from
 ### 5.6 Kill switch
 
 - Host: `EMBER_PERF_LOG=off` makes `/api/perf-log` answer `{ off: true }`; the
-  page stops collecting for the session and tells the native side.
-- Device: follows the existing "automatic reports" setting.
-- A `sample` value in the same answer, 1.0 for now (few users).
+  page stops collecting for the session and tells the native side (the page
+  asks once per session with `GET /api/perf-log`, 5 s after hydrating, and
+  every upload's answer says it again). It also stops the server's request
+  timing and its `Server-Timing` headers.
+- Device: follows the existing "automatic reports" setting (no uploads, no
+  automatic perf reports; a manual bug report still carries the perf block).
+- A `sample` value in the same answer, `EMBER_PERF_SAMPLE` (default 1),
+  rolled once per page session.
 - Observers disconnect and timers clear when switched off. Covered by a test.
 
 ## 6. Memory leak check plan
@@ -383,6 +394,30 @@ and collect about a week of numbers, then order 7 to 14 by what they show.
 Slices 7 and 8 are safe to start earlier: they help under either explanation.
 Slice 9 changes how sessions are checked, so it needs a security review.
 
+### What was built (slices 1, 2, 3, 5)
+
+- `W/lib/perf/`: `core.ts` (rings, long-animation-frame or longtask, event
+  timing, paint, resource observers, 2 s freeze heartbeat and 60 s memory
+  sample while visible, kill switch), `nav.ts` (navigation phases, rage taps),
+  `digest.ts` (2 KB digest), `client.ts` (boot from `LoggerInit`, uploads,
+  automatic perf reports), `switch.ts` (session kill switch and the
+  `onPerfSwitch` hook the native side will use), `serverTiming.ts`,
+  `hostSwitch.ts`, `store.ts`, `upload.ts`, `sessions.ts`, `reportBlock.ts`.
+- Nav links carry `data-nav` (static names; playlists are "Playlist" plus the
+  path with its id taken out) and their area (`data-nav-area` drawer,
+  sidebar, bottom). Clicks cancelled by a long press count as `hold.cancel`.
+- Server: `http.server.*` diagnostics channels, `Server-Timing: auth` from
+  `proxy.ts` and `handler` from `withRequestLog`.
+- Delivery: the perf block in manual and automatic bug reports, automatic perf
+  reports (own rate limit bucket `bug-report:perf`, 2 an hour),
+  `POST /api/perf-log`, `GET /api/admin/perf`, `npm run perf`, and a
+  "Performance" section in the daily digest.
+- For native slice 4: the digest counts native events named `renderer.gone`,
+  `renderer.crash`, `renderer.unresponsive`, `memory.low` and `memory.trim`.
+- Left out for now: the dev only render churn and timer counters
+  (`?perf=debug`), the query cache size, and native event rate counters in
+  `androidBackend` (slice 4 counts them on the native side).
+
 ## 8. Open questions for the owner
 
 1. How do phones reach the host (Tailscale Funnel, Cloudflare, LAN), and what
@@ -393,8 +428,8 @@ Slice 9 changes how sessions are checked, so it needs a security review.
    and were you on the host's Wi-Fi?
 4. Who else saw the black screen, on which phones, and only at launch or also
    when coming back to the app?
-5. May all devices send the small perf digest by default, under the existing
-   automatic reports setting?
+5. ~~May all devices send the small perf digest by default?~~ Yes (2026-11-23):
+   every signed-in member's app sends it, under the automatic reports setting.
 6. Is a daily Discord perf section enough, or do you also want an admin page?
 7. Is it acceptable that a sign-out or ban takes up to 60 s to apply
    everywhere (slice 9)?

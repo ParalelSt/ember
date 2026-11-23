@@ -28,6 +28,12 @@ describe('privacy and terms pages', () => {
     );
   });
 
+  it('says the app sends performance measurements, and never content', () => {
+    render(<PrivacyPage />);
+    expect(screen.getByText(/sends performance measurements/)).toBeInTheDocument();
+    expect(screen.getByText(/never what you play, search or type/)).toBeInTheDocument();
+  });
+
   it('the terms page renders with a contact', () => {
     render(<TermsPage />);
     expect(screen.getByRole('heading', { level: 1, name: 'Terms of service' })).toBeInTheDocument();

@@ -80,6 +80,10 @@ export default function PrivacyPage() {
           who runs Ember in a private chat channel. It carries what the app was doing, never your
           password, and it is scrubbed of anything that looks like a secret.
         </p>
+        <p>
+          While it is open, the app also sends performance measurements (how long pages take to load,
+          how busy and how much memory the app uses), never what you play, search or type.
+        </p>
       </LegalSection>
 
       <LegalSection heading="Deleting your data">
