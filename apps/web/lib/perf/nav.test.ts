@@ -182,7 +182,7 @@ describe('NavTracker: rage taps', () => {
       nav.onClick(click(btn, t));
     }
     expect(h.rages).toHaveLength(1);
-    expect(h.rages[0]).toMatchObject({ at: 4000, target: 'Open menu', taps: 3, overlay: true, inert: false, lt: 180, pendingMs: 3100 });
+    expect(h.rages[0]).toMatchObject({ at: 4000, target: 'button', taps: 3, overlay: true, inert: false, lt: 180, pendingMs: 3100 });
     // The count starts again after a record.
     h.set({ clock: 4500 });
     nav.onClick(click(btn, 4500));
@@ -210,7 +210,24 @@ describe('NavTracker: rage taps', () => {
 });
 
 describe('targetLabel', () => {
-  it('names a target by data-nav, aria-label or data-slot, never by its text', () => {
+  it('never uses aria-label or text, which carry song titles, theme and file names', () => {
+    const row = document.createElement('div');
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', 'Open Secret Song Title');
+    const inner = document.createElement('span');
+    inner.textContent = 'Secret Song Title';
+    row.appendChild(inner);
+    expect(targetLabel(inner)).toBe('role button');
+    const btn = document.createElement('button');
+    btn.setAttribute('aria-label', 'Share my-theme.json');
+    expect(targetLabel(btn)).toBe('button');
+    const slotted = document.createElement('button');
+    slotted.setAttribute('data-slot', 'dropdown-menu-trigger');
+    slotted.setAttribute('aria-label', 'Theme: Midnight Gojira');
+    expect(targetLabel(slotted)).toBe('dropdown-menu-trigger');
+  });
+
+  it('names a target by data-nav, data-slot or a link\'s shaped path', () => {
     const a = link('/settings', { 'data-nav': 'Settings' });
     a.textContent = 'secret text';
     expect(targetLabel(a)).toBe('Settings');

@@ -46,14 +46,28 @@ const TAP_MAX_AGE_MS = 120_000;
 /** The resource entry can reach the observer after the route change. */
 const RSC_RETRY_MS = 600;
 
-/** The short name a tap target is logged by: its aria-label, data-nav or
- *  data-slot, never its text. */
+const TAP_TARGET = '[data-nav],[data-slot],a[href],button,[role]';
+
+/** The element a tap counts against: the nearest named or interactive
+ *  ancestor. */
+function tapTarget(el: Element | null): Element | null {
+  return el?.closest(TAP_TARGET) ?? el;
+}
+
+/** The short name a tap target is logged by, built only from names the
+ *  code gave it: data-nav, data-slot, a link's path with its ids taken out,
+ *  its role, or its tag. Never aria-label or text, which carry song titles,
+ *  theme and file names. */
 export function targetLabel(el: Element | null): string {
-  const t = el?.closest('[aria-label],[data-nav],[data-slot],a,button');
-  if (!t) return el ? el.tagName.toLowerCase() : 'unknown';
-  const label = t.getAttribute('data-nav') ?? t.getAttribute('aria-label') ?? t.getAttribute('data-slot');
-  if (label) return label.slice(0, 60);
-  if (t.tagName === 'A') return `link ${routeShape(t.getAttribute('href') ?? '')}`;
+  const t = tapTarget(el);
+  if (!t) return 'unknown';
+  const nav = t.getAttribute('data-nav');
+  if (nav) return nav.slice(0, 40);
+  const slot = t.getAttribute('data-slot');
+  if (slot) return slot.slice(0, 40);
+  if (t.tagName === 'A' && t.hasAttribute('href')) return `link ${routeShape(t.getAttribute('href') ?? '')}`;
+  const role = t.getAttribute('role');
+  if (role) return `role ${role.slice(0, 20)}`;
   return t.tagName.toLowerCase();
 }
 
@@ -61,7 +75,9 @@ export function targetLabel(el: Element | null): string {
  *  (section 5.2). Holds at most one pending tap and the last few tap times. */
 export class NavTracker {
   private pending: Pending | null = null;
-  private rageKey = '';
+  /** The element the last taps hit: rage taps are counted per element,
+   *  since many share one label. Weak, so a closed sheet is not kept. */
+  private rageEl: WeakRef<Element> | null = null;
   private rageTaps: number[] = [];
 
   constructor(private host: NavHost) {}
@@ -138,9 +154,9 @@ export class NavTracker {
   }
 
   private countTap(target: Element | null, at: number, x: number, y: number): void {
-    const key = targetLabel(target);
-    if (key !== this.rageKey) {
-      this.rageKey = key;
+    const el = tapTarget(target);
+    if (!el || el !== this.rageEl?.deref()) {
+      this.rageEl = el ? new WeakRef(el) : null;
       this.rageTaps = [];
     }
     this.rageTaps = this.rageTaps.filter((t) => at - t < RAGE_WINDOW_MS);
@@ -148,6 +164,7 @@ export class NavTracker {
     if (this.rageTaps.length < RAGE_TAPS) return;
     const taps = this.rageTaps.length;
     this.rageTaps = [];
+    const key = targetLabel(target);
     const doc = this.host.doc();
     let under: string | undefined;
     try {

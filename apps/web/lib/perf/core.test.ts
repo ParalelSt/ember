@@ -164,8 +164,9 @@ describe('PagePerf: slow interactions', () => {
     ]);
     const slow = perf.slow.toArray();
     expect(slow).toHaveLength(1);
-    expect(slow[0]).toMatchObject({ type: 'click', ms: 240, inputDelay: 50, handler: 140, paint: 50, target: 'Open menu' });
+    expect(slow[0]).toMatchObject({ type: 'click', ms: 240, inputDelay: 50, handler: 140, paint: 50, target: 'button' });
     expect(JSON.stringify(slow)).not.toContain('private');
+    expect(JSON.stringify(slow)).not.toContain('Open menu');
   });
 
   it('keeps at most 20 slow interactions', () => {
