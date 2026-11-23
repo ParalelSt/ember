@@ -116,6 +116,24 @@ describe('POST /api/perf-log', () => {
     expect((await post(JSON.stringify(digest()) + ' '.repeat(5000))).status).toBe(413);
   });
 
+  it('stops reading a chunked body with no Content-Length as soon as it passes 4 KB', async () => {
+    let pulled = 0;
+    const chunk = new TextEncoder().encode('x'.repeat(1024));
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled++;
+        // An endless body: only the cap ends it.
+        controller.enqueue(chunk);
+      },
+    });
+    const req = new Request('http://localhost/api/perf-log', { method: 'POST', body, duplex: 'half' } as RequestInit);
+    expect(req.headers.get('content-length')).toBeNull();
+    const res = await POST(req as unknown as NextRequest, undefined as never);
+    expect(res.status).toBe(413);
+    expect(pulled).toBeLessThan(10);
+    expect(state.stored).toHaveLength(0);
+  });
+
   it('limits uploads per member per hour', async () => {
     let last = 0;
     for (let i = 0; i < 41; i++) last = (await post(digest())).status;

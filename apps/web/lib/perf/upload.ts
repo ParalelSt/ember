@@ -83,3 +83,24 @@ export function cleanDigest(d: z.infer<typeof PerfDigestSchema>): PerfDigest {
   if (d.api) out.api = d.api.map(([r, n, p50, max]) => [routeShape(r), n, p50, max]);
   return out;
 }
+
+/** The body as text, read chunk by chunk and given up (null) as soon as it
+ *  passes `max` bytes: a body without a Content-Length (chunked) is never
+ *  held whole in memory. */
+export async function readCapped(request: Request, max: number): Promise<string | null> {
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
