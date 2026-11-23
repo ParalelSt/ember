@@ -1,6 +1,9 @@
 package app.ember.music
 
+import android.app.job.JobInfo
+import android.app.job.JobScheduler
 import android.content.ComponentName
+import android.content.Context
 import android.content.pm.PackageManager
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -25,7 +28,7 @@ class UpdaterWiringTest {
     @Before fun setUp() = UpdatePresence.reset()
     @After fun tearDown() = UpdatePresence.reset()
 
-    @Test fun `the manifest asks for the install permissions and the boot-time reschedule`() {
+    @Test fun `the manifest asks for the install permissions and the boot start`() {
         @Suppress("DEPRECATION")
         val info = app.packageManager.getPackageInfo(app.packageName, PackageManager.GET_PERMISSIONS)
         val asked = info.requestedPermissions.orEmpty().toSet()
@@ -34,17 +37,48 @@ class UpdaterWiringTest {
         assertTrue("android.permission.RECEIVE_BOOT_COMPLETED" in asked)
     }
 
-    @Test fun `the install receiver and the check job are private to the app`() {
+    @Test fun `the install receiver is private to the app`() {
         val pm = app.packageManager
         val receiver = pm.getReceiverInfo(ComponentName(app, UpdateInstallReceiver::class.java), 0)
         assertFalse(receiver.exported)
-        val job = pm.getServiceInfo(ComponentName(app, UpdateCheckJob::class.java), 0)
-        assertFalse(job.exported)
-        assertEquals("android.permission.BIND_JOB_SERVICE", job.permission)
+    }
+
+    @Test fun `the update check job is not declared any more, updates wait for a tap`() {
+        @Suppress("DEPRECATION")
+        val services = app.packageManager.getPackageInfo(app.packageName, PackageManager.GET_SERVICES).services.orEmpty()
+        assertTrue(services.none { it.name.endsWith(".UpdateCheckJob") })
+        // The rest of the app's own services are still there.
+        assertTrue(services.any { it.name.endsWith(".EmberPlaybackService") })
+    }
+
+    @Test fun `the 6-hourly job an older version scheduled is dropped on start`() {
+        val js = app.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+        // What 0.4.35 and older left behind (persisted across the update).
+        js.schedule(JobInfo.Builder(LegacyUpdateJob.JOB_ID, ComponentName(app, "app.ember.music.UpdateCheckJob"))
+            .setPeriodic(6 * 60 * 60 * 1000L).build())
+        js.schedule(JobInfo.Builder(1, ComponentName(app, "app.ember.music.Other")).setMinimumLatency(1).build())
+        assertTrue(js.allPendingJobs.any { it.id == LegacyUpdateJob.JOB_ID })
+        AppUpdater.resetForTest(PlaybackLog(send = {}, online = { false }, io = { it.run() }, delay = { _, _ -> {} },
+            surface = { Surfaces.PHONE }, device = org.json.JSONObject()), work = { it.run() }, baseUrl = "http://127.0.0.1:9")
+        AppUpdater.init(app)
+        assertFalse(js.allPendingJobs.any { it.id == LegacyUpdateJob.JOB_ID })
+        // Another job of the app's is left alone.
+        assertTrue(js.allPendingJobs.any { it.id == 1 })
+        // And once more on the update itself, with nothing to drop: no error.
+        LegacyUpdateJob.cancel(app)
+        AppUpdater.resetForTest(null, { it.run() })
+    }
+
+    @Test fun `the update broadcast drops the old job too`() {
+        val js = app.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+        js.schedule(JobInfo.Builder(LegacyUpdateJob.JOB_ID, ComponentName(app, "app.ember.music.UpdateCheckJob"))
+            .setPeriodic(6 * 60 * 60 * 1000L).build())
+        UpdatedReceiver().onReceive(app, android.content.Intent(android.content.Intent.ACTION_MY_PACKAGE_REPLACED))
+        assertFalse(js.allPendingJobs.any { it.id == LegacyUpdateJob.JOB_ID })
     }
 
     @Test fun `idle counts from when the music stopped or the app left the screen`() {
-        // A fresh process (the 6-hourly job): nothing has played this run.
+        // A fresh process: nothing has played this run.
         assertEquals(Long.MAX_VALUE, UpdatePresence.idleMs(now = 10_000))
         UpdatePresence.setPlaying(true, now = 1_000)
         assertEquals(0L, UpdatePresence.idleMs(now = 5_000))

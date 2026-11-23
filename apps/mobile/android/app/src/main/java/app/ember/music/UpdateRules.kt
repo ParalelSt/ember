@@ -7,18 +7,15 @@ import org.json.JSONObject
  *  newer, may it download on this network, is the downloaded APK really the
  *  next Ember, and may it install right now. */
 object UpdateRules {
-    /** Checked on app start (at most this often) and every [PERIOD_MS] by
-     *  UpdateCheckJob. */
-    const val PERIOD_MS = 6 * 60 * 60 * 1000L
-    /** A page reload restarts the plugin; that is not a new app start. */
+    /** Checked on app start, at most this often: a page reload restarts the
+     *  plugin, and that is not a new app start. */
     const val START_CHECK_MIN_MS = 15 * 60 * 1000L
     const val PACKAGE = "app.ember.music"
 
     /** The separate "Ember Test" app (applicationIdSuffix ".test"). */
     fun isTestBuild(packageName: String?): Boolean = packageName?.endsWith(".test") == true
 
-    /** Whether a check nobody asked for (the 6-hourly job, the app-start
-     *  check) may run. The test build never updates in the background: a
+    /** Whether a check nobody asked for (the app-start check) may run. The test build never updates in the background: a
      *  release APK is another package, so it could never install anyway.
      *  A person's own tap (manual) always may. */
     fun backgroundCheckAllowed(packageName: String?, manual: Boolean): Boolean =
@@ -149,7 +146,7 @@ object UpdateRules {
     }
 
     /** A refusal that will not change on a second download: remembered, so
-     *  the 6-hourly check does not fetch the same APK again. A hash
+     *  a later check does not fetch the same APK again. A hash
      *  mismatch or an unreadable file can be a damaged transfer, so those
      *  are tried again. */
     fun isPermanent(v: Verdict): Boolean =
