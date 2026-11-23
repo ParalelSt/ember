@@ -114,14 +114,32 @@ describe('usePresenceHeartbeat (page hidden)', () => {
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
   });
 
-  // A phone plays with the screen off or another app in front: the page is
-  // hidden, yet the music plays and the admin page must still see it.
-  it('keeps beating while the page is hidden and music plays', () => {
+  const setHidden = (hidden: boolean) => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+
+  it('stops beating while the page is hidden, and reports once as soon as it is shown', () => {
+    const send = vi.fn<Send>(async () => ({}));
+    setup(send, { userId: 'u1', current: a, isPlaying: true });
+    expect(send).toHaveBeenCalledTimes(1);
+    setHidden(true);
+    vi.advanceTimersByTime(PRESENCE_INTERVAL_MS * 5);
+    expect(send).toHaveBeenCalledTimes(1);
+    setHidden(false);
+    expect(send).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(PRESENCE_INTERVAL_MS);
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
+  it('a page that starts hidden sends nothing until shown', () => {
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
     const send = vi.fn<Send>(async () => ({}));
     setup(send, { userId: 'u1', current: a, isPlaying: true });
-    vi.advanceTimersByTime(PRESENCE_INTERVAL_MS * 2);
-    expect(send).toHaveBeenCalledTimes(3);
+    vi.advanceTimersByTime(PRESENCE_INTERVAL_MS * 3);
+    expect(send).not.toHaveBeenCalled();
+    setHidden(false);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   it('still goes quiet on pause while hidden', () => {

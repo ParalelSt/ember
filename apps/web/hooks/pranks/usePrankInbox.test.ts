@@ -278,25 +278,29 @@ describe('usePrankInbox (429 backoff)', () => {
     }
   });
 
-  // The bug behind sounds never arriving on phones: a phone plays with the
-  // screen off or another app in front, so the page is hidden while the
-  // music plays. Those polls were dropped and every sound expired unseen.
-  it('keeps polling while the tab is hidden but music plays, and stops on pause', async () => {
+  // A hidden page (screen off, another app in front) polled every 2.5 s
+  // for as long as music played. It now waits, and checks once on coming back.
+  it('pauses while the page is hidden, even with music playing, and checks at once when shown', async () => {
     const { inbox, deps } = fakeDeps();
-    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    const setHidden = (hidden: boolean) => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
     try {
-      const { rerender } = renderHook((p: { isPlaying: boolean }) =>
-        usePrankInbox({ userId: 'u1', isPlaying: p.isPlaying, receive: () => DELIVERED, deps }), { initialProps: { isPlaying: true } });
+      renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: () => DELIVERED, deps }));
       await flush();
       expect(deps.fetchInbox).toHaveBeenCalledTimes(1);
-      inbox.push(ping('background'));
-      await act(async () => { await vi.advanceTimersByTimeAsync(POLL_PLAYING_MS); });
-      expect(deps.ack).toHaveBeenCalledWith('background', DELIVERED);
-      rerender({ isPlaying: false });
+      setHidden(true);
+      inbox.push(ping('while-hidden'));
+      await act(async () => { await vi.advanceTimersByTimeAsync(POLL_PLAYING_MS * 10); });
+      expect(deps.fetchInbox).toHaveBeenCalledTimes(1);
+      await act(async () => { setHidden(false); });
       await flush();
-      const count = deps.fetchInbox.mock.calls.length;
-      await act(async () => { await vi.advanceTimersByTimeAsync(POLL_IDLE_MS * 2); });
-      expect(deps.fetchInbox).toHaveBeenCalledTimes(count);
+      expect(deps.fetchInbox).toHaveBeenCalledTimes(2);
+      expect(deps.ack).toHaveBeenCalledWith('while-hidden', DELIVERED);
+      // And the poll is back on its 2.5 s beat while visible.
+      await act(async () => { await vi.advanceTimersByTimeAsync(POLL_PLAYING_MS); });
+      expect(deps.fetchInbox).toHaveBeenCalledTimes(3);
     } finally {
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
     }

@@ -21,7 +21,8 @@ const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
 
 /** Tells the server what this device is playing, for the admin page's
  *  "playing now" line: at once on a track change or play, every 20 s while
- *  playing, and once more on pause. Nothing while idle. Silent: failures are
+ *  playing, and once more on pause. Nothing while idle or while the page is
+ *  hidden (one report as soon as it is shown again). Silent: failures are
  *  dropped. */
 export function usePresenceHeartbeat({
   userId,
@@ -52,9 +53,9 @@ export function usePresenceHeartbeat({
       const force = beat;
       const key = `${current.id}|${isPlaying}`;
       const now = Date.now();
-      // No hidden-page check: the beat only runs while music plays, and a
-      // phone mostly plays with the screen off or another app in front
-      // (the page hidden). Dropping those beats showed it as not listening.
+      // Nothing while the page is hidden (screen off, another app in front):
+      // showing it again reports at once (onVisible below).
+      if (typeof document !== 'undefined' && document.hidden) return;
       if (backoff.current.blocked(now)) return;
       if (!beat) {
         burst.current = burst.current.filter((t) => now - t < BURST_WINDOW_MS);
@@ -78,9 +79,27 @@ export function usePresenceHeartbeat({
     };
     report(false);
     if (!isPlaying) return () => releaseSingleton('presence', owner);
-    const timer = setInterval(() => report(true), PRESENCE_INTERVAL_MS);
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const start = () => {
+      clearInterval(timer);
+      timer = setInterval(() => report(true), PRESENCE_INTERVAL_MS);
+    };
+    if (!document.hidden) start();
+    // The beat stops while the page is hidden; shown again, one report at
+    // once and the beat starts over.
+    const onVisible = () => {
+      if (document.hidden) {
+        clearInterval(timer);
+        timer = undefined;
+        return;
+      }
+      report(true);
+      start();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
       releaseSingleton('presence', owner);
     };
   }, [userId, current, isPlaying, engineRef]);
