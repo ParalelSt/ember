@@ -34,9 +34,14 @@ export interface MemberDiff {
   appeared: string[];
   disappeared: string[];
   mixes: MixDiff[];
-  /** After: songs with a title signal in a style mix other than Game & Anime. */
+  /** After: songs the title rule places in Game & Anime (a strong signal, or
+   *  a weak one by an artist with no family) sitting in another style mix. */
   flagged: (SongRef & { mix: string; signal: string })[];
+  /** The same count in the run before. */
+  flaggedBefore: number;
   gameAnime: { before: number | null; after: number | null };
+  /** After: the member's own songs whose genre is Game & Anime (a plan needs weight 4, 3 songs, 2 artists). */
+  gameAnimeOwn: { weight: number; songs: number; artists: number } | null;
   unrecognised: SimMember['unrecognised'];
   notes: SimMember['notes'];
 }
@@ -64,6 +69,22 @@ function holders(member: SimMember | undefined): Map<string, string[]> {
 
 const untaggedNew = (m: SimMix | undefined) => (m ? m.tracks.filter((t) => !t.own && t.untagged).length : 0);
 
+/** A song the title rule sends to Game & Anime: a strong signal (unless an
+ *  admin placed the artist), or a weak one by an artist with no family. */
+export function isMisplacedGameSong(t: SimTrack): boolean {
+  if (t.source === 'manual') return false;
+  return t.signal === 'strong' || (t.signal === 'weak' && t.untagged);
+}
+
+function flaggedIn(member: SimMember | undefined): MemberDiff['flagged'] {
+  const out: MemberDiff['flagged'] = [];
+  for (const m of member?.mixes ?? []) {
+    if (!isStyle(m.key) || m.key === GAME_ANIME_KEY) continue;
+    for (const t of m.tracks) if (isMisplacedGameSong(t)) out.push({ ...ref(t), mix: m.key, signal: t.signal! });
+  }
+  return out;
+}
+
 export function diffMember(userId: string, a: SimMember | undefined, b: SimMember | undefined): MemberDiff {
   const before = new Map((a?.mixes ?? []).map((m) => [m.key, m]));
   const after = new Map((b?.mixes ?? []).map((m) => [m.key, m]));
@@ -88,18 +109,15 @@ export function diffMember(userId: string, a: SimMember | undefined, b: SimMembe
       untaggedAfter: untaggedNew(y),
     };
   });
-  const flagged: MemberDiff['flagged'] = [];
-  for (const m of b?.mixes ?? []) {
-    if (!isStyle(m.key) || m.key === GAME_ANIME_KEY) continue;
-    for (const t of m.tracks) if (t.signal) flagged.push({ ...ref(t), mix: m.key, signal: t.signal });
-  }
   return {
     userId,
     appeared: keys.filter((k) => !before.has(k) && after.has(k)),
     disappeared: keys.filter((k) => before.has(k) && !after.has(k)),
     mixes,
-    flagged,
+    flagged: flaggedIn(b),
+    flaggedBefore: flaggedIn(a).length,
     gameAnime: { before: before.get(GAME_ANIME_KEY)?.tracks.length ?? null, after: after.get(GAME_ANIME_KEY)?.tracks.length ?? null },
+    gameAnimeOwn: b?.families?.[GAME_ANIME_KEY] ?? null,
     unrecognised: b?.unrecognised ?? [],
     notes: b?.notes ?? [],
   };
@@ -121,11 +139,16 @@ export function formatDiff(d: RunDiff): string {
   let moved = 0;
   let added = 0;
   let flagged = 0;
+  let flaggedBefore = 0;
   for (const m of d.members) {
     lines.push('', `== member ${m.userId}`);
     if (m.appeared.length) lines.push(`  appeared: ${m.appeared.join(', ')}`);
     if (m.disappeared.length) lines.push(`  disappeared: ${m.disappeared.join(', ')}`);
     lines.push(`  game-anime: ${m.gameAnime.after === null ? 'no mix' : `${m.gameAnime.after} songs`} (before: ${m.gameAnime.before === null ? 'no mix' : m.gameAnime.before})`);
+    if (m.gameAnimeOwn) {
+      const o = m.gameAnimeOwn;
+      lines.push(`  own Game & Anime songs: ${o.songs} by ${o.artists} artist(s), weight ${o.weight} (a mix needs 3 songs, 2 artists, weight 4)`);
+    }
     for (const x of m.mixes) {
       const same = x.movedOut.length === 0 && x.added.length === 0 && x.before === x.after;
       lines.push(`  ${x.key.padEnd(22)} ${count(x.before).padStart(3)} -> ${count(x.after).padStart(3)}  unknown-artist finds ${x.untaggedBefore} -> ${x.untaggedAfter}${same ? '  (same songs)' : ''}`);
@@ -136,12 +159,13 @@ export function formatDiff(d: RunDiff): string {
     }
     for (const f of m.flagged) lines.push(`  FLAGGED (${f.signal} signal in ${f.mix}): ${song(f)}`);
     flagged += m.flagged.length;
+    flaggedBefore += m.flaggedBefore;
     for (const n of m.notes) lines.push(`  note: ${n.message}${n.detail ? ` ${JSON.stringify(n.detail)}` : ''}`);
     if (m.unrecognised.length) {
       lines.push(`  unrecognised own songs (${m.unrecognised.length}):`);
       for (const u of m.unrecognised) lines.push(`      "${u.title}" by ${u.artist}`);
     }
   }
-  lines.push('', `TOTAL moved out ${moved}, came in ${added}, flagged ${flagged}`);
+  lines.push('', `TOTAL moved out ${moved}, came in ${added}, flagged ${flagged} (before: ${flaggedBefore})`);
   return lines.join('\n');
 }

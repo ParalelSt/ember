@@ -41,6 +41,9 @@ describe('diffRuns', () => {
     expect(ga.before).toBeNull();
     expect(ga.after).toBe(1);
     expect(d.gameAnime).toEqual({ before: null, after: 1 });
+    expect(d.gameAnimeOwn).toBeNull();
+    const withOwn = diffRuns(before, run('after', [member('u1', {}, { families: { 'game-anime': { weight: 2, songs: 1, artists: 1 } } })]));
+    expect(formatDiff(withOwn)).toContain('own Game & Anime songs: 1 by 1 artist(s), weight 2');
   });
 
   it('a song moved to no mix goes "nowhere", a dropped mix is listed', () => {
@@ -52,16 +55,17 @@ describe('diffRuns', () => {
     expect(formatDiff(diffRuns(before, after))).toContain('"Song x" by Artist x -> nowhere');
   });
 
-  it('flags a signalled song in a style mix other than Game & Anime, not in other kinds', () => {
+  it('flags a song the title rule sends to Game & Anime in another style mix, not in other kinds', () => {
     const after = run('after', [member('u1', {
-      pop: [t('s', { signal: 'weak' })],
+      pop: [t('s', { signal: 'weak', untagged: true }), t('tagged', { signal: 'weak' }), t('admin', { signal: 'strong', source: 'manual' })],
       'game-anime': [t('g', { signal: 'strong' })],
       discover: [t('d', { signal: 'strong' })],
       'artist-noah': [t('n', { signal: 'strong' })],
     })]);
     const d = diffRuns(run('before', []), after).members[0];
     expect(d.flagged.map((f) => [f.mix, f.songKey])).toEqual([['pop', 's']]);
-    expect(formatDiff(diffRuns(run('before', []), after))).toContain('flagged 1');
+    expect(formatDiff(diffRuns(run('before', []), after))).toContain('flagged 1 (before: 0)');
+    expect(diffRuns(after, after).members[0].flaggedBefore).toBe(1);
   });
 
   it('a member only in one run shows every mix as appeared or disappeared', () => {
