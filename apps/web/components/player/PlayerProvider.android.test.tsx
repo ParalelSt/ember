@@ -10,6 +10,7 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
 import type { AudioBackendEvents } from '@/lib/playback/types';
+import { useRadioExtend } from '@/hooks/player/useRadioExtend';
 
 vi.mock('@/lib/api', () => ({ api: {}, apiUrl: (u: string) => u }));
 vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => 'capacitor' }));
@@ -66,6 +67,32 @@ beforeEach(() => {
   usePlayerStore.setState({
     queue: [A, B], index: 0, position: 0, isPlaying: false, duration: 0,
     context: null, loopMode: 'off', shuffle: false, orderBackup: null,
+  });
+});
+
+describe('android: radio runs once', () => {
+  const lastRadioCurrent = () => vi.mocked(useRadioExtend).mock.calls.at(-1)?.[0].current;
+
+  it('an app whose player extends the queue itself: the page\'s radio has no song to follow', () => {
+    (fake as { extendsRadio?: boolean }).extendsRadio = true;
+    try {
+      usePlayerStore.setState({ queue: [A], index: 0 });
+      render(<PlayerProvider><div /></PlayerProvider>);
+      expect(lastRadioCurrent()).toBeNull();
+      // Native's own extension comes back as a new queue; nothing goes back.
+      native.setQueue.mockClear();
+      act(() => { ev!.onQueueReplaced!([A, B, C], 0); });
+      expect(native.setQueue).not.toHaveBeenCalled();
+      expect(lastRadioCurrent()).toBeNull();
+    } finally {
+      delete (fake as { extendsRadio?: boolean }).extendsRadio;
+    }
+  });
+
+  it('an older app build without native radio keeps the page\'s radio', () => {
+    usePlayerStore.setState({ queue: [A], index: 0 });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    expect(lastRadioCurrent()?.id).toBe(A.id);
   });
 });
 

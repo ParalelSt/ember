@@ -94,6 +94,10 @@ export interface NativeOverlayOptions {
 }
 
 export interface AudioBackend {
+  /** Queue-owning backends only (Android): the engine extends the queue
+   *  with radio by itself at its last song (the app's native radio, which
+   *  keeps going with no page), so the page's own radio stays out of it. */
+  extendsRadio?: boolean;
   /** Point at a new stream URL (already apiUrl-resolved) and optionally start it. */
   load(url: string, opts: LoadOptions): void;
   /** Resume-aware: if the player died in the background, reload + resume. */
