@@ -10,6 +10,7 @@ import { assembleDiscover, describeDiscover, discoverSeeds, weekKey } from './di
 import { HISTORY_DAYS, onRepeatMix, songHistory, throwbackMix, type HistoryMix } from './history';
 import { artistTint, DISCOVER_KEY, FIXED_TITLE, KIND_CAPS, KIND_TINT, lineup, mixKind, mixPosition, ON_REPEAT_KEY, THROWBACK_KEY } from './kinds';
 import type { ArtistGenre, ArtistRef } from '../genres/tagger';
+import { radioFamilies, radioSpeaksFor, untaggedHomes, type SeedRadio } from './untagged';
 
 /** The personal mix build (docs/mixes.md): for one member, score their
  *  plays and likes, tag their artists, pick up to twelve mixes of five
@@ -224,6 +225,34 @@ export function createMixJob(deps: MixJobDeps) {
       for (const [k, v] of (await deps.ensureTags(newcomers, { maxLookups: budget })).rows) all.set(k, v);
     }
     const genres = toGenreOf(all);
+
+    // The radio rule for unknown artists (lib/mixes/untagged), once for
+    // every style mix: which seeds speak for their mix, and each unknown
+    // artist's one home.
+    const styleRadios: SeedRadio[] = [];
+    const seenRadio = new Set<string>();
+    for (const { item } of picked) {
+      if (item.kind !== 'style') continue;
+      for (const r of radios.get(item.key) ?? []) {
+        const id = `${item.plan.family}|${r.seed}`;
+        if (seenRadio.has(id)) continue;
+        seenRadio.add(id);
+        styleRadios.push({ family: item.plan.family, seed: r.seed, tracks: r.tracks });
+      }
+    }
+    const speaks = new Map<string, FamilySlug>();
+    for (const r of styleRadios) {
+      const f = radioSpeaksFor(r, genres);
+      speaks.set(`${r.family}|${r.seed}`, f);
+      if (f !== r.family) {
+        const seed = songs.find((x) => x.track.sourceId === r.seed)?.track;
+        log('mixes: seed looks out of place', {
+          userId, mix: r.family, seed: r.seed, title: seed?.title, artist: seed?.artist, speaksFor: f, counts: Object.fromEntries(radioFamilies(r, genres)),
+        });
+      }
+    }
+    const homes = untaggedHomes(styleRadios, genres, songs.map((x) => x.track));
+
     const heard = new Set(history.keys());
     const knownArtists = new Set([...history.values()].map((h) => h.artistKey));
 
@@ -242,6 +271,8 @@ export function createMixJob(deps: MixJobDeps) {
           otherFamilyChartArtists: otherChartArtists(item.plan.family, charts),
           unavailable,
           skip,
+          vouching: new Set((list ?? []).map((r) => r.seed).filter((seed) => speaks.get(`${item.plan.family}|${seed}`) === item.plan.family)),
+          untaggedHomes: homes,
         });
         if (tracks) meta = describeMix(item.plan, tracks);
         seeds = pickSeeds(item.plan, day, undefined, seedOk).map((s) => s.key);

@@ -297,6 +297,70 @@ describe('every kind', () => {
   });
 });
 
+describe('Game & Anime', () => {
+  // A member who plays pop and game music. "Noah" is a namesake: the tagger
+  // calls him pop, but his songs' radio is all game music. The game songs
+  // are uploads by channels nobody can tag, some with OST in the title.
+  const pops = ['Pop Star 0', 'Pop Star 1'];
+  const popOwn = pops.flatMap((n, i) => [0, 1].map((j) => tt(`ga${i}${j}${n.slice(-1)}`, n, `${n} Hit ${j}`)));
+  const noahOwn = Array.from({ length: 6 }, (_, j) => tt(`noah${j}`, 'Noah', `Noah Song ${j}`));
+  const gameOwn = [
+    tt('gameown0', 'KEYGEN CHURCH', 'Tenebre Rosso Sangue (ULTRAKILL Soundtrack)'),
+    tt('gameown1', 'Channel A', 'Main Theme (Original Soundtrack)'),
+    tt('gameown2', 'Channel B', 'Bad Apple!! (Touhou)'),
+    tt('gameown3', 'Channel C', 'Boss Theme'),
+  ];
+  const gameRadio = (seed: string) => [
+    ...Array.from({ length: 12 }, (_, i) => tt(`gr${i}${seed.slice(0, 6)}`, `Game Channel ${i}`, `Stage ${i} (Game OST)`)),
+    ...Array.from({ length: 12 }, (_, i) => tt(`up${i}${seed.slice(0, 6)}`, `Uploader ${i}`, `Track ${i}`)),
+  ];
+
+  function gameWorld() {
+    const tagFamily: Record<string, FamilySlug> = { [artistKey('Noah')]: 'pop' };
+    for (const n of [...pops, ...newPop]) tagFamily[artistKey(n)] = 'pop';
+    const w = world({}, { plays: [...playsOf(popOwn, 2), ...playsOf(noahOwn, 3), ...playsOf(gameOwn, 3)] });
+    const musicbrainz = vi.fn(async (name: string) => (tagFamily[artistKey(name)] ? [{ name: 'pop', count: 5 }] : null));
+    const tagger = createTagger({ store: { getMany: async (keys) => new Map(keys.filter((k) => w.genreRows.has(k)).map((k) => [k, w.genreRows.get(k)!])), save: async (row) => { w.genreRows.set(row.key, row); } }, lastfm: null, musicbrainz, now: () => NOW });
+    w.deps.ensureTags = (refs, opts) => tagger.ensureTagsCounted(refs, opts);
+    const radioBatch = vi.fn(async (seeds: string[]) => ({
+      radios: seeds.map((seed) => {
+        const isPop = popOwn.some((t) => t.sourceId === seed);
+        return { seed, tracks: isPop ? newPop.map((n, i) => tt(`np${i}${seed.slice(0, 6)}`, n, `${n} Radio ${i}`)) : gameRadio(seed) };
+      }),
+      failed: [],
+    }));
+    w.deps.radioBatch = radioBatch;
+    return { ...w, radioBatch };
+  }
+
+  it('a member with game and pop listening gets a lemon Game & Anime mix and a Pop mix without the game songs', async () => {
+    const w = gameWorld();
+    const log = vi.fn();
+    const r = await createMixJob({ ...w.deps, log }).buildMember('u1');
+    expect(r.written).toEqual(expect.arrayContaining(['pop', 'game-anime']));
+    const rows = new Map([...w.mixes.values()].map((m) => [m.key, m]));
+    const ga = rows.get('game-anime')!;
+    expect(ga.title).toBe('Game & Anime');
+    expect(ga.cover.color).toBe('#f5ee9e');
+    expect(ga.tracks.length).toBeGreaterThanOrEqual(20);
+    // Every own game song is in it, and no pop.
+    for (const t of gameOwn) expect(ga.tracks.some((x) => x.id === t.id)).toBe(true);
+    expect(ga.tracks.some((x) => pops.includes(x.artist) || x.artist.startsWith('New Pop'))).toBe(false);
+    // The plain-titled uploaders from the game radios made it in with one radio.
+    expect(ga.tracks.some((x) => x.artist.startsWith('Uploader'))).toBe(true);
+    // Pop: no OST titles and no unknown uploader, even though Noah's radios brought them.
+    const pop = rows.get('pop')!;
+    expect(pop.tracks.some((x) => x.artist.startsWith('Uploader') || x.artist.startsWith('Game Channel') || /OST|Soundtrack|Touhou/.test(x.title))).toBe(false);
+    // The namesake's songs themselves stay in Pop for now (phase 2).
+    expect(pop.tracks.some((x) => x.artist === 'Noah')).toBe(true);
+    // A Noah seed in the Pop mix is reported as out of place.
+    expect(log).toHaveBeenCalledWith('mixes: seed looks out of place', expect.objectContaining({ mix: 'pop', speaksFor: 'game-anime', artist: 'Noah' }));
+    // Every seed's radio was fetched once.
+    const seeds = w.radioBatch.mock.calls.flatMap((c) => c[0]);
+    expect(new Set(seeds).size).toBe(seeds.length);
+  });
+});
+
 describe('queue and lazy trigger', () => {
   it('runAll builds every active member once, one at a time', async () => {
     const w = world({ listActiveMembers: vi.fn(async () => ['u1', 'u2', 'u1']) });

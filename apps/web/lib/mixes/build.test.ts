@@ -97,6 +97,21 @@ describe('belongs', () => {
     // An admin's "no family" still wins.
     expect(belongs(ga, a('banned', 'Undertale OST'), genres, 5, new Set())).toBe(false);
   });
+
+  it('with the radio rule, an unknown artist needs the home, the vouching radios and no other chart', () => {
+    const homes = new Map([['nobody', 'rock-metal' as const], ['uploader', 'game-anime' as const]]);
+    expect(belongs(plan, a('nobody'), genres, 2, new Set(), homes)).toBe(true);
+    // Each condition failing in turn.
+    expect(belongs(plan, a('nobody'), genres, 1, new Set(), homes)).toBe(false);
+    expect(belongs(plan, a('uploader'), genres, 5, new Set(), homes)).toBe(false);
+    expect(belongs(plan, a('stranger'), genres, 5, new Set(), homes)).toBe(false);
+    expect(belongs(plan, a('nobody'), genres, 2, new Set(['nobody']), homes)).toBe(false);
+    // Game & Anime takes an unknown uploader from one radio.
+    const ga = { family: 'game-anime' as const, sub: null };
+    expect(belongs(ga, a('uploader'), genres, 1, new Set(), homes)).toBe(true);
+    expect(belongs(ga, a('uploader'), genres, 0, new Set(), homes)).toBe(false);
+    expect(belongs(ga, a('uploader'), genres, 1, new Set(['uploader']), homes)).toBe(false);
+  });
 });
 
 describe('assembleMix', () => {
@@ -172,5 +187,34 @@ describe('assembleMix skip', () => {
     const tracks = assembleMix({ plan: planOf(songs), radios: [radio], chartTracks: [], genres, otherFamilyChartArtists: new Set(), unavailable: new Set(), skip: (t) => blocked.has(t.id) })!;
     expect(tracks.length).toBeGreaterThanOrEqual(MIN_MIX_SIZE);
     expect(tracks.some((t) => blocked.has(t.id))).toBe(false);
+  });
+});
+
+describe('assembleMix with the radio rule', () => {
+  const ownBands = ['Pop A', 'Pop B', 'Pop C', 'Pop D'];
+  const own = ownBands.flatMap((b, i) => [0, 1, 2].map((j) => s(tt(`p${i}${j}`, b), 30 - i * 3 - j)));
+  const fresh = Array.from({ length: 20 }, (_, i) => `Fresh Pop ${i}`);
+  const genres = new Map<string, GenreOf>([...ownBands, ...fresh].map((b) => [artistKey(b), { family: 'pop', sub: null }]));
+  const radio = (seed: string, extra: Track[]) => ({ seed, tracks: [...extra, ...fresh.map((b, i) => tt(`f${seed}${i}`, b))] });
+  const plan = planOf(own, { key: 'pop', family: 'pop' });
+  const ghost = (seed: string) => tt(`g${seed}`, 'Ghost Channel', `Ghost ${seed}`);
+
+  it('without the fields, the old rule: two radios are enough', () => {
+    const tracks = assembleMix({ plan, radios: [radio('a', [ghost('a')]), radio('b', [ghost('b')])], chartTracks: [], genres, otherFamilyChartArtists: new Set(), unavailable: new Set() })!;
+    expect(tracks.some((t) => t.artist === 'Ghost Channel')).toBe(true);
+  });
+
+  it('with them, only radios that vouch count, and the home must be this mix', () => {
+    const radios = [radio('a', [ghost('a')]), radio('b', [ghost('b')])];
+    const base = { plan, radios, chartTracks: [], genres, otherFamilyChartArtists: new Set<string>(), unavailable: new Set<string>() };
+    const pop = new Map([['ghost channel', 'pop' as const]]);
+    expect(assembleMix({ ...base, vouching: new Set(['a', 'b']), untaggedHomes: pop })!.some((t) => t.artist === 'Ghost Channel')).toBe(true);
+    // One of the two radios is out of place: one vouching radio is not enough for Pop.
+    expect(assembleMix({ ...base, vouching: new Set(['a']), untaggedHomes: pop })!.some((t) => t.artist === 'Ghost Channel')).toBe(false);
+    // Their home is Game & Anime: not in Pop, however many radios.
+    const away = new Map([['ghost channel', 'game-anime' as const]]);
+    expect(assembleMix({ ...base, vouching: new Set(['a', 'b']), untaggedHomes: away })!.some((t) => t.artist === 'Ghost Channel')).toBe(false);
+    // Tagged songs from a radio that does not vouch are still taken: only unknown artists depend on it.
+    expect(assembleMix({ ...base, vouching: new Set(), untaggedHomes: pop })!.filter((t) => t.artist.startsWith('Fresh Pop')).length).toBeGreaterThan(0);
   });
 });

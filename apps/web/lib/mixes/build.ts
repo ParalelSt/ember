@@ -5,6 +5,7 @@ import type { Track } from '../../types/track';
 import type { MixPlan } from './cluster';
 import type { SongScore } from './score';
 import { resolveGenre } from './songFamily';
+import { untaggedMinRadios } from './untagged';
 
 /** One mix's songs (docs/mixes.md): up to 20 of the member's own songs in
  *  the family, then new songs from the radio of a few of them and the
@@ -13,8 +14,10 @@ import { resolveGenre } from './songFamily';
  *  Purity is the rule that matters: a new song is only taken when its
  *  genre (lib/mixes/songFamily: its artist's primary family, unless its
  *  title says Game & Anime) is the mix's family (and, for a split mix, the
- *  half matches). An artist nobody could tag is kept only when the radio of
- *  two or more seeds brought them AND no other family's chart lists them.
+ *  half matches). An artist nobody could tag (and no title signal) is kept
+ *  only when no other family's chart lists them, their one home is this
+ *  family, and enough of this mix's radios that speak for it brought them
+ *  (lib/mixes/untagged).
  *  Everything else is dropped, so a Rock & Metal mix never gets pop. */
 
 export const MIX_SIZE = 50;
@@ -83,21 +86,35 @@ export interface AssembleInput {
   unavailable: ReadonlySet<string>;
   /** Songs the member blocked ("Block song"). */
   skip?: (t: Track) => boolean;
+  /** This mix's seeds whose radio speaks for the mix (lib/mixes/untagged).
+   *  With `untaggedHomes`, only these radios count for an unknown artist. */
+  vouching?: ReadonlySet<string>;
+  /** Each unknown artist's one home (lib/mixes/untagged). Absent: the old
+   *  rule (any two of this mix's radios). */
+  untaggedHomes?: ReadonlyMap<string, FamilySlug>;
 }
 
 /** Whether a new song belongs in this mix, judged per song
- *  (lib/mixes/songFamily): its genre is the mix's family (and half). */
+ *  (lib/mixes/songFamily): its genre is the mix's family (and half). A song
+ *  by an unknown artist with no title signal: never when another family's
+ *  chart lists the artist; with `homes`, only when their home is this mix's
+ *  family and `radioCount` (this mix's vouching radios that brought them)
+ *  reaches untaggedMinRadios; without, when any two of its radios did. */
 export function belongs(
   plan: Pick<MixPlan, 'family' | 'sub'>,
   track: Pick<Track, 'title' | 'artist' | 'album'>,
   genres: ReadonlyMap<string, GenreOf>,
   radioCount: number,
   otherFamilyChartArtists: ReadonlySet<string>,
+  homes?: ReadonlyMap<string, FamilySlug>,
 ): boolean {
   const g = resolveGenre(track, genres);
   if (g.family) return g.family === plan.family && (!plan.sub || g.sub === plan.sub);
   if (g.manual) return false;
-  return radioCount >= 2 && !otherFamilyChartArtists.has(artistKey(track.artist));
+  const key = artistKey(track.artist);
+  if (otherFamilyChartArtists.has(key)) return false;
+  if (!homes) return radioCount >= 2;
+  return homes.get(key) === plan.family && radioCount >= untaggedMinRadios(plan.family);
 }
 
 /** Weave known songs into new ones the way radio does: two known songs
@@ -118,7 +135,7 @@ export function weave(known: readonly Track[], fresh: readonly Track[], size = M
 /** The mix's tracks, or null when fewer than MIN_MIX_SIZE survive (the
  *  mix is then not written). */
 export function assembleMix(input: AssembleInput): Track[] | null {
-  const { plan, radios, chartTracks, genres, otherFamilyChartArtists, unavailable, skip = () => false } = input;
+  const { plan, radios, chartTracks, genres, otherFamilyChartArtists, unavailable, skip = () => false, vouching, untaggedHomes } = input;
   const perArtist = new Map<string, number>();
   const usedKeys = new Set<string>();
   const take = (t: Track, aKey: string) => {
@@ -135,9 +152,12 @@ export function assembleMix(input: AssembleInput): Track[] | null {
     known.push(s.track);
   }
 
-  // How many of this mix's seed radios brought each artist.
+  // How many of this mix's seed radios brought each artist (with the
+  // radio rule: only the radios that speak for the mix).
+  const homes = vouching && untaggedHomes ? untaggedHomes : undefined;
   const radioCount = new Map<string, number>();
   for (const r of radios) {
+    if (homes && !vouching!.has(r.seed)) continue;
     for (const k of new Set(r.tracks.map((t) => artistKey(t.artist)))) radioCount.set(k, (radioCount.get(k) ?? 0) + 1);
   }
 
@@ -155,7 +175,7 @@ export function assembleMix(input: AssembleInput): Track[] | null {
     if (usedKeys.has(k)) continue;
     const aKey = artistKey(t.artist);
     if (!aKey || !room(aKey)) continue;
-    if (!belongs(plan, t, genres, radioCount.get(aKey) ?? 0, otherFamilyChartArtists)) continue;
+    if (!belongs(plan, t, genres, radioCount.get(aKey) ?? 0, otherFamilyChartArtists, homes)) continue;
     take(t, aKey);
     fresh.push(t);
   }
