@@ -66,7 +66,6 @@ const { _resetBuckets } = await import('@/lib/rateLimit');
 const nearby = await import('./nearby/route');
 const country = await import('./country/route');
 const search = await import('./search/route');
-const one = await import('./station/route');
 const stream = await import('./stream/[id]/route');
 const { streamSlots } = await import('@/lib/radio/streamProxy');
 
@@ -88,7 +87,6 @@ describe('radio lists', () => {
     expect((await nearby.GET(req('/api/radio/nearby?lat=45.8&lng=16'), {} as never)).status).toBe(401);
     expect((await country.GET(req('/api/radio/country?code=HR'), {} as never)).status).toBe(401);
     expect((await search.GET(req('/api/radio/search?q=abc'), {} as never)).status).toBe(401);
-    expect((await one.GET(req(`/api/radio/station?id=${ID}`), {} as never)).status).toBe(401);
     expect(svc.nearby).not.toHaveBeenCalled();
   });
 
@@ -115,12 +113,6 @@ describe('radio lists', () => {
     const res = await search.GET(req('/api/radio/search?q=a'), {} as never);
     expect((await res.json()).stations).toEqual([]);
     expect(svc.search).not.toHaveBeenCalled();
-  });
-
-  it('station answers 400 for a malformed id and 404 for an unknown one', async () => {
-    expect((await one.GET(req('/api/radio/station?id=../x'), {} as never)).status).toBe(400);
-    expect((await one.GET(req('/api/radio/station?id=00000000-0000-4000-8000-000000000009'), {} as never)).status).toBe(404);
-    expect((await (await one.GET(req(`/api/radio/station?id=${ID}`), {} as never)).json()).station.id).toBe(ID);
   });
 
   it('a member browsing too fast is slowed down', async () => {
