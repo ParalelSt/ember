@@ -125,7 +125,18 @@ export function fileDeps(exp: SimExport, opts: FileDepsOptions = {}) {
       writeFileSync(overlayFile, JSON.stringify(Object.fromEntries(overlay)));
     },
   };
-  const tagger = createTagger({ store, lastfm: opts.lastfm ?? null, musicbrainz: opts.musicbrainz ?? null, now: () => exp.now, warn: opts.warn });
+  const note = (message: string, detail?: Record<string, unknown>) => {
+    const list = capture.notes.get(current) ?? [];
+    list.push({ message, detail });
+    capture.notes.set(current, list);
+  };
+  const tagger = createTagger({
+    store, lastfm: opts.lastfm ?? null, musicbrainz: opts.musicbrainz ?? null, now: () => exp.now,
+    warn: (message, detail) => {
+      note(message, detail);
+      opts.warn?.(message, detail);
+    },
+  });
 
   const userTracks = (rows: (Row & { user: string })[], userId: string) =>
     rows.filter((r) => r.user === userId).map(trackOf).filter((t): t is Track => !!t);
@@ -207,16 +218,9 @@ export function fileDeps(exp: SimExport, opts: FileDepsOptions = {}) {
     },
     now: () => exp.now,
     log: (message, detail) => {
-      if (message === 'mixes: built') return;
-      const list = capture.notes.get(current) ?? [];
-      list.push({ message, detail });
-      capture.notes.set(current, list);
+      if (message !== 'mixes: built') note(message, detail);
     },
-    warn: (message, detail) => {
-      const list = capture.notes.get(current) ?? [];
-      list.push({ message, detail });
-      capture.notes.set(current, list);
-    },
+    warn: note,
   };
   return { deps, capture, tagger };
 }

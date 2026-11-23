@@ -12,7 +12,7 @@
  *  MIX_SIM_LOOKUPS=1  look up artists the copy lacks (MusicBrainz, and
  *                   Last.fm when LASTFM_API_KEY is set), paced like the app.
  *  MIX_SIM_ONLY     comma list of member ids (default: every active one). */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'vitest';
 import { loadExport, type RadioFetch } from '@/lib/mixes/sim/fileDeps';
@@ -59,7 +59,7 @@ describe('mix measurement', () => {
       mkdirSync(process.env.MUSIC_DIR, { recursive: true });
       const yt = await import('@/lib/sources/youtube');
       fetchRadio = async (seeds, limit) => {
-        console.log(`radio: fetching ${seeds.length} seed(s)`);
+        say(`radio: fetching ${seeds.length} seed(s)`);
         return yt.fetchRadioBatch(seeds, limit);
       };
     }
@@ -68,7 +68,16 @@ describe('mix measurement', () => {
     if (process.env.MIX_SIM_LOOKUPS === '1') {
       const mbPace = createRateLimiter(1);
       const userAgent = musicbrainzUserAgent(process.env.MUSICBRAINZ_CONTACT);
-      musicbrainz = (name) => musicbrainzTags(name, { userAgent, pace: mbPace.take });
+      musicbrainz = async (name) => {
+        try {
+          const got = await musicbrainzTags(name, { userAgent, pace: mbPace.take });
+          say(`lookup: ${name}: ${got ? `${got.length} tags` : 'not found'}`);
+          return got;
+        } catch (e) {
+          say(`lookup: ${name}: failed (${e instanceof Error ? e.message : String(e)})`);
+          throw e;
+        }
+      };
       const key = process.env.LASTFM_API_KEY?.trim();
       if (key) {
         const lfPace = createRateLimiter(4);
@@ -78,6 +87,10 @@ describe('mix measurement', () => {
     const explain = await explainers();
     const runs = path.join(exp.dir, 'runs');
     mkdirSync(runs, { recursive: true });
+    // Vitest keeps console output to itself: progress and warnings go to a file.
+    const logFile = path.join(runs, `${label}.log`);
+    writeFileSync(logFile, '');
+    const say = (line: string) => appendFileSync(logFile, `${new Date().toISOString()} ${line}\n`);
     writeFileSync(path.join(runs, 'stored.json'), JSON.stringify(storedRun(exp, explain), null, 1));
     const run = await runMeasure(exp, {
       label,
@@ -86,10 +99,10 @@ describe('mix measurement', () => {
       musicbrainz,
       lastfm,
       only: process.env.MIX_SIM_ONLY ? process.env.MIX_SIM_ONLY.split(',') : undefined,
-      warn: (m, d) => console.warn(m, d ?? ''),
-      progress: (m) => console.log(m),
+      warn: (m, d) => say(`warn: ${m} ${d ? JSON.stringify(d) : ''}`),
+      progress: say,
     });
     writeFileSync(path.join(runs, `${label}.json`), JSON.stringify(run, null, 1));
-    console.log(`wrote ${path.join(runs, `${label}.json`)}: ${run.members.length} members, explainers: ${Object.keys(explain).join(', ') || 'none'}`);
+    say(`wrote ${path.join(runs, `${label}.json`)}: ${run.members.length} members, explainers: ${Object.keys(explain).join(', ') || 'none'}`);
   });
 });
