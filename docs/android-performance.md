@@ -301,7 +301,7 @@ timed at all. Add `W/lib/perf/serverTiming.ts`, registered from
   and it covers pages, RSC, API and files alike.
 - Per route (ids stripped, RSC marked): count, median, p95, max. Bounded map.
 - `proxy.ts` times `authRefresh` and adds `Server-Timing: auth;dur=N` so the
-  page can read it. API routes add `handler;dur=N`.
+  page can read it.
 - Host health in the same record: event loop delay
   (`perf_hooks.monitorEventLoopDelay`), load average, running download and
   Python job counts.
@@ -406,8 +406,10 @@ Slice 9 changes how sessions are checked, so it needs a security review.
 - Nav links carry `data-nav` (static names; playlists are "Playlist" plus the
   path with its id taken out) and their area (`data-nav-area` drawer,
   sidebar, bottom). Clicks cancelled by a long press count as `hold.cancel`.
-- Server: `http.server.*` diagnostics channels, `Server-Timing: auth` from
-  `proxy.ts` and `handler` from `withRequestLog`.
+- Server: `http.server.*` diagnostics channels and `Server-Timing: auth` from
+  `proxy.ts`. No `handler` header after all: Next 16 drops a route's
+  `server-timing` when the proxy set one, and the server log has the
+  request times anyway.
 - Delivery: the perf block in manual and automatic bug reports, automatic perf
   reports (own rate limit bucket `bug-report:perf`, 2 an hour),
   `POST /api/perf-log`, `GET /api/admin/perf`, `npm run perf`, and a

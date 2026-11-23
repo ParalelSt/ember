@@ -302,27 +302,13 @@ describe('withRequestLog request context', () => {
 });
 
 
-describe('withRequestLog: Server-Timing for the perf log', () => {
-  it('adds handler;dur=N to the response', async () => {
+describe('withRequestLog: no Server-Timing of its own', () => {
+  // Next 16 drops a route's server-timing when the proxy already set one,
+  // and nothing reads it for /api/ calls: request timing lives in the
+  // server log (lib/perf/serverTiming.ts).
+  it('leaves the response headers as the handler made them', async () => {
     const wrapped = withRequestLog('test/route', async () => Response.json({ ok: true }));
     const res = await wrapped(makeReq() as never, {});
-    expect(res.headers.get('server-timing')).toMatch(/^handler;dur=\d+$/);
-  });
-
-  it('leaves a response with fixed headers as it is', async () => {
-    const wrapped = withRequestLog('test/route', async () => Response.redirect('http://localhost/x', 302));
-    const res = await wrapped(makeReq() as never, {});
-    expect(res.status).toBe(302);
-  });
-
-  it('adds nothing when EMBER_PERF_LOG=off', async () => {
-    process.env.EMBER_PERF_LOG = 'off';
-    try {
-      const wrapped = withRequestLog('test/route', async () => Response.json({ ok: true }));
-      const res = await wrapped(makeReq() as never, {});
-      expect(res.headers.get('server-timing')).toBeNull();
-    } finally {
-      delete process.env.EMBER_PERF_LOG;
-    }
+    expect(res.headers.get('server-timing')).toBeNull();
   });
 });
