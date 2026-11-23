@@ -312,6 +312,16 @@ async function askApp(manual: boolean): Promise<void> {
 /** Asks the host what is newest and records the answer. One at a time;
  *  never throws. [opts.manual]: the person tapped "Check for updates". */
 export function checkForUpdates(fetchImpl?: typeof fetch, opts: { manual?: boolean } = {}): Promise<void> {
+  // A tap that lands during a check the app started by itself: that check
+  // may have left the app's feed alone (askApp), so the tap asks it itself.
+  if (opts.manual && checking) {
+    const inFlight = checking;
+    const ask = loadDeviceInfo().then(
+      (info) => (info.platform === 'android' && appUpdateWaitsForTap() ? askApp(true) : undefined),
+      () => undefined,
+    );
+    return Promise.all([inFlight, ask]).then(() => undefined);
+  }
   checking ??= (async () => {
     const store = useUpdateStore.getState();
     store.set({ status: 'checking' });

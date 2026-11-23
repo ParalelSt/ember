@@ -172,8 +172,14 @@ export const APP_CHECK_FRESH_MS = 15 * 60 * 1000;
 export function appCheckDue(s: AppUpdateState | null, now: number): boolean {
   if (!s) return true;
   if (s.status === 'checking' || s.status === 'downloading' || s.status === 'installing') return false;
+  // Only an answer counts: the app stamps checkedAt before it looks at the
+  // reply, so a failed check (a 502, a dead network) is stamped too.
+  if (!APP_ANSWERED.includes(s.status)) return true;
   return !(s.checkedAt > 0 && now >= s.checkedAt && now - s.checkedAt < APP_CHECK_FRESH_MS);
 }
+
+/** The states that mean the app's feed did answer. */
+const APP_ANSWERED: readonly AppUpdateStatus[] = ['up-to-date', 'available', 'ready'];
 export const installAppUpdate = () => call('install');
 
 /** Install, with the page's resume note (lib/update/apply.ts) kept by the

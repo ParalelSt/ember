@@ -282,6 +282,27 @@ describe('the Android app (0.4.34 on: it waits for a tap)', () => {
       await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1));
     });
 
+    it('a failed check of the app is not an answer: the reminder still asks', async () => {
+      // The app stamps checkedAt before it reads the reply.
+      for (const status of ['idle', 'failed']) {
+        const check = plugin({ status, checkedAt: Date.now() - 15_000 });
+        await checkForUpdates(web as unknown as typeof fetch);
+        await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1));
+      }
+    });
+
+    it('a tap that lands during the reminder\'s own check still asks the app', async () => {
+      const check = plugin({ status: 'up-to-date', checkedAt: Date.now() - 1000 });
+      let answer!: (r: Response) => void;
+      const slow = vi.fn(() => new Promise<Response>((r) => { answer = r; }));
+      const auto = checkForUpdates(slow as unknown as typeof fetch);
+      const tap = checkForUpdates(undefined, { manual: true });
+      await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1));
+      answer(new Response(JSON.stringify({ version: '0.0.1' }), { status: 200 }));
+      await Promise.all([auto, tap]);
+      expect(check).toHaveBeenCalledTimes(1);
+    });
+
     it('a tap on Check for updates always asks the app', async () => {
       const check = plugin({ status: 'up-to-date', checkedAt: Date.now() - 1000 });
       await checkForUpdates(web as unknown as typeof fetch, { manual: true });
