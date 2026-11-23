@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { skipToken, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -91,14 +92,26 @@ export function useQueryHistory() {
   });
 }
 
-export function useQueryPlaylists() {
+/** The playlist list. `poll: false` for a reader that is mounted but not on
+ *  screen (the phone's hidden sidebar, the closed drawer): it reads the
+ *  shared list and fetches it once if there is none, but does not poll.
+ *  Coming on screen, a list older than the poll is fetched again at once. */
+export function useQueryPlaylists({ poll = true }: { poll?: boolean } = {}) {
   const { user } = useAuth();
-  return useQuery({
+  const query = useQuery({
     queryKey: QK.playlists,
     queryFn: () => api.listPlaylists().then((r) => r.playlists),
     enabled: !!user,
-    refetchInterval: PLAYLISTS_POLL_MS,
+    refetchInterval: poll ? PLAYLISTS_POLL_MS : false,
   });
+  const { refetch, dataUpdatedAt } = query;
+  useEffect(() => {
+    if (!poll || !user || !dataUpdatedAt) return;
+    if (Date.now() - dataUpdatedAt >= PLAYLISTS_POLL_MS) void refetch();
+    // Only on coming on screen: the poll itself does the rest.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poll]);
+  return query;
 }
 
 /** How many songs each playlist holds, by id. Only the head unit's covers

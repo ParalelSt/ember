@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { usePositionPersistence } from './usePositionPersistence';
+import { SAVE_EVERY_MS, SAVE_HIDDEN_EVERY_MS, usePositionPersistence } from './usePositionPersistence';
 import { makeFakeBackend, makeTrack, type FakeBackend } from '@/test-utils/fakeBackend';
 
 const a = makeTrack();
@@ -176,26 +176,69 @@ describe('usePositionPersistence: write moments', () => {
 });
 
 describe('usePositionPersistence: noteTime', () => {
-  it('writes through at most once a second', () => {
+  it('saves nothing by itself: the periodic write saves the playhead', () => {
     vi.useFakeTimers();
-    const { api } = setup();
-    act(() => api().noteTime(3));
-    expect(storedPosition()).toBe(3);
-    act(() => api().noteTime(3.25));
-    expect(storedPosition()).toBe(3);
-    act(() => { vi.advanceTimersByTime(1100); });
-    act(() => api().noteTime(4.5));
-    expect(storedPosition()).toBe(4.5);
+    const { backend, api } = setup();
+    backend!.durationSec = 200;
+    backend!.paused = false;
+    const write = vi.spyOn(localStorage, 'setItem');
+    for (let s = 3; s < 4.8; s += 0.25) act(() => api().noteTime(s));
+    expect(write).not.toHaveBeenCalled();
+    backend!.currentTime = 7;
+    act(() => { vi.advanceTimersByTime(SAVE_EVERY_MS); });
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(storedPosition()).toBe(7);
+    write.mockRestore();
   });
 
   it('ignores reports during a transition or from the first half second', () => {
     const { backend, api } = setup();
     backend!.transitioning = true;
     act(() => api().noteTime(30));
-    expect(storedPosition()).toBe(0);
     backend!.transitioning = false;
     act(() => api().noteTime(0.4));
+    backend!.currentTime = 0.1;
+    backend!.durationSec = 0;
+    act(() => api().persist());
+    // Nothing trustworthy was reported: nothing is written.
     expect(storedPosition()).toBe(0);
+  });
+});
+
+describe('usePositionPersistence: hidden page', () => {
+  const setHidden = (hidden: boolean) => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+  afterEach(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+  });
+
+  it('saves on the way out, then every 20 s while hidden, and every 5 s once back', () => {
+    vi.useFakeTimers();
+    const { backend } = setup();
+    backend!.durationSec = 200;
+    backend!.paused = false;
+    backend!.currentTime = 30;
+    const write = vi.spyOn(localStorage, 'setItem');
+    act(() => setHidden(true));
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(storedPosition()).toBe(30);
+    backend!.currentTime = 90;
+    act(() => { vi.advanceTimersByTime(SAVE_HIDDEN_EVERY_MS - 100); });
+    expect(write).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(100); });
+    // Killed now (no pagehide), it would resume at 90, not at 30.
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(storedPosition()).toBe(90);
+    act(() => { vi.advanceTimersByTime(SAVE_HIDDEN_EVERY_MS * 2); });
+    expect(write).toHaveBeenCalledTimes(4);
+    act(() => setHidden(false));
+    backend!.currentTime = 150;
+    act(() => { vi.advanceTimersByTime(SAVE_EVERY_MS); });
+    expect(write).toHaveBeenCalledTimes(5);
+    expect(storedPosition()).toBe(150);
+    write.mockRestore();
   });
 });
 

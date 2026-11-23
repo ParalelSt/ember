@@ -248,6 +248,74 @@ describe('the Android app (0.4.34 on: it waits for a tap)', () => {
     useUpdateStore.getState().set({ status: 'available', offer: { kind: 'shell', version: '0.4.34', canApply: true, via: 'android' } });
   }
 
+  describe('one check at a time with the app\'s own start check', () => {
+    const web = vi.fn(async () => new Response(JSON.stringify({ version: '0.0.1' }), { status: 200 }));
+    function plugin(state: Record<string, unknown>) {
+      const check = vi.fn(async () => ({}));
+      (window as W).Capacitor = {
+        isNativePlatform: () => true,
+        getPlatform: () => 'android',
+        Plugins: { EmberUpdate: { getState: vi.fn(async () => state), download: vi.fn(), check } },
+      };
+      return check;
+    }
+
+    it('the reminder\'s check leaves the app alone when the app has just checked', async () => {
+      const check = plugin({ status: 'up-to-date', checkedAt: Date.now() - 15_000 });
+      await checkForUpdates(web as unknown as typeof fetch);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(check).not.toHaveBeenCalled();
+      // The web build is still checked.
+      expect(web).toHaveBeenCalled();
+    });
+
+    it('nor while the app is still checking', async () => {
+      const check = plugin({ status: 'checking', checkedAt: 0 });
+      await checkForUpdates(web as unknown as typeof fetch);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(check).not.toHaveBeenCalled();
+    });
+
+    it('asks the app when its last answer is old (the 30 minute check)', async () => {
+      const check = plugin({ status: 'up-to-date', checkedAt: Date.now() - 31 * 60_000 });
+      await checkForUpdates(web as unknown as typeof fetch);
+      await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1));
+    });
+
+    it('a failed check of the app is not an answer: the reminder still asks', async () => {
+      // The app stamps checkedAt before it reads the reply.
+      for (const status of ['idle', 'failed']) {
+        const check = plugin({ status, checkedAt: Date.now() - 15_000 });
+        await checkForUpdates(web as unknown as typeof fetch);
+        await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1));
+      }
+    });
+
+    it('a tap that lands during the reminder\'s own check still asks the app', async () => {
+      const check = plugin({ status: 'up-to-date', checkedAt: Date.now() - 1000 });
+      let answer!: (r: Response) => void;
+      const slow = vi.fn(() => new Promise<Response>((r) => { answer = r; }));
+      const auto = checkForUpdates(slow as unknown as typeof fetch);
+      const tap = checkForUpdates(undefined, { manual: true });
+      await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1));
+      answer(new Response(JSON.stringify({ version: '0.0.1' }), { status: 200 }));
+      await Promise.all([auto, tap]);
+      expect(check).toHaveBeenCalledTimes(1);
+    });
+
+    it('a tap on Check for updates always asks the app', async () => {
+      const check = plugin({ status: 'up-to-date', checkedAt: Date.now() - 1000 });
+      await checkForUpdates(web as unknown as typeof fetch, { manual: true });
+      await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1));
+    });
+
+    it('what the app found still becomes the offer', async () => {
+      plugin({ status: 'available', current: '0.4.34', latest: '0.4.35', checkedAt: Date.now() - 1000 });
+      await noteAppUpdateState({ ...IDLE_UPDATE_STATE, status: 'available', current: '0.4.34', latest: '0.4.35', checkedAt: Date.now() - 1000 });
+      expect(useUpdateStore.getState().offer).toMatchObject({ kind: 'shell', version: '0.4.35' });
+    });
+  });
+
   it('a newer app found by the app becomes the offer', async () => {
     await noteAppUpdateState({ ...IDLE_UPDATE_STATE, status: 'available', current: '0.4.33', latest: '0.4.34' });
     expect(useUpdateStore.getState().offer).toEqual({ kind: 'shell', version: '0.4.34', canApply: true, via: 'android' });

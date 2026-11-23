@@ -125,41 +125,104 @@ export function readNativeCacheState(s: unknown): NativeCacheState {
   return { cachedIds: ids, offlineStalled: o.offlineStalled === true, offline: o.offline === true };
 }
 
+/** One subscriber to the cache state: its own bridge listener only while
+ *  no Android backend relays the player's `state` events. */
+interface CacheSub {
+  emit: (d: unknown) => void;
+  live: boolean;
+  /** Its own `state` listener (a handle, or the promise of one). */
+  direct: Promise<Handle | null> | null;
+}
+
+const cacheSubs = new Set<CacheSub>();
+/** Android backends relaying `state` (androidBackend); normally one. */
+let relays = 0;
+
+function attachDirect(sub: CacheSub): void {
+  const p = plugin();
+  if (!sub.live || sub.direct || !p || typeof p.addListener !== 'function') return;
+  try {
+    const h = p.addListener('state', ((d: unknown) => {
+      if (sub.live && relays === 0) sub.emit(d);
+    }) as (d: never) => void);
+    sub.direct = Promise.resolve(h as Handle | Promise<Handle> | null | undefined).then(
+      (x) => (x && typeof (x as Handle).remove === 'function' ? (x as Handle) : null),
+      () => null,
+    );
+  } catch {
+    sub.direct = null;
+  }
+}
+
+function detachDirect(sub: CacheSub): void {
+  const d = sub.direct;
+  sub.direct = null;
+  void d?.then((h) => {
+    try {
+      h?.remove();
+    } catch {
+      /* the bridge is going away with the WebView */
+    }
+  });
+}
+
+/** The Android backend listens to the player's `state` events anyway (a
+ *  position 4 times a second), and hands each one here: the cache state
+ *  then needs no listener of its own, and the bridge sends every state
+ *  once instead of twice. Returns the stop (the backend going away); with
+ *  no relay left, subscribers listen for themselves again. */
+export function startNativeStateRelay(): () => void {
+  relays += 1;
+  if (relays === 1) for (const sub of cacheSubs) detachDirect(sub);
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    relays -= 1;
+    if (relays === 0) for (const sub of cacheSubs) attachDirect(sub);
+  };
+}
+
+/** One native `state` event, from the relaying backend. */
+export function relayNativeState(d: unknown): void {
+  if (relays === 0) return;
+  for (const sub of cacheSubs) {
+    if (sub.live) sub.emit(d);
+  }
+}
+
 /** Calls `cb` with the cache state now and whenever the native player
  *  reports. Returns an unsubscribe. A no-op on builds without the plugin. */
 export function subscribeNativeCacheState(cb: (s: NativeCacheState) => void): () => void {
   const p = plugin();
   if (!p || typeof p.addListener !== 'function') return () => {};
-  let live = true;
-  let handle: Handle | null = null;
-  const emit = (d: unknown) => {
-    if (live) cb(readNativeCacheState(d));
+  const sub: CacheSub = {
+    emit: (d) => {
+      if (sub.live) cb(readNativeCacheState(d));
+    },
+    live: true,
+    direct: null,
   };
-  try {
-    const h = p.addListener('state', emit as (d: never) => void);
-    if (h && typeof (h as Promise<Handle>).then === 'function') {
-      (h as Promise<Handle>).then(
-        (x) => {
-          if (live) handle = x;
-          else x?.remove?.();
-        },
-        () => {},
-      );
-    } else if (h && typeof (h as Handle).remove === 'function') {
-      handle = h as Handle;
-    }
-  } catch {
-    return () => {};
-  }
-  if (typeof p.getState === 'function') p.getState().then(emit, () => {});
-  return () => {
-    live = false;
+  cacheSubs.add(sub);
+  if (relays === 0) attachDirect(sub);
+  if (typeof p.getState === 'function') {
     try {
-      handle?.remove();
+      p.getState().then(sub.emit, () => {});
     } catch {
-      /* the bridge is going away with the WebView */
+      /* the events still come */
     }
+  }
+  return () => {
+    sub.live = false;
+    cacheSubs.delete(sub);
+    detachDirect(sub);
   };
+}
+
+/** Test seam: forget every subscriber and relay. */
+export function resetNativeCacheRelayForTests(): void {
+  cacheSubs.clear();
+  relays = 0;
 }
 
 /** Where a queue came from: the store's `context` and `baseCount`. */

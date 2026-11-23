@@ -23,6 +23,10 @@ const RING_MAX = 400;
 const STORAGE_KEY = 'ember.logs.last';
 const STORAGE_MAX_BYTES = 256 * 1024; // ~256 KB
 const CONSOLE_DEDUPE_MS = 1000;
+/** Most console texts remembered for the dedupe. Only the last second
+ *  counts, and messages that carry ids or URLs are each new, so on a long
+ *  session the map grew without end. */
+export const CONSOLE_SEEN_MAX = 200;
 /** Window errors that are the browser's notices, not faults: Chrome's and
  *  older browsers' wording for a ResizeObserver whose callback changed a size
  *  it was still reporting on. */
@@ -113,13 +117,26 @@ class ClientLogger {
     };
   }
 
+  /** Test seam: how many console texts the dedupe remembers. */
+  consoleSeenCount(): number {
+    return this.consoleSeen.size;
+  }
+
   private recordConsole(level: 'error' | 'warn', args: unknown[]): void {
     const message = args.map((a) => (a instanceof Error ? a.message : String(a))).join(' ');
     const key = `${level}:${message}`;
     const now = Date.now();
     const last = this.consoleSeen.get(key);
     if (last !== undefined && now - last < CONSOLE_DEDUPE_MS) return;
+    // Re-inserted, so the map runs oldest first.
+    this.consoleSeen.delete(key);
     this.consoleSeen.set(key, now);
+    if (this.consoleSeen.size > CONSOLE_SEEN_MAX) {
+      for (const [k, at] of this.consoleSeen) {
+        if (this.consoleSeen.size <= CONSOLE_SEEN_MAX && now - at < CONSOLE_DEDUPE_MS) break;
+        this.consoleSeen.delete(k);
+      }
+    }
     this.breadcrumb('console', message, { level });
   }
 

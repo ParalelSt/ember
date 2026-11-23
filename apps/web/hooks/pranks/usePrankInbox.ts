@@ -149,14 +149,13 @@ export function usePrankInbox({
 
   /** One fetch at a time, never inside a backoff, never closer than
    *  MIN_FETCH_GAP_MS to the last one (an effect re-firing must not turn
-   *  into a request storm), and none while the tab is hidden with nothing
-   *  playing. Hidden while playing still fetches: that is how a phone
-   *  plays (screen off, another app in front, the native engine behind a
-   *  hidden WebView), and a sound only lands while music plays. */
+   *  into a request storm), and none while the page is hidden: a hidden
+   *  page (screen off, another app in front) polled every 2.5 s for as long
+   *  as music played. Showing the page again checks at once. */
   const catchUp = useRef((skipGap = false): Promise<void> => {
     if (inFlight.current) return inFlight.current;
     const now = Date.now();
-    if (typeof document !== 'undefined' && document.hidden && !playingRef.current) return Promise.resolve();
+    if (typeof document !== 'undefined' && document.hidden) return Promise.resolve();
     if (backoff.current.blocked(now) || (!skipGap && now - lastFetchAt.current < MIN_FETCH_GAP_MS)) return Promise.resolve();
     lastFetchAt.current = now;
     const p = depsRef.current
@@ -212,16 +211,25 @@ export function usePrankInbox({
     const tick = async () => {
       clearTimeout(timer);
       if (stopped) return;
+      // Hidden: no timer at all until the page is shown again (onVisible).
+      if (document.hidden) return;
       if (!live.current || waiting.current.size) await catchUp.current();
-      if (stopped) return;
+      if (stopped || document.hidden) return;
       // Another tick (the tab shown again) may have waited on the same
       // fetch and armed its timer already: one timer, never two.
       clearTimeout(timer);
       timer = setTimeout(tick, Math.max(every, backoff.current.remaining()));
     };
     void tick();
+    // Shown again: one check at once, then the poll resumes.
+    // Always one fetch on coming back, live link or not: a reconnect while
+    // hidden skipped its catch-up, and a live link never polls after it.
     const onVisible = () => {
-      if (!document.hidden) void tick();
+      if (!document.hidden) {
+        void catchUp.current(true);
+        void tick();
+      }
+      else clearTimeout(timer);
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {

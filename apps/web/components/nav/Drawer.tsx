@@ -34,7 +34,8 @@ export function Drawer({ open, onOpenChange }: Props) {
   const pathname = usePathname();
   const { user, name: displayName, avatarUrl, isAdmin } = useAuth();
   const NAV = isAdmin ? [...BASE_NAV, ADMIN_NAV_ITEM] : BASE_NAV;
-  const { data: playlists = [] } = useQueryPlaylists();
+  // Mounted while closed: it only polls while open.
+  const { data: playlists = [] } = useQueryPlaylists({ poll: open });
   const collectionTracks = useCachedCollectionTracks();
   const { hasNew } = useChangelog();
   const { data: importJobs = [] } = useImportJobs();

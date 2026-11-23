@@ -49,6 +49,15 @@ class PageStateGate {
         onScreen = false
     }
 
+    /** Whether the position tick runs: on screen and playing. Paused, it
+     *  stops instead of waking 4 times a second to send nothing; the player
+     *  starting again restarts it ([tickResumes]). */
+    fun ticks(playing: Boolean): Boolean = onScreen && playing
+
+    /** A player event: restart the stopped tick when the music plays again
+     *  on screen. */
+    fun tickResumes(ticking: Boolean, playing: Boolean): Boolean = !ticking && ticks(playing)
+
     companion object {
         /** What tells two states apart for a page that is not on screen:
          *  everything but the position, the length and the cache list. */

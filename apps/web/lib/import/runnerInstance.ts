@@ -14,11 +14,22 @@ import { ImportRunner } from '@/lib/import/runner';
 
 const KEY = Symbol.for('ember.importRunner');
 const POLL_MS = 5_000;
+/** The poll after a pass that found nothing: a new import kicks the runner
+ *  at once (kickImportRunner), so the poll is only the fallback for a job
+ *  waiting out a retry or left behind by another server. */
+export const IDLE_POLL_MS = 60_000;
 const HEARTBEAT_MS = 5_000;
+
+/** The wait before the next pass. */
+export function nextImportPollMs(worked: boolean): number {
+  return worked ? POLL_MS : IDLE_POLL_MS;
+}
 
 interface Slot {
   runner: ImportRunner;
   started: boolean;
+  /** Arms the next poll (after a pass, or a kick). */
+  rearm?: () => void;
 }
 
 const envMs = (name: string): number | undefined => {
@@ -68,10 +79,27 @@ export function startImportRunner(): void {
   const s = slot();
   if (s.started) return;
   s.started = true;
-  const tick = () =>
-    void s.runner.tick().catch((e) => serverLogger.warn('import', 'runner pass failed', { error: (e as Error).message }));
-  const poll = setInterval(tick, POLL_MS);
-  poll.unref?.();
+  let poll: ReturnType<typeof setTimeout> | undefined;
+  const arm = (ms: number) => {
+    clearTimeout(poll);
+    poll = setTimeout(tick, ms);
+    poll.unref?.();
+  };
+  // A pass that found work (or failed: PocketBase restarting) polls again
+  // soon; one that found nothing waits IDLE_POLL_MS.
+  const tick = () => {
+    void s.runner
+      .tick()
+      .then(
+        () => nextImportPollMs(s.runner.lastPassWorked === true),
+        (e) => {
+          serverLogger.warn('import', 'runner pass failed', { error: (e as Error).message });
+          return POLL_MS;
+        },
+      )
+      .then((ms) => arm(ms));
+  };
+  s.rearm = () => arm(POLL_MS);
   // Say "still here" while a job is being worked on, so another server on
   // the same PocketBase never takes it over mid-batch.
   const beat = setInterval(() => {
@@ -91,8 +119,12 @@ export function kickImportRunner(): void {
   // request it would log every later job as theirs.
   outsideRequest(() => {
     startImportRunner();
-    void slot()
-      .runner.tick()
-      .catch(() => {});
+    const s = slot();
+    // The job's own pass, now; the poll is back on the fast cadence while
+    // it runs.
+    void s.runner
+      .tick()
+      .catch(() => {})
+      .finally(() => s.rearm?.());
   });
 }

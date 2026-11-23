@@ -65,6 +65,8 @@ object GateHistory {
 class UpdatedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        // The old 6-hourly job outlives the update that removed it.
+        LegacyUpdateJob.cancel(context)
         val at = GateHistory.takeInstallAt(context)
         if (!GateHistory.relaunchNoticeDue(System.currentTimeMillis(), at)) return
         AppUpdater.init(context)

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { setAndroidDiscordSharing } from '@/lib/androidDiscord';
+import { useAndroidDiscordSwitch } from '@/hooks/player/useAndroidDiscordSwitch';
 import { useStationSong } from '@/hooks/player/useStationSong';
 import { publishDiscordPresence } from '@/lib/discordPresence';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
@@ -149,12 +149,6 @@ export function useDiscordPresence({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [songKey, track?.id]);
 
-  // The Android app keeps the switch on disk for when no page is open. Only
-  // the account's real answer goes there: until it loads the store says "off"
-  // whatever the account says, and a failed load (no connection) knows nothing
-  // new, so neither may overwrite it.
-  const privacyLoaded = usePrivacyStore((st) => st.loaded);
-  useEffect(() => {
-    if (privacyLoaded) setAndroidDiscordSharing(shareDiscord);
-  }, [privacyLoaded, shareDiscord]);
+  // The Android app keeps the switch on disk for when no page is open.
+  useAndroidDiscordSwitch();
 }

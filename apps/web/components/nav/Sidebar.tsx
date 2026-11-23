@@ -24,6 +24,7 @@ import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
 import { hrefFor, navCollections, sharedLabel } from '@/lib/collections';
 import { firstArts } from '@/lib/library';
 import { useUiStore } from '@/stores/useUiStore';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 /** The desktop sidebar. `covers` (a car head unit with the car layout
  *  switched off, owner's pick carlayout2): the same links as big rows with
@@ -32,7 +33,9 @@ export function Sidebar({ covers = false }: { covers?: boolean }) {
   const pathname = usePathname();
   const { user, name: displayName, avatarUrl, isAdmin } = useAuth();
   const NAV = isAdmin ? [...BASE_NAV, ADMIN_NAV_ITEM] : BASE_NAV;
-  const { data: playlists = [] } = useQueryPlaylists();
+  // Mounted on phones too, hidden by CSS: it only polls where it shows.
+  const onScreen = useIsDesktop();
+  const { data: playlists = [] } = useQueryPlaylists({ poll: onScreen });
   const collectionTracks = useCachedCollectionTracks();
   const { hasNew } = useChangelog();
   const { createOpen, setCreateOpen, handleCreate } = useCreatePlaylistFlow();

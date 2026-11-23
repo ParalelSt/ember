@@ -142,18 +142,26 @@ export class ImportRunner {
 
   /** Run queued jobs until none are left. Calling it while a pass is in
    *  progress only asks for one more pass, so there is never a second loop. */
+  /** Whether the last pass found anything to do (a job claimed or an
+   *  orphan released): the poll slows down after one that did not. */
+  lastPassWorked = false;
+
   async tick(): Promise<void> {
     if (this.busy) {
       this.again = true;
       return;
     }
     this.busy = true;
+    this.lastPassWorked = false;
     const { store, now, runnerId } = this.deps;
     try {
       do {
         this.again = false;
         const released = await store.releaseStale(now() - (this.deps.staleMs ?? STALE_MS));
-        if (released) this.deps.log?.('released orphaned imports', { released });
+        if (released) {
+          this.lastPassWorked = true;
+          this.deps.log?.('released orphaned imports', { released });
+        }
         // A transfer that just stepped aside, so the next claim goes to
         // whoever was waiting behind it.
         let skip: string | undefined;
@@ -161,6 +169,7 @@ export class ImportRunner {
           const job = await store.claimNext(runnerId, now(), skip);
           skip = undefined;
           if (!job) break;
+          this.lastPassWorked = true;
           this.currentJobId = job.id;
           try {
             if ((await this.runJob(job)) === 'yielded') skip = job.id;

@@ -10,6 +10,7 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
 import type { AudioBackendEvents } from '@/lib/playback/types';
+import { useRadioExtend } from '@/hooks/player/useRadioExtend';
 
 vi.mock('@/lib/api', () => ({ api: {}, apiUrl: (u: string) => u }));
 vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => 'capacitor' }));
@@ -66,6 +67,28 @@ beforeEach(() => {
   usePlayerStore.setState({
     queue: [A, B], index: 0, position: 0, isPlaying: false, duration: 0,
     context: null, loopMode: 'off', shuffle: false, orderBackup: null,
+  });
+});
+
+describe('android: radio', () => {
+  const lastRadioCurrent = () => vi.mocked(useRadioExtend).mock.calls.at(-1)?.[0].current;
+
+  // The page's radio ranks with history, likes and the list (variant
+  // blocking, artist drift); native's own is plainer and only covers the
+  // car and a closed app. With the page alive the page's runs, and native
+  // sees it got there first.
+  it('the page\'s radio follows the song on Android, whatever the app build', () => {
+    for (const extends_ of [false, true]) {
+      (fake as { extendsRadio?: boolean }).extendsRadio = extends_;
+      try {
+        usePlayerStore.setState({ queue: [A], index: 0 });
+        const { unmount } = render(<PlayerProvider><div /></PlayerProvider>);
+        expect(lastRadioCurrent()?.id).toBe(A.id);
+        unmount();
+      } finally {
+        delete (fake as { extendsRadio?: boolean }).extendsRadio;
+      }
+    }
   });
 });
 

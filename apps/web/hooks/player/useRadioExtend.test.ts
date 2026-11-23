@@ -96,6 +96,37 @@ describe('useRadioExtend', () => {
     });
   });
 
+  it('drops all but the last 50 played songs when it extends a long radio session', async () => {
+    const played = Array.from({ length: 80 }, (_, i) => makeTrack({ id: `youtube:p${i}`, sourceId: `p${i}` }));
+    const queue = [...played, seed];
+    usePlayerStore.setState({ baseCount: 10 });
+    setup({ queue, index: 80 });
+    await waitFor(() => expect(usePlayerStore.getState().queue.at(-1)?.id).toBe('youtube:r2'));
+    const st = usePlayerStore.getState();
+    expect(st.queue).toHaveLength(53);
+    expect(st.queue[st.index].id).toBe('youtube:seed');
+    expect(st.index).toBe(50);
+    expect(st.queue[0].id).toBe('youtube:p30');
+    expect(st.baseCount).toBe(0);
+  });
+
+  it('with shuffle on, the dropped songs leave the way back too, so shuffle off does not bring them back', async () => {
+    const played = Array.from({ length: 80 }, (_, i) => makeTrack({ id: `youtube:p${i}`, sourceId: `p${i}` }));
+    const queue = [...played, seed];
+    // Shuffled: the way back holds the same songs in another order.
+    usePlayerStore.setState({ baseCount: 0, shuffle: true, orderBackup: [seed, ...played.slice().reverse()] });
+    setup({ queue, index: 80 });
+    await waitFor(() => expect(usePlayerStore.getState().queue.at(-1)?.id).toBe('youtube:r2'));
+    const st = usePlayerStore.getState();
+    expect(st.orderBackup).toHaveLength(st.queue.length);
+    expect(st.orderBackup!.map((t) => t.id).sort()).toEqual(st.queue.map((t) => t.id).sort());
+    usePlayerStore.getState().toggleShuffle();
+    const after = usePlayerStore.getState();
+    expect(after.queue).toHaveLength(53);
+    expect(after.queue.some((t) => t.id === 'youtube:p0')).toBe(false);
+    expect(after.queue[after.index].id).toBe('youtube:seed');
+  });
+
   it('does not fetch while loop-all is on, and fetches when it goes off', async () => {
     const { rerender } = setup({ loopMode: 'all' });
     expect(api.getRecommended).not.toHaveBeenCalled();

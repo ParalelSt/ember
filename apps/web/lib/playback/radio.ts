@@ -84,3 +84,45 @@ export function rankRadioPool({ pool, queue, current, history, liked, context }:
   }
   return merged;
 }
+
+/** Songs already played that radio keeps behind the current one (Previous
+ *  still reaches them). Radio appends at every queue end and never removed
+ *  anything, so a long session grew the queue (saved, sent to other
+ *  devices and the app) without bound. */
+export const RADIO_HISTORY_KEEP = 50;
+
+/** The queue with all but the last [keep] played songs dropped from its
+ *  front, the current song and everything after it untouched. `index` and
+ *  `baseCount` (the list's own songs at the front) move with it. The same
+ *  arrays back when there is nothing to drop. */
+export function trimPlayed<T>(
+  queue: T[],
+  index: number,
+  baseCount: number,
+  keep: number = RADIO_HISTORY_KEEP,
+): { queue: T[]; index: number; baseCount: number; dropped: number } {
+  const dropped = Math.max(0, index - Math.max(0, keep));
+  if (dropped === 0) return { queue, index, baseCount, dropped: 0 };
+  return {
+    queue: queue.slice(dropped),
+    index: index - dropped,
+    baseCount: Math.max(0, baseCount - dropped),
+    dropped,
+  };
+}
+
+/** [backup] (the shuffle's way back) without the songs [dropped] took off
+ *  the queue's front, one entry per dropped song, matched by id: turning
+ *  shuffle off must not bring them back, and the backup must not grow
+ *  without bound either. */
+export function withoutDropped<T extends { id: string }>(backup: T[], dropped: readonly T[]): T[] {
+  if (dropped.length === 0) return backup;
+  const left = new Map<string, number>();
+  for (const t of dropped) left.set(t.id, (left.get(t.id) ?? 0) + 1);
+  return backup.filter((t) => {
+    const n = left.get(t.id) ?? 0;
+    if (n === 0) return true;
+    left.set(t.id, n - 1);
+    return false;
+  });
+}

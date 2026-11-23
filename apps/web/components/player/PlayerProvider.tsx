@@ -44,6 +44,8 @@ import { useAutoCache } from '@/hooks/player/useAutoCache';
 import type { BackendKind } from '@/lib/autoCache/select';
 import type { QueueOrigin } from '@/lib/autoCache/native';
 import { useDiscordPresence } from '@/hooks/player/useDiscordPresence';
+import { useAndroidDiscordSwitch } from '@/hooks/player/useAndroidDiscordSwitch';
+import { androidOwnsDiscord } from '@/lib/androidDiscord';
 import { usePositionPersistence } from '@/hooks/player/usePositionPersistence';
 import { useRadioExtend } from '@/hooks/player/useRadioExtend';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
@@ -78,6 +80,7 @@ import { musicLevel } from '@/lib/pranks/mix';
 import { isLiveTrack } from '@/lib/radio/station';
 import { PrankReceiver } from './PrankReceiver';
 import { UnplayableAnnouncer } from './UnplayableMessage';
+import { PlayheadFrozenContext } from './playheadFrozen';
 import { setPlaybackElsewhereProbe, setUpdatePause, takeAppUpdateResume, takeUpdateResume, updateAtSongEnd, type ResumeTarget } from '@/lib/update/apply';
 
 interface PlayerControls {
@@ -227,7 +230,9 @@ function pinnedIds(): Set<string> {
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const queue = usePlayerStore((s) => s.queue);
   const index = usePlayerStore((s) => s.index);
-  const position = usePlayerStore((s) => s.position);
+  // Not the playhead: it is reported 4 times a second while audio plays,
+  // and every render here rebuilds the whole player. The views that show it
+  // read usePlayerPosition; Discord presence reads it in a child of its own.
   const duration = usePlayerStore((s) => s.duration);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const volume = usePlayerStore((s) => s.volume);
@@ -456,7 +461,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           const playingId = st.queue[st.index]?.id;
           if (playingId) forgetCouldntPlay(playingId);
         }
-        // For the views only: noteTime saves it, about once a second.
+        // For the views only: usePositionPersistence saves it (every 5 s while
+        // shown, on pause, on leave).
         usePlayerStore.getState().reportPosition(sec);
         positions.noteTime(sec);
       },
@@ -1616,10 +1622,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       announce([{ ...waiting, outcome: 'stopped' }]);
     }
   }, [announce]);
-  // A device this one controls extends its own queue.
+  // A device this one controls extends its own queue. On Android the page's
+  // radio (ranked with history and likes) runs while the page is alive; the
+  // native player's own radio sees it got there first and stays out
+  // (EmberPlaybackService.fetchRadio), and covers the car and a closed app.
   useRadioExtend({ current: controlling ? null : current, queue, index, history, liked, context, loopMode, onExtended: onRadioExtended });
 
-  useDiscordPresence({ current, isPlaying, position, duration });
+  // Discord presence: see DiscordPresence below (rendered as a child).
+  const [discordHere, setDiscordHere] = useState<'page' | 'app' | null>(null);
+  useEffect(() => setDiscordHere(androidOwnsDiscord() ? 'app' : 'page'), []);
 
   // Queue-owning backend (Android): whenever the store's queue changes from
   // THIS side (radio append, add to queue, a queue sheet edit), hand the new
@@ -1971,12 +1982,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   return (
     <PlayerContext.Provider value={value}>
       <PrankReceiver backendRef={backendRef} engineRef={backendKindRef} onDuck={setDuck} />
+      {discordHere === 'page' && <DiscordPresence current={current} isPlaying={isPlaying} />}
+      {discordHere === 'app' && <AndroidDiscordSwitch />}
       {/* Songs that could not play, said once for screen readers; the bar
           and the full-screen player show it (components/player/UnplayableMessage). */}
       <UnplayableAnnouncer />
       {children}
     </PlayerContext.Provider>
   );
+}
+
+/** Discord presence, in a child of its own: it watches the playhead for
+ *  seeks, so only this empty component re-renders several times a second,
+ *  never the provider. */
+function DiscordPresence({ current, isPlaying }: { current: Track | null; isPlaying: boolean }) {
+  const position = usePlayerStore((s) => s.position);
+  const duration = usePlayerStore((s) => s.duration);
+  useDiscordPresence({ current, isPlaying, position, duration });
+  return null;
+}
+
+/** In the Android app the player service publishes the card by itself:
+ *  the page only hands down the switch, with no playhead and no station
+ *  song poll. */
+function AndroidDiscordSwitch() {
+  useAndroidDiscordSwitch();
+  return null;
 }
 
 export function usePlayer() {
@@ -1990,5 +2021,11 @@ export function usePlayer() {
  *  reader (each track list page among them) re-rendered with it. The volume
  *  is not either (a slider drag is as busy): read the store for it. */
 export function usePlayerPosition(): number {
-  return usePlayerStore((s) => s.position);
+  const frozen = useContext(PlayheadFrozenContext);
+  const last = useRef(0);
+  // Frozen (a closed view): the selector answers the last value, so the
+  // store's reports re-render nothing; open again, it reads the live one.
+  const position = usePlayerStore((s) => (frozen ? last.current : s.position));
+  last.current = position;
+  return position;
 }

@@ -26,6 +26,47 @@ fun interface Delay {
     fun after(ms: Long, task: Runnable): () -> Unit
 }
 
+/** The native logs' threads and session, one of each per process. The
+ *  player service's log and the updater's log (AppUpdater) both send on
+ *  [io] and time on [timer], so the updater adds no threads of its own, and
+ *  both file their events under the same [session] in the admin view.
+ *  Never shut down: they live as long as the process, idle when nothing is
+ *  logged. A user of [delay] that goes away (the service) cancels its own
+ *  timers ([Timers]). */
+object NativeLogThreads {
+    val session: String = UUID.randomUUID().toString()
+    val io: java.util.concurrent.ExecutorService by lazy {
+        java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "ember-log-io").apply { isDaemon = true } }
+    }
+    val timer: java.util.concurrent.ScheduledExecutorService by lazy {
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "ember-log-timer").apply { isDaemon = true } }
+    }
+
+    /** A [Delay] on [timer] whose pending tasks [cancelAll] drops, the way
+     *  shutting down an executor of one's own did. */
+    class Timers : Delay {
+        private val pending = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<java.util.concurrent.Future<*>, Boolean>())
+        @Volatile private var closed = false
+
+        override fun after(ms: Long, task: Runnable): () -> Unit {
+            if (closed) throw java.util.concurrent.RejectedExecutionException("closed")
+            val f = timer.schedule(task, ms, java.util.concurrent.TimeUnit.MILLISECONDS)
+            pending.removeIf { it.isDone }
+            pending.add(f)
+            return { f.cancel(false); pending.remove(f); Unit }
+        }
+
+        /** Cancels everything still waiting; later calls are refused. */
+        fun cancelAll() {
+            closed = true
+            pending.toList().forEach { it.cancel(false) }
+            pending.clear()
+        }
+
+        internal fun pendingCount(): Int = pending.count { !it.isDone }
+    }
+}
+
 /** Where the player is used, as the admin's "Car and Android Auto" view
  *  groups it: a phone, a phone projecting to a car (Android Auto), or a car
  *  running Android itself (AAOS). */

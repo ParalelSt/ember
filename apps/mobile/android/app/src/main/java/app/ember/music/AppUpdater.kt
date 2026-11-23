@@ -2,6 +2,7 @@ package app.ember.music
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.job.JobScheduler
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
@@ -77,11 +78,24 @@ object UpdatePresence {
     }
 }
 
+/** Up to Android 0.4.35 a JobScheduler job (UpdateCheckJob, id 72011)
+ *  checked the feed every 6 hours, with the app closed too. Updates wait for
+ *  a tap now, so that job is gone. JobScheduler keeps a persisted job across
+ *  app updates and reboots, though, so each start (and the update itself,
+ *  UpdatedReceiver) drops it. Cancelling a job that is not there is a no-op. */
+object LegacyUpdateJob {
+    const val JOB_ID = 72_011
+
+    fun cancel(context: Context) {
+        runCatching { (context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as? JobScheduler)?.cancel(JOB_ID) }
+    }
+}
+
 /** Ember's Android app updating itself from the Ember server, the way the
  *  desktop app does (apps/desktop/src-tauri/src/update.rs).
  *
- *  Asks GET /api/android/update on app start and every 6 hours
- *  (UpdateCheckJob), downloads the APK into app storage over a working
+ *  Asks GET /api/android/update on app start (and when the page asks),
+ *  downloads the APK into app storage over a working
  *  network (Wi-Fi or mobile data), checks that it is the next Ember signed
  *  with the same key, and installs it with a PackageInstaller session
  *  (UpdateInstaller) only when that interrupts nobody: never in the car,
@@ -141,8 +155,6 @@ object AppUpdater {
     /** Tests: the server to ask in place of capacitor.config.json's. */
     private var testBaseUrl: String? = null
     @Volatile private var initialized = false
-    private val logIo = Executors.newSingleThreadExecutor()
-    private val logTimer = Executors.newSingleThreadScheduledExecutor()
     private val main by lazy { Handler(Looper.getMainLooper()) }
     private val listeners = CopyOnWriteArraySet<(JSONObject) -> Unit>()
     private val http = OkHttpClient.Builder()
@@ -189,8 +201,7 @@ object AppUpdater {
         log = testLog ?: buildLog()
         restore()
         UpdatePresence.onChange = { main.post { evaluate(false) } }
-        if (UpdateRules.isTestBuild(app.packageName)) runCatching { UpdateCheckJob.cancel(app) }
-        else runCatching { UpdateCheckJob.schedule(app) }.onFailure { log.warn("update.schedule", "periodic check not scheduled: ${it.message}") }
+        LegacyUpdateJob.cancel(app)
     }
 
     /** Tests: forget everything, so the next init() starts like a new
@@ -850,7 +861,7 @@ object AppUpdater {
             }
             when {
                 outcome == UpdateRules.Outcome.PERMANENT -> {
-                    // The same APK can never go in: not again every 6 hours.
+                    // The same APK can never go in: not again on every check.
                     r?.let { prefs().edit().putString(KEY_REJECTED, it.version).apply() }
                     clearReady()
                     set(Status.FAILED, error = error)
@@ -1005,9 +1016,11 @@ object AppUpdater {
 
     // ── Log ─────────────────────────────────────────────────────────────
 
+    /** Sends on the player service's log thread and under its session
+     *  (NativeLogThreads): no threads of the updater's own. */
     private fun buildLog(): PlaybackLog {
         val delay = Delay { ms, task ->
-            val f = logTimer.schedule(task, ms, TimeUnit.MILLISECONDS)
+            val f = NativeLogThreads.timer.schedule(task, ms, TimeUnit.MILLISECONDS)
             ({ f.cancel(false); Unit })
         }
         val automotive = Surfaces.isAutomotive(app)
@@ -1022,13 +1035,14 @@ object AppUpdater {
                 http.newCall(req).execute().use { if (!it.isSuccessful) throw IOException("native-log -> ${it.code}") }
             },
             online = { UpdateRules.canDownload(netFacts()) },
-            io = logIo,
+            io = NativeLogThreads.io,
             delay = delay,
             surface = { Surfaces.of(automotive, Surfaces.isCarMode(app), UpdatePresence.carConnected) },
             device = JSONObject()
                 .put("model", "${Build.MANUFACTURER} ${Build.MODEL}".take(80))
                 .put("sdk", Build.VERSION.SDK_INT)
                 .put("app", AppVersion.name(app).orEmpty()),
+            session = NativeLogThreads.session,
         )
     }
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { usePlayerStore } from './usePlayerStore';
+import { playerSaveJson, usePlayerStore } from './usePlayerStore';
 import type { Track } from '@/types/track';
 
 function track(id: string): Track {
@@ -218,6 +218,33 @@ describe('reportPosition', () => {
     usePlayerStore.getState().setVolume(0.4);
     const saved = JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}').state;
     expect(saved).toMatchObject({ position: 7, volume: 0.4 });
+  });
+});
+
+describe('saving the queue', () => {
+  it('serializes the queue only when it changed, and saves the same JSON as before', () => {
+    const queue = Array.from({ length: 300 }, (_, i) => track(`q${i}`));
+    usePlayerStore.setState({ queue, index: 4, volume: 0.5 });
+    const stringify = vi.spyOn(JSON, 'stringify');
+    usePlayerStore.getState().setPosition(12);
+    usePlayerStore.getState().setPosition(13);
+    // The queue array itself was not stringified again.
+    expect(stringify.mock.calls.some(([v]) => v === queue)).toBe(false);
+    const saved = JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}');
+    expect(saved.state.queue).toHaveLength(300);
+    expect(saved.state).toMatchObject({ index: 4, position: 13, volume: 0.5 });
+    expect(saved.version).toBe(0);
+    // A changed queue is saved as it is now.
+    usePlayerStore.getState().setQueue([track('only')]);
+    expect(stringify.mock.calls.some(([v]) => Array.isArray(v) && (v as Track[])[0]?.id === 'only')).toBe(true);
+    expect(JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}').state.queue.map((t: Track) => t.id)).toEqual(['only']);
+    stringify.mockRestore();
+  });
+
+  it('writes the same text the plain JSON storage wrote', () => {
+    const value = { state: { queue: [track('a')], index: 0, position: 3, context: null }, version: 0 };
+    expect(JSON.parse(playerSaveJson(value))).toEqual(JSON.parse(JSON.stringify(value)));
+    expect(JSON.parse(playerSaveJson({ state: { queue: [] }, version: 0 }))).toEqual({ state: { queue: [] }, version: 0 });
   });
 });
 

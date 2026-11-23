@@ -377,6 +377,11 @@ class EmberPlayerPlugin : Plugin() {
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             controller?.let { emitState(it) }
+            // Playing again on screen: the stopped position tick starts over.
+            if (gate.tickResumes(ticking, player.isPlaying)) {
+                ticking = true
+                main.postDelayed(tickTask, 250)
+            }
             if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) && player.playbackState == Player.STATE_ENDED) {
                 notifyListeners("ended", JSObject())
             }
@@ -412,14 +417,19 @@ class EmberPlayerPlugin : Plugin() {
 
     /** ~4 Hz position while playing and on screen; the web slider expects
      *  that cadence. Off screen it stops (PageStateGate), and coming back
-     *  starts it again. Only one runs at a time: a start while one is
+     *  starts it again; paused it stops too, and the player starting again
+     *  restarts it (listener). Only one runs at a time: a start while one is
      *  already running replaces it. */
     private val tickTask = Runnable { tick() }
+    /** A tick is scheduled. Main thread only. */
+    private var ticking = false
     private fun tick() {
         main.removeCallbacks(tickTask)
+        ticking = false
         val c = controller ?: return
-        if (!gate.onScreen) return
-        if (c.isPlaying) emitState(c, tick = true)
+        if (!gate.ticks(c.isPlaying)) return
+        emitState(c, tick = true)
+        ticking = true
         main.postDelayed(tickTask, 250)
     }
 
@@ -862,6 +872,7 @@ class EmberPlayerPlugin : Plugin() {
         main.post {
             gate.hidden()
             main.removeCallbacks(tickTask)
+            ticking = false
         }
     }
 
@@ -886,6 +897,7 @@ class EmberPlayerPlugin : Plugin() {
 
     override fun handleOnDestroy() {
         main.removeCallbacks(tickTask)
+        ticking = false
         UnplayableNotices.setOnScreen(false)
         UnplayableNotices.detach(unplayableSink)
         destroyed = true

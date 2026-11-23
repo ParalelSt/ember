@@ -77,7 +77,7 @@ export function UpdatesCard() {
             Update
           </Button>
         )}
-        <Button variant="outline" disabled={busy} onClick={() => void checkForUpdates()}>
+        <Button variant="outline" disabled={busy} onClick={() => void checkForUpdates(undefined, { manual: true })}>
           <RefreshIcon className={busy ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
           Check for updates
         </Button>
