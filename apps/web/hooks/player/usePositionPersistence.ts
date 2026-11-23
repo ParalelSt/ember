@@ -5,6 +5,9 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { resumeStartAt } from '@/lib/playback/resumePosition';
 import type { AudioBackend } from '@/lib/playback/types';
 
+/** How often the playhead is saved while playing and on screen. */
+export const SAVE_EVERY_MS = 5000;
+
 export interface PositionPersistence {
   /** Latest-callback ref for `persist`, so backend events wired once at mount
    *  (onPause) still reach the current logic. */
@@ -49,7 +52,6 @@ export function usePositionPersistence({
   // Seeded from the store rather than from a render prop: at the provider's
   // first render the two are the same value, and only the first one is kept.
   const lastValidPosition = useRef(usePlayerStore.getState().position);
-  const lastPosWrite = useRef(0);
   const persistRef = useRef<() => void>(() => {});
 
   // Persist the trustworthy position to the store. Skips during a transition
@@ -70,17 +72,13 @@ export function usePositionPersistence({
     persistRef.current = persist;
   }, [persist]);
 
-  /** The backend reports a position several times a second. Remember the last
-   *  trustworthy one for `persist`, and write it through at most once a second
-   *  so a reload lands near the playhead without hammering the store. */
+  /** The backend reports a position several times a second (the views
+   *  already have it, unsaved, through reportPosition). Only remember the
+   *  last trustworthy one for `persist`: saving it is the periodic write's
+   *  job, and pause's, leave's and the next song's. */
   const noteTime = useCallback((sec: number) => {
     if (!backendRef.current?.isTransitioning() && sec > 0.5) {
       lastValidPosition.current = sec;
-      const now = Date.now();
-      if (now - lastPosWrite.current > 1000) {
-        lastPosWrite.current = now;
-        usePlayerStore.getState().setPosition(sec);
-      }
     }
   }, [backendRef]);
 
@@ -127,12 +125,25 @@ export function usePositionPersistence({
     // The engine in the ref at each tick: a swap (the desktop engine falling
     // back to web audio, a cast engine taking over) leaves the first one
     // stopped for good, and asking it stopped the periodic write.
-    const periodic = setInterval(() => {
-      const b = backendRef.current;
-      if (b && !b.isPaused()) persist();
-    }, 5000);
+    // Only while the page is shown: hidden, the playhead is saved once on
+    // the way out (and by pagehide), and nothing ticks until it is back.
+    let periodic: ReturnType<typeof setInterval> | undefined;
+    const startPeriodic = () => {
+      clearInterval(periodic);
+      periodic = setInterval(() => {
+        const b = backendRef.current;
+        if (b && !b.isPaused()) persist();
+      }, SAVE_EVERY_MS);
+    };
+    if (!document.hidden) startPeriodic();
     const onVisibility = () => {
-      if (document.hidden) persist();
+      if (document.hidden) {
+        clearInterval(periodic);
+        periodic = undefined;
+        persist();
+      } else {
+        startPeriodic();
+      }
     };
     const onPagehide = () => persist();
     document.addEventListener('visibilitychange', onVisibility);

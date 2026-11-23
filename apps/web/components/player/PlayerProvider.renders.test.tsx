@@ -131,8 +131,8 @@ describe('playhead reports and the saved queue', () => {
       </PlayerProvider>,
     );
     const write = vi.spyOn(localStorage, 'setItem');
-    // 37 reports inside one second of wall clock: the playhead is saved at
-    // most once a second (usePositionPersistence noteTime).
+    // 37 reports: none of them saves; the playhead is saved every 5 s while
+    // shown, and on pause and leave (usePositionPersistence).
     for (let s = 1; s <= 10; s += 0.25) act(() => events!.onTime(s));
     expect(write.mock.calls.filter(([key]) => key === 'ember.player.v1').length).toBeLessThanOrEqual(1);
     expect(usePlayerStore.getState().position).toBe(10);

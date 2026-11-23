@@ -463,7 +463,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           const playingId = st.queue[st.index]?.id;
           if (playingId) forgetCouldntPlay(playingId);
         }
-        // For the views only: noteTime saves it, about once a second.
+        // For the views only: usePositionPersistence saves it (every 5 s while
+        // shown, on pause, on leave).
         usePlayerStore.getState().reportPosition(sec);
         positions.noteTime(sec);
       },

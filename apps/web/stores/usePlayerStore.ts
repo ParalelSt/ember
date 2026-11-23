@@ -142,10 +142,43 @@ function unsaved(write: () => void): void {
   }
 }
 
-/** localStorage, skipping the writes made through `unsaved`. */
+/** The queue's JSON as last saved, by the queue array it came from. Every
+ *  queue change makes a new array, so a save that only moves the playhead
+ *  (or the volume) reuses it instead of serializing thousands of songs
+ *  again. */
+let savedQueue: unknown;
+let savedQueueJson = '[]';
+
+/** The saved form of the persisted slice: the same JSON as before (one
+ *  key, `{ state, version }`), with the queue serialized only when it is a
+ *  different array than last time. */
+export function playerSaveJson(value: { state: Record<string, unknown>; version?: number }): string {
+  const { queue, ...rest } = value.state ?? {};
+  if (!Array.isArray(queue)) return JSON.stringify(value);
+  if (queue !== savedQueue) {
+    savedQueueJson = JSON.stringify(queue);
+    savedQueue = queue;
+  }
+  const others = JSON.stringify(rest).slice(1, -1);
+  return `{"state":{"queue":${savedQueueJson}${others ? `,${others}` : ''}},"version":${JSON.stringify(value.version ?? 0)}}`;
+}
+
+/** localStorage, skipping the writes made through `unsaved`, and reusing
+ *  the queue's JSON while the queue is unchanged (playerSaveJson). */
 function playerStorage() {
   const base = createJSONStorage(() => window.localStorage);
-  return base && { ...base, setItem: (...args: Parameters<typeof base.setItem>) => (skipSave ? undefined : base.setItem(...args)) };
+  if (!base) return base;
+  return {
+    ...base,
+    setItem: (name: string, value: Parameters<typeof base.setItem>[1]) => {
+      if (skipSave) return;
+      try {
+        window.localStorage.setItem(name, playerSaveJson(value as unknown as { state: Record<string, unknown>; version?: number }));
+      } catch {
+        /* storage full or blocked: the next save tries again */
+      }
+    },
+  };
 }
 
 const clampVolume = (volume: number) => Math.min(1, Math.max(0, volume));
