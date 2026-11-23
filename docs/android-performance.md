@@ -234,7 +234,7 @@ watchdog, renderer unresponsive callbacks and memory samples.
 - Aggregate in place: counters, fixed histograms, small rings. Never one log
   line per event. Never `JSON.stringify` outside a flush.
 - Fixed budgets: page perf state at most 16 KB in memory, one digest at most
-  2 KB, at most 14 uploads an hour per device, native buffer reuses
+  6 KB, at most 20 uploads an hour per device, native buffer reuses
   `PlaybackLog` (200 events, batches of 25, `A/PlaybackLog.kt:153`).
 - Flush on `visibilitychange` hidden and every 5 min while the page is open
   (the owner wants every member's sessions, 2026-11-23).
@@ -310,19 +310,26 @@ timed at all. Add `W/lib/perf/serverTiming.ts`, registered from
 
 ### 5.5 Where it shows up
 
-- **Bug reports and automatic reports**: a `perf` block in the client snapshot
+- **Manual bug reports**: a `perf` block in the client snapshot
   (launch record, last navigations, slow interactions, long task summary,
   memory samples, event rates). The reporter's native perf events come with the
   server entries as today.
-- **Periodic digest**: one small record every 5 min while the app is open and
-  on hide, from every signed-in member, to a rate-limited `POST /api/perf-log`
-  (`sendBeacon` on hide). Stored in its own files, `logs/perf-YYYY-MM-DD.jsonl`,
-  kept 7 days, at most 256 KB per member per day, tagged with the member's
-  id, the page session id, the app version, the shell and the device. Only an
-  admin reads them back: `GET /api/admin/perf` (sessions, or one session's
-  timeline) and `npm run perf`.
-- **Automatic perf report**, at most one per kind per session: launch over
-  15 s, navigation over 8 s, freeze over 5 s, renderer gone or unresponsive.
+- **Per session, in batches** (owner, 2026-11-23): every signed-in person's
+  app collects its session and sends what happened since its last batch
+  every 5 min while open and when it is left or closed (`sendBeacon` on
+  `pagehide` and on hidden), to a rate-limited `POST /api/perf-log`. A batch
+  (at most 6 KB) is numbered from 1 and carries the page's start time, the
+  window's aggregates and each navigation, freeze, rage tap and slow tap as
+  its own event. The host stores each batch as it arrives in its own files,
+  `logs/perf-YYYY-MM-DD.jsonl`, kept 7 days, at most 1 MB per member per
+  day, tagged with the member's id, the session id, the app version, the
+  shell and the device, so a session that ends abruptly keeps the batches
+  it sent. Only an admin reads them back, grouped per session:
+  `GET /api/admin/perf` and `npm run perf` list sessions, and
+  `npm run perf -- <session>` prints one session's events and batches
+  merged in order, naming any batch that never arrived.
+- **Nothing on the spot**: no automatic perf report. A very slow launch,
+  navigation or freeze is just an event in the session's log.
 - **Daily digest** (`W/lib/reports/digest.ts`): a short perf section with
   launch and navigation medians and p95, worst routes on the host, renderer
   deaths, low memory events, heap slope per device model.
@@ -331,11 +338,11 @@ timed at all. Add `W/lib/perf/serverTiming.ts`, registered from
 
 - Host: `EMBER_PERF_LOG=off` makes `/api/perf-log` answer `{ off: true }`; the
   page stops collecting for the session and tells the native side (the page
-  asks once per session with `GET /api/perf-log`, 5 s after hydrating, and
-  every upload's answer says it again). It also stops the server's request
+  asks with `GET /api/perf-log` 5 s after every page load and every 30 min
+  while open, and every upload's answer says it again). It also stops the server's request
   timing and its `Server-Timing` headers.
-- Device: follows the existing "automatic reports" setting (no uploads, no
-  automatic perf reports; a manual bug report still carries the perf block).
+- Device: none. Every signed-in person's app sends (owner, 2026-11-23); the
+  "automatic reports" setting covers crash reports only.
 - A `sample` value in the same answer, `EMBER_PERF_SAMPLE` (default 1),
   rolled once per page session.
 - Observers disconnect and timers clear when switched off. Covered by a test.
@@ -399,8 +406,8 @@ Slice 9 changes how sessions are checked, so it needs a security review.
 - `W/lib/perf/`: `core.ts` (rings, long-animation-frame or longtask, event
   timing, paint, resource observers, 2 s freeze heartbeat and 60 s memory
   sample while visible, kill switch), `nav.ts` (navigation phases, rage taps),
-  `digest.ts` (2 KB digest), `client.ts` (boot from `LoggerInit`, uploads,
-  automatic perf reports), `switch.ts` (session kill switch and the
+  `digest.ts` (one batch, 6 KB), `client.ts` (boot from `LoggerInit`,
+  batches), `switch.ts` (session kill switch and the
   `onPerfSwitch` hook the native side will use), `serverTiming.ts`,
   `hostSwitch.ts`, `store.ts`, `upload.ts`, `sessions.ts`, `reportBlock.ts`.
 - Nav links carry `data-nav` (static names; playlists are "Playlist" plus the
@@ -410,10 +417,9 @@ Slice 9 changes how sessions are checked, so it needs a security review.
   `proxy.ts`. No `handler` header after all: Next 16 drops a route's
   `server-timing` when the proxy set one, and the server log has the
   request times anyway.
-- Delivery: the perf block in manual and automatic bug reports, automatic perf
-  reports (own rate limit bucket `bug-report:perf`, 2 an hour),
+- Delivery: the perf block in manual bug reports, session batches to
   `POST /api/perf-log`, `GET /api/admin/perf`, `npm run perf`, and a
-  "Performance" section in the daily digest.
+  "Performance" section in the daily digest. No automatic perf reports.
 - For native slice 4: the digest counts native events named `renderer.gone`,
   `renderer.crash`, `renderer.unresponsive`, `memory.low` and `memory.trim`.
 - Left out for now: the dev only render churn and timer counters
@@ -431,7 +437,8 @@ Slice 9 changes how sessions are checked, so it needs a security review.
 4. Who else saw the black screen, on which phones, and only at launch or also
    when coming back to the app?
 5. ~~May all devices send the small perf digest by default?~~ Yes (2026-11-23):
-   every signed-in member's app sends it, under the automatic reports setting.
+   every signed-in person's app sends its session in batches, whatever the
+   automatic reports setting says.
 6. Is a daily Discord perf section enough, or do you also want an admin page?
 7. Is it acceptable that a sign-out or ban takes up to 60 s to apply
    everywhere (slice 9)?

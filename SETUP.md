@@ -470,15 +470,18 @@ It answers `{"posted": true, "groups": [...]}`, or `{"posted": false,
 
 #### Performance logging
 
-Every signed-in member's app measures how it performs (launch, page changes,
-taps that took long, freezes, long tasks, memory) and sends a small summary,
-at most 2 KB, every 5 minutes while it is open and when it is hidden (at
-most 14 an hour). Only timings, sizes and page paths with ids taken out are
-sent, never what anyone plays, searches or types. A phone with "Automatic
-reports" switched off in Settings sends none.
+Every signed-in person's app measures how it performs (launch, page changes,
+taps that took long, freezes, long tasks, memory) and sends its session in
+batches: what happened since the last batch, at most 6 KB, every 5 minutes
+while it is open and when it is left or closed (at most 20 an hour). Only
+timings, sizes and page paths with ids taken out are sent, never what anyone
+plays, searches or types. This does not follow the "Automatic reports"
+setting (that is for crash reports); only the kill switch below stops it.
+Nothing is reported on the spot: a slow moment is just part of the session.
 
-The host keeps them in `logs/perf-YYYY-MM-DD.jsonl` for 7 days, at most
-256 KB per member per day. The server also times its own requests and once
+The host keeps each batch as it arrives in `logs/perf-YYYY-MM-DD.jsonl` for
+7 days, at most 1 MB per member per day, so a session that ends abruptly
+keeps what it sent before. The server also times its own requests and once
 every 5 minutes writes one `perf` line (slowest routes, event loop delay,
 load, memory, running downloads and Python jobs) to the error log, plus a
 warning for any request over 2 s. The daily digest gets a "Performance"
@@ -488,7 +491,7 @@ Only an admin can read them back, from a Mac or on the host:
 
 ```bash
 npm run perf                     # every member's sessions of the last 7 days
-npm run perf -- <session>        # one session, a line per 5 minutes
+npm run perf -- <session>        # one session's events and batches, in order
 npm run perf -- --user ana@example.com --days 2 --json
 ```
 
