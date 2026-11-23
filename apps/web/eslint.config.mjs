@@ -115,7 +115,9 @@ const eslintConfig = defineConfig([
     // Sidebar/Drawer own the playlists query and the create-playlist flow,
     // and TrackPageClient is the track detail page's client half (it fetches
     // its own track and drives playback), not a reusable row/card
-    // primitive. Moving any of the three out of nav/ or track/ would just
+    // primitive. TrackPageSections is that page's lower half (the lyrics,
+    // artist, album and radio queries under the header), the same root split
+    // in two files. Moving any of these out of nav/ or track/ would just
     // relocate the composition root, not remove it. components/track/menus/**
     // is the one folder-wide override: AddToPlaylistMenu and
     // CreatePlaylistDialog fetch and mutate playlists on their own, so the
@@ -124,6 +126,7 @@ const eslintConfig = defineConfig([
       "components/nav/Sidebar.tsx",
       "components/nav/Drawer.tsx",
       "components/track/TrackPageClient.tsx",
+      "components/track/TrackPageSections.tsx",
       "components/track/menus/**/*.{ts,tsx}",
     ],
     rules: {

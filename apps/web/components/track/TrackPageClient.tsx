@@ -14,11 +14,13 @@ import { OnlineOnly } from '@/components/OnlineOnly';
 import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/page/EmptyState';
+import { TrackPageSections } from '@/components/track/TrackPageSections';
 
 /** Shareable track page body, the landing target of /track/<videoId> links.
  *  The playlists' header and, under it, their action row: round Play, like
  *  and the song's menu (Share lives in there). Play runs the track through the normal player
- *  (radio mode queues related songs after it). The wrapping
+ *  (radio mode queues related songs after it). Below that, the lyrics,
+ *  artist, album, more by them and similar songs (TrackPageSections). The wrapping
  *  server page owns generateMetadata (Discord/Messenger embed cards). */
 export function TrackPageClient({ videoId }: { videoId: string }) {
   return (
@@ -57,28 +59,31 @@ function TrackView({ videoId }: { videoId: string }) {
   ].filter(Boolean);
 
   return (
-    <div className="flex flex-col gap-stack">
-      <CollectionHeader
-        eyebrow="Song"
-        marqueeTitle
-        title={track.title}
-        meta={meta}
-        cover={{ src: track.artworkUrl ?? null, icon: null, fallback: 'card' }}
-      />
-      <ActionBar>
-        <PlayButton onClick={() => playTrack(track)} label={`Play ${track.title}`} />
-        <button
-          type="button"
-          onClick={toggleLike}
-          aria-pressed={liked}
-          aria-label={liked ? 'Unlike' : 'Like'}
-          title={liked ? 'Unlike' : 'Like'}
-          className={cn(ACTION_CIRCLE, liked && ACTION_CIRCLE_ON)}
-        >
-          <HeartIcon className="size-5" />
-        </button>
-        <TrackMenu track={track} triggerClassName={cn(ACTION_CIRCLE, '[&_svg]:size-5')} />
-      </ActionBar>
+    <div className="flex flex-col gap-section">
+      <div className="flex flex-col gap-stack">
+        <CollectionHeader
+          eyebrow="Song"
+          marqueeTitle
+          title={track.title}
+          meta={meta}
+          cover={{ src: track.artworkUrl ?? null, icon: null, fallback: 'card' }}
+        />
+        <ActionBar>
+          <PlayButton onClick={() => playTrack(track)} label={`Play ${track.title}`} />
+          <button
+            type="button"
+            onClick={toggleLike}
+            aria-pressed={liked}
+            aria-label={liked ? 'Unlike' : 'Like'}
+            title={liked ? 'Unlike' : 'Like'}
+            className={cn(ACTION_CIRCLE, liked && ACTION_CIRCLE_ON)}
+          >
+            <HeartIcon className="size-5" />
+          </button>
+          <TrackMenu track={track} triggerClassName={cn(ACTION_CIRCLE, '[&_svg]:size-5')} />
+        </ActionBar>
+      </div>
+      <TrackPageSections track={track} />
     </div>
   );
 }
