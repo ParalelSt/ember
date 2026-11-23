@@ -28,9 +28,14 @@ export const REPORT_FREEZE_MS = 5_000;
  *  the question never competes with the launch. */
 const CONFIG_DELAY_MS = 5000;
 const SENT_KEY = 'ember.perf.sent';
+/** How often an open page asks the host again, so a long-lived app (the
+ *  phone's WebView can stay up for days) hears the kill switch too. */
+export const CONFIG_EVERY_MS = 30 * 60 * 1000;
 
 let booted = false;
 let uploadTimer: ReturnType<typeof setInterval> | null = null;
+let configTimer: ReturnType<typeof setInterval> | null = null;
+let lastConfigCheck = 0;
 let launchSent = false;
 const cleanups: (() => void)[] = [];
 
@@ -90,27 +95,36 @@ export async function flushDigest(beacon: boolean): Promise<void> {
   }
 }
 
-/** Asks the host once per session whether perf logging is on. */
-async function checkConfig(): Promise<void> {
-  if (configChecked() || !pagePerf.on || !isSignedIn()) return;
+/** Asks the host whether perf logging is on: on every page load and every
+ *  30 min while open, whether or not this page may upload (the kill switch
+ *  must reach a page that never sends a digest, and a beacon's answer is
+ *  never read). The sample share is rolled on the session's first answer. */
+export async function checkConfig(): Promise<void> {
+  if (!pagePerf.on) return;
+  lastConfigCheck = Date.now();
   try {
     const res = await fetch(PERF_ENDPOINT, { credentials: 'include' });
     if (!res.ok) return;
+    const first = !configChecked();
     markConfigChecked();
-    applyHostAnswer(await res.json().catch(() => null), { roll: true });
+    applyHostAnswer(await res.json().catch(() => null), { roll: first });
   } catch {
-    // Unreachable host: ask again on the next page load.
+    // Unreachable host: asked again on the next round.
   }
 }
 
-function startUploadTimer(): void {
-  if (uploadTimer || !pagePerf.on) return;
-  uploadTimer = setInterval(() => void flushDigest(false), UPLOAD_EVERY_MS);
+/** The upload and config timers, only while the page is visible. */
+function startTimers(): void {
+  if (!pagePerf.on) return;
+  if (!uploadTimer) uploadTimer = setInterval(() => void flushDigest(false), UPLOAD_EVERY_MS);
+  if (!configTimer) configTimer = setInterval(() => void checkConfig(), CONFIG_EVERY_MS);
 }
 
-function stopUploadTimer(): void {
+function stopTimers(): void {
   if (uploadTimer) clearInterval(uploadTimer);
+  if (configTimer) clearInterval(configTimer);
   uploadTimer = null;
+  configTimer = null;
 }
 
 /** LoggerInit calls this after logger.boot(), once hydrated. */
@@ -132,7 +146,7 @@ export function bootPerf(): void {
   cleanups.push(
     pagePerf.onEvent((e) => {
       if (e.kind === 'hide') {
-        stopUploadTimer();
+        stopTimers();
         void flushDigest(true);
       } else if (e.kind === 'launch' && e.ms > REPORT_LAUNCH_MS) {
         maybeAutoPerfReport('launch', `slow launch: ${(e.ms / 1000).toFixed(1)} s until the page answered`);
@@ -145,24 +159,27 @@ export function bootPerf(): void {
   );
 
   const onVisibility = () => {
-    if (document.visibilityState === 'visible') startUploadTimer();
+    if (document.visibilityState !== 'visible') return;
+    startTimers();
+    // Back from the background after a long time: ask straight away.
+    if (lastConfigCheck && Date.now() - lastConfigCheck >= CONFIG_EVERY_MS) void checkConfig();
   };
   document.addEventListener('visibilitychange', onVisibility);
   cleanups.push(() => document.removeEventListener('visibilitychange', onVisibility));
-  if (document.visibilityState !== 'hidden') startUploadTimer();
+  if (document.visibilityState !== 'hidden') startTimers();
 
   cleanups.push(onPerfSwitch((on, reason) => {
     if (!on) shutdown(reason ?? 'host');
   }));
 
   pagePerf.markHydrated();
-  const configTimer = setTimeout(() => void checkConfig(), CONFIG_DELAY_MS);
-  cleanups.push(() => clearTimeout(configTimer));
+  const firstCheck = setTimeout(() => void checkConfig(), CONFIG_DELAY_MS);
+  cleanups.push(() => clearTimeout(firstCheck));
 }
 
 /** The kill switch, page side: every observer, timer and listener goes. */
 function shutdown(reason: string): void {
-  stopUploadTimer();
+  stopTimers();
   pagePerf.stop(reason);
   for (const c of cleanups.splice(0)) c();
 }
@@ -171,6 +188,7 @@ function shutdown(reason: string): void {
 export function _resetPerfClient(): void {
   booted = false;
   launchSent = false;
-  stopUploadTimer();
+  lastConfigCheck = 0;
+  stopTimers();
   for (const c of cleanups.splice(0)) c();
 }
