@@ -7,6 +7,8 @@ import { scrubServerEntry } from '@/lib/logger/sanitize';
 import { formatDigest, groupForDigest, type DigestGroup } from '@/lib/reports/digest';
 import { sanitizeVersion } from '@/lib/versions/label';
 import { codeFields, DISCORD_FIELD_CHARS, remainingEmbedBudget, webhookUrl, type EmbedField } from '@/lib/reports/discord';
+import { buildPerfSection, isPerfNativeEntry, type PerfSection } from '@/lib/reports/perfDigest';
+import { readPerf } from '@/lib/perf/store';
 
 /** The daily error digest: one Discord message a day saying what broke,
  *  grouped by fingerprint so a hundred occurrences of one bug read as one
@@ -49,6 +51,8 @@ export interface DigestResult {
   reason?: 'quiet' | 'no-webhook' | 'post-failed' | 'retry-later';
   groups: DigestGroup[];
   summary: DigestSummary | null;
+  /** The performance section, when there were perf numbers in the window. */
+  perf?: PerfSection | null;
 }
 
 /** Hour of the host's local day the digest goes out. Out-of-range or
@@ -203,22 +207,29 @@ export async function runDigest(options: RunDigestOptions = {}): Promise<DigestR
   // day file in the window, so calling it twice would double a job that runs
   // unattended (T2 review note).
   // Info lines never reach the digest: left out while reading, so a day of
-  // them cannot push the day's problems past the read cap.
-  const entries = await serverLogger.entriesSince(since, (e) => e.level !== 'info');
+  // them cannot push the day's problems past the read cap. The perf
+  // section's lines are the exception (the host's timing lines and the
+  // phone app's renderer and memory events).
+  const entries = await serverLogger.entriesSince(
+    since,
+    (e) => e.level !== 'info' || e.category === 'perf' || isPerfNativeEntry(e),
+  );
   const groups = groupForDigest(entries, since).map(scrubGroup);
-  if (groups.length === 0) {
+  const perf = buildPerfSection({ digests: await readPerf(since).catch(() => []), server: entries });
+  if (groups.length === 0 && !perf) {
     return finish({ posted: false, reason: 'quiet', groups: [], summary: null });
   }
 
   const top = groups.slice(0, TOP_GROUPS);
   const text = formatDigest(top, { since, until: nowMs });
-  const summary = await summarizeDigest(text, groups.length);
+  // A day with perf numbers but no errors needs no model call.
+  const summary = groups.length ? await summarizeDigest(text, groups.length) : null;
 
   const url = webhookUrl();
-  if (!url) return finish({ posted: false, reason: 'no-webhook', groups, summary });
+  if (!url) return finish({ posted: false, reason: 'no-webhook', groups, summary, perf });
 
-  const posted = await post(url, { nowMs, since, text, groups, summary });
-  return finish({ posted, reason: posted ? undefined : 'post-failed', groups, summary });
+  const posted = await post(url, { nowMs, since, text, groups, summary, perf });
+  return finish({ posted, reason: posted ? undefined : 'post-failed', groups, summary, perf });
 }
 
 async function post(
@@ -229,7 +240,8 @@ async function post(
     text,
     groups,
     summary,
-  }: { nowMs: number; since: number; text: string; groups: DigestGroup[]; summary: DigestSummary | null },
+    perf,
+  }: { nowMs: number; since: number; text: string; groups: DigestGroup[]; summary: DigestSummary | null; perf: PerfSection | null },
 ): Promise<boolean> {
   const total = groups.reduce((n, g) => n + g.count, 0);
   const hidden = Math.max(0, groups.length - TOP_GROUPS);
@@ -239,7 +251,7 @@ async function post(
     hidden > 0 ? `top ${TOP_GROUPS} shown, all ${groups.length} in digest.json` : null,
     // Say so rather than leaving the missing lines looking like a model that
     // had nothing to add.
-    summary ? null : isTriageConfigured() ? 'AI summary unavailable' : 'no ANTHROPIC_API_KEY: no AI summary',
+    summary || groups.length === 0 ? null : isTriageConfigured() ? 'AI summary unavailable' : 'no ANTHROPIC_API_KEY: no AI summary',
   ].filter((p): p is string => p !== null);
 
   const title = `Daily error digest ${localDay(new Date(nowMs))}`;
@@ -268,15 +280,20 @@ async function post(
     value: `Server web ${buildVersion ?? 'unknown'}`,
     inline: false,
   };
+  const performance: EmbedField | null = perf
+    ? { name: 'Performance', value: clip(perf.lines.join('\n'), DISCORD_FIELD_CHARS), inline: false }
+    : null;
   const usedChars =
     title.length +
     description.length +
     footerText.length +
     version.name.length +
     version.value.length +
-    (whatToLookAt ? whatToLookAt.name.length + whatToLookAt.value.length : 0);
+    (whatToLookAt ? whatToLookAt.name.length + whatToLookAt.value.length : 0) +
+    (performance ? performance.name.length + performance.value.length : 0);
   const fields: EmbedField[] = [version, ...codeFields('Errors', text, 6, remainingEmbedBudget(usedChars))];
   if (whatToLookAt) fields.push(whatToLookAt);
+  if (performance) fields.push(performance);
 
   const embed = {
     title,
@@ -293,6 +310,7 @@ async function post(
     serverVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? null,
     groups,
     summary,
+    ...(perf ? { perf: perf.numbers } : {}),
   };
 
   try {

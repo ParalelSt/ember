@@ -392,3 +392,49 @@ describe('createDigestTick', () => {
     expect(run).toHaveBeenCalledWith({ now: at.getTime(), writeMarker: true });
   });
 });
+
+describe('runDigest: the performance section', () => {
+  async function writePerfDigest(over: Record<string, unknown> = {}) {
+    const { writeFileSync, rmSync: rm } = await import('node:fs');
+    const { perfFileName } = await import('@/lib/perf/store');
+    const now = Date.now();
+    const file = join(LOG_DIR, perfFileName(now));
+    const line = {
+      ts: now - 60_000,
+      userId: 'u1',
+      digest: { v: 1, session: 's1', app: '0.7.51', shell: 'capacitor', device: { model: 'motorola edge 60' }, fgMs: 300_000, launch: { hydrated: 30_300 }, nav: { n: 2, ms: [1200, 9000] }, ...over },
+    };
+    writeFileSync(file, JSON.stringify(line) + '\n');
+    return () => rm(file, { force: true });
+  }
+
+  it('posts a day with perf numbers but no errors, without a model call', async () => {
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([]);
+    const cleanup = await writePerfDigest();
+    try {
+      const result = await runDigest();
+      expect(result.posted).toBe(true);
+      expect(summarizeDigest).not.toHaveBeenCalled();
+      const perf = postedEmbed().fields.find((f) => f.name === 'Performance');
+      expect(perf?.value).toContain('Launch to ready: median 30.3 s');
+      expect(perf?.value).toContain('Navigation: median 1.2 s');
+      expect(postedEmbed().footer.text).not.toContain('AI summary');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('keeps the host\'s timing lines and the phone\'s renderer events while reading, and leaves slow request warnings out of the error groups', async () => {
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([
+      entry({ level: 'warn', category: 'perf', message: 'slow request GET /settings (rsc)', data: { durationMs: 2500, digest: false } }),
+      entry({ level: 'info', category: 'perf', message: 'server timing', data: { routes: [{ route: '/settings (rsc)', n: 4, p95: 2500, max: 2600 }], slow: 1, health: { loopP99: 30 } } }),
+    ]);
+    const result = await runDigest({ now: Date.now() });
+    const keep = vi.mocked(serverLogger.entriesSince).mock.calls[0][1]!;
+    expect(keep(entry({ level: 'info', category: 'perf' }))).toBe(true);
+    expect(keep(entry({ level: 'info', category: 'native', data: { event: 'renderer.gone' } }))).toBe(true);
+    expect(keep(entry({ level: 'info', category: 'native', data: { event: 'state' } }))).toBe(false);
+    expect(result.groups).toEqual([]);
+    expect(result.perf?.lines.join('\n')).toContain('/settings (rsc) p95 2500 ms');
+  });
+});
