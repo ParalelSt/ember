@@ -32,17 +32,13 @@ allow = [
   # and shows "automatic caching unavailable, update the app".
   "cache_prefetch",
   "cache_cancel",
-  "cache_has",
-  "cache_keys",
   "cache_entries",
-  "cache_path",
   "cache_touch",
   "cache_evict",
   "cache_stats",
   "cache_clear",
   "discord_update",
   "log_event",
-  "log_path",
   "log_tail",
   # Native voice search (src/speech.rs). Same reason as the rest: without
   # these the remote page's mic gets "not allowed by ACL".

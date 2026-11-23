@@ -163,6 +163,7 @@ impl Index {
         self.entries.get(key)
     }
 
+    #[cfg(test)]
     pub fn keys(&self) -> Vec<String> {
         let mut k: Vec<String> = self.entries.keys().cloned().collect();
         k.sort();
@@ -445,6 +446,7 @@ impl AudioCache {
         CacheStats { bytes: idx.total_bytes(), count: idx.count(), cap: self.cap_bytes, max_files: self.max_files }
     }
 
+    #[cfg(test)]
     pub fn keys(&self) -> Vec<String> {
         relock(&self.index).keys()
     }
@@ -722,27 +724,9 @@ pub async fn cache_cancel(cache: State<'_, AudioCache>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn cache_has(cache: State<'_, AudioCache>, key: String) -> Result<bool, String> {
-    cache.root()?;
-    Ok(cache.path_for(&key).is_some())
-}
-
-#[tauri::command]
-pub async fn cache_keys(cache: State<'_, AudioCache>) -> Result<Vec<String>, String> {
-    cache.root()?;
-    Ok(cache.keys())
-}
-
-#[tauri::command]
 pub async fn cache_entries(cache: State<'_, AudioCache>) -> Result<Vec<EntrySummary>, String> {
     cache.root()?;
     Ok(cache.entries())
-}
-
-#[tauri::command]
-pub async fn cache_path(cache: State<'_, AudioCache>, key: String) -> Result<Option<String>, String> {
-    cache.root()?;
-    Ok(cache.path_for(&key).map(|p| p.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]

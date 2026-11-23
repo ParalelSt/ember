@@ -41,26 +41,6 @@ oboe-shared-stdcxx = []
 name = "cpal"
 path = "src/lib.rs"
 
-[[example]]
-name = "beep"
-path = "examples/beep.rs"
-
-[[example]]
-name = "enumerate"
-path = "examples/enumerate.rs"
-
-[[example]]
-name = "feedback"
-path = "examples/feedback.rs"
-
-[[example]]
-name = "record_wav"
-path = "examples/record_wav.rs"
-
-[[example]]
-name = "synth_tones"
-path = "examples/synth_tones.rs"
-
 [dependencies.dasp_sample]
 version = "0.11"
 

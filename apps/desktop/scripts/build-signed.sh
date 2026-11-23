@@ -8,7 +8,7 @@
 #
 # Notarization: only runs if you've stored credentials once, with
 #   xcrun notarytool store-credentials "AC_PASSWORD" \
-#     --apple-id you@example.com --team-id 8B8D2GSC9U \
+#     --apple-id you@example.com --team-id <TEAM_ID> \
 #     --password <app-specific-password-from-appleid.apple.com>
 # Without it the app is still SIGNED, but Gatekeeper shows the
 # "unidentified developer" warning on other people's Macs.

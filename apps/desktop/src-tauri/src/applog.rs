@@ -149,18 +149,6 @@ fn tail_of(path: &std::path::Path, lines: usize) -> String {
     all[all.len().saturating_sub(want)..].join("\n")
 }
 
-/// Where the log lives, so the UI/user can find it.
-#[tauri::command]
-pub fn log_path(state: tauri::State<'_, LogFile>) -> String {
-    state
-        .0
-        .lock()
-        .ok()
-        .and_then(|g| g.clone())
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
