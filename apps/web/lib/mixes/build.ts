@@ -4,13 +4,15 @@ import { mixLook, type FamilySlug, type SubSlug } from '../genres/taxonomy';
 import type { Track } from '../../types/track';
 import type { MixPlan } from './cluster';
 import type { SongScore } from './score';
+import { resolveGenre } from './songFamily';
 
 /** One mix's songs (docs/mixes.md): up to 20 of the member's own songs in
  *  the family, then new songs from the radio of a few of them and the
  *  family's genre chart, woven together like radio. Pure.
  *
  *  Purity is the rule that matters: a new song is only taken when its
- *  artist's primary family is the mix's family (and, for a split mix, their
+ *  genre (lib/mixes/songFamily: its artist's primary family, unless its
+ *  title says Game & Anime) is the mix's family (and, for a split mix, the
  *  half matches). An artist nobody could tag is kept only when the radio of
  *  two or more seeds brought them AND no other family's chart lists them.
  *  Everything else is dropped, so a Rock & Metal mix never gets pop. */
@@ -83,18 +85,19 @@ export interface AssembleInput {
   skip?: (t: Track) => boolean;
 }
 
-/** Whether a new song's artist belongs in this mix. */
+/** Whether a new song belongs in this mix, judged per song
+ *  (lib/mixes/songFamily): its genre is the mix's family (and half). */
 export function belongs(
   plan: Pick<MixPlan, 'family' | 'sub'>,
-  key: string,
+  track: Pick<Track, 'title' | 'artist' | 'album'>,
   genres: ReadonlyMap<string, GenreOf>,
   radioCount: number,
   otherFamilyChartArtists: ReadonlySet<string>,
 ): boolean {
-  const g = genres.get(key);
-  if (g?.family) return g.family === plan.family && (!plan.sub || g.sub === plan.sub);
-  if (g?.manual) return false;
-  return radioCount >= 2 && !otherFamilyChartArtists.has(key);
+  const g = resolveGenre(track, genres);
+  if (g.family) return g.family === plan.family && (!plan.sub || g.sub === plan.sub);
+  if (g.manual) return false;
+  return radioCount >= 2 && !otherFamilyChartArtists.has(artistKey(track.artist));
 }
 
 /** Weave known songs into new ones the way radio does: two known songs
@@ -152,7 +155,7 @@ export function assembleMix(input: AssembleInput): Track[] | null {
     if (usedKeys.has(k)) continue;
     const aKey = artistKey(t.artist);
     if (!aKey || !room(aKey)) continue;
-    if (!belongs(plan, aKey, genres, radioCount.get(aKey) ?? 0, otherFamilyChartArtists)) continue;
+    if (!belongs(plan, t, genres, radioCount.get(aKey) ?? 0, otherFamilyChartArtists)) continue;
     take(t, aKey);
     fresh.push(t);
   }

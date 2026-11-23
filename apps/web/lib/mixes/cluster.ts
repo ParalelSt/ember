@@ -1,8 +1,10 @@
 import { familyOf, type FamilySlug, type SubSlug } from '../genres/taxonomy';
 import type { SongScore } from './score';
+import { resolveGenre, type SongGenre } from './songFamily';
 
 /** Which style mixes a member gets (docs/mixes.md): their songs grouped by
- *  their artist's primary family and, inside it, by sub-genre. Pure. */
+ *  their genre (lib/mixes/songFamily: the artist's primary family, unless the
+ *  song's own title says Game & Anime) and, inside it, by sub-genre. Pure. */
 
 /** Total play weight (about 10 recent plays, likes count 2) before a member
  *  gets any style mix. */
@@ -24,6 +26,8 @@ export const MAX_STYLE_PLANS = 7;
 export interface ArtistFamily {
   family: FamilySlug | null;
   sub: SubSlug | null;
+  /** An admin's row (lib/mixes/build GenreOf). */
+  manual?: boolean;
 }
 
 export interface MixPlan {
@@ -65,11 +69,10 @@ export function isEligible(p: Pick<MixPlan, 'weight' | 'songs' | 'artists'>): bo
  *  - two or more: each of them, plus the family mix when the songs outside
  *    them qualify on their own; otherwise songs whose sub-genre is unknown
  *    join the heaviest sub-genre mix (the old halves rule). */
-function familyPlans(family: FamilySlug, list: SongScore[], genres: ReadonlyMap<string, ArtistFamily>): MixPlan[] {
+function familyPlans(family: FamilySlug, list: SongScore[], subOf: (s: SongScore) => SubSlug | null): MixPlan[] {
   const whole = plan(family, family, null, list);
   if (!isEligible(whole)) return [];
   const subs = familyOf(family)?.subs ?? [];
-  const subOf = (s: SongScore) => genres.get(s.artistKey)?.sub ?? null;
   const qualifying = subs
     .map((sub) => plan(sub.slug, family, sub.slug, list.filter((s) => subOf(s) === sub.slug)))
     .filter(isEligible)
@@ -94,15 +97,18 @@ export function clusterMember(songs: readonly SongScore[], genres: ReadonlyMap<s
   const total = songs.reduce((n, s) => n + s.score, 0);
   if (total < MEMBER_MIN_WEIGHT) return { eligible: false, total, mixes: [] };
   const byFamily = new Map<FamilySlug, SongScore[]>();
+  const resolved = new Map<SongScore, SongGenre>();
+  for (const s of songs) resolved.set(s, resolveGenre(s.track, genres, s.artistKey));
+  const subOf = (s: SongScore) => resolved.get(s)?.sub ?? null;
   for (const s of songs) {
-    const fam = genres.get(s.artistKey)?.family;
+    const fam = resolved.get(s)?.family;
     if (!fam) continue;
     const list = byFamily.get(fam) ?? [];
     list.push(s);
     byFamily.set(fam, list);
   }
   const byWeight = (x: MixPlan, y: MixPlan) => y.weight - x.weight || x.key.localeCompare(y.key);
-  const perFamily = [...byFamily].map(([family, list]) => familyPlans(family, list, genres).sort(byWeight)).filter((l) => l.length);
+  const perFamily = [...byFamily].map(([family, list]) => familyPlans(family, list, subOf).sort(byWeight)).filter((l) => l.length);
   const firsts = perFamily.map((l) => l[0]).sort(byWeight);
   const rest = perFamily.flatMap((l) => l.slice(1)).sort(byWeight);
   return { eligible: true, total, mixes: [...firsts, ...rest].slice(0, MAX_STYLE_PLANS) };

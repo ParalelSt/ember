@@ -139,4 +139,39 @@ describe('clusterMember', () => {
     // Rock & Metal splits three ways with nothing left over: no family mix.
     expect(r.mixes.map((m) => m.key)).toEqual(['indie', 'jazz-blues', 'metal', 'punk']);
   });
+
+  it('songs whose title says game music make a Game & Anime plan, even by untagged channels', () => {
+    const titled = (artist: string, title: string, score: number): SongScore => {
+      const track = tt(`g${n++}`, artist, title);
+      return { key: `${title}::${artist}`, track, artistKey: artist.toLowerCase(), score, plays: 1, liked: false };
+    };
+    const songs = [
+      titled('KEYGEN CHURCH', 'Tenebre Rosso Sangue (ULTRAKILL Soundtrack)', 4),
+      titled('Uploader A', 'Main Theme (Original Soundtrack)', 3),
+      titled('Uploader B', 'Bad Apple!! (Touhou)', 3),
+      // A tagged pop artist's game song counts for Game & Anime, their others for Pop.
+      titled('Pop Star', 'Enemy (League of Legends)', 2),
+      song('Pop Star', 4), song('Pop Star', 3), song('Other Pop', 3),
+      // No signal words, no family: in no plan, as before.
+      titled('Plain Channel', 'Heart of Corruption', 5),
+    ];
+    const genres = new Map([['pop star', fam('pop')], ['other pop', fam('pop')]]);
+    const r = clusterMember(songs, genres);
+    expect(r.mixes.map((m) => m.key).sort()).toEqual(['game-anime', 'pop']);
+    const ga = r.mixes.find((m) => m.key === 'game-anime')!;
+    expect(ga.songs.map((x) => x.track.title).sort()).toEqual([
+      'Bad Apple!! (Touhou)', 'Enemy (League of Legends)', 'Main Theme (Original Soundtrack)', 'Tenebre Rosso Sangue (ULTRAKILL Soundtrack)',
+    ]);
+    expect(ga.sub).toBeNull();
+    const pop = r.mixes.find((m) => m.key === 'pop')!;
+    expect(pop.songs.some((x) => x.track.title.includes('League'))).toBe(false);
+    expect(pop.songs).toHaveLength(3);
+  });
+
+  it('an admin row keeps a song out even when its title says game music', () => {
+    const track = tt(`a${n++}`, 'Banned', 'Undertale OST');
+    const songs = [{ key: 'u', track, artistKey: 'banned', score: 20, plays: 1, liked: false }, song('A', 3), song('B', 3)];
+    const r = clusterMember(songs, new Map<string, ArtistFamily>([['banned', { family: null, sub: null, manual: true }], ['a', fam('pop')], ['b', fam('pop')]]));
+    expect(r.mixes.find((m) => m.key === 'game-anime')).toBeUndefined();
+  });
 });

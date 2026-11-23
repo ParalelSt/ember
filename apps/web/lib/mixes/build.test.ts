@@ -68,22 +68,34 @@ describe('belongs', () => {
     ['banned', { family: null, sub: null, manual: true }],
   ]);
   const plan = { family: 'rock-metal' as const, sub: null };
+  const a = (artist: string, title = 'Some Song') => ({ title, artist, album: null });
 
   it('takes the family, drops other families', () => {
-    expect(belongs(plan, 'rocker', genres, 1, new Set())).toBe(true);
-    expect(belongs(plan, 'popstar', genres, 5, new Set())).toBe(false);
+    expect(belongs(plan, a('rocker'), genres, 1, new Set())).toBe(true);
+    expect(belongs(plan, a('popstar'), genres, 5, new Set())).toBe(false);
   });
 
   it('a split mix takes its own half only', () => {
-    expect(belongs({ family: 'rock-metal', sub: 'metal' }, 'metalhead', genres, 1, new Set())).toBe(true);
-    expect(belongs({ family: 'rock-metal', sub: 'metal' }, 'rocker', genres, 1, new Set())).toBe(false);
+    expect(belongs({ family: 'rock-metal', sub: 'metal' }, a('metalhead'), genres, 1, new Set())).toBe(true);
+    expect(belongs({ family: 'rock-metal', sub: 'metal' }, a('rocker'), genres, 1, new Set())).toBe(false);
   });
 
   it('an untagged artist needs two radios and no other family\'s chart; an admin\'s "no family" never', () => {
-    expect(belongs(plan, 'nobody', genres, 1, new Set())).toBe(false);
-    expect(belongs(plan, 'nobody', genres, 2, new Set())).toBe(true);
-    expect(belongs(plan, 'nobody', genres, 3, new Set(['nobody']))).toBe(false);
-    expect(belongs(plan, 'banned', genres, 5, new Set())).toBe(false);
+    expect(belongs(plan, a('nobody'), genres, 1, new Set())).toBe(false);
+    expect(belongs(plan, a('nobody'), genres, 2, new Set())).toBe(true);
+    expect(belongs(plan, a('nobody'), genres, 3, new Set(['nobody']))).toBe(false);
+    expect(belongs(plan, a('banned'), genres, 5, new Set())).toBe(false);
+  });
+
+  it('judges the song, not only the artist: a game title is Game & Anime even by a tagged rocker', () => {
+    const ga = { family: 'game-anime' as const, sub: null };
+    expect(belongs(plan, a('rocker', 'The Only Thing They Fear Is You (DOOM Eternal OST)'), genres, 1, new Set())).toBe(false);
+    expect(belongs(ga, a('rocker', 'The Only Thing They Fear Is You (DOOM Eternal OST)'), genres, 1, new Set())).toBe(true);
+    // A weak signal only places an artist with no family.
+    expect(belongs(ga, a('nobody', 'Stage 1 (Original Soundtrack)'), genres, 0, new Set())).toBe(true);
+    expect(belongs(ga, a('rocker', 'Stage 1 (Original Soundtrack)'), genres, 1, new Set())).toBe(false);
+    // An admin's "no family" still wins.
+    expect(belongs(ga, a('banned', 'Undertale OST'), genres, 5, new Set())).toBe(false);
   });
 });
 

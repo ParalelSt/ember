@@ -20,8 +20,13 @@ export interface SongGenre extends GenreOf {
   via: GenreVia;
 }
 
-export function resolveGenre(track: Pick<Track, 'title' | 'artist' | 'album'>, genres: ReadonlyMap<string, GenreOf>): SongGenre {
-  const g = genres.get(artistKey(track.artist));
+/** `key` is the artist key when the caller already has it (a SongScore's). */
+export function resolveGenre(
+  track: Pick<Track, 'title' | 'artist' | 'album'>,
+  genres: ReadonlyMap<string, GenreOf>,
+  key: string = artistKey(track.artist),
+): SongGenre {
+  const g = genres.get(key);
   if (g?.manual) return { family: g.family, sub: g.family ? g.sub : null, manual: true, via: 'manual' };
   const signal = songSignal(track);
   if (signal === 'strong') return { family: 'game-anime', sub: null, via: 'signal' };
