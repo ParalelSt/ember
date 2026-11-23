@@ -9,8 +9,8 @@
  *  Sandbox (this worktree's own, never :8091/:3010, another worker owns
  *  those):
  *
- *    PB_DIR=/private/tmp/claude-501/-Users-aronmatoic-Documents-Main-Projects/b6633bdb-0822-453b-a2b4-a986b08153a8/scratchpad/unavail-pb
- *    "/Users/aronmatoic/Documents/Main Projects/spotify-clone/pocketbase/pocketbase" serve \
+ *    PB_DIR=/tmp/unavail-pb
+ *    "$PB_BIN" serve \
  *      --http=127.0.0.1:8092 --dir="$PB_DIR/pb_data" --hooksDir="$PWD/pocketbase/pb_hooks" &
  *
  *    SB="$PB_DIR" && mkdir -p "$SB" && : > "$SB/unavailable.txt" && : > "$SB/transient.txt"

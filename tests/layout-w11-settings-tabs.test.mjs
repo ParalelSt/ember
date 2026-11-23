@@ -2,7 +2,7 @@
  *  with nothing showing the row scrolls.
  *
  *      APP_URL=http://127.0.0.1:3052 PB_URL=http://127.0.0.1:8087 \
- *      ADMIN_USER_EMAIL=strixparalel@gmail.com ADMIN_USER_PASSWORD='EmberTest2026!' \
+ *      ADMIN_USER_EMAIL=<admin email> ADMIN_USER_PASSWORD=<admin password> \
  *        node tests/layout-w11-settings-tabs.test.mjs
  *
  *  components/settings/SettingsTabs.tsx rendered the tab row as a plain
@@ -30,8 +30,12 @@ try {
 
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3052';
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8087';
-const EMAIL = process.env.ADMIN_USER_EMAIL ?? 'strixparalel@gmail.com';
-const PASSWORD = process.env.ADMIN_USER_PASSWORD ?? 'EmberTest2026!';
+const EMAIL = process.env.ADMIN_USER_EMAIL;
+const PASSWORD = process.env.ADMIN_USER_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  console.log('SKIP: set ADMIN_USER_EMAIL and ADMIN_USER_PASSWORD to run this test.');
+  process.exit(0);
+}
 
 const out = [];
 const check = (name, pass, detail = '') => {

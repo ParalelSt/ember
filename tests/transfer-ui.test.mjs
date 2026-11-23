@@ -14,7 +14,7 @@
  *  the machine and the match is the same every run. PocketBase first (8088,
  *  this worktree's pb_hooks), then the app on 3050:
  *
- *    /Users/aronmatoic/Documents/Main Projects/spotify-clone-wt/_sandbox/start-pb.sh
+ *    $SANDBOX_DIR/start-pb.sh
  *    cd apps/web && POCKETBASE_URL=http://127.0.0.1:8088 \
  *      POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 \
  *      PYTHON_BIN=/bin/bash PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" \

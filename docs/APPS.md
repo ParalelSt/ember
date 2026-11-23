@@ -248,7 +248,7 @@ fine either way and is all you need to run it yourself.
 ## iOS (iPhone app)
 
 A thin Capacitor shell like Android, iPhone only (portrait), bundle id
-`app.ember.music`, team `8B8D2GSC9U`. Requires Xcode + CocoaPods.
+`app.ember.music`, team `<TEAM_ID>`. Requires Xcode + CocoaPods.
 
 ```bash
 cd apps/mobile
@@ -327,7 +327,7 @@ same way it does in a phone browser. The bundled offline page only says
 
 ### TestFlight (friends install from their phones)
 
-Signing is automatic. Xcode on this Mac is signed in to team 8B8D2GSC9U, and
+Signing is automatic. Xcode on this Mac is signed in to team <TEAM_ID>, and
 `xcodebuild -exportArchive -allowProvisioningUpdates` creates what it needs
 (App ID, App Store profile, a cloud-managed distribution certificate). A
 development build for a cable-connected phone needs that phone registered,
@@ -364,7 +364,7 @@ xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
   -destination 'generic/platform=iOS' -archivePath /tmp/Ember.xcarchive \
   CODE_SIGNING_ALLOWED=NO MARKETING_VERSION=<version> CURRENT_PROJECT_VERSION=<build> archive
 xcodebuild -exportArchive -archivePath /tmp/Ember.xcarchive -exportPath /tmp/ember-ipa \
-  -exportOptionsPlist <plist: method app-store-connect, destination upload, teamID 8B8D2GSC9U> \
+  -exportOptionsPlist <plist: method app-store-connect, destination upload, teamID <TEAM_ID>> \
   -allowProvisioningUpdates -authenticationKeyPath <.p8> -authenticationKeyID <ID> -authenticationKeyIssuerID <issuer>
 ```
 
@@ -377,7 +377,7 @@ TestFlight builds last 90 days, then a newer one has to be uploaded.
 ## Signing the macOS app
 
 Your Developer ID certificate is already in the keychain
-(`Developer ID Application: ARON MATOIC (8B8D2GSC9U)`), so a signed build is:
+(`Developer ID Application: <NAME> (<TEAM_ID>)`), so a signed build is:
 
 ```bash
 cd apps/desktop
@@ -398,7 +398,7 @@ to notarize the app too. One-time setup:
 ```bash
 xcrun notarytool store-credentials "AC_PASSWORD" \
   --apple-id you@example.com \
-  --team-id 8B8D2GSC9U \
+  --team-id <TEAM_ID> \
   --password <the-app-specific-password>
 ```
 

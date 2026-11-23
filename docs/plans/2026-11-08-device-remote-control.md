@@ -13,7 +13,7 @@ app, sees that song as playing "on Windows", and its player controls drive
 the device that plays. Picking a device in the existing output picker moves
 the music there. Spotify Connect, scoped to one account's own devices.
 
-Worktree: `/Users/aronmatoic/Documents/Main Projects/spotify-clone-wt/error-reports-1105`.
+Worktree: `<repo>-wt/error-reports-1105`.
 Branch: a new feature branch from `main` (`npm run branch`), never `main`.
 Do not touch `pocketbase/pb_data`. Never run `npm install` in a worktree.
 

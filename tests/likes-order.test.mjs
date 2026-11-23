@@ -5,8 +5,8 @@
  *  Needs the sandbox stack: PocketBase on 8088 (with the pb_hooks of this
  *  worktree, so ensure_likes_fields.pb.js has run) and the app on 3050.
  *
- *    /Users/aronmatoic/Documents/Main Projects/spotify-clone-wt/_sandbox/start-pb.sh
- *    SINK=1 /Users/aronmatoic/Documents/Main Projects/spotify-clone-wt/_sandbox/start-app.sh
+ *    $SANDBOX_DIR/start-pb.sh
+ *    SINK=1 $SANDBOX_DIR/start-app.sh
  *
  *  Then: node tests/likes-order.test.mjs
  *

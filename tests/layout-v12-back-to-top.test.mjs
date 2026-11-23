@@ -1,7 +1,7 @@
 /** Bughunt V12: the Back to top button covers controls on the right edge.
  *
  *      APP_URL=http://127.0.0.1:3053 PB_URL=http://127.0.0.1:8086 \
- *      ADMIN_USER_EMAIL=strixparalel@gmail.com ADMIN_USER_PASSWORD='EmberTest2026!' \
+ *      ADMIN_USER_EMAIL=<admin email> ADMIN_USER_PASSWORD=<admin password> \
  *        node tests/layout-v12-back-to-top.test.mjs
  *
  *  components/nav/BackToTop.tsx floated at a fixed distance from the
@@ -34,8 +34,12 @@ try {
 
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3053';
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8086';
-const EMAIL = process.env.ADMIN_USER_EMAIL ?? 'strixparalel@gmail.com';
-const PASSWORD = process.env.ADMIN_USER_PASSWORD ?? 'EmberTest2026!';
+const EMAIL = process.env.ADMIN_USER_EMAIL;
+const PASSWORD = process.env.ADMIN_USER_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  console.log('SKIP: set ADMIN_USER_EMAIL and ADMIN_USER_PASSWORD to run this test.');
+  process.exit(0);
+}
 const SHOT_DIR = process.env.SHOT_DIR;
 
 const out = [];

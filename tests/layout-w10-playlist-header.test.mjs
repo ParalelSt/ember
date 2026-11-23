@@ -1,7 +1,7 @@
 /** Bughunt W10: long playlist names run off the page.
  *
  *      APP_URL=http://127.0.0.1:3052 PB_URL=http://127.0.0.1:8087 \
- *      ADMIN_USER_EMAIL=strixparalel@gmail.com ADMIN_USER_PASSWORD='EmberTest2026!' \
+ *      ADMIN_USER_EMAIL=<admin email> ADMIN_USER_PASSWORD=<admin password> \
  *      LONG_PLAYLIST_NAME='...' \
  *        node tests/layout-w10-playlist-header.test.mjs
  *
@@ -30,8 +30,12 @@ try {
 
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3052';
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8087';
-const EMAIL = process.env.ADMIN_USER_EMAIL ?? 'strixparalel@gmail.com';
-const PASSWORD = process.env.ADMIN_USER_PASSWORD ?? 'EmberTest2026!';
+const EMAIL = process.env.ADMIN_USER_EMAIL;
+const PASSWORD = process.env.ADMIN_USER_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  console.log('SKIP: set ADMIN_USER_EMAIL and ADMIN_USER_PASSWORD to run this test.');
+  process.exit(0);
+}
 const LONG_NAME =
   process.env.LONG_PLAYLIST_NAME ??
   'BUGHUNT Supercalifragilisticexpialidocious_playlist_with_an_extremely_long_name_that_should_wrap_and_not_run_off_the_page_1280_390';

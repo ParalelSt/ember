@@ -35,6 +35,7 @@
  *  SHOTS_DIR, CHROME_PATH. */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   barLabels,
@@ -56,12 +57,16 @@ try {
 
 const PB_URL = process.env.PB_URL ?? 'http://127.0.0.1:8095';
 const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:3030';
-const EMAIL = process.env.TAB_EMAIL ?? 'strixparalel@gmail.com';
-const PASSWORD = process.env.TAB_PASSWORD ?? 'EmberTest2026!';
+const EMAIL = process.env.TAB_EMAIL;
+const PASSWORD = process.env.TAB_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  console.log('SKIP: set TAB_EMAIL and TAB_PASSWORD to run this test.');
+  process.exit(0);
+}
 const TRACK_ID = process.env.TAB_TRACK_ID ?? 'upload:955agv5lpd0x9ud';
 const SHOTS_DIR =
   process.env.SHOTS_DIR ??
-  '/private/tmp/claude-501/-Users-aronmatoic-Documents-Main-Projects/b6633bdb-0822-453b-a2b4-a986b08153a8/scratchpad/tabs-sync-shots';
+  path.join(os.tmpdir(), 'tabs-sync-shots');
 
 // The sample: 96 bpm, 4/4, 32 bars -> one bar is 2.5s. Bar N starts at
 // (N-1)*2.5s on the tab's own clock; offset_ms (read from the API, not

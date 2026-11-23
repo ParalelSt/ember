@@ -46,8 +46,12 @@ try {
 
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8084';
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3055';
-const EMAIL = process.env.EMBER_EMAIL ?? 'strixparalel@gmail.com';
-const PASSWORD = process.env.EMBER_PASSWORD ?? 'EmberTest2026!';
+const EMAIL = process.env.EMBER_EMAIL;
+const PASSWORD = process.env.EMBER_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  console.log('SKIP: set EMBER_EMAIL and EMBER_PASSWORD to run this test.');
+  process.exit(0);
+}
 const SHOTS = process.env.SHOT_DIR ?? '';
 const QUERY = process.env.QUERY ?? 'radiohead';
 
