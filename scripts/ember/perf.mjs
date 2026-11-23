@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /** npm run perf [-- <session>] [--user <id or email>] [--days N] [--host URL] [--json]
+ *  npm run perf -- --rollup [--post] [--hours N] [--host URL] [--json]
  *
  *  Every member's app performance, from the host's perf store (POST
  *  /api/perf-log, read back through the admin-only GET /api/admin/perf).
  *  Without a session: one line per page session of the last 7 days, newest
  *  first. With one: that session's full timeline, its events and 5 min
- *  batches merged in the order they happened.
+ *  batches merged in the order they happened. With --rollup: the perf
+ *  channel's per-platform rollup of the last N hours (default 6), a dry run
+ *  (GET /api/admin/perf-rollup) unless --post posts it to Discord now.
  *
  *  Signs in as an admin with PERF_ADMIN_EMAIL / PERF_ADMIN_PASSWORD (or
  *  EMBER_ADMIN_EMAIL / EMBER_ADMIN_PASSWORD), from the environment or
@@ -14,7 +17,7 @@
 
 import path from 'node:path';
 import { fail, parseArgs, readEnvFile, say, TOOLS_DIR } from './lib.mjs';
-import { adminCookie, formatSessions, formatTimeline, perfQuery } from './perfLogic.mjs';
+import { adminCookie, formatRollup, formatSessions, formatTimeline, perfQuery, rollupQuery } from './perfLogic.mjs';
 
 const { flags, rest } = parseArgs(process.argv.slice(2));
 const env = { ...readEnvFile(path.join(TOOLS_DIR, 'sandbox.env')), ...process.env };
@@ -39,6 +42,18 @@ const signIn = await call(`${host}/pb/api/collections/users/auth-with-password`,
 if (!signIn.ok) fail(`Sign-in as ${email} on ${host} failed (${signIn.status}).`);
 const { token, record } = await signIn.json();
 const cookie = adminCookie(token, record);
+
+if (flags.rollup) {
+  const hours = flags.hours ? Number(flags.hours) : undefined;
+  const res = await call(`${host}/api/admin/perf-rollup${rollupQuery({ hours })}`, { method: flags.post ? 'POST' : 'GET', headers: { cookie } });
+  if (res.status === 403) fail(`${email} is not an admin on ${host}.`);
+  if (res.status === 404) fail(`${host} has no perf rollup yet (an older version).`);
+  if (!res.ok) fail(`The host answered ${res.status}.`);
+  const body = await res.json();
+  if (flags.json) say(JSON.stringify(body, null, 2));
+  else for (const line of formatRollup(body)) say(line);
+  process.exit(0);
+}
 
 const session = rest[0];
 const user = typeof flags.user === 'string' ? flags.user : undefined;

@@ -379,6 +379,29 @@ test('bot token: Ember reads only its own file or env, never the shared Claude c
   assert.equal(pickBotToken({ DISCORD_BOT_TOKEN: 'other' }, {}), null);
 });
 
+test('perf --rollup: the query and the printed platforms with their side nav', async () => {
+  const { formatRollup, rollupQuery } = await import('../scripts/ember/perfLogic.mjs');
+  assert.equal(rollupQuery(), '');
+  assert.equal(rollupQuery({ hours: 24 }), '?hours=24');
+  const empty = { os: 'ios', sessions: 0 };
+  const android = {
+    os: 'android', sessions: 3, members: 2, fgHours: 1.5, shells: { 'phone app': 3 },
+    launch: { hydrated: { n: 3, p50: 4000, p95: 30_000 } }, nav: { n: 10, p50: 400, p95: 2100, max: 9000 },
+    freezes: { n: 1, max: 5000 }, heap: { p50: 42, growth: { p95: 18 } },
+    sideNav: { taps: 4, abandoned: 1, routes: [{ route: '/settings', n: 3, abandoned: 1, p50: 2000, p95: 6000, phased: 2, serverP50: 1500, commitP50: 200 }] },
+  };
+  const lines = formatRollup({
+    dryRun: true, posted: false, webhook: 'bug-report-thread', hours: 6, since: '2026-11-23T06:00:00.000Z', until: '2026-11-23T12:00:00.000Z',
+    totals: { sessions: 3, members: 2 }, rollup: { platforms: [android, empty] },
+  });
+  assert.match(lines[0], /^Perf rollup 2026-11-23T06:00 to 2026-11-23T12:00 UTC \(6 h\): 3 sessions, 2 members, webhook bug-report-thread, dry run, nothing posted\.$/);
+  assert.match(lines[1], /^Android +3 sessions, 2 members, 1\.5 h \(phone app 3\); ready p50 4\.0s; nav 10 p50\/p95\/max 0\.4s\/2\.1s\/9\.0s/);
+  assert.match(lines[2], /side nav: 4 taps loaded, 1 re-tapped before loading$/);
+  assert.match(lines[3], /\/settings +3x p50 2\.0s p95 6\.0s, host 1\.5s \/ page 0\.2s \(2\), 1 re-tapped$/);
+  assert.match(lines[4], /^iOS +no sessions$/);
+  assert.match(formatRollup({ posted: false, reason: 'quiet', webhook: 'none', hours: 6, totals: { sessions: 0, members: 0 } })[0], /not posted \(quiet\)\.$/);
+});
+
 test('perf: the admin query, the cookie and the printed sessions and timeline', async () => {
   const { adminCookie, formatSessions, formatTimeline, perfQuery } = await import('../scripts/ember/perfLogic.mjs');
   assert.equal(perfQuery(), '');
