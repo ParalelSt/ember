@@ -10,11 +10,12 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { PERF_STORE_LIMITS, readPerf } from '@/lib/perf/store';
-import { sessionTimeline, summarizeSessions } from '@/lib/perf/sessions';
+import { sessionEvents, sessionTimeline, summarizeSessions } from '@/lib/perf/sessions';
 
-/** Every member's perf digests (POST /api/perf-log), admin only, for
+/** Every member's perf sessions (POST /api/perf-log), admin only, for
  *  `npm run perf`. Without `session`: one summary per page session, newest
- *  first. With `session`: that session's digests in time order. `days`
+ *  first. With `session`: that session's batches in order and every event
+ *  they carried, merged in the order it happened. `days`
  *  (1 to 7, default 7) and `user` (an id) narrow it. */
 export const GET = withRequestLog('admin/perf', async (request: NextRequest) => {
   try {
@@ -36,7 +37,12 @@ export const GET = withRequestLog('admin/perf', async (request: NextRequest) => 
       if (!summary) return jsonError('No such session', 404);
       // A session id is the page's own: kept to one member's digests.
       const own = entries.filter((e) => e.userId === summary.userId);
-      return Response.json({ since, session: { ...summary, ...users.get(summary.userId) }, timeline: sessionTimeline(own, session) });
+      return Response.json({
+        since,
+        session: { ...summary, ...users.get(summary.userId) },
+        timeline: sessionTimeline(own, session),
+        events: sessionEvents(own, session),
+      });
     }
     const sessions = summarizeSessions(entries).map((s) => ({ ...s, ...users.get(s.userId) }));
     return Response.json({ since, days, sessions });

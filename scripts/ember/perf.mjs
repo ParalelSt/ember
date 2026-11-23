@@ -4,7 +4,8 @@
  *  Every member's app performance, from the host's perf store (POST
  *  /api/perf-log, read back through the admin-only GET /api/admin/perf).
  *  Without a session: one line per page session of the last 7 days, newest
- *  first. With one: that session's timeline, a line per 5 min digest.
+ *  first. With one: that session's full timeline, its events and 5 min
+ *  batches merged in the order they happened.
  *
  *  Signs in as an admin with PERF_ADMIN_EMAIL / PERF_ADMIN_PASSWORD (or
  *  EMBER_ADMIN_EMAIL / EMBER_ADMIN_PASSWORD), from the environment or
@@ -51,7 +52,7 @@ const body = await res.json();
 if (flags.json) {
   say(JSON.stringify(body, null, 2));
 } else if (session) {
-  for (const line of formatTimeline(body.session, body.timeline)) say(line);
+  for (const line of formatTimeline(body.session, body.timeline, body.events)) say(line);
 } else {
   const sessions = user?.includes('@') ? body.sessions.filter((s) => s.email === user) : body.sessions;
   for (const line of formatSessions(sessions)) say(line);

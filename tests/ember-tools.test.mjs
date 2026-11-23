@@ -400,12 +400,30 @@ test('perf: the admin query, the cookie and the printed sessions and timeline', 
   assert.match(list[1], /^2026-11-23 15:25 +Ana <ana@ember\.test> +motorola edge 60 8GB +0\.7\.51 +30\.3s +1\.2s\/57\.0s\/57\.0s +1x6\.2s +40->46 +s1$/);
   assert.deepEqual(formatSessions([]), ['No perf sessions in this window.']);
 
-  const lines = formatTimeline(session, [
-    { ts: session.first, fgMs: 300_000, nav: { n: 2, ms: [1200, 57_000], worst: [{ to: '/settings', ms: 57_000, server: 50_000 }] }, freeze: { n: 1, max: 6200 }, rage: 2, heap: { used: 40 } },
-    { ts: session.last, fgMs: 300_000, lt: { n: 4, ms: 800, max: 300, top: [['page.js', 500]] }, api: [['/api/likes', 3, 900, 30_000]] },
-  ]);
+  const t0 = session.first - 60_000;
+  const lines = formatTimeline(
+    { ...session, missing: [2] },
+    [
+      { ts: session.first, seq: 1, fgMs: 300_000, nav: { n: 2, ms: [1200, 57_000] }, freeze: { n: 1, max: 6200 }, heap: { used: 40 } },
+      { ts: session.last, seq: 3, fgMs: 300_000, lt: { n: 4, ms: 800, max: 300, top: [['page.js', 500]] }, api: [['/api/likes', 3, 900, 30_000]], evDropped: 2 },
+    ],
+    [
+      { k: 'nav', ts: t0 + 30_000, seq: 1, at: 30_000, to: '/settings', via: 'tap', ms: 57_000, server: 50_000, commit: 400, lt: 120, playing: true },
+      { k: 'freeze', ts: t0 + 50_000, seq: 1, at: 50_000, ms: 6200 },
+      { k: 'rage', ts: t0 + 52_000, seq: 1, at: 52_000, target: 'button', taps: 3, pending: 4000, overlay: true, inert: false },
+      { k: 'slow', ts: session.last - 1000, seq: 3, at: 0, type: 'click', ms: 400, target: 'Playlist' },
+    ],
+  );
   assert.match(lines[0], /^Ana <ana@ember\.test>, motorola edge 60 8GB, app 0\.7\.51 \(capacitor\)$/);
+  assert.match(lines[1], /2 batches, 10 min in the foreground, batches never arrived: 2$/);
   assert.match(lines[2], /^launch: first byte 0\.8s, first paint 2\.5s, ready 30\.3s/);
-  assert.match(lines[3], /nav 2: 1\.2s 57\.0s \| slowest \/settings 57\.0s \(server 50\.0s\) \| FREEZE 1x max 6\.2s \| RAGE 2 \| heap 40MB/);
-  assert.match(lines[4], /long tasks 4 0\.8s max 300ms \[page\.js 500ms\] \| api \/api\/likes 3x p50 900ms max 30000ms/);
+  // Events and batches merged in the order they happened.
+  assert.deepEqual(lines.slice(3).map((l) => l.slice(21)), [
+    'nav tap to /settings 57.0s (server 50.0s, after answer 0.4s) long tasks 120ms while playing',
+    'FREEZE 6.2s',
+    'RAGE 3 taps on button, navigation pending 4.0s, overlay up',
+    'batch 1: fg 300s | nav 2 | freezes 1 max 6.2s | heap 40MB',
+    'slow click 400ms on Playlist',
+    'batch 3: fg 300s | long tasks 4 0.8s max 300ms [page.js 500ms] | api /api/likes 3x p50 900ms max 30000ms | 2 events not kept',
+  ]);
 });

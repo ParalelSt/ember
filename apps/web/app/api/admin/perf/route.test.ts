@@ -50,7 +50,7 @@ const get = (qs = '') => GET(new Request(`http://localhost/api/admin/perf${qs}`)
 
 const T = Date.now() - 60 * 60 * 1000;
 function d(over: Partial<PerfDigest> = {}): PerfDigest {
-  return { v: 1, session: 'sA', app: '0.7.51', shell: 'capacitor', device: { model: 'motorola edge 60' }, fgMs: 300_000, ...over };
+  return { v: 1, session: 'sA', seq: 1, t0: T - 60_000, app: '0.7.51', shell: 'capacitor', device: { model: 'motorola edge 60' }, fgMs: 300_000, ...over };
 }
 function e(ts: number, userId: string, digest: PerfDigest): PerfStoreEntry {
   return { ts, userId, digest };
@@ -108,6 +108,23 @@ describe('GET /api/admin/perf', () => {
     expect(body.session).toMatchObject({ session: 'sA', email: 'ana@ember.test' });
     expect(body.timeline.map((r: { ts: number }) => r.ts)).toEqual([T, T + 300_000]);
     expect(body.timeline[0]).toMatchObject({ launch: { hydrated: 30_300 }, nav: { ms: [1200, 57_000] } });
+  });
+
+  it('merges a session\'s batches into one timeline, in order, and names the ones that never arrived', async () => {
+    const t0 = T - 60_000;
+    state.entries = [
+      // Stored out of order; batch 2 never arrived (the app was killed).
+      e(T + 600_000, 'u1', d({ seq: 3, t0, ev: [{ k: 'freeze', at: 650_000, ms: 6200 }] })),
+      e(T, 'u1', d({ seq: 1, t0, ev: [{ k: 'nav', at: 30_000, to: '/settings', via: 'tap', ms: 57_000, lt: 0 }, { k: 'slow', at: 40_000, type: 'click', ms: 300 }] })),
+    ];
+    const body = await (await get('?session=sA')).json();
+    expect(body.session).toMatchObject({ digests: 2, missing: [2], events: { nav: 1, slow: 1, freeze: 1 } });
+    expect(body.timeline.map((r: { seq: number }) => r.seq)).toEqual([1, 3]);
+    expect(body.events.map((ev: { k: string; ts: number; seq: number }) => [ev.k, ev.ts, ev.seq])).toEqual([
+      ['nav', t0 + 30_000, 1],
+      ['slow', t0 + 40_000, 1],
+      ['freeze', t0 + 650_000, 3],
+    ]);
   });
 
   it('refuses odd ids and answers 404 for an unknown session', async () => {
