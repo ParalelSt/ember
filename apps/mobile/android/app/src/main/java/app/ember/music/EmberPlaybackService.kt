@@ -281,11 +281,13 @@ class EmberPlaybackService : MediaLibraryService() {
      *  no page open, which is all the car ever has. */
     lateinit var playbackLog: PlaybackLog
     private lateinit var playWatch: PlayWatch
-    /** Sending log batches: never behind a browse list on `io`. */
-    private val logIo = Executors.newSingleThreadExecutor()
+    /** Sending log batches: never behind a browse list on `io`. Shared with
+     *  the updater's log (NativeLogThreads): one thread per process. */
+    private val logIo get() = NativeLogThreads.io
     /** The log's timers, off the main thread: the watchdog must fire while
-     *  the main thread is stuck in an audio focus request. */
-    private val logTimer = Executors.newSingleThreadScheduledExecutor()
+     *  the main thread is stuck in an audio focus request. The thread is
+     *  shared; this service's own timers end with it (onDestroy). */
+    private val logTimers = NativeLogThreads.Timers()
     /** Car controllers connected now (Android Auto, the car's media centre):
      *  the log's surface. */
     private val carControllers: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
@@ -481,10 +483,7 @@ class EmberPlaybackService : MediaLibraryService() {
     }
 
     private fun startLog(baseUrl: String) {
-        val delay = Delay { ms, task ->
-            val f = logTimer.schedule(task, ms, java.util.concurrent.TimeUnit.MILLISECONDS)
-            ({ f.cancel(false); Unit })
-        }
+        val delay: Delay = logTimers
         val automotive = Surfaces.isAutomotive(this)
         playbackLog = PlaybackLog(
             send = { body ->
@@ -501,6 +500,7 @@ class EmberPlaybackService : MediaLibraryService() {
                 .put("model", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".take(80))
                 .put("sdk", android.os.Build.VERSION.SDK_INT)
                 .put("app", AppVersion.name(this).orEmpty()),
+            session = NativeLogThreads.session,
         )
         DiscordDiagnostics.attachLog(playbackLog) { !CookieManager.getInstance().getCookie(baseUrl).isNullOrBlank() }
         playWatch = PlayWatch(playbackLog, delay, caller = {
@@ -1119,10 +1119,10 @@ class EmberPlaybackService : MediaLibraryService() {
         if (::discord.isInitialized) discord.release()
         DiscordDiagnostics.detachLog(playbackLog)
         playbackLog.info("service.stop", "player service stopped")
+        // The last batch still goes out on the shared thread; this service's
+        // timers (the log's, the play watchdog's) end here.
         playbackLog.flush()
-        logTimer.shutdownNow()
-        // Lets the last batch go out, then ends the thread.
-        logIo.shutdown()
+        logTimers.cancelAll()
         handler.removeCallbacks(tickLoop)
         handler.removeCallbacks(foregroundGuard)
         // Anything else still waiting on the main thread, above all a media

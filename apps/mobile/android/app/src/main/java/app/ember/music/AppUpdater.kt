@@ -155,8 +155,6 @@ object AppUpdater {
     /** Tests: the server to ask in place of capacitor.config.json's. */
     private var testBaseUrl: String? = null
     @Volatile private var initialized = false
-    private val logIo = Executors.newSingleThreadExecutor()
-    private val logTimer = Executors.newSingleThreadScheduledExecutor()
     private val main by lazy { Handler(Looper.getMainLooper()) }
     private val listeners = CopyOnWriteArraySet<(JSONObject) -> Unit>()
     private val http = OkHttpClient.Builder()
@@ -1018,9 +1016,11 @@ object AppUpdater {
 
     // ── Log ─────────────────────────────────────────────────────────────
 
+    /** Sends on the player service's log thread and under its session
+     *  (NativeLogThreads): no threads of the updater's own. */
     private fun buildLog(): PlaybackLog {
         val delay = Delay { ms, task ->
-            val f = logTimer.schedule(task, ms, TimeUnit.MILLISECONDS)
+            val f = NativeLogThreads.timer.schedule(task, ms, TimeUnit.MILLISECONDS)
             ({ f.cancel(false); Unit })
         }
         val automotive = Surfaces.isAutomotive(app)
@@ -1035,13 +1035,14 @@ object AppUpdater {
                 http.newCall(req).execute().use { if (!it.isSuccessful) throw IOException("native-log -> ${it.code}") }
             },
             online = { UpdateRules.canDownload(netFacts()) },
-            io = logIo,
+            io = NativeLogThreads.io,
             delay = delay,
             surface = { Surfaces.of(automotive, Surfaces.isCarMode(app), UpdatePresence.carConnected) },
             device = JSONObject()
                 .put("model", "${Build.MANUFACTURER} ${Build.MODEL}".take(80))
                 .put("sdk", Build.VERSION.SDK_INT)
                 .put("app", AppVersion.name(app).orEmpty()),
+            session = NativeLogThreads.session,
         )
     }
 

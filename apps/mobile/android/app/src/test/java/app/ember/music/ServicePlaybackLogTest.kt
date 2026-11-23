@@ -51,4 +51,39 @@ class ServicePlaybackLogTest {
         assertEquals("127.0.0.1", request.getJSONObject("data").getString("source"))
         assertEquals("phone", request.getString("surface"))
     }
+
+    @Test fun `the service and the updater log under one session, on one shared thread`() {
+        controller = Robolectric.buildService(EmberPlaybackService::class.java).create()
+        val service = controller.get()
+        assertEquals(NativeLogThreads.session, service.playbackLog.session)
+        AppUpdater.resetForTest(null, { it.run() }, baseUrl = "http://127.0.0.1:9")
+        AppUpdater.init(app)
+        // The updater's log has no threads of its own: a field for one would
+        // show up here.
+        val fields = AppUpdater::class.java.declaredFields.map { it.name }
+        assertTrue(fields.toString(), fields.none { it == "logIo" || it == "logTimer" })
+        // Both send on the same thread.
+        val names = java.util.concurrent.CopyOnWriteArrayList<String>()
+        NativeLogThreads.io.submit { names.add(Thread.currentThread().name) }.get()
+        assertEquals(listOf("ember-log-io"), names)
+        AppUpdater.resetForTest(null, { it.run() })
+    }
+
+    @Test fun `a stopped service drops its own timers and leaves the shared threads running`() {
+        controller = Robolectric.buildService(EmberPlaybackService::class.java).create()
+        val mine = NativeLogThreads.Timers()
+        var fired = false
+        mine.after(60_000) { fired = true }
+        assertEquals(1, mine.pendingCount())
+        mine.cancelAll()
+        assertEquals(0, mine.pendingCount())
+        assertTrue(runCatching { mine.after(1) {} }.isFailure)
+        controller.destroy()
+        // The shared threads outlive the service: the next one logs on them.
+        val ran = java.util.concurrent.CountDownLatch(2)
+        NativeLogThreads.io.execute { ran.countDown() }
+        NativeLogThreads.Timers().after(1) { ran.countDown() }
+        assertTrue(ran.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(false, fired)
+    }
 }
