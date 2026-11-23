@@ -332,7 +332,44 @@ timed at all. Add `W/lib/perf/serverTiming.ts`, registered from
   navigation or freeze is just an event in the session's log.
 - **Daily digest** (`W/lib/reports/digest.ts`): a short perf section with
   launch and navigation medians and p95, worst routes on the host, renderer
-  deaths, low memory events, heap slope per device model.
+  deaths, low memory events, heap slope per device model. Only while the
+  perf channel below has nowhere to post (no webhook, or
+  `PERF_ROLLUP_DISABLED=1`); otherwise the numbers live in the perf channel.
+- **Perf channel** (owner, 2026-11-23; `W/lib/reports/perfRollupJob.ts`):
+  every 6 hours (00, 06, 12, 18 UTC) one Discord message with the
+  collective performance of every device, one embed per platform, always
+  all five (Android, iOS, Windows, macOS, Linux; an empty one says so),
+  titled with the window. Each batch carries the device's `os` (the
+  Capacitor platform in the app, else the user agent, an iPad asking for
+  the desktop site counting as iOS); browser users count under their OS
+  and the shell (phone app, desktop app, browser) is the sub-breakdown.
+  Batches from older apps get it from the request's user agent, or the
+  shell, else `other` (counted in the totals and the file only). Per
+  platform: sessions, members (a count), foreground hours, launch (first
+  paint and ready) p50 and p95, navigation count, p50, p95 and max, long
+  task ms per foreground minute, freezes, rage and slow taps, heap p50 and
+  max and its growth per session (last minus first, p95: the leak signal),
+  DOM nodes max, the typical device's RAM and cores, the 3 slowest routes,
+  and **side nav**: taps on a link in the side nav or the phone's drawer
+  (navigation events carry the tapped link's `data-nav-area`), per
+  destination the count, p50 and p95 tap to shown, where the time went
+  (p50 host wait, request sent to first byte, against p50 page work,
+  response end to the route change) and how many were re-tapped before
+  they loaded. A `perf-rollup.json` file comes with it: the same numbers
+  plus one row per session with the member and session ids replaced by a
+  short salted hash (`PERF_ROLLUP_SALT`, else a random salt kept in
+  `logs/perf-rollup-salt`), capped near 1 MB by leaving out the oldest
+  sessions. No ids, emails, songs or artists in either. A window with no
+  sessions is not posted; `logs/perf-rollup-state.json` keeps a window to
+  one post across restarts, and a refused post is tried 3 times, 30 min
+  apart. Where it posts: `DISCORD_PERF_WEBHOOK_URL` as it is, else the
+  bug-report webhook into the perf thread of #bug-reports
+  (`?thread_id=`, `DISCORD_PERF_THREAD_ID`, default
+  1574541246045618378). To check it after a release, as an admin:
+  `npm run perf -- --rollup` (a dry run of the last 6 hours,
+  `GET /api/admin/perf-rollup?hours=N`, nothing posted; `--json` for the
+  whole answer) and `npm run perf -- --rollup --post` (posts now,
+  `POST /api/admin/perf-rollup`, without taking the scheduled window).
 
 ### 5.6 Kill switch
 
@@ -340,7 +377,8 @@ timed at all. Add `W/lib/perf/serverTiming.ts`, registered from
   page stops collecting for the session and tells the native side (the page
   asks with `GET /api/perf-log` 5 s after every page load and every 30 min
   while open, and every upload's answer says it again). It also stops the server's request
-  timing and its `Server-Timing` headers.
+  timing, its `Server-Timing` headers and the perf channel's posts
+  (`PERF_ROLLUP_DISABLED=1` stops only the posts).
 - Device: none. Every signed-in person's app sends (owner, 2026-11-23); the
   "automatic reports" setting covers crash reports only.
 - A `sample` value in the same answer, `EMBER_PERF_SAMPLE` (default 1),
@@ -418,8 +456,11 @@ Slice 9 changes how sessions are checked, so it needs a security review.
   `server-timing` when the proxy set one, and the server log has the
   request times anyway.
 - Delivery: the perf block in manual bug reports, session batches to
-  `POST /api/perf-log`, `GET /api/admin/perf`, `npm run perf`, and a
-  "Performance" section in the daily digest. No automatic perf reports.
+  `POST /api/perf-log`, `GET /api/admin/perf`, `npm run perf`, the perf
+  channel every 6 hours (`W/lib/perf/os.ts`, `platformRollup.ts`,
+  `W/lib/reports/perfRollupJob.ts`, `perfRollupEmbeds.ts`,
+  `W/app/api/admin/perf-rollup`), and a "Performance" section in the daily
+  digest while the perf channel is off. No automatic perf reports.
 - For native slice 4: the digest counts native events named `renderer.gone`,
   `renderer.crash`, `renderer.unresponsive`, `memory.low` and `memory.trim`.
 - Left out for now: the dev only render churn and timer counters
