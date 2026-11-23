@@ -1,6 +1,8 @@
 import {
+  appCheckDue,
   appUpdateWaitsForTap,
   checkForAppUpdate,
+  getAppUpdateState,
   downloadAppUpdate,
   installAppUpdateWithResume,
   openInstallSettings,
@@ -297,9 +299,19 @@ export function watchPendingUpdate(): () => void {
 
 let checking: Promise<void> | null = null;
 
+/** Asks the Android app's feed too, unless the app's own answer is fresh
+ *  (appCheckDue); [manual] (a tap) always asks. Never throws. */
+async function askApp(manual: boolean): Promise<void> {
+  try {
+    if (manual || appCheckDue(await getAppUpdateState(), Date.now())) await checkForAppUpdate();
+  } catch {
+    /* the answer arrives as a state, or not at all */
+  }
+}
+
 /** Asks the host what is newest and records the answer. One at a time;
- *  never throws. */
-export function checkForUpdates(fetchImpl?: typeof fetch): Promise<void> {
+ *  never throws. [opts.manual]: the person tapped "Check for updates". */
+export function checkForUpdates(fetchImpl?: typeof fetch, opts: { manual?: boolean } = {}): Promise<void> {
   checking ??= (async () => {
     const store = useUpdateStore.getState();
     store.set({ status: 'checking' });
@@ -308,7 +320,7 @@ export function checkForUpdates(fetchImpl?: typeof fetch): Promise<void> {
       const android = info.platform === 'android' && appUpdateWaitsForTap();
       // The Android app asks its own feed; its answer arrives as a state
       // (noteAppUpdateState), the one before it is kept here.
-      if (android) void checkForAppUpdate();
+      if (android) void askApp(opts.manual === true);
       const found = await findUpdates({ platform: info.platform, shell: info.shellVersion }, fetchImpl);
       if (android) found.shellLatest = useUpdateStore.getState().shellLatest;
       const offer = pickOffer(found, { web: info.webVersion, shell: info.shellVersion, platform: info.platform });

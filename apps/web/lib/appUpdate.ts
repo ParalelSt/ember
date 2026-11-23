@@ -147,6 +147,33 @@ async function call(name: 'check' | 'install' | 'download' | 'openInstallSetting
 }
 
 export const checkForAppUpdate = () => call('check');
+
+/** The updater's state now, or null outside an Android app with one. */
+export async function getAppUpdateState(): Promise<AppUpdateState | null> {
+  const p = plugin();
+  if (!p?.getState) return null;
+  try {
+    return readUpdateState(await p.getState());
+  } catch {
+    return null;
+  }
+}
+
+/** How fresh the app's own answer must be for the page not to ask again.
+ *  The app checks by itself on start, at most this often
+ *  (UpdateRules.START_CHECK_MIN_MS, AppUpdater.checkOnStart). */
+export const APP_CHECK_FRESH_MS = 15 * 60 * 1000;
+
+/** Whether a check the page makes by itself (the update reminder) should
+ *  also ask the app's feed. Not while the app is checking or busy with an
+ *  update, nor when its last answer is recent (the app-start check a few
+ *  seconds earlier): one check at a time. A tap on "Check for updates"
+ *  always asks. */
+export function appCheckDue(s: AppUpdateState | null, now: number): boolean {
+  if (!s) return true;
+  if (s.status === 'checking' || s.status === 'downloading' || s.status === 'installing') return false;
+  return !(s.checkedAt > 0 && now >= s.checkedAt && now - s.checkedAt < APP_CHECK_FRESH_MS);
+}
 export const installAppUpdate = () => call('install');
 
 /** Install, with the page's resume note (lib/update/apply.ts) kept by the
