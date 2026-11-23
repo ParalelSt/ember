@@ -1,7 +1,7 @@
 'use client';
 
 import { logger } from '@/lib/logger/client';
-import { nativeQueueContext, type QueueOrigin } from '@/lib/autoCache/native';
+import { nativeQueueContext, relayNativeState, startNativeStateRelay, type QueueOrigin } from '@/lib/autoCache/native';
 import type { Track } from '@/types/track';
 import type { LoopMode } from '@/stores/usePlayerStore';
 import type { OverlayEnd, OverlayHandle, OverlayResult } from '@/lib/pranks/overlayPlayer';
@@ -216,6 +216,8 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
   let destroyed = false;
   /** What each addListener handed back, removed by destroy. */
   const handles: unknown[] = [];
+  /** Ends relaying `state` to the auto cache (destroy). */
+  let stopRelay: () => void = () => {};
   const on = (event: string, cb: (d: never) => void) => {
     const h = p!.addListener(event, ((d: never) => {
       if (!destroyed) cb(d);
@@ -307,6 +309,9 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     Promise.resolve(answer).then(done, () => done(null));
   };
   const onState = (s: NativeState) => {
+    // The auto cache's view of the same event (cached ids, offline flags):
+    // one bridge listener for both.
+    relayNativeState(s);
     if (resyncing) return;
     // Only an app build that dates its states (see NativeState.at).
     if (typeof s?.at === 'number' && Date.now() - s.at > STALE_STATE_MS) {
@@ -370,6 +375,7 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
       );
     }
     on('state', onState as (d: never) => void);
+    stopRelay = startNativeStateRelay();
     on(
       'queue',
       ((d: { tracks: Track[]; index: number; shuffle?: boolean }) => {
@@ -581,6 +587,7 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     destroy() {
       // The native player keeps playing; only this page's view of it goes.
       destroyed = true;
+      stopRelay();
       for (const h of handles) {
         void Promise.resolve(h)
           .then((x) => call((x as { remove?: () => unknown } | null | undefined)?.remove?.()))

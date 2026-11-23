@@ -5,6 +5,7 @@ import {
   nativeCacheStats,
   nativeQueueContext,
   readNativeCacheState,
+  resetNativeCacheRelayForTests,
   setNativeAutoCache,
   subscribeNativeCacheState,
 } from './native';
@@ -40,6 +41,7 @@ function install(methods: Record<string, unknown>) {
 
 afterEach(() => {
   delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  resetNativeCacheRelayForTests();
 });
 
 describe('native auto cache: an app build without it', () => {
@@ -120,6 +122,61 @@ describe('native auto cache: state from the player', () => {
     expect(n.removed).toEqual(['state']);
     n.emit('state', { cachedIds: [] });
     expect(cb).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('one state listener for the player and the auto cache', () => {
+  const stateListeners = (n: ReturnType<typeof install>) =>
+    (n.plugin.addListener as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === 'state').length;
+  const tick = async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  };
+
+  it('with the Android backend listening, the cache adds no listener of its own and still hears every state', async () => {
+    const n = install({ setAutoCache: vi.fn() });
+    const events = makeFakeEvents();
+    const b = createAndroidBackend(events);
+    expect(stateListeners(n)).toBe(1);
+    const cb = vi.fn();
+    const off = subscribeNativeCacheState(cb);
+    expect(stateListeners(n)).toBe(1);
+    n.emit('state', { playing: true, index: 0, position: 3, duration: 200, cachedIds: ['youtube:a'], offline: false });
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(cb).toHaveBeenLastCalledWith({ cachedIds: ['youtube:a'], offlineStalled: false, offline: false });
+    expect(events.onTime).toHaveBeenCalledWith(3);
+    off();
+    n.emit('state', { playing: true, index: 0, position: 4, duration: 200, cachedIds: [] });
+    expect(cb).toHaveBeenCalledTimes(1);
+    b.destroy();
+  });
+
+  it('a cache subscribed before the backend drops its own listener once the backend relays', async () => {
+    const n = install({ setAutoCache: vi.fn() });
+    const cb = vi.fn();
+    const off = subscribeNativeCacheState(cb);
+    await tick();
+    expect(stateListeners(n)).toBe(1);
+    const b = createAndroidBackend(makeFakeEvents());
+    await tick();
+    expect(n.removed).toEqual(['state']);
+    n.emit('state', { playing: false, index: 0, position: 0, duration: 0, cachedIds: ['youtube:z'] });
+    // Once only, through the backend (the removed fake listener still fires here).
+    expect(cb).toHaveBeenCalledTimes(1);
+    b.destroy();
+    off();
+  });
+
+  it('with the backend gone, the cache listens for itself again', async () => {
+    const n = install({ setAutoCache: vi.fn() });
+    const b = createAndroidBackend(makeFakeEvents());
+    const cb = vi.fn();
+    const off = subscribeNativeCacheState(cb);
+    b.destroy();
+    await tick();
+    expect(stateListeners(n)).toBe(2);
+    n.emit('state', { cachedIds: ['youtube:c'] });
+    expect(cb).toHaveBeenLastCalledWith({ cachedIds: ['youtube:c'], offlineStalled: false, offline: false });
+    off();
   });
 });
 
