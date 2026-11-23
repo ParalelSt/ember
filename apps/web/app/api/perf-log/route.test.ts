@@ -43,6 +43,8 @@ const { _resetBuckets } = await import('@/lib/rateLimit');
 const digest = (over: Record<string, unknown> = {}) => ({
   v: 1,
   session: 'b1c2d3e4-0000-4000-8000-000000000000',
+  seq: 3,
+  t0: 1_763_910_000_000,
   app: '0.7.51',
   shell: 'capacitor',
   device: { mem: 8, cores: 8, model: 'motorola edge 60', net: '4g' },
@@ -55,6 +57,13 @@ const digest = (over: Record<string, unknown> = {}) => ({
   heap: { used: 42.5, limit: 512 },
   dom: 3100,
   api: [['/api/likes/abc123def456ghi', 3, 900, 30_000]],
+  ev: [
+    { k: 'nav', at: 31_000, to: '/playlist/abc123def456ghi', via: 'tap', ms: 57_000, server: 50_000, commit: 400, lt: 120, playing: true },
+    { k: 'freeze', at: 90_000, ms: 6200 },
+    { k: 'rage', at: 95_000, target: 'link /playlist/abc123def456ghi', taps: 3, pending: 4000, overlay: true, inert: false },
+    { k: 'slow', at: 99_000, type: 'click', ms: 400, target: 'Playlist' },
+  ],
+  evDropped: 2,
   ...over,
 });
 
@@ -87,6 +96,21 @@ describe('POST /api/perf-log', () => {
     expect(e.digest.nav?.worst?.[0].to).toBe('/playlist/:id');
     expect(e.digest.api?.[0][0]).toBe('/api/likes/:id');
     expect(JSON.stringify(e)).not.toContain('abc123def456ghi');
+    expect(e.digest).toMatchObject({ seq: 3, t0: 1_763_910_000_000, evDropped: 2 });
+    expect(e.digest.ev).toEqual([
+      { k: 'nav', at: 31_000, to: '/playlist/:id', via: 'tap', ms: 57_000, server: 50_000, commit: 400, lt: 120, playing: true },
+      { k: 'freeze', at: 90_000, ms: 6200 },
+      { k: 'rage', at: 95_000, target: 'link /playlist/:id', taps: 3, pending: 4000, overlay: true, inert: false },
+      { k: 'slow', at: 99_000, type: 'click', ms: 400, target: 'Playlist' },
+    ]);
+  });
+
+  it('refuses a batch without its number or start, or with an unknown event', async () => {
+    expect((await post(digest({ seq: undefined }))).status).toBe(400);
+    expect((await post(digest({ t0: 5 }))).status).toBe(400);
+    expect((await post(digest({ ev: [{ k: 'crash', at: 1 }] }))).status).toBe(400);
+    expect((await post(digest({ ev: [{ k: 'freeze', at: 1, ms: 1, text: 'x' }] }))).status).toBe(400);
+    expect(state.stored).toHaveLength(0);
   });
 
   it('needs a signed-in member', async () => {
@@ -111,12 +135,12 @@ describe('POST /api/perf-log', () => {
     expect(state.stored).toHaveLength(0);
   });
 
-  it('refuses a body over 4 KB, by header and by its real size', async () => {
-    expect((await post(digest(), { 'content-length': '5000' })).status).toBe(413);
-    expect((await post(JSON.stringify(digest()) + ' '.repeat(5000))).status).toBe(413);
+  it('refuses a body over 8 KB, by header and by its real size', async () => {
+    expect((await post(digest(), { 'content-length': '9000' })).status).toBe(413);
+    expect((await post(JSON.stringify(digest()) + ' '.repeat(9000))).status).toBe(413);
   });
 
-  it('stops reading a chunked body with no Content-Length as soon as it passes 4 KB', async () => {
+  it('stops reading a chunked body with no Content-Length as soon as it passes 8 KB', async () => {
     let pulled = 0;
     const chunk = new TextEncoder().encode('x'.repeat(1024));
     const body = new ReadableStream<Uint8Array>({
@@ -130,15 +154,15 @@ describe('POST /api/perf-log', () => {
     expect(req.headers.get('content-length')).toBeNull();
     const res = await POST(req as unknown as NextRequest, undefined as never);
     expect(res.status).toBe(413);
-    expect(pulled).toBeLessThan(10);
+    expect(pulled).toBeLessThan(15);
     expect(state.stored).toHaveLength(0);
   });
 
   it('limits uploads per member per hour', async () => {
     let last = 0;
-    for (let i = 0; i < 41; i++) last = (await post(digest())).status;
+    for (let i = 0; i < 61; i++) last = (await post(digest())).status;
     expect(last).toBe(429);
-    expect(state.stored).toHaveLength(40);
+    expect(state.stored).toHaveLength(60);
   });
 
   it('answers ok when the member\'s daily budget is full, without storing', async () => {

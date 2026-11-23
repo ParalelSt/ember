@@ -136,10 +136,24 @@ export interface DeviceFacts {
   net?: string;
 }
 
-/** The periodic digest sent to POST /api/perf-log, at most 2 KB. */
+/** One thing that happened, as a session's batch carries it. `at` is ms
+ *  since the page started; the batch's `t0` turns it into a wall time. */
+export type SessionEvent =
+  | { k: 'nav'; at: number; to: string; via: string; ms?: number; server?: number; commit?: number; lt: number; playing?: boolean; abandoned?: boolean }
+  | { k: 'freeze'; at: number; ms: number }
+  | { k: 'rage'; at: number; target: string; taps: number; pending?: number; overlay: boolean; inert: boolean }
+  | { k: 'slow'; at: number; type: string; ms: number; target?: string };
+
+/** One batch of a page session, sent to POST /api/perf-log every 5 min and
+ *  when the app is left: what happened since the batch before, at most
+ *  6 KB. */
 export interface PerfDigest {
   v: 1;
   session: string;
+  /** The batch's number in its session, from 1: a gap means one was lost. */
+  seq: number;
+  /** When the page started (performance.timeOrigin), ms since 1970. */
+  t0: number;
   app: string;
   shell: string;
   device: DeviceFacts;
@@ -155,6 +169,10 @@ export interface PerfDigest {
   heap?: { used: number; limit?: number };
   dom?: number;
   api?: [string, number, number, number][];
+  /** What happened since the batch before, oldest first. */
+  ev?: SessionEvent[];
+  /** Events left out of this batch (too many, or too big). */
+  evDropped?: number;
 }
 
 /** The app's route tree (lib/perf/routeTree.ts), built from the app/

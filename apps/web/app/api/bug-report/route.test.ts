@@ -837,12 +837,4 @@ describe('POST /api/bug-report: the perf block', () => {
     expect(res.status).toBe(200);
     expect(JSON.parse(await (postedForm(fetchMock).get('files[0]') as File).text()).client.perf).toBeUndefined();
   });
-
-  it('an automatic perf report has its own rate limit bucket and title', async () => {
-    vi.mocked(rateLimitResponse).mockClear();
-    await POST(request({ client: snapshot({ perf } as unknown as Partial<ClientSnapshot>), automatic: true, perfKind: 'nav', note: 'perf: slow navigation' }), undefined as never);
-    const keys = vi.mocked(rateLimitResponse).mock.calls.map(([k]) => k);
-    expect(keys).toEqual(['bug-report:perf:u1']);
-    expect(postedEmbed(fetchMock).title).toBe('Automatic perf report from dev@ember.test');
-  });
 });

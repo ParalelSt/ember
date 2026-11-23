@@ -1,15 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeFakePerformance, type FakePerformance } from '@/test-utils/fakePerformance';
 
-/** Delivery, page side (slice 5): the digest upload's gates and budget,
- *  sendBeacon on hide, the host's kill switch end to end, and the
- *  automatic perf reports. Each test loads a fresh copy of the modules, so
+/** Delivery, page side (slice 5): a session's batches (numbered, every
+ *  5 min and on leaving, by sendBeacon then), who sends, the hourly budget,
+ *  the host's kill switch end to end, and no report on the spot. Each test loads a fresh copy of the modules, so
  *  the page's one perf recorder starts clean. */
 
-const auto = vi.hoisted(() => ({ signedIn: true, reports: [] as [string, string][] }));
+const auto = vi.hoisted(() => ({ signedIn: true }));
 vi.mock('@/lib/autoReport', () => ({
   isSignedIn: () => auto.signedIn,
-  maybeAutoPerfReport: (kind: string, message: string) => auto.reports.push([kind, message]),
 }));
 
 let fake: FakePerformance;
@@ -39,7 +38,6 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
   auto.signedIn = true;
-  auto.reports = [];
 });
 
 afterEach(() => {
@@ -80,7 +78,7 @@ describe('bootPerf and the digest upload', () => {
     m.pagePerf.stop('test');
   });
 
-  it('sends every 5 min while open, through sendBeacon when hidden, at most 14 an hour', async () => {
+  it('sends every 5 min while open, through sendBeacon when hidden, at most 20 an hour', async () => {
     const m = await load();
     const beacon = vi.fn(() => true);
     vi.stubGlobal('navigator', { ...navigator, sendBeacon: beacon });
@@ -97,8 +95,8 @@ describe('bootPerf and the digest upload', () => {
     expect(posts()).toHaveLength(3);
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
-    // The hourly budget: 4 used, 10 left.
-    for (let i = 0; i < 20; i++) {
+    // The hourly budget: 4 used, 16 left.
+    for (let i = 0; i < 30; i++) {
       await tick(5000);
       await m.flushDigest(false);
     }
@@ -107,17 +105,42 @@ describe('bootPerf and the digest upload', () => {
     m.pagePerf.stop('test');
   });
 
-  it('sends nothing with automatic reports switched off, or signed out, and keeps recording for a bug report', async () => {
+  it('sends whatever the automatic reports setting says; only a signed-out page sends nothing', async () => {
     const m = await load();
     m.bootPerf();
     m.useSettingsStore.setState({ autoReportEnabled: false });
-    vi.advanceTimersByTime(3000);
+    await tick(3000);
     await m.flushDigest(false);
+    expect(posts()).toHaveLength(1);
     m.useSettingsStore.setState({ autoReportEnabled: true });
     auto.signedIn = false;
+    await tick(3000);
     await m.flushDigest(false);
-    expect(posts()).toHaveLength(0);
+    expect(posts()).toHaveLength(1);
     expect(m.pagePerf.on).toBe(true);
+    m._resetPerfClient();
+    m.pagePerf.stop('test');
+  });
+
+  it('numbers a session\'s batches, and the one sent on leaving carries what was not sent yet', async () => {
+    const m = await load();
+    m.bootPerf();
+    const emit = (e: unknown) => (m.pagePerf as unknown as { addNav(r: unknown): void }).addNav(e);
+    emit({ at: 1000, from: '/', to: '/settings', via: 'tap', lt: 0, total: 9100, server: 8000 });
+    await tick(m.UPLOAD_EVERY_MS);
+    const first = JSON.parse((posts()[0][1] as RequestInit).body as string);
+    expect(first).toMatchObject({ seq: 1, ev: [{ k: 'nav', to: '/settings', ms: 9100, server: 8000 }] });
+    expect(first.t0).toBeGreaterThan(0);
+    // Something happens, then the app is closed before the next 5 min.
+    emit({ at: 400_000, from: '/settings', to: '/library', via: 'tap', lt: 0, total: 700 });
+    await tick(10_000);
+    window.dispatchEvent(new Event('pagehide'));
+    await tick(0);
+    const beacon = vi.mocked(navigator.sendBeacon);
+    expect(beacon).toHaveBeenCalledTimes(1);
+    const blob = (beacon.mock.calls[0] as unknown[])[1] as Blob;
+    const last = JSON.parse(await blob.text());
+    expect(last).toMatchObject({ seq: 2, session: first.session, ev: [{ k: 'nav', to: '/library', ms: 700 }] });
     m._resetPerfClient();
     m.pagePerf.stop('test');
   });
@@ -147,7 +170,6 @@ describe('the kill switch, end to end on the page', () => {
     window.sessionStorage.setItem('ember.perf.cfg', '1');
     auto.signedIn = false;
     const m = await load();
-    m.useSettingsStore.setState({ autoReportEnabled: false });
     answer = { off: true };
     m.bootPerf();
     await tick(5000);
@@ -155,14 +177,13 @@ describe('the kill switch, end to end on the page', () => {
     expect(m.pagePerf.on).toBe(false);
     expect(fake.live()).toHaveLength(0);
     expect(vi.getTimerCount()).toBe(0);
-    m.useSettingsStore.setState({ autoReportEnabled: true });
     m._resetPerfClient();
   });
 
   it('asks again every 30 min, so a long-lived app stops when the host switches off later', async () => {
     const m = await load();
-    // A page that never uploads: only the config check can reach it.
-    m.useSettingsStore.setState({ autoReportEnabled: false });
+    // A page that never uploads (signed out): only the config check reaches it.
+    auto.signedIn = false;
     answer = { on: true, sample: 1 };
     m.bootPerf();
     await tick(5000);
@@ -173,7 +194,6 @@ describe('the kill switch, end to end on the page', () => {
     expect(gets()).toHaveLength(2);
     expect(m.pagePerf.on).toBe(false);
     expect(fake.live()).toHaveLength(0);
-    m.useSettingsStore.setState({ autoReportEnabled: true });
     m._resetPerfClient();
   });
 
@@ -219,22 +239,16 @@ describe('the kill switch, end to end on the page', () => {
   });
 });
 
-describe('automatic perf reports', () => {
-  it('files one for a freeze over 5 s, a navigation over 8 s and a launch over 15 s, not for shorter ones', async () => {
+describe('no report on the spot', () => {
+  it('a slow launch, navigation or freeze only goes into the session\'s batches', async () => {
     const m = await load();
     m.bootPerf();
     const emit = (e: unknown) => (m.pagePerf as unknown as { emit(e: unknown): void }).emit(e);
-    emit({ kind: 'freeze', rec: { at: 0, gapMs: 4000 } });
-    emit({ kind: 'freeze', rec: { at: 0, gapMs: 6200 } });
-    emit({ kind: 'nav', rec: { at: 0, from: '/', to: '/settings', via: 'tap', lt: 0, total: 9100 } });
-    emit({ kind: 'nav', rec: { at: 0, from: '/', to: '/x', via: 'tap', lt: 0, total: 9100, abandoned: true } });
-    emit({ kind: 'launch', ms: 30_300 });
-    emit({ kind: 'launch', ms: 3000 });
-    expect(auto.reports).toEqual([
-      ['freeze', 'page froze for 6.2 s'],
-      ['nav', 'slow navigation to /settings: 9.1 s'],
-      ['launch', 'slow launch: 30.3 s until the page answered'],
-    ]);
+    emit({ kind: 'freeze', rec: { at: 0, gapMs: 60_000 } });
+    emit({ kind: 'nav', rec: { at: 0, from: '/', to: '/settings', via: 'tap', lt: 0, total: 90_000 } });
+    emit({ kind: 'launch', ms: 90_000 });
+    await tick(0);
+    expect(fetchMock).not.toHaveBeenCalled();
     m._resetPerfClient();
     m.pagePerf.stop('test');
   });

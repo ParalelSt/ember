@@ -8,11 +8,11 @@ import type { PerfDigest } from './types';
  *  and the few strings are short, shaped (routes) and scrubbed again here. */
 
 export const PERF_LOG_LIMITS = {
-  /** A digest is at most 2 KB; the slack is for the request's own framing. */
-  maxBodyBytes: 4096,
+  /** A batch is at most 6 KB; the slack is for the request's own framing. */
+  maxBodyBytes: 8192,
   /** Uploads per member per hour, over all their devices (a page sends at
-   *  most 14 an hour, lib/perf/client.ts). */
-  rate: { windowMs: 60 * 60 * 1000, max: 40 },
+   *  most 20 an hour, lib/perf/client.ts). */
+  rate: { windowMs: 60 * 60 * 1000, max: 60 },
 } as const;
 
 const ms = z.number().finite().min(0).max(10_000_000);
@@ -33,10 +33,37 @@ const LaunchSchema = z
   })
   .strict();
 
+const label = short(60);
+
+const EventSchema = z.discriminatedUnion('k', [
+  z
+    .object({
+      k: z.literal('nav'),
+      at: ms,
+      to: short(120),
+      via: z.enum(['tap', 'pop', 'push']),
+      ms: ms.optional(),
+      server: ms.optional(),
+      commit: ms.optional(),
+      lt: ms,
+      playing: z.boolean().optional(),
+      abandoned: z.boolean().optional(),
+    })
+    .strict(),
+  z.object({ k: z.literal('freeze'), at: ms, ms }).strict(),
+  z
+    .object({ k: z.literal('rage'), at: ms, target: label, taps: count, pending: ms.optional(), overlay: z.boolean(), inert: z.boolean() })
+    .strict(),
+  z.object({ k: z.literal('slow'), at: ms, type: short(30), ms, target: label.optional() }).strict(),
+]);
+
 export const PerfDigestSchema = z
   .object({
     v: z.literal(1),
     session: z.string().regex(/^[A-Za-z0-9-]{1,64}$/),
+    seq: z.number().int().min(1).max(100_000),
+    /** The page's start, ms since 1970: from 2020 to 2100. */
+    t0: z.number().int().min(1_577_836_800_000).max(4_102_444_800_000),
     app: short(40),
     shell: short(20),
     device: z
@@ -70,8 +97,16 @@ export const PerfDigestSchema = z
     heap: z.object({ used: z.number().min(0).max(100_000), limit: z.number().min(0).max(100_000).optional() }).strict().optional(),
     dom: count.optional(),
     api: z.array(z.tuple([short(120), count, ms, ms])).max(5).optional(),
+    ev: z.array(EventSchema).max(60).optional(),
+    evDropped: count.optional(),
   })
   .strict();
+
+/** A tap target label: names the code gave it, with a link's path shaped
+ *  again here. */
+function cleanLabel(s: string): string {
+  return s.startsWith('link ') ? `link ${routeShape(s.slice(5))}` : scrubText(s);
+}
 
 /** The digest as it is stored: routes reshaped (no id gets through even
  *  from a hand-made client) and free text scrubbed. */
@@ -81,6 +116,14 @@ export function cleanDigest(d: z.infer<typeof PerfDigestSchema>): PerfDigest {
   if (d.lt?.top) out.lt = { ...d.lt, top: d.lt.top.map(([s, n]) => [scrubText(s), n]) };
   if (d.nav?.worst) out.nav = { ...d.nav, worst: d.nav.worst.map((w) => ({ ...w, to: routeShape(w.to) })) };
   if (d.api) out.api = d.api.map(([r, n, p50, max]) => [routeShape(r), n, p50, max]);
+  if (d.ev) {
+    out.ev = d.ev.map((e) => {
+      if (e.k === 'nav') return { ...e, to: routeShape(e.to) };
+      if (e.k === 'rage') return { ...e, target: cleanLabel(e.target) };
+      if (e.k === 'slow') return e.target ? { ...e, target: cleanLabel(e.target) } : e;
+      return e;
+    });
+  }
   return out;
 }
 

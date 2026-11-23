@@ -10,7 +10,7 @@ import type { PerfDigest } from './types';
 
 let fake: FakePerformance;
 let perf: PagePerf;
-const meta = { session: 'sess-1', app: '0.7.51', shell: 'capacitor', withLaunch: true };
+const meta = { session: 'sess-1', seq: 1, t0: 1_763_910_000_000, app: '0.7.51', shell: 'capacitor', withLaunch: true };
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -59,23 +59,72 @@ describe('buildDigest', () => {
   });
 });
 
+describe('buildDigest: the session\'s events', () => {
+  it('carries each navigation, freeze and slow tap since the batch before, once', () => {
+    fake.emit('event', [{ name: 'click', startTime: 500, duration: 300, processingStart: 520, processingEnd: 700, interactionId: 4 }]);
+    perf.onRoute('/settings', '/', 'push');
+    vi.advanceTimersByTime(1100);
+    fake.advance(2000);
+    vi.advanceTimersByTime(2000);
+    fake.advance(9000);
+    vi.advanceTimersByTime(2000);
+    const d = buildDigest(perf, meta)!;
+    expect(d.ev?.map((e) => e.k)).toEqual(['slow', 'nav', 'freeze']);
+    expect(d.ev?.[0]).toEqual({ k: 'slow', at: 500, type: 'click', ms: 300 });
+    expect(d.ev?.[2]).toMatchObject({ k: 'freeze', at: 2000, ms: 9000 });
+    fake.advance(5000);
+    expect(buildDigest(perf, { ...meta, seq: 2 })?.ev).toBeUndefined();
+  });
+
+  it('keeps at most 60 waiting events and counts the ones it let go', () => {
+    for (let i = 0; i < 70; i++) {
+      fake.emit('event', [{ name: 'click', startTime: i * 1000, duration: 200, processingStart: i * 1000, processingEnd: i * 1000 + 10, interactionId: i + 1 }]);
+    }
+    const d = buildDigest(perf, meta)!;
+    expect(d.ev).toHaveLength(60);
+    expect(d.evDropped).toBe(10);
+    expect(d.ev?.[0].at).toBe(10_000);
+  });
+});
+
 describe('fitDigest', () => {
-  it('drops the least useful parts until it fits 2 KB', () => {
+  it('drops the least useful parts until it fits 6 KB', () => {
     const big: PerfDigest = {
       v: 1,
       session: 's',
+      seq: 1,
+      t0: 1,
       app: '1',
       shell: 'web',
       device: { model: 'm'.repeat(40) },
       fgMs: 1,
       lt: { n: 1, ms: 1, max: 1, top: Array.from({ length: 5 }, () => ['x'.repeat(60), 1] as [string, number]) },
       nav: { n: 20, ms: Array.from({ length: 20 }, () => 1234567), worst: [{ to: '/'.repeat(120), ms: 1 }, { to: '/'.repeat(120), ms: 1 }] },
-      api: Array.from({ length: 5 }, () => ['/api/'.repeat(80), 1, 1, 1] as [string, number, number, number]),
+      api: Array.from({ length: 5 }, () => ['/api/'.repeat(300), 1, 1, 1] as [string, number, number, number]),
     };
     const out = fitDigest(big);
     expect(new TextEncoder().encode(JSON.stringify(out)).length).toBeLessThanOrEqual(DIGEST_MAX_BYTES);
     expect(out.api).toBeUndefined();
     expect(out.nav?.n).toBe(20);
+  });
+
+  it('lets the oldest events go first, keeping the newest', () => {
+    const d: PerfDigest = {
+      v: 1,
+      session: 's',
+      seq: 1,
+      t0: 1,
+      app: '1',
+      shell: 'web',
+      device: {},
+      fgMs: 1,
+      ev: Array.from({ length: 60 }, (_, i) => ({ k: 'nav' as const, at: i, to: '/a'.repeat(50), via: 'tap', lt: 0, ms: i })),
+    };
+    const out = fitDigest(d);
+    expect(new TextEncoder().encode(JSON.stringify(out)).length).toBeLessThanOrEqual(DIGEST_MAX_BYTES);
+    expect(out.ev!.length).toBeLessThan(60);
+    expect(out.ev![out.ev!.length - 1].at).toBe(59);
+    expect(out.evDropped! + out.ev!.length).toBe(60);
   });
 });
 

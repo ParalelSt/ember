@@ -1,11 +1,15 @@
-import type { PagePerf } from './core';
-import type { PerfDigest } from './types';
+import type { PagePerf, PendingEvent } from './core';
+import type { PerfDigest, SessionEvent } from './types';
 
-/** The periodic digest's hard size limit (section 5.1). */
-export const DIGEST_MAX_BYTES = 2048;
+/** A batch's hard size limit. */
+export const DIGEST_MAX_BYTES = 6144;
 
 export interface DigestMeta {
   session: string;
+  /** The batch's number in this page session, from 1. */
+  seq: number;
+  /** performance.timeOrigin: when the page started, ms since 1970. */
+  t0: number;
   app: string;
   shell: string;
   /** Put the launch record in (the first digest of a page load only). */
@@ -22,6 +26,8 @@ export function buildDigest(perf: PagePerf, meta: DigestMeta): PerfDigest | null
   const d: PerfDigest = {
     v: 1,
     session: meta.session.slice(0, 64),
+    seq: meta.seq,
+    t0: Math.round(meta.t0),
     app: meta.app.slice(0, 40),
     shell: meta.shell.slice(0, 20),
     device: block.device,
@@ -49,13 +55,59 @@ export function buildDigest(perf: PagePerf, meta: DigestMeta): PerfDigest | null
   const api = block.api.slice(0, 5).map((a) => [a.route.slice(0, 60), a.n, a.p50, a.max] as [string, number, number, number]);
   if (api.length) d.api = api;
 
-  if (d.fgMs < 1000 && !d.launch && !d.nav && !d.lt && !d.freeze) return null;
+  if (w.events.length) d.ev = w.events.map(toSessionEvent);
+  if (w.evDropped) d.evDropped = w.evDropped;
+
+  if (d.fgMs < 1000 && !d.launch && !d.nav && !d.lt && !d.freeze && !d.ev) return null;
   return fitDigest(d);
+}
+
+const r = Math.round;
+
+/** A pending record in the batch's short form. */
+export function toSessionEvent(e: PendingEvent): SessionEvent {
+  switch (e.k) {
+    case 'nav': {
+      const n = e.r;
+      return {
+        k: 'nav',
+        at: r(n.at),
+        to: n.to,
+        via: n.via,
+        lt: r(n.lt),
+        ...(n.total !== undefined ? { ms: r(n.total) } : {}),
+        ...(n.server !== undefined ? { server: r(n.server) } : {}),
+        ...(n.commit !== undefined ? { commit: r(n.commit) } : {}),
+        ...(n.playing ? { playing: true } : {}),
+        ...(n.abandoned ? { abandoned: true } : {}),
+      };
+    }
+    case 'freeze':
+      return { k: 'freeze', at: r(e.r.at), ms: r(e.r.gapMs) };
+    case 'rage':
+      return {
+        k: 'rage',
+        at: r(e.r.at),
+        target: e.r.target,
+        taps: e.r.taps,
+        overlay: e.r.overlay,
+        inert: e.r.inert,
+        ...(e.r.pendingMs !== undefined ? { pending: r(e.r.pendingMs) } : {}),
+      };
+    case 'slow':
+      return { k: 'slow', at: r(e.r.at), type: e.r.type, ms: r(e.r.ms), ...(e.r.target ? { target: e.r.target } : {}) };
+  }
 }
 
 /** Drops the least useful parts until the digest fits DIGEST_MAX_BYTES. */
 export function fitDigest(d: PerfDigest): PerfDigest {
   const size = () => new TextEncoder().encode(JSON.stringify(d)).length;
+  if (size() <= DIGEST_MAX_BYTES) return d;
+  // Events first, oldest first, but never all: the newest say most.
+  while (d.ev && d.ev.length > 5 && size() > DIGEST_MAX_BYTES) {
+    d.ev.shift();
+    d.evDropped = (d.evDropped ?? 0) + 1;
+  }
   if (size() <= DIGEST_MAX_BYTES) return d;
   const steps: (() => void)[] = [
     () => delete d.api,
@@ -64,6 +116,10 @@ export function fitDigest(d: PerfDigest): PerfDigest {
     () => d.nav && (d.nav.ms = d.nav.ms.slice(0, 5)),
     () => d.launch && delete d.launch.proto,
     () => delete d.device.model,
+    () => {
+      d.evDropped = (d.evDropped ?? 0) + (d.ev?.length ?? 0);
+      delete d.ev;
+    },
   ];
   for (const step of steps) {
     step();

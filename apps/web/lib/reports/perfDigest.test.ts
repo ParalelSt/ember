@@ -7,7 +7,7 @@ import type { ServerLogEntry } from '@/lib/logger/types';
 /** The daily digest's performance section. */
 
 function d(ts: number, userId: string, over: Partial<PerfDigest> = {}): StoredDigest {
-  return { ts, userId, digest: { v: 1, session: 's1', app: '0.7.51', shell: 'capacitor', device: { model: 'motorola edge 60' }, fgMs: 300_000, ...over } };
+  return { ts, userId, digest: { v: 1, session: 's1', seq: 1, t0: 1_700_000_000_000, app: '0.7.51', shell: 'capacitor', device: { model: 'motorola edge 60' }, fgMs: 300_000, ...over } };
 }
 
 function server(over: Partial<ServerLogEntry>): ServerLogEntry {

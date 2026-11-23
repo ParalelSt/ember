@@ -16,7 +16,7 @@ const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 10, 23, 15, 0);
 
 function digest(over: Partial<PerfDigest> = {}): PerfDigest {
-  return { v: 1, session: 's1', app: '0.7.51', shell: 'capacitor', device: { model: 'motorola edge 60' }, fgMs: 300_000, ...over };
+  return { v: 1, session: 's1', seq: 1, t0: NOW - 60_000, app: '0.7.51', shell: 'capacitor', device: { model: 'motorola edge 60' }, fgMs: 300_000, ...over };
 }
 
 function entry(over: Partial<PerfStoreEntry> = {}): PerfStoreEntry {

@@ -13,8 +13,9 @@ import type { PerfDigest } from './types';
 
 export const PERF_STORE_LIMITS = {
   retentionDays: 7,
-  /** Bytes one member may add per UTC day: about 14 h of foreground use. */
-  perUserDayBytes: 256 * 1024,
+  /** Bytes one member may add per UTC day: a full day of use at 20
+   *  batches of a few KB an hour. */
+  perUserDayBytes: 1024 * 1024,
   /** Bytes all members together may add per UTC day. */
   perDayBytes: 32 * 1024 * 1024,
   /** Most lines one read returns (the newest). */

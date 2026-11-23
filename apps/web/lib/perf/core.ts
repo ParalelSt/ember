@@ -37,10 +37,12 @@ export const PERF_LIMITS = {
   apiRoutes: 40,
   ltSources: 20,
   counters: 20,
+  /** Events kept for the next batch; older ones are dropped and counted. */
+  events: 60,
 } as const;
 
-/** What a record listener hears: the moments an automatic perf report may
- *  be worth sending (lib/perf/client.ts decides). */
+/** What a record listener hears: a finished launch, navigation or freeze,
+ *  and the page being hidden (lib/perf/client.ts sends a batch then). */
 export type PerfEvent =
   | { kind: 'launch'; ms: number }
   | { kind: 'nav'; rec: NavRecord }
@@ -62,8 +64,28 @@ interface LongTaskAgg {
   sources: Map<string, number>;
 }
 
+/** A record waiting for the next batch. Kept by reference: a slow tap's
+ *  record can still grow until it is sent. */
+export type PendingEvent =
+  | { k: 'nav'; r: NavRecord }
+  | { k: 'freeze'; r: FreezeRecord }
+  | { k: 'rage'; r: RageRecord }
+  | { k: 'slow'; r: SlowInteraction };
+
 function newWindow() {
-  return { fgMs: 0, navN: 0, navMs: [] as number[], navWorst: [] as NavRecord[], slowN: 0, slowMax: 0, freezeN: 0, freezeMax: 0, rage: 0 };
+  return {
+    fgMs: 0,
+    navN: 0,
+    navMs: [] as number[],
+    navWorst: [] as NavRecord[],
+    slowN: 0,
+    slowMax: 0,
+    freezeN: 0,
+    freezeMax: 0,
+    rage: 0,
+    events: [] as PendingEvent[],
+    evDropped: 0,
+  };
 }
 
 export type PerfWindow = ReturnType<typeof newWindow> & { lt: LongTaskSummary };
@@ -180,6 +202,7 @@ export class PagePerf {
         if (!this.on) return;
         this.rage.push(rec);
         this.win.rage++;
+        this.addEvent({ k: 'rage', r: rec });
       },
       doc: () => this.env!.doc,
       currentPath: () => this.env!.win.location.pathname,
@@ -379,6 +402,7 @@ export class PagePerf {
       }
       this.lastInteractionId = ev.interactionId;
       this.slow.push(rec);
+      this.addEvent({ k: 'slow', r: rec });
       this.win.slowN++;
       this.win.slowMax = Math.max(this.win.slowMax, rec.ms);
     }
@@ -503,6 +527,7 @@ export class PagePerf {
     if (gap - PERF_LIMITS.heartbeatMs <= PERF_LIMITS.freezeDriftMs) return;
     const rec: FreezeRecord = { at: Math.round(now - gap), gapMs: Math.round(gap) };
     this.freezes.push(rec);
+    this.addEvent({ k: 'freeze', r: rec });
     this.win.freezeN++;
     this.win.freezeMax = Math.max(this.win.freezeMax, rec.gapMs);
     this.emit({ kind: 'freeze', rec });
@@ -553,6 +578,7 @@ export class PagePerf {
   private addNav(rec: NavRecord): void {
     if (!this.on) return;
     this.navs.push(rec);
+    this.addEvent({ k: 'nav', r: rec });
     if (rec.total !== undefined && !rec.abandoned) {
       const w = this.win;
       w.navN++;
@@ -563,6 +589,15 @@ export class PagePerf {
       if (w.navWorst.length > 2) w.navWorst.length = 2;
     }
     this.emit({ kind: 'nav', rec });
+  }
+
+  private addEvent(e: PendingEvent): void {
+    const list = this.win.events;
+    if (list.length >= PERF_LIMITS.events) {
+      list.shift();
+      this.win.evDropped++;
+    }
+    list.push(e);
   }
 
   // ── Reading it out ────────────────────────────────────────────────────

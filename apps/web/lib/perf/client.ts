@@ -2,28 +2,24 @@
 
 import { logger } from '@/lib/logger/client';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { useSettingsStore } from '@/stores/useSettingsStore';
 import { detectShell } from '@/lib/playback/detectShell';
-import { isSignedIn, maybeAutoPerfReport } from '@/lib/autoReport';
+import { isSignedIn } from '@/lib/autoReport';
 import { pagePerf } from './index';
 import { buildDigest } from './digest';
 import { applyHostAnswer, configChecked, markConfigChecked, onPerfSwitch, sessionOff } from './switch';
 
 /** Boots the page perf log (docs/android-performance.md, 5.2 and 5.5) and
- *  delivers it: every signed-in member's page sends a small digest (at most
- *  2 KB) to POST /api/perf-log every 5 min while it is open and when it is
- *  hidden (sendBeacon), at most 14 an hour, for an admin to read back
- *  (npm run perf). A very slow launch, navigation or freeze also files an
- *  automatic perf report. Uploads follow the "automatic reports" setting;
- *  the host can switch it all off. */
+ *  delivers it per session, in batches: every signed-in person's page sends
+ *  what happened since its last batch (at most 6 KB, numbered from 1) to
+ *  POST /api/perf-log every 5 min while it is open, and when it is left or
+ *  closed (sendBeacon), at most 20 an hour. The host keeps each batch as it
+ *  comes, so a session that ends abruptly still has the ones before, and an
+ *  admin reads a session back merged in order (npm run perf). Nothing is
+ *  reported on the spot. Only the host can switch it off. */
 
 export const PERF_ENDPOINT = '/api/perf-log';
 export const UPLOAD_EVERY_MS = 5 * 60 * 1000;
-export const MAX_UPLOADS_PER_HOUR = 14;
-/** Automatic perf report thresholds (section 5.5). */
-export const REPORT_LAUNCH_MS = 15_000;
-export const REPORT_NAV_MS = 8_000;
-export const REPORT_FREEZE_MS = 5_000;
+export const MAX_UPLOADS_PER_HOUR = 20;
 /** The host is asked for its perf settings this long after hydrating, so
  *  the question never competes with the launch. */
 const CONFIG_DELAY_MS = 5000;
@@ -37,6 +33,8 @@ let uploadTimer: ReturnType<typeof setInterval> | null = null;
 let configTimer: ReturnType<typeof setInterval> | null = null;
 let lastConfigCheck = 0;
 let launchSent = false;
+/** The last batch number this page load sent. */
+let seq = 0;
 const cleanups: (() => void)[] = [];
 
 /** Upload times of the last hour, kept per device (localStorage). */
@@ -57,8 +55,15 @@ function noteUpload(now: number): void {
   }
 }
 
+/** Everyone signed in sends (the route takes members only); the host's
+ *  kill switch and sample share are the only way off. */
 function uploadsAllowed(): boolean {
-  return pagePerf.on && useSettingsStore.getState().autoReportEnabled && isSignedIn();
+  return pagePerf.on && isSignedIn();
+}
+
+function timeOrigin(): number {
+  const t = typeof performance !== 'undefined' ? performance.timeOrigin : undefined;
+  return typeof t === 'number' && t > 0 ? t : Date.now() - (typeof performance !== 'undefined' ? performance.now() : 0);
 }
 
 /** Sends one digest if there is something to say and the budget allows.
@@ -70,11 +75,14 @@ export async function flushDigest(beacon: boolean): Promise<void> {
     if (recentUploads(now).length >= MAX_UPLOADS_PER_HOUR) return;
     const digest = buildDigest(pagePerf, {
       session: logger.sessionId,
+      seq: seq + 1,
+      t0: timeOrigin(),
       app: process.env.NEXT_PUBLIC_APP_VERSION ?? 'unknown',
       shell: detectShell(),
       withLaunch: !launchSent && pagePerf.launchReady(),
     });
     if (!digest) return;
+    seq = digest.seq;
     if (digest.launch) launchSent = true;
     noteUpload(now);
     const body = JSON.stringify(digest);
@@ -145,15 +153,10 @@ export function bootPerf(): void {
 
   cleanups.push(
     pagePerf.onEvent((e) => {
+      // Left or closed: send what has not gone yet.
       if (e.kind === 'hide') {
         stopTimers();
         void flushDigest(true);
-      } else if (e.kind === 'launch' && e.ms > REPORT_LAUNCH_MS) {
-        maybeAutoPerfReport('launch', `slow launch: ${(e.ms / 1000).toFixed(1)} s until the page answered`);
-      } else if (e.kind === 'nav' && !e.rec.abandoned && (e.rec.total ?? 0) > REPORT_NAV_MS) {
-        maybeAutoPerfReport('nav', `slow navigation to ${e.rec.to}: ${((e.rec.total ?? 0) / 1000).toFixed(1)} s`);
-      } else if (e.kind === 'freeze' && e.rec.gapMs > REPORT_FREEZE_MS) {
-        maybeAutoPerfReport('freeze', `page froze for ${(e.rec.gapMs / 1000).toFixed(1)} s`);
       }
     }),
   );
@@ -188,6 +191,7 @@ function shutdown(reason: string): void {
 export function _resetPerfClient(): void {
   booted = false;
   launchSent = false;
+  seq = 0;
   lastConfigCheck = 0;
   stopTimers();
   for (const c of cleanups.splice(0)) c();

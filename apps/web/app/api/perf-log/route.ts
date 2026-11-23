@@ -8,8 +8,10 @@ import { perfLogEnabled, perfSample } from '@/lib/perf/hostSwitch';
 import { appendPerf } from '@/lib/perf/store';
 import { cleanDigest, PERF_LOG_LIMITS, PerfDigestSchema, readCapped } from '@/lib/perf/upload';
 
-/** The page's perf digest (lib/perf/client.ts): every few minutes while
- *  the app is open and when it is hidden, at most 2 KB. Members only, rate
+/** One batch of a page session's perf log (lib/perf/client.ts): every
+ *  5 min while the app is open and when it is left, at most 6 KB. Each batch
+ *  is stored as it comes, so a session that ends abruptly keeps the batches
+ *  it sent before. Members only, rate
  *  limited, size limited, schema checked, stored in the perf store
  *  (lib/perf/store.ts) under the member's id for an admin to read.
  *
