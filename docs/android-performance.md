@@ -437,3 +437,35 @@ Slice 9 changes how sessions are checked, so it needs a security review.
    everywhere (slice 9)?
 8. Which phone is the target for "good enough", and how big is the largest
    Liked songs list?
+
+## 9. Proposal: the session check in `proxy.ts` (not done, needs a security review)
+
+Today `proxy.ts` calls `users.authRefresh()` on every request it covers
+(every API poll, `/pb/*`, audio range requests) and writes the new token back
+as the `pb_auth` cookie. Because the token changes on every request, the
+route's own 5 s verified cache (`lib/auth.ts`, keyed by token) always misses
+and refreshes again: about two PocketBase auth round trips per API request,
+and the `verified` map gains a new key each time. The background fixes on
+`fix/android-background` cut the number of polls, but each one still costs
+this double refresh.
+
+Proposed, in this order, each step reviewable on its own:
+
+1. One shared verified cache. Move the token to record cache out of
+   `lib/auth.ts` into a small module both `proxy.ts` and the routes use, so a
+   request verified by the proxy is not verified again by its route.
+2. Verify, do not rotate, on most requests. In the proxy, answer from that
+   cache (keyed by a hash of the token, as today) for up to 60 s; only on a
+   miss call PocketBase. Rotate the cookie (a real `authRefresh` and
+   `Set-Cookie`) only when the token is within its last part of life (for
+   example under a day left), not on every request.
+3. Cap the cache (LRU, a few thousand entries) instead of sweeping past 500.
+
+What the review has to accept: a sign-out, password change or ban takes up
+to the cache lifetime (60 s) to apply on requests that hit the cache (open
+question 7 above), and a stolen token keeps working until its own expiry
+unless it is refused by PocketBase on a miss. Sign-out should therefore
+also drop the token from the cache on this server, and the admin's ban
+action should clear the cache for that user. Tests to keep green:
+`proxy.test.ts` and the authorization suites; add one that a burst of API
+calls with one cookie makes one PocketBase call and sets no new cookie.
