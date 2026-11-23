@@ -1,3 +1,8 @@
+# 0.7.50: Game & Anime mix
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** The new mixes appear after the nightly rebuild.
+
 # 0.7.49: Bug fixes
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

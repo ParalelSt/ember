@@ -26,6 +26,18 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'game-anime-mix',
+    version: '0.7.50',
+    date: '2026-11-23',
+    title: 'Game & Anime mix',
+    summary: 'Game and anime music gets a mix of its own instead of landing in Pop.',
+    bullets: [
+      'A new Game & Anime mix for game soundtracks, anime, Vocaloid, Touhou, rhythm games and chiptune.',
+      "Songs from channels no music database knows are sorted by what they're played next to, so they no longer end up in Pop.",
+      'Back from a song returns you to your search results, scrolled to where you were.',
+    ],
+  },
+  {
     id: 'bug-fixes-1122',
     version: '0.7.49',
     date: '2026-11-22',
