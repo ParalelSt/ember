@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { scoreSongs, type PlayEvent } from './score';
 import { clusterMember, type ArtistFamily } from './cluster';
-import { assembleMix, pickSeeds, type GenreOf } from './build';
+import { assembleMix, MIN_MIX_SIZE, pickSeeds, type GenreOf } from './build';
+import { radioSpeaksFor, untaggedHomes, type SeedRadio } from './untagged';
 import { artistKey } from '../genres/artistKey';
 import type { FamilySlug } from '../genres/taxonomy';
 import { tt } from '@/test-utils/mixTracks';
@@ -113,5 +114,127 @@ describe('genre mix purity', () => {
     }
     // Two to three mixes a day (Rock & Metal splits when both halves are big).
     expect(built).toBeGreaterThanOrEqual(60);
+  });
+});
+
+// The third taste (Game & Anime): a member who plays rock, pop and game
+// music, most of it by uploader channels nobody can tag, some of it with
+// the game in the title. "Namesake" is tagged pop (another, more famous
+// artist of that name) but their songs' radio is game music. Built the way
+// the job builds: every style mix's radios decide which seeds vouch and
+// where each unknown uploader lives (lib/mixes/untagged).
+describe('genre mix purity with Game & Anime', () => {
+  const gTruth = new Map<string, FamilySlug>();
+  const gGenres = new Map<string, GenreOf & ArtistFamily>();
+  const who = (name: string, family: FamilySlug, tagged = true) => {
+    gTruth.set(artistKey(name), family);
+    if (tagged) gGenres.set(artistKey(name), { family, sub: null });
+    return name;
+  };
+  const gRockOwn = Array.from({ length: 6 }, (_, i) => who(`Grock Own ${i}`, 'rock-metal'));
+  const gPopOwn = Array.from({ length: 3 }, (_, i) => who(`Gpop Own ${i}`, 'pop'));
+  const namesake = 'Namesake';
+  gTruth.set(artistKey(namesake), 'game-anime');
+  gGenres.set(artistKey(namesake), { family: 'pop', sub: null });
+  const vocaloidOwn = Array.from({ length: 2 }, (_, i) => who(`Vocaloid P ${i}`, 'game-anime'));
+  const gRockNew = Array.from({ length: 30 }, (_, i) => who(`Grock New ${i}`, 'rock-metal'));
+  const gPopNew = Array.from({ length: 25 }, (_, i) => who(`Gpop New ${i}`, 'pop'));
+  const vocaloidNew = Array.from({ length: 12 }, (_, i) => who(`Vocaloid New ${i}`, 'game-anime'));
+  const uploaders = Array.from({ length: 15 }, (_, i) => who(`Upload Chan ${i}`, 'game-anime', false));
+  const ostChans = Array.from({ length: 8 }, (_, i) => who(`Ost Chan ${i}`, 'game-anime', false));
+  const ghost = who('Ghost Popper', 'pop', false);
+
+  const own = (names: string[], per: number, title: (n: string, j: number) => string) =>
+    names.flatMap((n, i) => Array.from({ length: per }, (_, j) => tt(`o${n.replace(/\W/g, '').slice(-6)}${i}${j}`, n, title(n, j))));
+  const ownRockG = own(gRockOwn, 4, (n, j) => `${n} Song ${j}`);
+  const ownPopG = own(gPopOwn, 4, (n, j) => `${n} Song ${j}`);
+  const ownNamesake = own([namesake], 5, (n, j) => `Evil Intention ${j}`);
+  const ownGame = [
+    ...own(vocaloidOwn, 3, (n, j) => `${n} Song ${j}`),
+    ...own(ostChans.slice(0, 4), 2, (n, j) => `Stage ${j} (Original Soundtrack)`),
+    tt('ultrakill00', 'KEYGEN CHURCH', 'Tenebre Rosso Sangue (ULTRAKILL Soundtrack)'),
+  ];
+  gTruth.set(artistKey('KEYGEN CHURCH'), 'game-anime');
+
+  let st = 11;
+  const rnd = () => {
+    st = (st * 1103515245 + 12345) % 2147483648;
+    return st / 2147483648;
+  };
+  function gPlays(now: number): PlayEvent[] {
+    const out: PlayEvent[] = [];
+    for (let d = 0; d < 90; d++) {
+      for (let k = 0; k < 6; k++) {
+        const x = rnd();
+        const list = x < 0.4 ? ownRockG : x < 0.6 ? ownPopG : x < 0.7 ? ownNamesake : ownGame;
+        out.push({ track: list[Math.floor(rnd() * list.length)], playedAt: new Date(now - d * DAY - k * 3600000).toISOString() });
+      }
+    }
+    return out;
+  }
+
+  const gameRadio = (seed: Track, day: number): Track[] => {
+    const out: Track[] = [];
+    for (let i = 0; i < 30; i++) {
+      const k = (i * 5 + day) % 3;
+      if (k === 0) { const n = vocaloidNew[(i + day) % vocaloidNew.length]; out.push(tt(`v${day}${i}${seed.sourceId.slice(0, 4)}`, n, `${n} ${day}-${i}`)); }
+      else if (k === 1) { const n = uploaders[(i + day) % uploaders.length]; out.push(tt(`u${day}${i}${seed.sourceId.slice(0, 4)}`, n, `Track ${day}-${i}`)); }
+      else { const n = ostChans[(i + day) % ostChans.length]; out.push(tt(`s${day}${i}${seed.sourceId.slice(0, 4)}`, n, `Level ${i} (Game OST)`)); }
+    }
+    return out;
+  };
+  function gRadioFor(seed: Track, day: number): Track[] {
+    const fam = gTruth.get(artistKey(seed.artist));
+    if (fam === 'game-anime') return gameRadio(seed, day);
+    const same = fam === 'pop' ? gPopNew : gRockNew;
+    const other = fam === 'pop' ? gRockNew : gPopNew;
+    const out: Track[] = [];
+    for (let i = 0; i < 30; i++) {
+      const pool = i % 3 === 2 ? other : same;
+      const name = pool[(i * 7 + day) % pool.length];
+      out.push(tt(`r${day}${i}${name.length}${seed.sourceId.slice(0, 3)}`, name, `${name} Radio ${day}-${i}`));
+    }
+    if (fam === 'pop') out.push(tt(`gh${day}${seed.sourceId.slice(0, 4)}`, ghost, `Ghost ${day}`));
+    return out;
+  }
+
+  it('30 days: no game song in Pop or Rock, no pop or rock in Game & Anime, Game & Anime every day', () => {
+    let gaDays = 0;
+    let outOfPlace = 0;
+    let ghostDays = 0;
+    for (let day = 0; day < 30; day++) {
+      const now = START + day * DAY;
+      const dayStr = new Date(now).toISOString().slice(0, 10);
+      const songs = scoreSongs(gPlays(now), [], now);
+      const { mixes } = clusterMember(songs, gGenres);
+      expect(mixes.map((m) => m.family)).toContain('game-anime');
+      const seeded = mixes.map((plan) => ({ plan, radios: pickSeeds(plan, dayStr).map((sd) => ({ seed: sd.track.sourceId, tracks: gRadioFor(sd.track, day) })) }));
+      const styleRadios: SeedRadio[] = seeded.flatMap(({ plan, radios }) => radios.map((r) => ({ family: plan.family, ...r })));
+      const homes = untaggedHomes(styleRadios, gGenres, songs.map((x) => x.track));
+      for (const { plan, radios } of seeded) {
+        const vouching = new Set(radios.filter((r) => radioSpeaksFor({ family: plan.family, ...r }, gGenres) === plan.family).map((r) => r.seed));
+        outOfPlace += radios.length - vouching.size;
+        const chartTracks = plan.family === 'pop' ? gPopNew.slice(0, 5).map((n, i) => tt(`gc${i}p`, n)) : plan.family === 'rock-metal' ? gRockNew.slice(0, 5).map((n, i) => tt(`gc${i}r`, n)) : [];
+        const tracks = assembleMix({ plan, radios, chartTracks, genres: gGenres, otherFamilyChartArtists: new Set(), unavailable: new Set(), vouching, untaggedHomes: homes });
+        if (plan.family === 'game-anime') {
+          expect(tracks, `game-anime day ${day}`).not.toBeNull();
+          expect(tracks!.length).toBeGreaterThanOrEqual(MIN_MIX_SIZE);
+          gaDays++;
+        }
+        if (!tracks) continue;
+        // The namesake's own songs stay in Pop until phase 2 (radio memory).
+        const leaks = tracks.filter((t) => artistKey(t.artist) !== artistKey(namesake) && (gTruth.get(artistKey(t.artist)) ?? 'game-anime') !== plan.family);
+        expect(leaks.map((t) => `${plan.key} day ${day}: ${t.artist} - ${t.title}`)).toEqual([]);
+        // Two pop radios that vouch for Pop still bring in its untagged pop artist.
+        if (plan.family === 'pop' && vouching.size >= 2) {
+          expect(tracks.some((t) => t.artist === ghost), `pop day ${day} keeps its untagged pop artist`).toBe(true);
+          ghostDays++;
+        }
+      }
+    }
+    expect(gaDays).toBe(30);
+    expect(ghostDays).toBeGreaterThan(10);
+    // The namesake's seeds were caught as out of place on some days.
+    expect(outOfPlace).toBeGreaterThan(0);
   });
 });
