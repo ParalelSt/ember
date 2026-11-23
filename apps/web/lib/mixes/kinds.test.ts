@@ -29,9 +29,18 @@ describe('mix kinds', () => {
     expect(kindLook('rock-metal').color).toBe(FAMILIES[0].tint);
     expect(kindLook('artist-gojira', '#123456').color).toBe('#123456');
     expect(kindLook('artist-gojira').color).toBe(artistTint('artist-gojira', null));
+    expect(kindLook('game-anime')).toEqual({ color: '#f5ee9e', ink: '#141414' });
     const fixed = new Set(['discover', 'on-repeat', 'throwback'].map((k) => kindLook(k).color));
     expect(fixed.size).toBe(3);
     for (const k of ['discover', 'on-repeat', 'throwback', 'artist-x', 'pop']) expect(kindLook(k).ink).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
+  it('an unknown-family artist card keeps its colour now that there is a tenth family', () => {
+    // Pinned from the nine-family list: hash(key) % 9.
+    expect(artistTint('artist-gojira', null)).toBe('#d4c4f2');
+    expect(artistTint('artist-noah', null)).toBe('#f2b8a8');
+    expect(artistTint('artist-keygen-church', null)).toBe('#ffd3a8');
+    expect(artistTint('artist-x', '#f5ee9e')).toBe('#f5ee9e');
   });
 
   it('artist keys are URL-safe, fit the key limit and fold accents', () => {

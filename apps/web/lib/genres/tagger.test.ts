@@ -283,6 +283,26 @@ describe('store mapping', () => {
     });
   });
 
+  it('reads a looked-up row again from its tags, so a taxonomy change applies without a lookup', () => {
+    const vocaloid = [{ name: 'vocaloid', count: 100 }, { name: 'electronic', count: 50 }, { name: 'j-pop', count: 40 }];
+    expect(fromRecord({ artist_key: 'v', family: 'electronic', families: { electronic: 1 }, sub: 'house', tags: vocaloid, source: 'musicbrainz', status: 'found' })).toMatchObject({
+      family: 'game-anime', families: { 'game-anime': 1 }, sub: null, status: 'found',
+    });
+    // A "none" row whose tags map now is found.
+    expect(fromRecord({ artist_key: 't', family: '', families: {}, sub: '', tags: [{ name: 'touhou', count: 3 }], source: 'lastfm', status: 'none' })).toMatchObject({
+      family: 'game-anime', status: 'found',
+    });
+    // Still nothing: still none.
+    expect(fromRecord({ artist_key: 'n', family: '', tags: [{ name: 'seen live', count: 3 }], source: 'lastfm', status: 'none' })).toMatchObject({ family: null, status: 'none' });
+  });
+
+  it('returns chart priors, admin rows and rows without tags as stored', () => {
+    const tags = [{ name: 'vocaloid', count: 100 }];
+    expect(fromRecord({ artist_key: 'c', family: 'pop', families: { pop: 1 }, sub: '', tags: [{ name: 'chart:pop', count: 1 }], source: 'chart', status: 'found' }).family).toBe('pop');
+    expect(fromRecord({ artist_key: 'm', family: 'rock-metal', families: { 'rock-metal': 1 }, sub: 'rock', tags, source: 'manual', status: 'found' })).toMatchObject({ family: 'rock-metal', sub: 'rock' });
+    expect(fromRecord({ artist_key: 'e', family: 'jazz-blues', families: { 'jazz-blues': 1 }, sub: '', tags: [], source: 'musicbrainz', status: 'found' }).family).toBe('jazz-blues');
+  });
+
   it('quotes filter strings', () => {
     expect(pbQuote('a"b\\c')).toBe('"a\\"b\\\\c"');
   });

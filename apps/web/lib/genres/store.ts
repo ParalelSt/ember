@@ -1,5 +1,5 @@
 import type PocketBase from 'pocketbase';
-import { isFamilySlug, isSubSlug, type FamilySlug, type RawTag } from './taxonomy';
+import { classifyTags, isFamilySlug, isSubSlug, type FamilySlug, type RawTag } from './taxonomy';
 import type { ArtistGenre, GenreSource, GenreStore } from './tagger';
 
 /** artist_genres in PocketBase (pocketbase/pb_hooks/ensure_artist_genres.pb.js),
@@ -19,20 +19,34 @@ export interface ArtistGenreRecord {
   fetched_at?: string;
 }
 
+/** A stored row as the code reads it. A looked-up row (Last.fm,
+ *  MusicBrainz) with tags is classified again from those tags, so a change
+ *  to the taxonomy (a new family, a moved tag) applies to every artist
+ *  already looked up, with no migration and no new lookups; the stored
+ *  family column only catches up at the row's next refresh. A chart prior
+ *  or an admin's row is read as stored. */
 export function fromRecord(r: ArtistGenreRecord): ArtistGenre {
-  const families: Partial<Record<FamilySlug, number>> = {};
-  for (const [k, v] of Object.entries(r.families ?? {})) if (isFamilySlug(k) && Number.isFinite(v)) families[k] = v;
-  return {
+  const tags = Array.isArray(r.tags) ? r.tags : [];
+  const base = {
     key: r.artist_key,
     name: r.name ?? r.artist_key,
     artistId: r.artist_id || null,
+    tags,
+    source: r.source,
+    fetchedAt: r.fetched_at ?? '',
+  };
+  if ((r.source === 'lastfm' || r.source === 'musicbrainz') && tags.length) {
+    const v = classifyTags(tags);
+    return { ...base, family: v.family, families: v.families, sub: v.sub, status: v.family ? 'found' : 'none' };
+  }
+  const families: Partial<Record<FamilySlug, number>> = {};
+  for (const [k, v] of Object.entries(r.families ?? {})) if (isFamilySlug(k) && Number.isFinite(v)) families[k] = v;
+  return {
+    ...base,
     family: isFamilySlug(r.family) ? r.family : null,
     families,
     sub: isSubSlug(r.sub) ? r.sub : null,
-    tags: Array.isArray(r.tags) ? r.tags : [],
-    source: r.source,
     status: r.status === 'none' ? 'none' : 'found',
-    fetchedAt: r.fetched_at ?? '',
   };
 }
 

@@ -7,6 +7,8 @@
  *  art, the same in every theme: `color` is the strong tile colour (white
  *  text on it), `tint` the light card colour of a mix (dark `ink` on it). */
 
+import { foldText, hasCjkSceneWord, NAMED_RE, TAG_EXACT, TAG_KEYWORDS, wholeWords } from './gameAnimeWords';
+
 export type FamilySlug =
   | 'rock-metal'
   | 'pop'
@@ -16,7 +18,8 @@ export type FamilySlug =
   | 'balkan'
   | 'country-folk'
   | 'jazz-blues'
-  | 'classical';
+  | 'classical'
+  | 'game-anime';
 
 /** The narrower styles a family splits into (docs/mixes.md, "Style
  *  mixes"). rock, metal, hiphop and rnb are the original halves; the rest
@@ -156,8 +159,18 @@ export const FAMILIES: readonly Family[] = [
     tint: '#dcdce8',
     ink: INK,
     subs: [
-      { slug: 'soundtrack', name: 'Soundtracks', tint: '#e3d6f0', match: /\b(soundtrack|score|film|video game|game music)\b/ },
+      { slug: 'soundtrack', name: 'Soundtracks', tint: '#e3d6f0', match: /\b(soundtrack|score|film)\b/ },
     ],
+  },
+  // Game, anime and rhythm-game music (vocaloid, touhou, OSTs, j-core,
+  // chiptune). No YouTube chart of its own and no sub-genres yet; songs can
+  // also land here by their title (lib/genres/songSignal.ts).
+  {
+    slug: 'game-anime',
+    name: 'Game & Anime',
+    color: '#7a6a00',
+    tint: '#f5ee9e',
+    ink: INK,
   },
 ];
 
@@ -321,13 +334,28 @@ const EXACT: Record<string, TagTarget> = {
   'score': { family: 'classical' },
   'opera': { family: 'classical' },
   'orchestral': { family: 'classical' },
+  ...Object.fromEntries(TAG_EXACT.map((t) => [t, { family: 'game-anime' as const }])),
+};
+
+const GAME_TAG_RE = wholeWords(TAG_KEYWORDS, true);
+
+/** The Game & Anime keyword rule: a named game or scene word, a scene tag
+ *  ("video game music", "j-core", "chiptune") or a Japanese scene word,
+ *  anywhere in the tag. Accents are folded first ("pokémon"). */
+const GAME_ANIME_TAG = {
+  test(t: string): boolean {
+    const f = foldText(t);
+    return NAMED_RE.test(f) || GAME_TAG_RE.test(f) || hasCjkSceneWord(f);
+  },
 };
 
 /** Then keywords inside longer tags, first match wins: "melodic death
  *  metal", "deep house", "serbian rap" (a country tag beats the style:
- *  Balkan rap goes in the Balkan mix). Order matters. */
-const KEYWORDS: readonly [RegExp, TagTarget][] = [
+ *  Balkan rap goes in the Balkan mix; a scene beats the style too: "vocaloid
+ *  rock", "touhou metal" and "anime pop" are Game & Anime). Order matters. */
+const KEYWORDS: readonly [{ test(t: string): boolean }, TagTarget][] = [
   [/\b(turbo ?folk|narodn\w*|ex ?yu|yugo\w*|serbian|croatian|bosnian|montenegrin|macedonian|sevdah|sevdalinka|balkan)\b/, { family: 'balkan' }],
+  [GAME_ANIME_TAG, { family: 'game-anime' }],
   [/\b(metal\w*|grindcore|deathcore|thrash|doom|sludge|djent|hard rock)\b/, { family: 'rock-metal' }],
   [/\b(hip hop|rap|trap|drill|grime|boom bap)\b/, { family: 'hiphop-rnb' }],
   [/\b(r&b|rnb|soul|funk)\b/, { family: 'hiphop-rnb' }],

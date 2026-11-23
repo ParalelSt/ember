@@ -110,7 +110,10 @@ export function kindLook(key: string, stored?: string): { color: string; ink: st
   return { color: stored || KIND_TINT[kind] || artistTint(key, null), ink: INK };
 }
 
-const ARTIST_TINTS = FAMILIES.map((f) => f.tint);
+/** The nine original families' tints, pinned: a family added later must not
+ *  reshuffle the colour of every artist card whose family is unknown
+ *  (hash % length). */
+const ARTIST_TINTS = FAMILIES.filter((f) => f.slug !== 'game-anime').map((f) => f.tint);
 
 /** An artist mix's colour: their family's tint, or (family unknown) one of
  *  the family tints picked by the key, the same one every night. */

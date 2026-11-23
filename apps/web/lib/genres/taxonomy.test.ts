@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { CHARTS, classifyTags, FAMILIES, familyOf, isSubSlug, mapTag, mixLook, normalizeTag, parentFamilyOf, subOfTags } from './taxonomy';
 
 describe('taxonomy table', () => {
-  it('has nine families, each with a strong and a light colour', () => {
+  it('has ten families, Game & Anime last, each with a strong and a light colour', () => {
     expect(FAMILIES.map((f) => f.slug)).toEqual([
-      'rock-metal', 'pop', 'hiphop-rnb', 'electronic', 'latin', 'balkan', 'country-folk', 'jazz-blues', 'classical',
+      'rock-metal', 'pop', 'hiphop-rnb', 'electronic', 'latin', 'balkan', 'country-folk', 'jazz-blues', 'classical', 'game-anime',
     ]);
     for (const f of FAMILIES) {
       expect(f.color).toMatch(/^#[0-9a-f]{6}$/);
@@ -23,6 +23,44 @@ describe('taxonomy table', () => {
     expect(mixLook('rnb')).toMatchObject({ name: 'R&B', family: 'hiphop-rnb' });
     expect(parentFamilyOf('hiphop')?.slug).toBe('hiphop-rnb');
     expect(mixLook('unknown').family).toBeNull();
+    expect(mixLook('game-anime')).toMatchObject({ name: 'Game & Anime', tint: '#f5ee9e', family: 'game-anime' });
+  });
+
+  it('Game & Anime has no chart and no sub-genres', () => {
+    expect(CHARTS.some((c) => c.family === 'game-anime')).toBe(false);
+    expect(familyOf('game-anime')?.subs).toBeUndefined();
+  });
+});
+
+describe('mapTag: Game & Anime', () => {
+  it('maps the scene, its games and its sounds', () => {
+    for (const t of [
+      'vocaloid', 'Touhou', 'anime', 'vgm', 'video game music', 'Video Games', 'game', 'game soundtrack', 'video game soundtrack',
+      'j-core', 'jcore', 'chiptune', '8-bit', 'minecraft', 'Undertale', 'osu!', 'rhythm game', 'BMS', 'anison', 'utaite', 'doujin',
+      'seiyuu', 'visual novel', 'Pokémon', 'hatsune miku', '東方', 'ボカロ',
+    ]) {
+      expect(mapTag(t), t).toEqual({ family: 'game-anime' });
+    }
+  });
+
+  it('beats the style it is combined with, but not the Balkan rule', () => {
+    expect(mapTag('vocaloid rock')).toEqual({ family: 'game-anime' });
+    expect(mapTag('touhou metal')).toEqual({ family: 'game-anime' });
+    expect(mapTag('anime pop')).toEqual({ family: 'game-anime' });
+    expect(mapTag('serbian anime')).toEqual({ family: 'balkan' });
+  });
+
+  it('leaves J-pop, J-rock, film scores and look-alike words where they were', () => {
+    expect(mapTag('j-pop')).toEqual({ family: 'pop' });
+    expect(mapTag('j pop')).toEqual({ family: 'pop' });
+    expect(mapTag('k-pop')).toEqual({ family: 'pop' });
+    expect(mapTag('j-rock')).toEqual({ family: 'rock-metal' });
+    expect(mapTag('japanese')).toBeNull();
+    expect(mapTag('soundtrack')).toEqual({ family: 'classical' });
+    expect(mapTag('film score')).toEqual({ family: 'classical' });
+    expect(mapTag('doom metal')).toEqual({ family: 'rock-metal' });
+    expect(mapTag('animal')).toBeNull();
+    expect(mapTag('the game')).toBeNull();
   });
 });
 
@@ -98,6 +136,14 @@ describe('classifyTags', () => {
     expect(classifyTags([])).toEqual({ family: null, families: {}, sub: null });
   });
 
+  it('a vocaloid producer is Game & Anime, a J-pop singer and a rhythm-game DJ are not', () => {
+    expect(classifyTags([{ name: 'vocaloid', count: 100 }, { name: 'j-pop', count: 60 }, { name: 'japanese', count: 50 }]).family).toBe('game-anime');
+    expect(classifyTags([{ name: 'j-pop', count: 100 }, { name: 'japanese', count: 70 }, { name: 'anime', count: 20 }]).family).toBe('pop');
+    const dj = classifyTags([{ name: 'electronic', count: 100 }, { name: 'j-core', count: 60 }, { name: 'dubstep', count: 40 }]);
+    expect(dj.family).toBe('electronic');
+    expect(dj.families).toEqual({ electronic: 1 });
+  });
+
   it('counts a tag without a count as 1, and breaks ties by first seen', () => {
     expect(classifyTags([{ name: 'jazz', count: 0 }, { name: 'rock', count: Number.NaN }]).family).toBe('jazz-blues');
   });
@@ -134,6 +180,8 @@ describe('sub-genres (style mixes)', () => {
     expect(subOfTags('country-folk', [{ name: 'singer-songwriter', count: 100 }])).toBe('folk');
     expect(subOfTags('jazz-blues', [{ name: 'delta blues', count: 100 }])).toBe('blues');
     expect(subOfTags('classical', [{ name: 'soundtrack', count: 100 }])).toBe('soundtrack');
+    // Game music is its own family now, not a Classical soundtrack.
+    expect(subOfTags('classical', [{ name: 'video game music', count: 100 }])).toBeNull();
   });
 
   it('splits Balkan by style: a plain style tag counts once the family is Balkan', () => {
