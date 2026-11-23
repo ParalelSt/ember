@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { logger } from '@/lib/logger/client';
 import { subscribeNativeLog } from '@/lib/nativeLog';
 import { forwardDesktopGateEvents } from '@/lib/desktopGateEvents';
+import { bootPerf } from '@/lib/perf/client';
 
 /** Client-only mount that boots the logger. Renders nothing. Idempotent:
  *  multiple mounts share the underlying logger singleton. Route-change
@@ -13,6 +14,9 @@ import { forwardDesktopGateEvents } from '@/lib/desktopGateEvents';
 export function LoggerInit() {
   useEffect(() => {
     logger.boot();
+    // The perf log (lib/perf): this effect is the moment the page finished
+    // hydrating, which is the launch record's "hydrated" mark.
+    bootPerf();
     // Android only: forwards the native plugin's `nativeLog` events (download
     // and service failures) into the same buffer, and drains whatever the
     // plugin buffered before this page loaded.

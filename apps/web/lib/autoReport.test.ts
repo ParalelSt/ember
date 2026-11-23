@@ -9,7 +9,7 @@ import type { LogEntry } from './logger/types';
 // short-circuits to '' without ever calling invoke.
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
-const { maybeAutoReport } = await import('./autoReport');
+const { maybeAutoReport, maybeAutoPerfReport, _resetPerfReports } = await import('./autoReport');
 const { connectionOk } = await import('./connectionBlip');
 
 function errorEntry(over: Partial<LogEntry> = {}): LogEntry {
@@ -284,5 +284,42 @@ describe('maybeAutoReport [discord-2026-10-04 #6]: one report per connection bli
     maybeAutoReport(entry());
     await vi.advanceTimersByTimeAsync(3000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('maybeAutoPerfReport', () => {
+  beforeEach(() => _resetPerfReports());
+
+  it('sends an automatic report tagged with its kind and carrying the perf block', async () => {
+    const fetchMock = mockFetch();
+    maybeAutoPerfReport('nav', 'slow navigation to /settings: 9.1 s');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(body).toMatchObject({ automatic: true, perfKind: 'nav', note: 'perf: slow navigation to /settings: 9.1 s' });
+    expect(body.client.perf).toMatchObject({ launch: expect.any(Object), navs: expect.any(Array) });
+  });
+
+  it('once per kind per page session, and without using the crash reports\' count', async () => {
+    const fetchMock = mockFetch();
+    maybeAutoPerfReport('freeze', 'page froze for 6.0 s');
+    maybeAutoPerfReport('freeze', 'page froze for 9.0 s');
+    maybeAutoPerfReport('launch', 'slow launch');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    maybeAutoReport(errorEntry({ message: 'a real crash' }));
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('follows the automatic reports setting and needs a session', async () => {
+    const fetchMock = mockFetch();
+    useSettingsStore.setState({ autoReportEnabled: false });
+    maybeAutoPerfReport('nav', 'slow');
+    useSettingsStore.setState({ autoReportEnabled: true });
+    signOut();
+    maybeAutoPerfReport('launch', 'slow');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

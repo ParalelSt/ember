@@ -26,6 +26,7 @@ import {
 } from "@/lib/reports/discord";
 import { readReportBody } from "@/lib/reports/readBody";
 import { cleanShellFields, reportVersionLabel } from "@/lib/versions/label";
+import { perfLine, sanitizePerfBlock } from "@/lib/perf/reportBlock";
 import {
   droppedAttachmentsField,
   isTooLargeForDiscord,
@@ -87,6 +88,10 @@ interface RequestBody {
    *  gets the cheaper model and a different Discord title, not a security
    *  issue). */
   automatic?: boolean;
+  /** Set by lib/autoReport.ts for an automatic perf report (a very slow
+   *  launch, navigation or freeze). Like `automatic`, only picks a rate
+   *  limit bucket and a title. */
+  perfKind?: string;
 }
 
 /** Validate `client.context`: must be a plain object when present (an old
@@ -124,15 +129,20 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     // bucket, a triage model and a Discord title, none of which are a
     // security boundary (see the RequestBody doc comment above).
     const automatic = body.automatic === true;
+    const perfReport = automatic && typeof body.perfKind === "string";
 
     // Automatic (lib/autoReport.ts) and manual reports get separate limits:
     // a human hitting Submit twice by accident is a 30s cooldown, while
     // autoReport.ts already caps itself at 3 per browser session but that
     // cap is client-side and per-tab, so the server enforces its own
     // per-hour ceiling per user across every tab/device.
-    const limited = automatic
-      ? rateLimitResponse(`bug-report:auto:${user.id}`, { windowMs: 60 * 60 * 1000, max: 3 })
-      : rateLimitResponse(`bug-report:${user.id}`, { windowMs: 30 * 1000, max: 1 });
+    // Perf reports have their own bucket, so a slow phone never costs the
+    // crash reports theirs.
+    const limited = perfReport
+      ? rateLimitResponse(`bug-report:perf:${user.id}`, { windowMs: 60 * 60 * 1000, max: 2 })
+      : automatic
+        ? rateLimitResponse(`bug-report:auto:${user.id}`, { windowMs: 60 * 60 * 1000, max: 3 })
+        : rateLimitResponse(`bug-report:${user.id}`, { windowMs: 30 * 1000, max: 1 });
     if (limited) return limited;
     // A person whose report Discord did not take is told to try again: give
     // the try back, or that try met the 30 s limit (as requests does). An
@@ -168,12 +178,14 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     // report.json, doubling the payload for no extra information.
     // The device only scrubbed secret-named keys; the patterns run here,
     // the same as for the server's own entries and the note.
-    const { desktopLog: rawDesktopLog, ...clientRest } = body.client;
+    const { desktopLog: rawDesktopLog, perf: rawPerf, ...clientRest } = body.client;
+    const perf = sanitizePerfBlock(rawPerf);
     const client = {
       ...clientRest,
       current: scrubClientEntries(clientRest.current),
       previous: scrubClientEntries(clientRest.previous),
       context: sanitizeContext(clientRest.context),
+      ...(perf ? { perf } : {}),
     };
     const desktopLog =
       typeof rawDesktopLog === "string" ? scrubText(rawDesktopLog.slice(-MAX_DESKTOP_LOG)) : "";
@@ -266,7 +278,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       triage ? `confidence: ${triage.confidence}` : null,
       automatic ? "automatic" : null,
     ].filter((p): p is string => p !== null);
-    const title = `${automatic ? "Automatic report" : "Bug report"} from ${user.email}`;
+    const title = `${perfReport ? "Automatic perf report" : automatic ? "Automatic report" : "Bug report"} from ${user.email}`;
     const description = note || "_(no note)_";
     const footerText = footerParts.join(" · ");
 
@@ -279,6 +291,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       field("What broke", whatBroke),
       field("Version", reportVersionLabel(client.context)),
       { name: "Where", value: formatContextCompact(client.context), inline: false },
+      ...(perf ? [field("Perf", perfLine(perf))] : []),
     ];
     const afterEvidence: EmbedFieldT[] = [
       field("Seen before", seenBeforeText),

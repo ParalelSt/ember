@@ -6,6 +6,7 @@ import { Popup } from '@/components/ui/popup';
 import { Textarea } from '@/components/ui/textarea';
 import { useUiStore } from '@/stores/useUiStore';
 import { logger } from '@/lib/logger/client';
+import { perfBlock } from '@/lib/perf';
 import { readDesktopLog } from '@/lib/desktopLog';
 import { detectShell } from '@/lib/playback/detectShell';
 import { scrubText } from '@/lib/logger/sanitize';
@@ -43,6 +44,7 @@ export function BugReportDialog() {
     try {
       await loadDeviceInfo();
       const snapshot = logger.snapshot();
+      snapshot.perf = perfBlock();
       // Desktop only, best effort: the shell's own log holds what the WebView
       // never sees. An empty string means there is nothing to attach.
       // The desktop shell's own log is unscrubbed native output (URLs,

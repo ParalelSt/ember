@@ -9,6 +9,7 @@ import { readDesktopLog } from './desktopLog';
 import { scrubText } from './logger/sanitize';
 import { loadDeviceInfo } from './versions/device';
 import { GATEWAY_STATUSES, PERSIST_MS, networkFailure, whenConnectionBack } from './connectionBlip';
+import { perfBlock } from './perf';
 
 /** Silent crash reports: when the client logger records an error-level
  *  entry, post the same body BugReportDialog would send (tagged
@@ -84,7 +85,7 @@ function reserve(fp: string): boolean {
  *  lib/pocketbase/client.ts), and the server route requires it too. Reading
  *  the cookie directly here avoids depending on a PocketBase client
  *  instance existing in every place an error can originate. */
-function isSignedIn(): boolean {
+export function isSignedIn(): boolean {
   if (typeof document === 'undefined') return false;
   const m = /(?:^|;\s*)pb_auth=([^;]*)/.exec(document.cookie);
   return !!m && decodeURIComponent(m[1]).length > 0;
@@ -93,11 +94,12 @@ function isSignedIn(): boolean {
 /** `retryWhenBack`: a send that gets no answer at all (the outage report,
  *  sent while the server is still unreachable) goes again once, the next
  *  time the server answers. */
-async function send(entry: LogEntry, retryWhenBack = false): Promise<void> {
+async function send(entry: LogEntry, retryWhenBack = false, perfKind?: PerfReportKind): Promise<void> {
   let reached = false;
   try {
     await loadDeviceInfo();
     const snapshot = logger.snapshot();
+    snapshot.perf = perfBlock();
     // Desktop only, best effort: same as BugReportDialog's submit.
     const desktopLog = await readDesktopLog();
     if (desktopLog) snapshot.desktopLog = scrubText(desktopLog);
@@ -109,6 +111,7 @@ async function send(entry: LogEntry, retryWhenBack = false): Promise<void> {
         note: `${entry.category}: ${entry.message}`,
         client: snapshot,
         automatic: true,
+        ...(perfKind ? { perfKind } : {}),
       }),
     });
     // The route answers JSON. Something answering in its place (a Wi-Fi
@@ -210,4 +213,44 @@ export function maybeAutoReport(entry: LogEntry): void {
       error: e instanceof Error ? e.message : String(e),
     });
   }
+}
+
+/** The kinds of automatic perf report (docs/android-performance.md, 5.5). */
+export type PerfReportKind = 'launch' | 'nav' | 'freeze';
+
+const perfReported = new Set<PerfReportKind>();
+
+/** An automatic perf report: a launch over 15 s, a navigation over 8 s or a
+ *  freeze over 5 s (lib/perf/client.ts decides). At most one per kind per
+ *  page session, with the same gates as a crash report, but its own count:
+ *  a slow phone never uses up the crash reports' three. The server keeps
+ *  its own hourly limit for these (app/api/bug-report). */
+export function maybeAutoPerfReport(kind: PerfReportKind, message: string): void {
+  try {
+    if (typeof window === 'undefined' || perfReported.has(kind)) return;
+    if (!useSettingsStore.getState().autoReportEnabled) return;
+    if (!isSignedIn() || onSignInPage()) return;
+    if (useUiStore.getState().bugReportOpen) return;
+    if (!isOnline()) return;
+    perfReported.add(kind);
+    const entry: LogEntry = {
+      ts: Date.now(),
+      kind: 'breadcrumb',
+      level: 'warn',
+      category: 'perf',
+      message,
+      sessionId: logger.sessionId,
+    };
+    logger.warn('perf', message);
+    void send(entry, false, kind);
+  } catch (e) {
+    logger.breadcrumb('autoReport', 'maybeAutoPerfReport internal failure', {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+/** Tests only: forget which perf reports this page already sent. */
+export function _resetPerfReports(): void {
+  perfReported.clear();
 }

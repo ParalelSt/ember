@@ -2,6 +2,7 @@
  *  notes on the logging design, 2026-06-04). */
 
 import type { DevicePlatform } from '@/lib/versions/label';
+import type { PerfBlock } from '@/lib/perf/types';
 
 export type LogKind = 'error' | 'breadcrumb';
 // 'warn' added for withRequestLog (T2): 429s and 502/504 upstream failures
@@ -89,4 +90,7 @@ export interface ClientSnapshot {
    *  lib/desktopLog.ts). Attached to the report as desktop.log rather than
    *  inlined, and absent everywhere else. */
   desktopLog?: string;
+  /** The page's perf record (lib/perf): launch, navigations, slow taps,
+   *  long tasks, memory. Bug reports and automatic reports only. */
+  perf?: PerfBlock;
 }

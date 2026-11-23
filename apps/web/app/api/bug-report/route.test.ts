@@ -801,3 +801,48 @@ describe('POST /api/bug-report: "Seen before" history', () => {
     expect(keep(serverError({ level: 'error' }))).toBe(true);
   });
 });
+
+describe('POST /api/bug-report: the perf block', () => {
+  const perf = {
+    on: true,
+    uptimeMs: 90_000,
+    launch: { ttfb: 820, fcp: 2500, hydrated: 30_300 },
+    longTasks: { n: 12, ms: 3400, max: 900, top: [['page-abc.js', 2100]] },
+    navs: [{ at: 1, from: '/', to: '/settings', via: 'tap', lt: 0, total: 57_000 }],
+    slow: [],
+    freezes: [{ at: 1, gapMs: 6200 }],
+    rage: [],
+    memory: [{ at: 1, used: 42.5, dom: 3100 }],
+    api: [],
+    counts: {},
+    device: { model: 'motorola edge 60' },
+  };
+
+  it('keeps it in report.json and sums it up in the embed', async () => {
+    const res = await POST(request({ client: snapshot({ perf } as unknown as Partial<ClientSnapshot>) }), undefined as never);
+    expect(res.status).toBe(200);
+    const reportJson = JSON.parse(await (postedForm(fetchMock).get('files[0]') as File).text());
+    expect(reportJson.client.perf).toMatchObject({ launch: { hydrated: 30_300 }, freezes: [{ gapMs: 6200 }] });
+    const field = postedEmbed(fetchMock).fields.find((f) => f.name === 'Perf');
+    expect(field?.value).toBe(
+      'ready after 30.3 s (first byte 0.8 s, first paint 2.5 s), 1 navigations, slowest 57.0 s to /settings, long tasks 12 (3.4 s), freezes 1, heap 42.5 MB',
+    );
+  });
+
+  it('drops a perf block that is not an object or is too big, never the report', async () => {
+    await POST(request({ client: snapshot({ perf: 'junk' } as unknown as Partial<ClientSnapshot>) }), undefined as never);
+    expect(JSON.parse(await (postedForm(fetchMock).get('files[0]') as File).text()).client.perf).toBeUndefined();
+    const huge = { ...perf, counts: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`k${i}`, 'x'.repeat(120)])), navs: Array.from({ length: 30 }, () => Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`f${i}`, 'y '.repeat(60)]))) };
+    const res = await POST(request({ client: snapshot({ perf: huge } as unknown as Partial<ClientSnapshot>) }), undefined as never);
+    expect(res.status).toBe(200);
+    expect(JSON.parse(await (postedForm(fetchMock).get('files[0]') as File).text()).client.perf).toBeUndefined();
+  });
+
+  it('an automatic perf report has its own rate limit bucket and title', async () => {
+    vi.mocked(rateLimitResponse).mockClear();
+    await POST(request({ client: snapshot({ perf } as unknown as Partial<ClientSnapshot>), automatic: true, perfKind: 'nav', note: 'perf: slow navigation' }), undefined as never);
+    const keys = vi.mocked(rateLimitResponse).mock.calls.map(([k]) => k);
+    expect(keys).toEqual(['bug-report:perf:u1']);
+    expect(postedEmbed(fetchMock).title).toBe('Automatic perf report from dev@ember.test');
+  });
+});
