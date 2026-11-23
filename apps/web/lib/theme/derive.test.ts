@@ -2,9 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { autoFill, derive, emberForeground, schemeOf, THEME_VARS } from '@/lib/theme/derive';
-import { parseOklch, type Oklch } from '@/lib/theme/oklch';
+import type { Oklch } from '@/lib/theme/oklch';
 import { EMBER_INPUTS, PRESET_BY_ID } from '@/lib/theme/presets';
 import type { ThemeInputs } from '@/lib/theme/model';
+
+/** Reads the `oklch(...)` strings in globals.css and in derive's output. */
+const OKLCH_CSS =
+  /^oklch\(\s*(-?[\d.]+)(%?)\s+(-?[\d.]+)\s+(-?[\d.]+)(?:deg)?\s*(?:\/\s*([\d.]+)(%?)\s*)?\)$/i;
+function parseOklch(css: string): { color: Oklch; alphaPct?: number } | null {
+  const m = OKLCH_CSS.exec(css.trim());
+  if (!m) return null;
+  const color: Oklch = [Number(m[1]) / (m[2] ? 100 : 1), Number(m[3]), Number(m[4])];
+  if (color.some((n) => !Number.isFinite(n))) return null;
+  if (m[5] == null) return { color };
+  const alpha = Number(m[5]);
+  return { color, alphaPct: m[6] ? alpha : alpha * 100 };
+}
 
 /** The `:root` block of app/globals.css as name -> value, with
  *  `var(--x)` references resolved against the same block. */

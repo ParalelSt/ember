@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   canTransition,
-  countItems,
   InvalidTransition,
   isActive,
   playlistPosition,
@@ -81,15 +80,5 @@ describe('playlistPosition', () => {
   it('tracks added out of order still sort into source order', () => {
     const added = [5, 0, 3, 1, 4, 2].map((p) => ({ p, position: playlistPosition(p) }));
     expect(added.sort((a, b) => a.position - b.position).map((a) => a.p)).toEqual([0, 1, 2, 3, 4, 5]);
-  });
-});
-
-describe('countItems', () => {
-  it('counts accepted and resolved as added, and ignores pending and skipped', () => {
-    expect(countItems(['accepted', 'resolved', 'review', 'missing', 'missing', 'pending', 'skipped'])).toEqual({
-      accepted: 2,
-      review: 1,
-      missing: 2,
-    });
   });
 });

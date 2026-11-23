@@ -137,28 +137,6 @@ export function formatOklch(color: Oklch, alphaPct?: number): string {
   return alphaPct == null ? `oklch(${l} ${c} ${h})` : `oklch(${l} ${c} ${h} / ${alphaPct}%)`;
 }
 
-export interface ParsedOklch {
-  color: Oklch;
-  /** Percent, 0..100; absent for an opaque colour. */
-  alphaPct?: number;
-}
-
-const OKLCH_CSS =
-  /^oklch\(\s*(-?[\d.]+)(%?)\s+(-?[\d.]+)\s+(-?[\d.]+)(?:deg)?\s*(?:\/\s*([\d.]+)(%?)\s*)?\)$/i;
-
-/** Reads what `formatOklch` writes (and the `:root` values in globals.css).
- *  Null for anything else. */
-export function parseOklch(css: string): ParsedOklch | null {
-  const m = OKLCH_CSS.exec(css.trim());
-  if (!m) return null;
-  const l = Number(m[1]) / (m[2] ? 100 : 1);
-  const color: Oklch = [l, Number(m[3]), Number(m[4])];
-  if (color.some((n) => !Number.isFinite(n))) return null;
-  if (m[5] == null) return { color };
-  const alpha = Number(m[5]);
-  return { color, alphaPct: m[6] ? alpha : alpha * 100 };
-}
-
 function luminanceOfSrgb([r, g, b]: Rgb): number {
   return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
 }

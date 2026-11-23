@@ -18,8 +18,6 @@ export function platformName(platform: DevicePlatform): string {
   return PLATFORM_NAMES[platform];
 }
 
-export const MAX_VERSION_LEN = 40;
-
 /** A version number and nothing else, out of whatever a client sent: "0.7.34"
  *  from the build stamp "0.7.34 (a1b2c3d 2026-10-22)", null for anything that
  *  is not one. These strings end up in Discord and on the admin page, so only

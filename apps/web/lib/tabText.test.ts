@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as alphaTab from '@coderline/alphatab';
-import { fitTempo, MAX_TAB_TEXT_BYTES, parseTabText, reportLine, tapTempo, type TabTextResult } from '@/lib/tabText';
+import { MAX_TAB_TEXT_BYTES, parseTabText, reportLine, type TabTextResult } from '@/lib/tabText';
 
 // The text tab parser against a fixture set of our own riffs, written in
 // the shapes text tabs come in (tests/fixtures/tabs-text). Every output is
@@ -393,19 +393,5 @@ describe('refusals and options', () => {
 
   it('the size cap is 256 KB', () => {
     expect(MAX_TAB_TEXT_BYTES).toBe(256 * 1024);
-  });
-});
-
-describe('tempo helpers', () => {
-  it('fit to song length: bars x 4 x 60 / duration', () => {
-    expect(fitTempo(32, 80)).toBe(96);
-    expect(fitTempo(0, 80)).toBeNull();
-    expect(fitTempo(10, 0)).toBeNull();
-  });
-
-  it('tap along: the median gap, needs four taps', () => {
-    expect(tapTempo([0, 500, 1000, 1500])).toBe(120);
-    expect(tapTempo([0, 500, 1400, 1900, 2400])).toBe(120);
-    expect(tapTempo([0, 500, 1000])).toBeNull();
   });
 });

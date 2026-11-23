@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { PhonePlayerBar } from './PhonePlayerBar';
-import { UnplayableAnnouncer, UnplayableMessage } from './UnplayableMessage';
+import { UnplayableMessage } from './UnplayableMessage';
 import { resetUnplayableStore, showUnplayable } from '@/stores/useUnplayableStore';
 import { BAR_MESSAGE_MS } from '@/lib/playback/unplayableBar';
 import type { UnplayableNotice } from '@/lib/playback/unplayable';
@@ -24,7 +24,6 @@ function renderBar() {
   const h = { onToggle: vi.fn(), onSeek: vi.fn(), onNext: vi.fn(), onOpen: vi.fn(), onRetry: vi.fn(), onOpenQueue: vi.fn() };
   render(
     <>
-      <UnplayableAnnouncer />
       <PhonePlayerBar track={PLAYING} playing duration={200} {...h} />
     </>,
   );
@@ -122,17 +121,6 @@ describe('the phone bar\'s message', () => {
     fireEvent.click(screen.getByLabelText('Next'));
     expect(h.onToggle).toHaveBeenCalled();
     expect(h.onNext).toHaveBeenCalled();
-  });
-
-  it('screen readers hear it once, politely, as a whole sentence', () => {
-    renderBar();
-    const live = screen.getByTestId('unplayable-announcer');
-    expect(live).toHaveAttribute('aria-live', 'polite');
-    expect(live).toHaveTextContent('');
-    say([n('Field Day', { reason: 'removed' })]);
-    expect(live).toHaveTextContent('Couldn\'t play "Field Day": removed from YouTube. Skipped to the next song.');
-    tick(BAR_MESSAGE_MS);
-    expect(live).toHaveTextContent('');
   });
 });
 

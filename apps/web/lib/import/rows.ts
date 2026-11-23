@@ -45,13 +45,8 @@ export function importRows(items: ImportItem[], tracks: Track[], status: JobStat
   return rows;
 }
 
-/** The import item behind a playlist track, for "Wrong song? Re-match". */
-export function itemForTrack(items: ImportItem[], track: Track): ImportItem | null {
-  return importItemFinder(items)(track);
-}
-
-/** itemForTrack for every row of a list: the items are read once, then each
- *  row is a lookup. Asked row by row, a Liked list during a transfer or an
+/** The import item behind a playlist track, for "Wrong song? Re-match":
+ *  the items are read once, then each row is a lookup. Asked row by row, a Liked list during a transfer or an
  *  imported playlist walked every item for every song (thousands times
  *  thousands, on each render). */
 export function importItemFinder(items: ImportItem[]): (track: Track) => ImportItem | null {

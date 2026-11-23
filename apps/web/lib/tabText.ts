@@ -1011,24 +1011,3 @@ export function reportLine(r: TabTextReport): string {
   if (r.skipped.length) parts.push(`${r.skipped.length} line${r.skipped.length === 1 ? '' : 's'} skipped`);
   return parts.join(', ');
 }
-
-/** The tempo that makes the tab last as long as the recording (4/4). */
-export function fitTempo(bars: number, durationSec: number): number | null {
-  if (!(bars > 0) || !(durationSec > 0)) return null;
-  const bpm = Math.round((bars * 4 * 60) / durationSec);
-  return Math.max(MIN_TEMPO, Math.min(MAX_TEMPO, bpm));
-}
-
-/** Beats per minute from taps (milliseconds): the median gap, so one late
- *  tap does not throw it. Null under four taps. */
-export function tapTempo(taps: number[]): number | null {
-  if (taps.length < 4) return null;
-  const gaps = taps
-    .slice(1)
-    .map((t, i) => t - taps[i])
-    .filter((g) => g > 0)
-    .sort((a, b) => a - b);
-  if (!gaps.length) return null;
-  const bpm = Math.round(60_000 / gaps[Math.floor(gaps.length / 2)]);
-  return bpm >= MIN_TEMPO && bpm <= MAX_TEMPO ? bpm : null;
-}

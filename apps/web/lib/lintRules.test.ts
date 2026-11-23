@@ -338,7 +338,6 @@ describe('colour ratchet', () => {
   // Hex, rgb() and hsl() colours: brand dots (Spotify green is Spotify
   // green), mock covers, and the example in the hex field's hint. Nothing else.
   const LITERAL_COLOUR_ALLOWED: Record<string, string> = {
-    'components/import/parts.tsx': 'SOURCE_DOT brand dots',
     'components/intro/RedesignIntro.tsx': 'mock cover gradients in the intro art (the approved mockup)',
     'components/library/LikedSongsCover.tsx': 'the Liked songs cover art, fixed ember wine whatever the theme',
     'components/library/libraryIcons.ts': 'the phone Library badge, tile and downloaded-mark colours, fixed art whatever the theme',
@@ -358,10 +357,8 @@ describe('colour ratchet', () => {
     expect(hits, formatHits(hits)).toEqual([]);
   });
 
-  it('keeps arbitrary bg-[#...] to the SOURCE_DOT brand dots', () => {
-    const hits = findSubstring(files, 'bg-[#').filter(
-      (h) => !['components/import/parts.tsx'].includes(relative(ROOT, h.file)),
-    );
+  it('allows no arbitrary bg-[#...] colours', () => {
+    const hits = findSubstring(files, 'bg-[#');
     expect(hits, formatHits(hits)).toEqual([]);
   });
 

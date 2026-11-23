@@ -23,7 +23,6 @@ export interface LyricsResult {
 /** How long a song stays current before its lyrics are looked up on their
  *  own (no one is waiting on them); the lyrics view fetches immediately. */
 export const LYRICS_BUSY_MESSAGE = 'Lyrics unavailable for now';
-export const LYRICS_PREFETCH_DELAY_MS = 4000;
 
 async function fetchLyrics(title: string, artist: string, durationSec: number): Promise<LyricsResult> {
   const qs = new URLSearchParams({ title, artist });

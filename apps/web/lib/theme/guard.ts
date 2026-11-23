@@ -96,8 +96,3 @@ export function checkTheme(inputs: ThemeInputs): Finding[] {
 export function problems(inputs: ThemeInputs): Finding[] {
   return checkTheme(inputs).filter((f) => f.level !== 'ok');
 }
-
-/** True when any pair fails, which blocks saving to the account. */
-export function isUnreadable(inputs: ThemeInputs): boolean {
-  return checkTheme(inputs).some((f) => f.level === 'fail');
-}

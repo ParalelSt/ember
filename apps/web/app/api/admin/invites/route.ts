@@ -13,12 +13,6 @@ import { isUniqueHit } from '@/lib/pocketbase/uniqueHit';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export interface AdminInvite {
-  id: string;
-  email: string;
-  created: string;
-}
-
 export const GET = withRequestLog('admin/invites', async (_req: NextRequest) => {
   try {
     await requireAdmin();

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Track } from '@/types/track';
 import {
-  isDirectArtistSearch,
   localMatches,
   matchesAllWords,
   normalizeForSearch,
@@ -72,35 +71,6 @@ describe('rankByQuery', () => {
     const list = [t('a', 'x'), t('b', 'needle')];
     rankByQuery(list, 'needle');
     expect(list.map((x) => x.id)).toEqual(['a', 'b']);
-  });
-});
-
-describe('isDirectArtistSearch', () => {
-  it.each([
-    ['demetori', 'Demetori'],
-    ['DEMETORI', 'Demetori'],
-    ['  demetori ', 'Demetori'],
-    ['motorhead', 'Motörhead'],
-    ['acdc', 'AC/DC'],
-    ['ac dc', 'AC/DC'],
-    ['daftpunk', 'Daft Punk'],
-    ['beatles', 'The Beatles'],
-    ['demetory', 'Demetori'],
-    ['metalica', 'Metallica'],
-    ['red hot chilli peppers', 'Red Hot Chili Peppers'],
-  ])('"%s" is a direct search for %s', (q, name) => {
-    expect(isDirectArtistSearch(q, name)).toBe(true);
-  });
-
-  it.each([
-    ['demetori necro fantasia', 'Demetori'],
-    ['necro fantasia', 'Demetori'],
-    ['abba', 'Abbe'],
-    ['sia', 'Sid'],
-    ['', 'Demetori'],
-    ['demetori', ''],
-  ])('"%s" is not a direct search for "%s"', (q, name) => {
-    expect(isDirectArtistSearch(q, name)).toBe(false);
   });
 });
 

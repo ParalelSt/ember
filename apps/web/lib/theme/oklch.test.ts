@@ -6,7 +6,6 @@ import {
   isHex,
   oklchToHex,
   oklchToLinearRgb,
-  parseOklch,
   roundOklch,
   type Oklch,
 } from '@/lib/theme/oklch';
@@ -106,7 +105,7 @@ describe('contrast', () => {
   });
 });
 
-describe('formatOklch / parseOklch / roundOklch', () => {
+describe('formatOklch / roundOklch', () => {
   it('writes the CSS form, with alpha as a percentage', () => {
     expect(formatOklch([0.16, 0.005, 260])).toBe('oklch(0.16 0.005 260)');
     expect(formatOklch([1, 0, 0], 8)).toBe('oklch(1 0 0 / 8%)');
@@ -118,25 +117,5 @@ describe('formatOklch / parseOklch / roundOklch', () => {
     expect(roundOklch([0.5, 0.1, 360])).toEqual([0.5, 0.1, 0]);
     expect(roundOklch([0.5, 0.1, -10])).toEqual([0.5, 0.1, 350]);
     expect(roundOklch([1.5, -1, 20])).toEqual([1, 0, 0]);
-  });
-
-  it("reads globals.css's forms back", () => {
-    expect(parseOklch('oklch(0.16 0.005 260)')).toEqual({ color: [0.16, 0.005, 260] });
-    expect(parseOklch('oklch(0.20 0.005 260)')).toEqual({ color: [0.2, 0.005, 260] });
-    expect(parseOklch('oklch(1 0 0 / 8%)')).toEqual({ color: [1, 0, 0], alphaPct: 8 });
-    expect(parseOklch('oklch(1 0 0 / 0.5)')).toEqual({ color: [1, 0, 0], alphaPct: 50 });
-    expect(parseOklch(' oklch(50% 0.1 20deg) ')).toEqual({ color: [0.5, 0.1, 20] });
-  });
-
-  it('round-trips what it writes', () => {
-    const color: Oklch = [0.1235, 0.0123, 264.46];
-    expect(parseOklch(formatOklch(color))).toEqual({ color });
-    expect(parseOklch(formatOklch([1, 0, 0], 12))).toEqual({ color: [1, 0, 0], alphaPct: 12 });
-  });
-
-  it('returns null for anything else', () => {
-    for (const junk of ['', 'red', '#fff', 'var(--ember)', 'oklch(1 0)', 'oklch(a b c)', 'rgb(1 2 3)']) {
-      expect(parseOklch(junk)).toBeNull();
-    }
   });
 });

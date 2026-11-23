@@ -68,10 +68,6 @@ export type CommandBody =
 
 export type CommandType = CommandBody['type'];
 
-export const COMMAND_TYPES: readonly CommandType[] = [
-  'play', 'pause', 'next', 'prev', 'seek', 'setVolume', 'setLoop', 'setShuffle', 'playAt', 'addToQueue', 'setQueue',
-];
-
 /** A command as the player receives it. */
 export type RemoteCommand = CommandBody & {
   id: string;

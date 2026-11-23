@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { importItemFinder, importRows, itemForTrack, reviewQueue } from '@/lib/import/rows';
+import { importItemFinder, importRows, reviewQueue } from '@/lib/import/rows';
 import type { ImportItem } from '@/lib/import/types';
 import type { Track } from '@/types/track';
 
@@ -71,24 +71,19 @@ describe('importRows', () => {
   });
 });
 
-describe('reviewQueue and itemForTrack', () => {
+describe('reviewQueue', () => {
   it('walks the unsure songs first, then the not-found ones', () => {
     const q = reviewQueue([item(3, 'missing'), item(2, 'review'), item(0, 'missing'), item(1, 'review'), item(4, 'accepted', 'x')]);
     expect(q.map((i) => `${i.status}:${i.position}`)).toEqual(['review:1', 'review:2', 'missing:0', 'missing:3']);
   });
-
-  it('finds the import row behind a playlist track, for Re-match', () => {
-    const items = [item(0, 'accepted', 'a'), item(1, 'resolved', 'b'), item(2, 'review')];
-    expect(itemForTrack(items, track('b'))?.id).toBe('i1');
-    expect(itemForTrack(items, track('mine'))).toBeNull();
-  });
 });
 
 describe('importItemFinder', () => {
-  it('answers like itemForTrack, the first accepted or resolved row for the song', () => {
+  it('finds the first accepted or resolved row for the song', () => {
     const items = [item(0, 'review', 'b'), item(1, 'accepted', 'a'), item(2, 'resolved', 'b'), item(3, 'accepted', 'b'), item(4, 'missing')];
     const find = importItemFinder(items);
-    for (const t of [track('a'), track('b'), track('mine')]) expect(find(t)).toBe(itemForTrack(items, t));
+    expect(find(track('a'))?.id).toBe('i1');
+    expect(find(track('mine'))).toBeNull();
     expect(find(track('b'))?.id).toBe('i2');
   });
 
