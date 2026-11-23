@@ -911,7 +911,7 @@ class EmberPlaybackService : MediaLibraryService() {
         val action = runCatching { autoCacher.tick() }
             .onFailure { Log.w(AutoCacher.TAG, "tick: ${it.message}") }
             .getOrNull()
-        publishCacheState()
+        tickCacheState()
         val wake = (action as? AutoCachePolicy.Action.Idle)?.wakeAtMs
         val delay = when {
             player.isPlaying || autoCacher.inFlight != null -> TICK_MS
@@ -925,13 +925,57 @@ class EmberPlaybackService : MediaLibraryService() {
      *  offline, for the web UI (the plugin mirrors session extras into its
      *  state). Only sent when something changed. */
     private fun publishCacheState() {
-        val full = MediaCache.fullyCached(cache)
         val ids = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.distinct()
-            .filter { it in full || offline.audioFileFor(it).exists() }
-        val next = Triple(ids, offlinePlayback.stalled, !online())
+        // Anything the tick is still looking up is older than this.
+        cacheLookSeq++
+        lookedQueue = ids
+        applyCacheState(onPhone(ids), offlinePlayback.stalled, !online())
+    }
+
+    private fun applyCacheState(ids: List<String>, stalled: Boolean, isOffline: Boolean) {
+        val next = Triple(ids, stalled, isOffline)
         if (next == publishedExtras) return
         publishedExtras = next
         publishExtras()
+    }
+
+    /** The queued songs (of [ids]) that can play without the network: a
+     *  disk look per song and one over the cache's keys. */
+    private fun onPhone(ids: List<String>): List<String> {
+        val full = MediaCache.fullyCached(cache)
+        return ids.filter { it in full || offline.audioFileFor(it).exists() }
+    }
+
+    /** Counts the cache looks; a look that finishes after a newer one
+     *  started (or after a publish) is dropped. Main thread only. */
+    private var cacheLookSeq = 0
+    /** The queue the cached ids were last looked up for. */
+    private var lookedQueue: List<String>? = null
+
+    /** The 5 s tick's share of [publishCacheState], off the main thread (a
+     *  disk look per queued song). The cached ids are for the page, so the
+     *  tick looks them up again only while the app is on screen, or when
+     *  the queue changed; a song finishing caching publishes by itself
+     *  (onCached). The offline flags are cheap and kept current always. */
+    private fun tickCacheState() {
+        val stalled = offlinePlayback.stalled
+        val isOffline = !online()
+        val ids = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.distinct()
+        val before = publishedExtras
+        if (before == null || !CacheStatePolicy.lookUp(UpdatePresence.foreground, queueChanged = ids != lookedQueue)) {
+            if (before == null) publishCacheState()
+            else applyCacheState(before.first, stalled, isOffline)
+            return
+        }
+        val seq = ++cacheLookSeq
+        lookedQueue = ids
+        val looked = runCatching {
+            cacheIo.execute {
+                val cached = runCatching { onPhone(ids) }.getOrNull() ?: return@execute
+                handler.post { if (seq == cacheLookSeq) applyCacheState(cached, stalled, isOffline) }
+            }
+        }.isSuccess
+        if (!looked) publishCacheState()
     }
 
     /** All the session extras at once: setSessionExtras replaces the lot, so

@@ -243,3 +243,11 @@ object AutoCachePolicy {
         return Fit(emptyList(), false)
     }
 }
+
+/** When the service's 5 s cache tick looks up which queued songs are on the
+ *  phone (EmberPlaybackService.tickCacheState). */
+object CacheStatePolicy {
+    /** While the app is on screen (the list is for the page), or when the
+     *  queue changed; off screen with the same queue, the disk is left alone. */
+    fun lookUp(onScreen: Boolean, queueChanged: Boolean): Boolean = onScreen || queueChanged
+}
