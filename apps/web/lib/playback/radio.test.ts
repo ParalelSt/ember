@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RADIO_HISTORY_KEEP, rankRadioPool, trimPlayed, type RankRadioInput } from './radio';
+import { RADIO_HISTORY_KEEP, rankRadioPool, trimPlayed, withoutDropped, type RankRadioInput } from './radio';
 import { exclusionKeys } from '../trackIdentity';
 import type { Track } from '../../types/track';
 
@@ -232,5 +232,17 @@ describe('trimPlayed', () => {
     expect(r.queue).toBe(q);
     expect(r).toMatchObject({ index: 50, baseCount: 10, dropped: 0 });
     expect(trimPlayed([], -1, 0).dropped).toBe(0);
+  });
+});
+
+describe('withoutDropped', () => {
+  const t = (id: string) => ({ id });
+  it('takes one backup entry per dropped song, by id, keeping the order', () => {
+    const backup = [t('a'), t('b'), t('a'), t('c'), t('d')];
+    expect(withoutDropped(backup, [t('a'), t('c')]).map((x) => x.id)).toEqual(['b', 'a', 'd']);
+  });
+  it('the same array when nothing was dropped', () => {
+    const backup = [t('a')];
+    expect(withoutDropped(backup, [])).toBe(backup);
   });
 });

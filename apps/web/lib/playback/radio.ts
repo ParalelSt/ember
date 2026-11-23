@@ -110,3 +110,19 @@ export function trimPlayed<T>(
     dropped,
   };
 }
+
+/** [backup] (the shuffle's way back) without the songs [dropped] took off
+ *  the queue's front, one entry per dropped song, matched by id: turning
+ *  shuffle off must not bring them back, and the backup must not grow
+ *  without bound either. */
+export function withoutDropped<T extends { id: string }>(backup: T[], dropped: readonly T[]): T[] {
+  if (dropped.length === 0) return backup;
+  const left = new Map<string, number>();
+  for (const t of dropped) left.set(t.id, (left.get(t.id) ?? 0) + 1);
+  return backup.filter((t) => {
+    const n = left.get(t.id) ?? 0;
+    if (n === 0) return true;
+    left.set(t.id, n - 1);
+    return false;
+  });
+}

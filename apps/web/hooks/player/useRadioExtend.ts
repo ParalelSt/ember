@@ -5,7 +5,7 @@ import { usePlayerStore, type LoopMode } from '@/stores/usePlayerStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
-import { rankRadioPool, trimPlayed } from '@/lib/playback/radio';
+import { rankRadioPool, trimPlayed, withoutDropped } from '@/lib/playback/radio';
 import { isUnavailable, nextPlayable } from '@/lib/playback/queueNav';
 import { isLiveTrack } from '@/lib/radio/station';
 import type { PlaybackContext, Track } from '@/types/track';
@@ -127,12 +127,16 @@ export function useRadioExtend({
         // for Previous), so an evening of radio does not grow the queue
         // forever. The playing song and what follows are untouched.
         usePlayerStore.setState((st) => {
-          const trimmed = trimPlayed([...st.queue, ...merged], st.index, st.baseCount);
+          const all = [...st.queue, ...merged];
+          const trimmed = trimPlayed(all, st.index, st.baseCount);
           return {
             queue: trimmed.queue,
             index: trimmed.index,
             baseCount: trimmed.baseCount,
-            orderBackup: st.orderBackup ? [...st.orderBackup, ...merged] : null,
+            // The same songs go from the shuffle's way back.
+            orderBackup: st.orderBackup
+              ? withoutDropped([...st.orderBackup, ...merged], all.slice(0, trimmed.dropped))
+              : null,
           };
         });
       }
