@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackRow } from '@/components/track/TrackRow';
@@ -18,6 +18,7 @@ import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { cameBySwipe } from '@/lib/tabSwipe';
 import dynamic from 'next/dynamic';
+import { useScrollMemory } from '@/hooks/useScrollMemory';
 import { uiSwitch } from '@/components/providers/uiSwitch';
 
 const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
@@ -30,6 +31,7 @@ function NewSearchPage() {
   // The overlay's Enter key lands here with the query as ?q=; it is the
   // initial value, so the page opens already searching.
   const initialQ = useSearchParams()?.get('q') ?? '';
+  const router = useRouter();
   const {
     q,
     setQ,
@@ -47,13 +49,24 @@ function NewSearchPage() {
     onPlay,
   } = useSearchQuery(initialQ);
   // Enter in the phone sheet while already here changes ?q= without a remount:
-  // follow it. Typing in this page's own box never touches the URL.
+  // follow it.
   const lastQ = useRef(initialQ);
   useEffect(() => {
     if (initialQ === lastQ.current) return;
     lastQ.current = initialQ;
     setQ(initialQ);
   }, [initialQ, setQ]);
+  // The other way round: the typed (debounced) query is kept in the URL, by
+  // replace so typing adds no history entries, so Back from a song lands on
+  // this search again. lastQ is set first so the effect above does not read
+  // our own replace as a new ?q= and overwrite what is being typed.
+  useEffect(() => {
+    if (debouncedQ === lastQ.current) return;
+    lastQ.current = debouncedQ;
+    router.replace(debouncedQ ? `/search?q=${encodeURIComponent(debouncedQ)}` : '/search', { scroll: false });
+  }, [debouncedQ, router]);
+  // Back to this URL puts the scroller where it was.
+  useScrollMemory(`/search?q=${encodeURIComponent(initialQ)}`);
   const isDesktop = useIsDesktop();
 
   const recents = !debouncedQ && recentTracks.length > 0 ? (

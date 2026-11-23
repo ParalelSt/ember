@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import SearchPage from './page';
+import { markPopForTest, resetScrollMemory } from '@/hooks/useScrollMemory';
 import type { Track } from '@/types/track';
 
 // next/link reads the app router context, which no test renders (see
@@ -14,7 +15,11 @@ vi.mock('next/link', () => ({
 }));
 
 const searchParams = vi.hoisted(() => ({ value: new URLSearchParams() }));
-vi.mock('next/navigation', () => ({ useSearchParams: () => searchParams.value }));
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => searchParams.value,
+  useRouter: () => router,
+}));
 
 vi.mock('@/lib/useOnline', () => ({ useOnline: () => true }));
 
@@ -99,6 +104,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   recents.tracks = [];
   searchParams.value = new URLSearchParams();
+  resetScrollMemory();
   api.search.mockResolvedValue({ tracks: [] });
 });
 
@@ -255,5 +261,65 @@ describe('Search page, no results', () => {
     expect(screen.getByTestId('empty-icon')).toBeInTheDocument();
     expect(screen.queryByText('No tracks')).toBeNull();
     expect(screen.queryByRole('link')).toBeNull();
+  });
+});
+
+describe('SearchPage keeps the query in the URL', () => {
+  it('replaces (never pushes) as the debounced query changes, and drops q when cleared', async () => {
+    renderPage();
+    const box = screen.getByPlaceholderText('What do you want to listen to?');
+    fireEvent.change(box, { target: { value: 'air' } });
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/search?q=air', { scroll: false }));
+    fireEvent.change(box, { target: { value: '' } });
+    await waitFor(() => expect(router.replace).toHaveBeenLastCalledWith('/search', { scroll: false }));
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('does not rewrite the URL it was opened with, nor fight the typed text', async () => {
+    searchParams.value = new URLSearchParams({ q: 'daft punk' });
+    renderPage();
+    await new Promise((r) => setTimeout(r, 350));
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('shows the results for ?q= on return', async () => {
+    searchParams.value = new URLSearchParams({ q: 'air' });
+    api.search.mockResolvedValue({ tracks: [makeTrack({ id: 'youtube:x', sourceId: 'x', title: 'Sexy Boy' })] });
+    renderPage();
+    expect((await screen.findAllByText('Sexy Boy'))[0]).toBeInTheDocument();
+  });
+});
+
+describe('SearchPage scroll memory', () => {
+  function withScroller() {
+    const scroller = document.createElement('div');
+    scroller.setAttribute('data-app-scroller', '');
+    let top = 0;
+    Object.defineProperty(scroller, 'scrollTop', {
+      get: () => top,
+      set: (v: number) => { top = v; },
+    });
+    document.body.appendChild(scroller);
+    return { scroller, setTop: (v: number) => { top = v; scroller.dispatchEvent(new Event('scroll')); } };
+  }
+
+  it('restores the position on Back to the same search, not on a fresh visit', async () => {
+    searchParams.value = new URLSearchParams({ q: 'air' });
+    const { scroller, setTop } = withScroller();
+    const first = renderPage();
+    setTop(640);
+    first.unmount();
+    scroller.scrollTop = 0; // the shell's reset on navigation
+
+    markPopForTest();
+    const back = renderPage();
+    await waitFor(() => expect(scroller.scrollTop).toBe(640));
+    back.unmount();
+
+    scroller.scrollTop = 0; // fresh visit: no popstate
+    renderPage();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(scroller.scrollTop).toBe(0);
+    scroller.remove();
   });
 });
