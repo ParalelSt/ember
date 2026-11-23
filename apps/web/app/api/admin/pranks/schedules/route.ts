@@ -9,6 +9,7 @@ import { normaliseParams, pbDate, PRANK_LIMITS } from '@/lib/pranks/limits';
 import { checkSchedule } from '@/lib/pranks/scheduler';
 import { pranksEnabled } from '@/lib/pranks/settings';
 import { prankErrorResponse, toSchedule } from '@/lib/pranks/server';
+import { wakePrankTick } from '@/lib/pranks/schedulerInstance';
 
 const is404 = (e: unknown) => (e as { status?: number })?.status === 404;
 
@@ -81,6 +82,8 @@ export const POST = withRequestLog('admin/pranks/schedules', async (req: NextReq
       active: true,
       fired: 0,
     });
+    // The tick slows down while no repeat runs: this one starts now.
+    wakePrankTick();
     const names = new Map([[targetId, personName(target)]]);
     const soundNames = new Map([[sound.id, String(sound.name ?? '')]]);
     return Response.json({ schedule: toSchedule(row, names, soundNames) }, { status: 201 });

@@ -6,6 +6,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const seen = vi.hoisted(() => ({
+  worked: false,
+  passes: 0,
   stores: [] as unknown[],
   ctx: null as null | { getStore: () => unknown },
   getAdmin: null as null | (() => Promise<unknown>),
@@ -25,7 +27,10 @@ vi.mock('@/lib/logger/server', () => ({ serverLogger: { warn: vi.fn(), error: vi
 vi.mock('@/lib/import/runner', () => ({
   ImportRunner: class {
     currentJobId = null;
+    lastPassWorked = false;
     async tick() {
+      seen.passes += 1;
+      this.lastPassWorked = seen.worked;
       seen.stores.push(seen.ctx?.getStore());
     }
   },
@@ -33,6 +38,8 @@ vi.mock('@/lib/import/runner', () => ({
 
 afterEach(() => {
   vi.useRealTimers();
+  seen.worked = false;
+  seen.passes = 0;
   delete (globalThis as Record<symbol, unknown>)[Symbol.for('ember.importRunner')];
 });
 
@@ -63,5 +70,30 @@ describe('the runner\'s PocketBase client', () => {
     expect(pb.kind).toBe('healing');
     expect(server.createCatalogClient).toHaveBeenCalledTimes(2);
     expect(server.createAdminClient).not.toHaveBeenCalled();
+  });
+});
+
+describe('the poll', () => {
+  it('waits a minute after a pass that found nothing, and keeps the 5 s pace while there is work', async () => {
+    vi.useFakeTimers();
+    const { startImportRunner, kickImportRunner, IDLE_POLL_MS } = await import('./runnerInstance');
+    startImportRunner();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(seen.passes).toBe(1);
+    await vi.advanceTimersByTimeAsync(IDLE_POLL_MS - 1_000);
+    expect(seen.passes).toBe(1);
+    // A new import: its pass now, and the fast pace while it runs.
+    seen.worked = true;
+    kickImportRunner();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(seen.passes).toBe(2);
+    await vi.advanceTimersByTimeAsync(10_100);
+    expect(seen.passes).toBe(4);
+    // Done: back to the idle wait.
+    seen.worked = false;
+    await vi.advanceTimersByTimeAsync(5_000);
+    const n = seen.passes;
+    await vi.advanceTimersByTimeAsync(IDLE_POLL_MS - 1_000);
+    expect(seen.passes).toBe(n);
   });
 });

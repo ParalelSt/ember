@@ -189,6 +189,15 @@ function runner(store: JobStore, over: Partial<ConstructorParameters<typeof Impo
 }
 
 describe('ImportRunner', () => {
+  it('says whether a pass found work, so the poll can slow down when it did not', async () => {
+    const m = memoryStore(4);
+    const { r } = runner(m.store);
+    await r.tick();
+    expect(r.lastPassWorked).toBe(true);
+    await r.tick();
+    expect(r.lastPassWorked).toBe(false);
+  });
+
   it('runs a queued job to done, adding accepted tracks at their source positions', async () => {
     const m = memoryStore(20);
     const { r } = runner(m.store);
