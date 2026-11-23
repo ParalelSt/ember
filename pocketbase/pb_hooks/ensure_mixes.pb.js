@@ -4,7 +4,8 @@
 // the web app (apps/web/lib/mixes/job.ts). One row per member and mix.
 //
 //   user      the member (deleting them deletes their mixes)
-//   key       the family or half slug ("rock-metal", "metal", "balkan");
+//   key       the family or half slug ("rock-metal", "metal", "balkan",
+//             "game-anime"), "discover", "on-repeat", "throwback" or "artist-...";
 //             unique per member
 //   title     "Rock & Metal" (the card shows "MIX" on its own)
 //   subtitle  "Gojira, Tool, Metallica and more"

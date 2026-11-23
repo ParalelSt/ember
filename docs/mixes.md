@@ -19,9 +19,9 @@ After each good run the chart artists become weak genre priors (below).
 
 ## Genres
 
-Genres belong to **artists**, not songs: `artist_genres` (PocketBase, admin only, `ensure_artist_genres.pb.js`), keyed by `lib/genres/artistKey.ts` (the lead artist, normalized like `songKey`).
+Genres belong to **artists**, with one exception per song (the title signal, below): `artist_genres` (PocketBase, admin only, `ensure_artist_genres.pb.js`), keyed by `lib/genres/artistKey.ts` (the lead artist, normalized like `songKey`).
 
-- **Taxonomy** (`lib/genres/taxonomy.ts`): nine families, each with sub-genres (the style mixes):
+- **Taxonomy** (`lib/genres/taxonomy.ts`): ten families, most with sub-genres (the style mixes):
 
   | Family | Sub-genres (slug) |
   |---|---|
@@ -34,8 +34,11 @@ Genres belong to **artists**, not songs: `artist_genres` (PocketBase, admin only
   | Country & Folk | Country `country`, Folk `folk` |
   | Jazz & Blues | Blues `blues`, Jazz `jazz` |
   | Classical | Soundtracks `soundtrack` |
+  | Game & Anime (`game-anime`, lemon `#f5ee9e`, no chart) | none yet |
 
-  Raw tags map to a family by exact name, then by keyword (Balkan words first, so "serbian rap" is Balkan; metal before rock and folk). Noise tags (seen live, decades, other countries) map nowhere. Primary family = the heaviest; a secondary is kept at 60% of it or more. The sub-genre (`subOfTags`) is the heaviest of the family's sub-genres over **all** the artist's tags, each tag counting for the first sub-genre whose pattern it matches (so a Balkan band tagged "serbian" and "rock" is Ex-YU Rock). The mix build reads it again from the stored tags of every looked-up artist, so a sub-genre added here applies without new lookups; chart priors and manual rows keep their stored one.
+  Raw tags map to a family by exact name, then by keyword (Balkan words first, so "serbian rap" is Balkan; then the Game & Anime words, so "vocaloid rock" and "anime pop" are Game & Anime; metal before rock and folk). Game & Anime takes vocaloid, touhou, anime, anison, utaite, doujin, video game music, game soundtrack, j-core, chiptune, 8-bit, rhythm game, BMS and named games (one shared word list, `lib/genres/gameAnimeWords.ts`); j-pop and j-rock stay Pop and Rock, plain soundtrack and film score stay Classical. Noise tags (seen live, decades, other countries) map nowhere. Primary family = the heaviest; a secondary is kept at 60% of it or more. The sub-genre (`subOfTags`) is the heaviest of the family's sub-genres over **all** the artist's tags, each tag counting for the first sub-genre whose pattern it matches (so a Balkan band tagged "serbian" and "rock" is Ex-YU Rock). Every looked-up row (Last.fm, MusicBrainz) is classified again from its stored tags when it is read (`fromRecord` in `lib/genres/store.ts`), family and sub-genre both, so a change here applies to every artist already looked up with no migration and no new lookups; chart priors and manual rows keep their stored values.
+- **Title signal** (`lib/genres/songSignal.ts`): a song whose title or album names a game, a rhythm game or the scene ("(ULTRAKILL Soundtrack)", "[BOF:NT]", "feat. 初音ミク", "Undertale OST") is a strong signal; a soundtrack word ("Original Soundtrack", "OST", "Boss Theme", "BGM", also in the uploader's name) is a weak one, cancelled by a film or stage word ("Motion Picture", "film", "Broadway"). Computed at build time, stored nowhere.
+- **One song's genre** (`lib/mixes/songFamily.ts` `resolveGenre`), first match wins: an admin's row; a strong signal (Game & Anime); the artist's family; a weak signal (Game & Anime, only for an artist with no family); nothing.
 - **Tagger** (`lib/genres/tagger.ts`, wired in `lib/genres/instance.ts`): Last.fm `artist.getTopTags` when `LASTFM_API_KEY` is set (4 a second), MusicBrainz search + `inc=genres+tags` otherwise or as Last.fm's fallback (1 a second, `MUSICBRAINZ_CONTACT` in the User-Agent). One lookup per artist at a time, in-flight lookups shared. `found` rows are refreshed after 180 days, `none` retried after 30; a source fault writes nothing. `GENRES_LOOKUP_DISABLED=1` turns lookups off.
 - **Chart priors**: an artist with no row who is in a genre chart gets that chart's family (`source: chart`). A lookup that finds them replaces it; one that finds nothing keeps it for a month.
 - **Manual**: `PATCH /api/admin/artist-genres/[artist]` `{ family, sub? }` (or `family: null`, no family), admin only, never replaced by a lookup. `GET` the same path to read a row.
@@ -68,12 +71,12 @@ Style mixes come family-first: every family's heaviest mix before any family's s
 
 1. **Score** the last 90 days of plays, `exp(-ageDays/30)` per play, +2 per like; artists sum their songs. Plays are loaded for 365 days (Throwback and Discover's "never played" read them).
 2. **Tag** the top 60 artists (at most 100 lookups per member per run, shared with step 6).
-3. **Style mixes** (`cluster.ts`): the member needs a total of 10. A family or sub-genre needs weight 4, 3 songs and 2 artists. Per family: no qualifying sub-genre, the family mix; one, the family mix plus that sub-genre when it is at most 80% of the family; two or more, each of them plus the family mix when the songs outside them still qualify (otherwise songs with no known sub-genre join the heaviest one, the old halves rule).
+3. **Style mixes** (`cluster.ts`): songs are grouped by `resolveGenre`, so one artist's game song can sit in Game & Anime and their other songs in Pop. The member needs a total of 10. A family or sub-genre needs weight 4, 3 songs and 2 artists. Per family: no qualifying sub-genre, the family mix; one, the family mix plus that sub-genre when it is at most 80% of the family; two or more, each of them plus the family mix when the songs outside them still qualify (otherwise songs with no known sub-genre join the heaviest one, the old halves rule).
 4. **Artist mixes** (`artist.ts`): artists with 3+ different songs, weight 3+ and a YouTube song, best first. Need the same member total of 10, as does Discover.
 5. **On repeat and Throwback** (`history.ts`): no radio; need 10 songs each, 5 per artist.
 6. **Seeds and radio**: style 4 of its top 10 songs, artist 3 of theirs (both shuffled by date and key), Discover 5 artists shuffled by week. `player.py radio-batch --seeds=... --limit 30`, one call per mix on the bulk lane (3 s pacing, partial failure tolerated), and each seed's radio fetched once per build (an artist mix and Discover often share one).
 7. **Tag** the radio's new artists.
-8. **Assemble** a style mix: up to 20 of the member's own songs (3 per artist), then new songs round robin over the radios, then the family's chart(s) as filler. A new song is taken only when its artist's primary family is the mix's (and the sub-genre, for a sub-genre mix). An untagged artist is kept only when 2+ of the mix's seed radios brought them and no other family's chart lists them; an admin's "no family" never. Woven like radio (2 known first, then 1 known in 3), 50 songs (artist mixes too, Discover 30); fewer than 20 and a radio mix is not written.
+8. **Assemble** a style mix: up to 20 of the member's own songs (3 per artist), then new songs round robin over the radios, then the family's chart(s) as filler. A new song is taken only when its genre (`resolveGenre`) is the mix's family (and the sub-genre, for a sub-genre mix). **Unknown artists** (no family, no title signal; `lib/mixes/untagged.ts`), computed once over every style mix's radios: a seed whose radio holds 5+ songs of another family and more than of its own is out of place (logged as `mixes: seed looks out of place`) and does not vouch for its mix; every unknown artist gets at most one home (Game & Anime when any song of theirs seen tonight has a title signal, or when Game & Anime radios brought them at least as often as any other family; another family when 2+ of its radios brought them and nothing ties). An unknown artist is kept only when their home is this family, this mix's vouching radios brought them 2+ times (Game & Anime: 1, it has no chart filler) and no other family's chart lists them; an admin's "no family" never. Woven like radio (2 known first, then 1 known in 3), 50 songs (artist mixes too, Discover 30); fewer than 20 and a radio mix is not written.
 9. Every kind drops dead songs (`unavailable_tracks`), the member's **blocked songs** (`blocked_tracks`, also filtered again when read) and other versions of a song already in.
 10. **Store** in `mixes` (`ensure_mixes.pb.js`: list/view own rows only, writes admin only, unique per member and key, deleted with the member): one row per mix with track snapshots, seeds and the card's cover. Rows that are no longer in the lineup are deleted. A mix whose radio failed (a YouTube outage) keeps its last row however old; one that came out short keeps it for 3 days (`SHORT_KEEP_MS`), then is deleted. Dead and blocked songs are never radio seeds. An artist mix is named and keyed by the credit most of their songs carry, without " - Topic" or VEVO, so the key stays the same night after night. Discover built this week (local Monday to Sunday) is kept as it is.
 
@@ -85,8 +88,8 @@ Style mixes come family-first: every family's heaviest mix before any family's s
 
 | Kind | Label | Colour | Covers |
 |---|---|---|---|
-| Style | MIX | the genre's tint | three round faces, the top artist big in the middle |
-| Artist | ARTIST MIX | the artist's family tint (a family tint picked by key when unknown) | the artist big and round, two similar artists small in front of it |
+| Style | MIX | the genre's tint (Game & Anime lemon `#f5ee9e`) | three round faces, the top artist big in the middle |
+| Artist | ARTIST MIX | the artist's family tint (one of the nine original family tints picked by key when unknown) | the artist big and round, two similar artists small in front of it |
 | Discover | DISCOVER | fresh green `#c9f0a8` | three square covers fanned out |
 | On repeat | ON REPEAT | warm orange `#ffc9a3` | three square covers stacked, the most played on top |
 | Throwback | THROWBACK | old paper `#e6d9bf` | the style faces in sepia |
@@ -98,8 +101,9 @@ The top two mixes take quick grid slots after Liked songs (and a live carlist). 
 ## Tests
 
 - `tests/test_player_genre_charts.py`: picker on saved `get_charts('US')`, pacing, partial and total failure, radio-batch (saved responses in `tests/fixtures/genre-charts/`, captured 2026-10-16).
-- vitest: `lib/charts.test.ts`, `lib/genres/*.test.ts` (Last.fm and MusicBrainz on saved answers in `tests/fixtures/genres/`), `lib/mixes/*.test.ts` (including `purity.test.ts`: 30 simulated days, 70% rock, 30% pop, leaky radios, zero cross-family songs; `kinds`, `artist`, `discover`, `history` for the other kinds and the lineup; `job.test.ts` builds every kind end to end on a fake player), the route tests, Home, the chart and mix pages.
+- vitest: `lib/charts.test.ts`, `lib/genres/*.test.ts` (Last.fm and MusicBrainz on saved answers in `tests/fixtures/genres/`), `lib/mixes/*.test.ts` (including `purity.test.ts`: 30 simulated days, 70% rock, 30% pop, leaky radios, zero cross-family songs, and a third taste with game music by untagged uploaders and a pop namesake whose radio is game music; `gameAnime.test.ts`, the owner's report as a fixture; `untagged.test.ts`, `songFamily.test.ts`, `songSignal.test.ts`; `kinds`, `artist`, `discover`, `history` for the other kinds and the lineup; `job.test.ts` builds every kind end to end on a fake player), the route tests, Home, the chart and mix pages.
 - `tests/pb-genres.test.mjs`: both collections' rules on a throwaway PocketBase.
+- Mix measurement (`tests/measure-mixes/README.md`): rebuilds every member's mixes from a copy of a PocketBase database with the real job, on the old and the new commit, and lists what moved per member and mix. Radios are fetched once per seed and cached, so both runs share them.
 - Browser sims (need a build and a sandbox PocketBase): `tests/charts-ui.test.mjs`, `tests/mixes-ui.test.mjs`. Fake player: `genre-charts` (`FAKE_FAIL_GENRE_CHARTS=1`, `FAKE_GENRE_CHARTS_FIXTURE`), `radio-batch` (`FAKE_FAIL_RADIO_BATCH=1`, `FAKE_RADIO_FIXTURE`).
 
 ## Later

@@ -108,6 +108,15 @@ Guard rails enforced outside the test files themselves:
   imports, with the same override pattern for the few pre-existing files
   that need one.
 
+## Mix measurement
+
+`tests/measure-mixes/` (README there): rebuilds every member's mixes from a
+copy of a PocketBase database with the real mix job, once on the old rules
+and once on the new ones, and lists what moved per member and mix. Kept out
+of the normal suite (it can fetch radios and look up artists); its offline
+self-check on `tests/measure-mixes/fixture/` is
+`apps/web/lib/mixes/sim/selfcheck.test.ts`, which is in it.
+
 ## Host scripts: watchdog and crash reports
 
 Two standalone runners for the crash logging in `start-static.sh` (see

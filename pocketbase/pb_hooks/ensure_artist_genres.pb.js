@@ -7,7 +7,11 @@
 //   artist_key  normalized first artist name (apps/web/lib/genres/artistKey.ts)
 //   artist_id   YouTube channel id, when known
 //   name        display name as last seen
-//   family      primary family slug (lib/genres/taxonomy.ts), "" when unknown
+//   family      primary family slug (lib/genres/taxonomy.ts: ten families,
+//               "game-anime" the newest), "" when unknown. For a lastfm or
+//               musicbrainz row the app reads it again from `tags` (store.ts
+//               fromRecord), so this column can lag a taxonomy change until
+//               the row's next refresh
 //   families    { slug: weight } of the primary and the secondary families
 //   sub         the heavier half of the primary family ("rock", "metal",
 //               "hiphop", "rnb"), "" when it has none or the tags do not say
