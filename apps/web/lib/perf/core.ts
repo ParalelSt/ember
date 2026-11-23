@@ -24,6 +24,9 @@ export const PERF_LIMITS = {
   heartbeatMs: 2000,
   /** A heartbeat later than this past its time is a freeze. */
   freezeDriftMs: 2000,
+  /** A gap longer than this is the device asleep or the WebView suspended
+   *  (timers stop then), not a freeze. */
+  suspendMs: 60_000,
   memoryEveryMs: 60_000,
   slowInteractionMs: 100,
   navs: 20,
@@ -486,8 +489,17 @@ export class PagePerf {
 
   private beat(): void {
     const now = this.now();
-    const gap = now - this.lastBeat;
+    const before = this.lastBeat;
+    const gap = now - before;
     this.lastBeat = now;
+    if (gap > PERF_LIMITS.suspendMs) {
+      // Asleep: no freeze, and the time away is not foreground time.
+      if (this.visibleSince !== null) {
+        this.win.fgMs += Math.max(0, before - this.visibleSince);
+        this.visibleSince = now;
+      }
+      return;
+    }
     if (gap - PERF_LIMITS.heartbeatMs <= PERF_LIMITS.freezeDriftMs) return;
     const rec: FreezeRecord = { at: Math.round(now - gap), gapMs: Math.round(gap) };
     this.freezes.push(rec);

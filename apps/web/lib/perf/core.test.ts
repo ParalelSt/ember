@@ -195,6 +195,26 @@ describe('PagePerf: freeze heartbeat', () => {
     expect(events).toContain('freeze');
   });
 
+  it('a gap over 60 s is the device asleep: no freeze, no report, and not foreground time', () => {
+    start();
+    const events: string[] = [];
+    perf.onEvent((e) => events.push(e.kind));
+    fake.advance(2000);
+    vi.advanceTimersByTime(2000);
+    // A laptop lid closed for 3 hours, then the next beat.
+    fake.advance(3 * 60 * 60 * 1000);
+    vi.advanceTimersByTime(2000);
+    expect(perf.freezes.size).toBe(0);
+    expect(events).not.toContain('freeze');
+    fake.advance(2000);
+    vi.advanceTimersByTime(2000);
+    expect(perf.takeWindow().fgMs).toBe(4000);
+    // Freezes after waking are still seen.
+    fake.advance(9000);
+    vi.advanceTimersByTime(2000);
+    expect(perf.freezes.size).toBe(1);
+  });
+
   it('runs no timers while the page is hidden', () => {
     start();
     expect(vi.getTimerCount()).toBe(2);
