@@ -96,6 +96,20 @@ describe('useRadioExtend', () => {
     });
   });
 
+  it('drops all but the last 50 played songs when it extends a long radio session', async () => {
+    const played = Array.from({ length: 80 }, (_, i) => makeTrack({ id: `youtube:p${i}`, sourceId: `p${i}` }));
+    const queue = [...played, seed];
+    usePlayerStore.setState({ baseCount: 10 });
+    setup({ queue, index: 80 });
+    await waitFor(() => expect(usePlayerStore.getState().queue.at(-1)?.id).toBe('youtube:r2'));
+    const st = usePlayerStore.getState();
+    expect(st.queue).toHaveLength(53);
+    expect(st.queue[st.index].id).toBe('youtube:seed');
+    expect(st.index).toBe(50);
+    expect(st.queue[0].id).toBe('youtube:p30');
+    expect(st.baseCount).toBe(0);
+  });
+
   it('does not fetch while loop-all is on, and fetches when it goes off', async () => {
     const { rerender } = setup({ loopMode: 'all' });
     expect(api.getRecommended).not.toHaveBeenCalled();

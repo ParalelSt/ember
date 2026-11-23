@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { makeTrack } from '@/test-utils/fakeBackend';
-import { logger } from './client';
+import { CONSOLE_SEEN_MAX, logger } from './client';
 
 beforeEach(() => {
   usePlayerStore.setState({
@@ -72,6 +72,17 @@ describe('ClientLogger: console breadcrumbs', () => {
 
     entries = logger.snapshot().current.filter((e) => e.message === 'client-test: boom');
     expect(entries).toHaveLength(2);
+  });
+
+  it('remembers a bounded number of console texts', () => {
+    vi.useFakeTimers();
+    logger.boot();
+    for (let i = 0; i < CONSOLE_SEEN_MAX * 3; i++) console.warn(`client-test: id ${i}`);
+    expect(logger.consoleSeenCount()).toBeLessThanOrEqual(CONSOLE_SEEN_MAX);
+    // The newest still dedupes.
+    const last = `client-test: id ${CONSOLE_SEEN_MAX * 3 - 1}`;
+    console.warn(last);
+    expect(logger.snapshot().current.filter((e) => e.message === last)).toHaveLength(1);
   });
 
   it('does not dedupe across different messages', () => {

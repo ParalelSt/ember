@@ -10,7 +10,7 @@ vi.mock('@/lib/sources/youtube', () => ({
 vi.mock('@/lib/pocketbase/server', () => ({ createAdminClient: vi.fn() }));
 vi.mock('@/lib/mapTrack', () => ({ mapTrackRow: vi.fn() }));
 
-import { clearArtistIdCache, resolveArtistIdFor } from './trackMeta';
+import { ARTIST_ID_CACHE_MAX, artistIdCacheSize, clearArtistIdCache, resolveArtistIdFor } from './trackMeta';
 
 beforeEach(() => {
   clearArtistIdCache();
@@ -67,5 +67,23 @@ describe('resolveArtistIdFor', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('resolveArtistIdFor: a bounded cache', () => {
+  it('keeps at most ARTIST_ID_CACHE_MAX songs, dropping the least recently asked', async () => {
+    findArtistId.mockResolvedValue('UCartist');
+    getTrack.mockResolvedValue(null);
+    for (let i = 0; i < ARTIST_ID_CACHE_MAX; i++) await resolveArtistIdFor(`v${i}`, 'Peki');
+    expect(artistIdCacheSize()).toBe(ARTIST_ID_CACHE_MAX);
+    // v0 asked again: kept; v1 is now the oldest.
+    await resolveArtistIdFor('v0', 'Peki');
+    await resolveArtistIdFor('new', 'Peki');
+    expect(artistIdCacheSize()).toBe(ARTIST_ID_CACHE_MAX);
+    const calls = findArtistId.mock.calls.length;
+    await resolveArtistIdFor('v0', 'Peki');
+    expect(findArtistId.mock.calls.length).toBe(calls);
+    await resolveArtistIdFor('v1', 'Peki');
+    expect(findArtistId.mock.calls.length).toBe(calls + 1);
   });
 });

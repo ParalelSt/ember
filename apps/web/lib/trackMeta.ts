@@ -37,12 +37,30 @@ export async function fetchTrackMeta(videoId: string): Promise<Track | null> {
  *  the plain name (the lookup keeps running and fills the cache). */
 const ARTIST_WAIT_MS = 3000;
 const NONE_TTL_MS = 10 * 60_000;
+/** Most songs whose artist is remembered: least recently asked go first.
+ *  One entry per song ever looked up lived as long as the server did. */
+export const ARTIST_ID_CACHE_MAX = 500;
 const artistIdCache = new Map<string, { id: string | null; at: number }>();
 const artistIdInflight = new Map<string, Promise<string | null>>();
+
+function rememberArtistId(videoId: string, entry: { id: string | null; at: number }): void {
+  artistIdCache.delete(videoId);
+  artistIdCache.set(videoId, entry);
+  while (artistIdCache.size > ARTIST_ID_CACHE_MAX) {
+    const oldest = artistIdCache.keys().next().value;
+    if (oldest === undefined) break;
+    artistIdCache.delete(oldest);
+  }
+}
 
 export function clearArtistIdCache(): void {
   artistIdCache.clear();
   artistIdInflight.clear();
+}
+
+/** Test seam. */
+export function artistIdCacheSize(): number {
+  return artistIdCache.size;
 }
 
 /** Artist channel for a stored track that has none, so the song page can
@@ -52,12 +70,16 @@ export function clearArtistIdCache(): void {
  *  returns null now and is there on the next request. */
 export async function resolveArtistIdFor(videoId: string, artistName: string): Promise<string | null> {
   const hit = artistIdCache.get(videoId);
-  if (hit && (hit.id || Date.now() - hit.at < NONE_TTL_MS)) return hit.id;
+  if (hit && (hit.id || Date.now() - hit.at < NONE_TTL_MS)) {
+    // Asked again: the most recent now.
+    rememberArtistId(videoId, hit);
+    return hit.id;
+  }
   let work = artistIdInflight.get(videoId);
   if (!work) {
     work = lookupArtistId(videoId, artistName)
       .then((id) => {
-        artistIdCache.set(videoId, { id, at: Date.now() });
+        rememberArtistId(videoId, { id, at: Date.now() });
         return id;
       })
       .catch(() => null)

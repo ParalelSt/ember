@@ -5,7 +5,7 @@ import { usePlayerStore, type LoopMode } from '@/stores/usePlayerStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
-import { rankRadioPool } from '@/lib/playback/radio';
+import { rankRadioPool, trimPlayed } from '@/lib/playback/radio';
 import { isUnavailable, nextPlayable } from '@/lib/playback/queueNav';
 import { isLiveTrack } from '@/lib/radio/station';
 import type { PlaybackContext, Track } from '@/types/track';
@@ -123,10 +123,18 @@ export function useRadioExtend({
         // Keep the shuffle snapshot in step with the real queue. Without this,
         // radio tracks appended while shuffle is on are missing from
         // orderBackup, so turning shuffle off would silently DROP them.
-        usePlayerStore.setState((st) => ({
-          queue: [...st.queue, ...merged],
-          orderBackup: st.orderBackup ? [...st.orderBackup, ...merged] : null,
-        }));
+        // Songs played long ago go from the front (RADIO_HISTORY_KEEP stay
+        // for Previous), so an evening of radio does not grow the queue
+        // forever. The playing song and what follows are untouched.
+        usePlayerStore.setState((st) => {
+          const trimmed = trimPlayed([...st.queue, ...merged], st.index, st.baseCount);
+          return {
+            queue: trimmed.queue,
+            index: trimmed.index,
+            baseCount: trimmed.baseCount,
+            orderBackup: st.orderBackup ? [...st.orderBackup, ...merged] : null,
+          };
+        });
       }
       onExtended?.(merged.length, currentId);
     }, (e: unknown) => {

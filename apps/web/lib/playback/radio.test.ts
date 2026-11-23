@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rankRadioPool, type RankRadioInput } from './radio';
+import { RADIO_HISTORY_KEEP, rankRadioPool, trimPlayed, type RankRadioInput } from './radio';
 import { exclusionKeys } from '../trackIdentity';
 import type { Track } from '../../types/track';
 
@@ -207,5 +207,30 @@ describe('rankRadioPool: songs a played-from list already has', () => {
     const queued = track('youtube:q9', { sourceId: 'q9', title: 'Queued', artist: 'Q' });
     const doubled = { ...queued, id: 'youtube:youtube:q9' };
     expect(ids(rank({ queue: [seed, queued], pool: [doubled, track('a')] }))).toEqual(['a']);
+  });
+});
+
+describe('trimPlayed', () => {
+  const q = Array.from({ length: 120 }, (_, i) => i);
+
+  it('keeps the last 50 played songs, the current one and everything after', () => {
+    const r = trimPlayed(q, 100, 30);
+    expect(r.dropped).toBe(50);
+    expect(r.queue[r.index]).toBe(100);
+    expect(r.queue.slice(0, r.index)).toHaveLength(RADIO_HISTORY_KEEP);
+    expect(r.queue[0]).toBe(50);
+    expect(r.queue.at(-1)).toBe(119);
+    expect(r.baseCount).toBe(0);
+  });
+
+  it('moves the list part along', () => {
+    expect(trimPlayed(q, 60, 40, 50).baseCount).toBe(30);
+  });
+
+  it('leaves a short history alone, same array', () => {
+    const r = trimPlayed(q, 50, 10);
+    expect(r.queue).toBe(q);
+    expect(r).toMatchObject({ index: 50, baseCount: 10, dropped: 0 });
+    expect(trimPlayed([], -1, 0).dropped).toBe(0);
   });
 });
