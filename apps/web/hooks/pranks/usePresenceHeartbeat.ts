@@ -78,23 +78,27 @@ export function usePresenceHeartbeat({
         .catch((e) => backoff.current.fail(retryAfterOf(e)));
     };
     report(false);
-    if (!isPlaying) return () => releaseSingleton('presence', owner);
     let timer: ReturnType<typeof setInterval> | undefined;
     const start = () => {
       clearInterval(timer);
       timer = setInterval(() => report(true), PRESENCE_INTERVAL_MS);
     };
-    if (!document.hidden) start();
+    if (isPlaying && !document.hidden) start();
     // The beat stops while the page is hidden; shown again, one report at
-    // once and the beat starts over.
+    // once and the beat starts over. Paused, there is no beat, but a pause
+    // made while hidden (the lock screen) is reported on coming back.
     const onVisible = () => {
       if (document.hidden) {
         clearInterval(timer);
         timer = undefined;
         return;
       }
-      report(true);
-      start();
+      if (isPlaying) {
+        report(true);
+        start();
+      } else if (last.current.key !== `${current.id}|false`) {
+        report(false);
+      }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {

@@ -132,6 +132,22 @@ describe('usePresenceHeartbeat (page hidden)', () => {
     expect(send).toHaveBeenCalledTimes(3);
   });
 
+  it('a pause made while hidden (the lock screen) is reported once the page is shown', () => {
+    const send = vi.fn<Send>(async () => ({}));
+    const { rerender } = setup(send, { userId: 'u1', current: a, isPlaying: true });
+    setHidden(true);
+    rerender({ userId: 'u1', current: a, isPlaying: false });
+    expect(send).toHaveBeenCalledTimes(1);
+    setHidden(false);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ isPlaying: false }));
+    // Paused and already said: showing the page again sends nothing more.
+    setHidden(true);
+    setHidden(false);
+    vi.advanceTimersByTime(PRESENCE_INTERVAL_MS * 3);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
   it('a page that starts hidden sends nothing until shown', () => {
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
     const send = vi.fn<Send>(async () => ({}));
