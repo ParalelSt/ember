@@ -27,6 +27,7 @@
     "notify": "node scripts/ember/notify.mjs",
     "tracker": "node scripts/ember/tracker.mjs",
     "host-check": "node scripts/ember/host-check.mjs",
+    "perf": "node scripts/ember/perf.mjs",
     "tidy-branches": "node scripts/ember/tidy.mjs",
     "hooks": "node scripts/ember/hooks.mjs",
     "test:ember-tools": "node tests/ember-tools.test.mjs",

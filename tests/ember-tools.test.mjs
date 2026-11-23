@@ -378,3 +378,34 @@ test('bot token: Ember reads only its own file or env, never the shared Claude c
   // A DISCORD_BOT_TOKEN in the process env (another bot's) is ignored.
   assert.equal(pickBotToken({ DISCORD_BOT_TOKEN: 'other' }, {}), null);
 });
+
+test('perf: the admin query, the cookie and the printed sessions and timeline', async () => {
+  const { adminCookie, formatSessions, formatTimeline, perfQuery } = await import('../scripts/ember/perfLogic.mjs');
+  assert.equal(perfQuery(), '');
+  assert.equal(perfQuery({ session: 's1', user: 'abc', days: 2 }), '?session=s1&user=abc&days=2');
+  // An email is matched by the script, never sent as the id.
+  assert.equal(perfQuery({ user: 'ana@ember.test' }), '');
+  const cookie = adminCookie('tok', { id: 'u1' });
+  assert.match(cookie, /^pb_auth=/);
+  assert.deepEqual(JSON.parse(decodeURIComponent(cookie.slice('pb_auth='.length))), { token: 'tok', model: { id: 'u1' } });
+
+  const session = {
+    session: 's1', userId: 'u1', email: 'ana@ember.test', name: 'Ana', app: '0.7.51', shell: 'capacitor',
+    device: { model: 'motorola edge 60', mem: 8 }, first: Date.UTC(2026, 10, 23, 15, 0), last: Date.UTC(2026, 10, 23, 15, 25),
+    digests: 2, fgMs: 600_000, launch: { ttfb: 820, fcp: 2500, hydrated: 30_300, scripts: 40, scriptKb: 900, cached: 0, proto: 'h2' },
+    nav: { n: 3, p50: 1200, p95: 57_000, max: 57_000 }, longTaskMs: 800, freezes: { n: 1, max: 6200 }, rage: 2, slowTaps: 0, heap: { first: 40, last: 46, max: 46 },
+  };
+  const list = formatSessions([session]);
+  assert.equal(list.length, 2);
+  assert.match(list[1], /^2026-11-23 15:25 +Ana <ana@ember\.test> +motorola edge 60 8GB +0\.7\.51 +30\.3s +1\.2s\/57\.0s\/57\.0s +1x6\.2s +40->46 +s1$/);
+  assert.deepEqual(formatSessions([]), ['No perf sessions in this window.']);
+
+  const lines = formatTimeline(session, [
+    { ts: session.first, fgMs: 300_000, nav: { n: 2, ms: [1200, 57_000], worst: [{ to: '/settings', ms: 57_000, server: 50_000 }] }, freeze: { n: 1, max: 6200 }, rage: 2, heap: { used: 40 } },
+    { ts: session.last, fgMs: 300_000, lt: { n: 4, ms: 800, max: 300, top: [['page.js', 500]] }, api: [['/api/likes', 3, 900, 30_000]] },
+  ]);
+  assert.match(lines[0], /^Ana <ana@ember\.test>, motorola edge 60 8GB, app 0\.7\.51 \(capacitor\)$/);
+  assert.match(lines[2], /^launch: first byte 0\.8s, first paint 2\.5s, ready 30\.3s/);
+  assert.match(lines[3], /nav 2: 1\.2s 57\.0s \| slowest \/settings 57\.0s \(server 50\.0s\) \| FREEZE 1x max 6\.2s \| RAGE 2 \| heap 40MB/);
+  assert.match(lines[4], /long tasks 4 0\.8s max 300ms \[page\.js 500ms\] \| api \/api\/likes 3x p50 900ms max 30000ms/);
+});

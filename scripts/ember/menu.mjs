@@ -17,6 +17,7 @@ export const TOOLS = [
   ['release:check', 'Run every test suite', null],
   ['notify', 'Send the owner a Discord message', 'Message:'],
   ['host-check', 'Does the host need ./update.sh?', null],
+  ['perf', 'Members\' app performance: sessions, or one session\'s timeline', 'Session (Enter for the list):'],
   ['tidy-branches', 'Delete branches already merged into main', null],
   ['hooks', 'Turn on the pre-push check (once)', null],
 ];
