@@ -74,7 +74,7 @@ async function adminToken() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         identity: process.env.EMBER_PB_SUPERUSER_EMAIL ?? 'admin@ember.com',
-        password: process.env.EMBER_PB_SUPERUSER_PASSWORD ?? 'egKa5WNMx3QpuG7',
+        password: process.env.EMBER_PB_SUPERUSER_PASSWORD ?? process.env.POCKETBASE_ADMIN_PASSWORD,
       }),
     });
     if (res.ok) return (await res.json()).token;

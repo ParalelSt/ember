@@ -26,7 +26,7 @@
  *
  *    cd <scratch copy of apps/web> && POCKETBASE_URL=http://127.0.0.1:8088 npx next build --webpack
  *    FAKE_CLASSIFY_SLEEP=3 POCKETBASE_URL=http://127.0.0.1:8088 \
- *      POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 \
+ *      POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=<sandbox admin password> \
  *      PYTHON_BIN=/bin/bash PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" \
  *      GOOGLE_OAUTH_CLIENT_ID=fake-client.apps.googleusercontent.com \
  *      GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-fakeClientSecretForTests \
@@ -58,7 +58,7 @@ catch { console.error('needs playwright-core: npm i -D playwright-core'); proces
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8088';
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3051';
 const ADMIN_EMAIL = process.env.POCKETBASE_ADMIN_EMAIL ?? 'admin@ember.com';
-const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD;
 const PORT = Number(process.env.FAKE_GOOGLE_PORT ?? 8097);
 const LOG_DIR = process.env.EMBER_LOG_DIR ?? '';
 const PW = 'TransferGoogleUi2026!';

@@ -10,7 +10,7 @@
  *
  *    SB=/tmp/ember-import-test && mkdir -p "$SB/music"
  *    cd apps/web && POCKETBASE_URL=http://127.0.0.1:8094 \
- *      POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 \
+ *      POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=<sandbox admin password> \
  *      SPOTIFY_EMBED_BASE=http://127.0.0.1:4331 \
  *      PYTHON_BIN=/bin/bash PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" \
  *      FAKE_PLAYER_LOG="$SB/calls.log" MUSIC_DIR="$SB/music" \
@@ -28,7 +28,7 @@ import { startFakeSpotify, TOP_HITS_ID, EIGHTIES_ID, BROKEN_ID } from './fake-sp
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8094';
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3034';
 const ADMIN_EMAIL = process.env.POCKETBASE_ADMIN_EMAIL ?? 'admin@ember.com';
-const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD;
 const PW = 'ImportTest2026!';
 
 const out = [];

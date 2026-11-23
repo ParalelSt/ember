@@ -29,7 +29,7 @@ async function adminToken() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         identity: process.env.PB_ADMIN_EMAIL ?? 'admin@ember.com',
-        password: process.env.PB_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7',
+        password: process.env.PB_ADMIN_PASSWORD ?? process.env.POCKETBASE_ADMIN_PASSWORD,
       }),
     });
     if (r.ok) return (await r.json()).token;

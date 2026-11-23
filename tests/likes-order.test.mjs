@@ -17,7 +17,7 @@
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8088';
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3050';
 const ADMIN_EMAIL = process.env.POCKETBASE_ADMIN_EMAIL ?? 'admin@ember.com';
-const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD;
 const PW = 'LikesOrder2026!';
 
 const out = [];

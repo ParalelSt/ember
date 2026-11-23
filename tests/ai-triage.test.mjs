@@ -275,7 +275,7 @@ const PB_URL = process.env.PB_URL ?? 'http://127.0.0.1:8091';
 const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:3005';
 const APP_NOKEY_URL = process.env.APP_NOKEY_URL ?? 'http://127.0.0.1:3006';
 const PB_ADMIN_EMAIL = process.env.PB_ADMIN_EMAIL ?? 'admin@ember.com';
-const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? process.env.POCKETBASE_ADMIN_PASSWORD;
 const ANTHROPIC_PORT = Number(process.env.FAKE_ANTHROPIC_PORT ?? 4311);
 const DISCORD_PORT = Number(process.env.FAKE_DISCORD_PORT ?? 4312);
 

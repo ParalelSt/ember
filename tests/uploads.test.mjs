@@ -17,7 +17,7 @@ import path from 'node:path';
 const PB_URL = process.env.PB_URL ?? 'http://127.0.0.1:8091';
 const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:3005';
 const PB_ADMIN_EMAIL = process.env.PB_ADMIN_EMAIL ?? 'admin@ember.com';
-const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? process.env.POCKETBASE_ADMIN_PASSWORD;
 const UPLOAD_DIR = path.join(process.env.MUSIC_DIR ?? '', 'uploads');
 const PASSWORD = 'BugTest2026!';
 

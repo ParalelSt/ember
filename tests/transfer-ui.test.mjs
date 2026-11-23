@@ -16,7 +16,7 @@
  *
  *    $SANDBOX_DIR/start-pb.sh
  *    cd apps/web && POCKETBASE_URL=http://127.0.0.1:8088 \
- *      POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 \
+ *      POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=<sandbox admin password> \
  *      PYTHON_BIN=/bin/bash PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" \
  *      FAKE_PLAYER_LOG=/tmp/transfer-ui-calls.log \
  *      FAKE_MATCH_FIXTURE="$PWD/../../tests/fixtures/imports/transfer/ytm-transfer-candidates.json" \
@@ -42,7 +42,7 @@ const FIXTURE = path.join(HERE, 'fixtures/imports/transfer/exportify.sample.csv'
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8088';
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3050';
 const ADMIN_EMAIL = process.env.POCKETBASE_ADMIN_EMAIL ?? 'admin@ember.com';
-const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD;
 const PW = 'TransferUi2026!';
 const SHOTS = process.env.SHOT_DIR ?? '';
 
