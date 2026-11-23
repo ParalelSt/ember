@@ -161,7 +161,10 @@ export function createServerTiming(opts: { sink: TimingSink; health?: () => Host
       const out = {
         windowMs: Math.round(t - windowStart),
         requests: routes.reduce((n, r) => n + r.n, 0),
-        routes: routes.slice(0, SERVER_TIMING_LIMITS.routesPerLine).map(({ total: _total, ...r }) => r),
+        routes: routes.slice(0, SERVER_TIMING_LIMITS.routesPerLine).map(({ total, ...r }) => {
+          void total;
+          return r;
+        }),
         slow: slowLines + slowDropped,
         ...(opts.health ? { health: opts.health() } : {}),
       };
