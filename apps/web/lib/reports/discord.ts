@@ -22,6 +22,47 @@ export function webhookConfigured(): boolean {
   return !!process.env.DISCORD_BUG_REPORT_WEBHOOK_URL;
 }
 
+/** The perf channel: a private thread inside #bug-reports (the bot cannot
+ *  make channels), posted to through the bug-report webhook with
+ *  `?thread_id=`. Not a secret: a thread id alone posts nothing. */
+export const DEFAULT_PERF_THREAD_ID = '1574541246045618378';
+
+/** `url` with Discord's `thread_id` set, whether or not it already has a
+ *  query; '' for a URL that does not parse. */
+export function withThreadId(url: string, threadId: string): string {
+  try {
+    const u = new URL(url);
+    u.searchParams.set('thread_id', threadId);
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
+export interface PerfWebhook {
+  url: string;
+  /** Where it points: its own webhook, the bug-report webhook's perf
+   *  thread, or nowhere. Never the URL itself, so it can be shown. */
+  via: 'perf' | 'bug-report-thread' | 'none';
+}
+
+/** Where the perf rollup posts (lib/reports/perfRollupJob.ts):
+ *  DISCORD_PERF_WEBHOOK_URL as it is, else the bug-report webhook into the
+ *  perf thread (DISCORD_PERF_THREAD_ID, default DEFAULT_PERF_THREAD_ID).
+ *  PERF_ROLLUP_DISABLED=1 turns the rollup off: no target at all. Read on
+ *  every call, like webhookUrl(). */
+export function perfWebhook(env: Record<string, string | undefined> = process.env): PerfWebhook {
+  if (env.PERF_ROLLUP_DISABLED === '1') return { url: '', via: 'none' };
+  const own = (env.DISCORD_PERF_WEBHOOK_URL ?? '').trim();
+  if (own) return { url: own, via: 'perf' };
+  const bugs = (env.DISCORD_BUG_REPORT_WEBHOOK_URL ?? '').trim();
+  if (!bugs) return { url: '', via: 'none' };
+  const raw = (env.DISCORD_PERF_THREAD_ID ?? '').trim();
+  const thread = /^\d{5,25}$/.test(raw) ? raw : DEFAULT_PERF_THREAD_ID;
+  const url = withThreadId(bugs, thread);
+  return url ? { url, via: 'bug-report-thread' } : { url: '', via: 'none' };
+}
+
 /** Discord's per-field value cap. */
 export const DISCORD_FIELD_CHARS = 1024;
 

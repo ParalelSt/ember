@@ -6,7 +6,7 @@ import { logDir, serverLogger } from '@/lib/logger/server';
 import { scrubServerEntry } from '@/lib/logger/sanitize';
 import { formatDigest, groupForDigest, type DigestGroup } from '@/lib/reports/digest';
 import { sanitizeVersion } from '@/lib/versions/label';
-import { codeFields, DISCORD_FIELD_CHARS, remainingEmbedBudget, webhookUrl, type EmbedField } from '@/lib/reports/discord';
+import { codeFields, DISCORD_FIELD_CHARS, perfWebhook, remainingEmbedBudget, webhookUrl, type EmbedField } from '@/lib/reports/discord';
 import { buildPerfSection, isPerfNativeEntry, type PerfSection } from '@/lib/reports/perfDigest';
 import { readPerf } from '@/lib/perf/store';
 
@@ -215,7 +215,9 @@ export async function runDigest(options: RunDigestOptions = {}): Promise<DigestR
     (e) => e.level !== 'info' || e.category === 'perf' || isPerfNativeEntry(e),
   );
   const groups = groupForDigest(entries, since).map(scrubGroup);
-  const perf = buildPerfSection({ digests: await readPerf(since).catch(() => []), server: entries });
+  // The perf channel (lib/reports/perfRollupJob.ts) carries the numbers
+  // whenever it has somewhere to post: the digest then leaves them out.
+  const perf = perfWebhook().url ? null : buildPerfSection({ digests: await readPerf(since).catch(() => []), server: entries });
   if (groups.length === 0 && !perf) {
     return finish({ posted: false, reason: 'quiet', groups: [], summary: null });
   }

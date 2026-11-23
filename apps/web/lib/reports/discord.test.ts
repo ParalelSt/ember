@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { codeFields, DISCORD_EMBED_CHARS, DISCORD_FIELD_CHARS, remainingEmbedBudget } from './discord';
+import {
+  codeFields,
+  DEFAULT_PERF_THREAD_ID,
+  DISCORD_EMBED_CHARS,
+  DISCORD_FIELD_CHARS,
+  perfWebhook,
+  remainingEmbedBudget,
+  withThreadId,
+} from './discord';
 
 describe('codeFields', () => {
   it('fences a short block into one field', () => {
@@ -103,5 +111,43 @@ describe('codeFields with a character budget (maxChars)', () => {
   it('drops the field entirely rather than emit one Discord would still reject when there is no room at all', () => {
     const fields = codeFields('Evidence', bigText, 6, 0);
     expect(fields).toEqual([]);
+  });
+});
+
+describe('the perf rollup webhook', () => {
+  const BUGS = 'https://discord.com/api/webhooks/0/example-token';
+
+  it('adds thread_id to a URL with or without a query, replacing one already there', () => {
+    expect(withThreadId(BUGS, '42')).toBe(`${BUGS}?thread_id=42`);
+    expect(withThreadId(`${BUGS}?wait=true`, '42')).toBe(`${BUGS}?wait=true&thread_id=42`);
+    expect(withThreadId(`${BUGS}?thread_id=1&wait=true`, '42')).toBe(`${BUGS}?thread_id=42&wait=true`);
+    expect(withThreadId('not a url', '42')).toBe('');
+  });
+
+  it('uses DISCORD_PERF_WEBHOOK_URL as it is when set', () => {
+    const own = 'https://discord.com/api/webhooks/0/example-perf?thread_id=9';
+    expect(perfWebhook({ DISCORD_PERF_WEBHOOK_URL: own, DISCORD_BUG_REPORT_WEBHOOK_URL: BUGS })).toEqual({ url: own, via: 'perf' });
+  });
+
+  it('falls back to the bug-report webhook, into the perf thread', () => {
+    expect(perfWebhook({ DISCORD_BUG_REPORT_WEBHOOK_URL: BUGS })).toEqual({
+      url: `${BUGS}?thread_id=${DEFAULT_PERF_THREAD_ID}`,
+      via: 'bug-report-thread',
+    });
+    expect(DEFAULT_PERF_THREAD_ID).toBe('1574541246045618378');
+    expect(perfWebhook({ DISCORD_BUG_REPORT_WEBHOOK_URL: BUGS, DISCORD_PERF_WEBHOOK_URL: '  ' }).via).toBe('bug-report-thread');
+  });
+
+  it('takes the thread from DISCORD_PERF_THREAD_ID, ignoring one that is not an id', () => {
+    expect(perfWebhook({ DISCORD_BUG_REPORT_WEBHOOK_URL: BUGS, DISCORD_PERF_THREAD_ID: '123456789' }).url).toBe(`${BUGS}?thread_id=123456789`);
+    expect(perfWebhook({ DISCORD_BUG_REPORT_WEBHOOK_URL: BUGS, DISCORD_PERF_THREAD_ID: 'x&y=1' }).url).toBe(
+      `${BUGS}?thread_id=${DEFAULT_PERF_THREAD_ID}`,
+    );
+  });
+
+  it('has no target without any webhook, or with PERF_ROLLUP_DISABLED=1', () => {
+    expect(perfWebhook({})).toEqual({ url: '', via: 'none' });
+    expect(perfWebhook({ DISCORD_BUG_REPORT_WEBHOOK_URL: 'nonsense' })).toEqual({ url: '', via: 'none' });
+    expect(perfWebhook({ DISCORD_BUG_REPORT_WEBHOOK_URL: BUGS, PERF_ROLLUP_DISABLED: '1' })).toEqual({ url: '', via: 'none' });
   });
 });

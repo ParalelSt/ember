@@ -1,7 +1,7 @@
 /** The Node server's startup work (instrumentation.ts calls it once on boot). Installs the
  *  uncaught-error catch, starts the playlist import runner, and schedules
  *  the daily cache/DB cleanup, the daily error digest, the nightly genre
- *  mix build and the prank tick. */
+ *  mix build, the perf channel and the prank tick. */
 export async function registerNode() {
   // Before the cleanup opt-out below: a server with cleanup disabled still
   // needs its crashes logged and reported.
@@ -82,6 +82,25 @@ export async function registerNode() {
     // it comes back, and the marker file keeps that to once a day.
     const digest = setInterval(() => void tick(), 60 * 1000);
     digest.unref?.();
+  }
+
+  // The perf channel (lib/reports/perfRollupJob.ts): every device's
+  // performance per platform, posted every 6 hours (00, 06, 12, 18 UTC) into
+  // DISCORD_PERF_WEBHOOK_URL or the bug-report webhook's perf thread. Checked
+  // every minute like the digest; its state file keeps a window to one post
+  // across restarts. EMBER_PERF_LOG=off or PERF_ROLLUP_DISABLED=1 leave it
+  // out (the tick checks the first again, so the switch works without a
+  // restart). Never stops the boot.
+  try {
+    const { perfLogEnabled } = await import('@/lib/perf/hostSwitch');
+    if (perfLogEnabled() && process.env.PERF_ROLLUP_DISABLED !== '1') {
+      const { createPerfRollupTick } = await import('@/lib/reports/perfRollupJob');
+      const tick = createPerfRollupTick();
+      const rollup = setInterval(() => void tick(), 60 * 1000);
+      rollup.unref?.();
+    }
+  } catch (e) {
+    console.warn('[perf-rollup] could not start', e);
   }
 
   // Genre mixes (docs/mixes.md): rebuilt for every member who played

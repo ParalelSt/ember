@@ -2,7 +2,7 @@
 // Node, not happy-dom: this is server code, and happy-dom's FormData drops
 // the filename passed with a Blob, which is what the digest.json assertion
 // below reads.
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll, afterEach } from 'vitest';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -408,7 +408,30 @@ describe('runDigest: the performance section', () => {
     return () => rm(file, { force: true });
   }
 
-  it('posts a day with perf numbers but no errors, without a model call', async () => {
+  afterEach(() => {
+    delete process.env.PERF_ROLLUP_DISABLED;
+    delete process.env.DISCORD_PERF_WEBHOOK_URL;
+  });
+
+  it('leaves perf out when the perf channel has a target (the bug-report webhook\'s perf thread)', async () => {
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([]);
+    const cleanup = await writePerfDigest();
+    try {
+      const quiet = await runDigest();
+      expect(quiet).toMatchObject({ posted: false, reason: 'quiet' });
+      expect(quiet.perf ?? null).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+      vi.mocked(serverLogger.entriesSince).mockResolvedValue([entry()]);
+      process.env.DISCORD_PERF_WEBHOOK_URL = 'http://127.0.0.1:4312/perf';
+      expect((await runDigest()).posted).toBe(true);
+      expect(postedEmbed().fields.find((f) => f.name === 'Performance')).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('posts a day with perf numbers but no errors, without a model call, when the perf channel is off', async () => {
+    process.env.PERF_ROLLUP_DISABLED = '1';
     vi.mocked(serverLogger.entriesSince).mockResolvedValue([]);
     const cleanup = await writePerfDigest();
     try {
@@ -425,6 +448,7 @@ describe('runDigest: the performance section', () => {
   });
 
   it('keeps the host\'s timing lines and the phone\'s renderer events while reading, and leaves slow request warnings out of the error groups', async () => {
+    process.env.PERF_ROLLUP_DISABLED = '1';
     vi.mocked(serverLogger.entriesSince).mockResolvedValue([
       entry({ level: 'warn', category: 'perf', message: 'slow request GET /settings (rsc)', data: { durationMs: 2500, digest: false } }),
       entry({ level: 'info', category: 'perf', message: 'server timing', data: { routes: [{ route: '/settings (rsc)', n: 4, p95: 2500, max: 2600 }], slow: 1, health: { loopP99: 30 } } }),
