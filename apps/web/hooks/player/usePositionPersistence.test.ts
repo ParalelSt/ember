@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { SAVE_EVERY_MS, usePositionPersistence } from './usePositionPersistence';
+import { SAVE_EVERY_MS, SAVE_HIDDEN_EVERY_MS, usePositionPersistence } from './usePositionPersistence';
 import { makeFakeBackend, makeTrack, type FakeBackend } from '@/test-utils/fakeBackend';
 
 const a = makeTrack();
@@ -214,7 +214,7 @@ describe('usePositionPersistence: hidden page', () => {
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
   });
 
-  it('saves once on the way out, then no timer runs until the page is back', () => {
+  it('saves on the way out, then every 20 s while hidden, and every 5 s once back', () => {
     vi.useFakeTimers();
     const { backend } = setup();
     backend!.durationSec = 200;
@@ -225,12 +225,19 @@ describe('usePositionPersistence: hidden page', () => {
     expect(write).toHaveBeenCalledTimes(1);
     expect(storedPosition()).toBe(30);
     backend!.currentTime = 90;
-    act(() => { vi.advanceTimersByTime(SAVE_EVERY_MS * 10); });
+    act(() => { vi.advanceTimersByTime(SAVE_HIDDEN_EVERY_MS - 100); });
     expect(write).toHaveBeenCalledTimes(1);
-    act(() => setHidden(false));
-    act(() => { vi.advanceTimersByTime(SAVE_EVERY_MS); });
+    act(() => { vi.advanceTimersByTime(100); });
+    // Killed now (no pagehide), it would resume at 90, not at 30.
     expect(write).toHaveBeenCalledTimes(2);
     expect(storedPosition()).toBe(90);
+    act(() => { vi.advanceTimersByTime(SAVE_HIDDEN_EVERY_MS * 2); });
+    expect(write).toHaveBeenCalledTimes(4);
+    act(() => setHidden(false));
+    backend!.currentTime = 150;
+    act(() => { vi.advanceTimersByTime(SAVE_EVERY_MS); });
+    expect(write).toHaveBeenCalledTimes(5);
+    expect(storedPosition()).toBe(150);
     write.mockRestore();
   });
 });

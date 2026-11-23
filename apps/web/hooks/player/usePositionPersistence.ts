@@ -7,6 +7,8 @@ import type { AudioBackend } from '@/lib/playback/types';
 
 /** How often the playhead is saved while playing and on screen. */
 export const SAVE_EVERY_MS = 5000;
+/** And while playing with the page hidden. */
+export const SAVE_HIDDEN_EVERY_MS = 20_000;
 
 export interface PositionPersistence {
   /** Latest-callback ref for `persist`, so backend events wired once at mount
@@ -125,24 +127,26 @@ export function usePositionPersistence({
     // The engine in the ref at each tick: a swap (the desktop engine falling
     // back to web audio, a cast engine taking over) leaves the first one
     // stopped for good, and asking it stopped the periodic write.
-    // Only while the page is shown: hidden, the playhead is saved once on
-    // the way out (and by pagehide), and nothing ticks until it is back.
+    // Every SAVE_EVERY_MS while the page is shown; hidden (a minimised
+    // window, a background tab still playing), once on the way out and
+    // then every SAVE_HIDDEN_EVERY_MS, so a page killed without a pagehide
+    // still resumes close to where it was. Each save reuses the queue's
+    // JSON (playerSaveJson), so it costs little.
     let periodic: ReturnType<typeof setInterval> | undefined;
-    const startPeriodic = () => {
+    const startPeriodic = (ms: number) => {
       clearInterval(periodic);
       periodic = setInterval(() => {
         const b = backendRef.current;
         if (b && !b.isPaused()) persist();
-      }, SAVE_EVERY_MS);
+      }, ms);
     };
-    if (!document.hidden) startPeriodic();
+    startPeriodic(document.hidden ? SAVE_HIDDEN_EVERY_MS : SAVE_EVERY_MS);
     const onVisibility = () => {
       if (document.hidden) {
-        clearInterval(periodic);
-        periodic = undefined;
         persist();
+        startPeriodic(SAVE_HIDDEN_EVERY_MS);
       } else {
-        startPeriodic();
+        startPeriodic(SAVE_EVERY_MS);
       }
     };
     const onPagehide = () => persist();
