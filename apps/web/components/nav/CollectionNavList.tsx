@@ -40,6 +40,7 @@ export function CollectionNavList({ items, activePath, onNavigate, size = 'md' }
             key={href}
             href={href}
             onClick={onNavigate}
+            data-nav={label}
             data-testid={importState ? 'import-nav-row' : undefined}
             data-import={importState?.kind}
             className={cn(

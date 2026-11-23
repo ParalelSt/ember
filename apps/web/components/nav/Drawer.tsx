@@ -58,7 +58,7 @@ export function Drawer({ open, onOpenChange }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-72 max-w-[82vw] flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0">
+      <SheetContent side="left" data-nav-area="drawer" className="w-72 max-w-[82vw] flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0">
         <SheetHeader className="px-4 py-4 border-b border-sidebar-border">
           <SheetTitle className="text-base">
             <Link
@@ -126,6 +126,7 @@ export function Drawer({ open, onOpenChange }: Props) {
             <Link
               href="/settings/profile"
               onClick={close}
+              data-nav="Profile"
               className="flex items-center gap-3 px-2 py-2 min-w-0 rounded-md hover:bg-sidebar-accent/60"
             >
               <Avatar

@@ -45,6 +45,7 @@ export function NavLinks({ items, activePath, onNavigate, onSearchClick, size = 
           <Link
             key={href}
             href={href}
+            data-nav={label}
             onClick={(e) => {
               if (isSearch && onSearchClick && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) {
                 e.preventDefault();

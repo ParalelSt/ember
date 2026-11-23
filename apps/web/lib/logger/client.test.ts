@@ -143,6 +143,46 @@ describe('ClientLogger: click breadcrumbs', () => {
   });
 });
 
+describe('ClientLogger: nav link breadcrumbs', () => {
+  it('logs a drawer or side nav link by its data-nav name, area and path with ids taken out, never its text', () => {
+    logger.boot();
+    const area = document.createElement('div');
+    area.setAttribute('data-nav-area', 'drawer');
+    const a = document.createElement('a');
+    a.setAttribute('href', '/playlist/abc123def456ghi');
+    a.setAttribute('data-nav', 'Playlist');
+    a.textContent = 'My private playlist name';
+    // Keep happy-dom from following the link.
+    a.addEventListener('click', (e) => e.preventDefault());
+    area.appendChild(a);
+    document.body.appendChild(area);
+    try {
+      a.click();
+      const entries = logger.snapshot().current.filter((e) => e.category === 'ui' && e.message === 'nav');
+      expect(entries).toHaveLength(1);
+      expect(entries[0].data).toEqual({ label: 'Playlist', to: '/playlist/:id', area: 'drawer', route: window.location.pathname });
+      expect(JSON.stringify(entries[0])).not.toContain('private');
+    } finally {
+      document.body.removeChild(area);
+    }
+  });
+});
+
+describe('ClientLogger: route listeners', () => {
+  it('tells listeners about each route change with the path before it', () => {
+    logger.boot();
+    const seen: string[] = [];
+    const off = logger.onRoute((path, from, how) => seen.push(`${from}>${path}:${how}`));
+    const start = window.location.pathname;
+    history.pushState({}, '', '/perf-route-a');
+    history.pushState({}, '', '/perf-route-a');
+    off();
+    history.pushState({}, '', '/perf-route-b');
+    expect(seen).toEqual([`${start}>/perf-route-a:push`]);
+    history.pushState({}, '', start);
+  });
+});
+
 describe('ClientLogger: warn', () => {
   it('records a warn-level breadcrumb, distinct from breadcrumb()s default info level', () => {
     logger.warn('native:offline', 'pin rejected: id required', { foo: 'bar' });

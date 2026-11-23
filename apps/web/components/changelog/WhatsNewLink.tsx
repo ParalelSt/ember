@@ -22,6 +22,7 @@ export function WhatsNewLink({ showNew, activePath, onNavigate }: WhatsNewLinkPr
       href={WHATS_NEW_HREF}
       onClick={onNavigate}
       data-testid="whats-new-link"
+      data-nav="What's new"
       className={cn(
         'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
         isActive

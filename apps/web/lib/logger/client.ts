@@ -7,6 +7,11 @@ import type { ClientSnapshot, LogEntry, LogKind, LogLevel, ReportContext } from 
 import { scrub } from './sanitize';
 import { maybeAutoReport } from '@/lib/autoReport';
 import { installNavigationIntent, isChunkLoadError, reloadForChunkFailure } from '@/lib/chunkReload';
+import { routeShape } from '@/lib/perf/route';
+
+/** Hears every route change: the new path, the one before, and whether it
+ *  came from pushState or back/forward (lib/perf/client.ts). */
+export type RouteListener = (path: string, from: string, how: 'push' | 'pop') => void;
 
 // lib/ stays framework-free (no React/Next imports: see eslint.config.mjs),
 // but the zustand stores are plain JS modules with a getState() escape hatch,
@@ -39,6 +44,7 @@ class ClientLogger {
    *  console.error/warn 1 s dedupe. */
   private consoleSeen = new Map<string, number>();
   private lastRoute = '';
+  private routeListeners = new Set<RouteListener>();
 
   /** Idempotent. Hydrates `previous` from localStorage, registers global error
    *  handlers, a pagehide flush, and the automatic breadcrumb hooks (console,
@@ -117,17 +123,41 @@ class ClientLogger {
     this.breadcrumb('console', message, { level });
   }
 
-  /** Bubble-phase click listener: only reports elements deliberately labelled
-   *  for accessibility (closest aria-labelled button/link), and only the
-   *  label + route: never text content, which could carry user data. */
+  /** Capture-phase click listener: only reports elements deliberately
+   *  labelled for accessibility (closest aria-labelled button/link), and only
+   *  the label + route: never text content, which could carry user data.
+   *  Nav links (side nav, drawer, bottom bar) carry a data-nav name instead
+   *  and are logged with where they lead, ids taken out. */
   private installClickBreadcrumbs(): void {
     document.addEventListener('click', (e) => {
       const target = e.target as Element | null;
+      const navLink = target?.closest('a[data-nav]');
+      if (navLink) {
+        const area = navLink.closest('[data-nav-area]')?.getAttribute('data-nav-area') ?? undefined;
+        this.breadcrumb('ui', 'nav', {
+          label: navLink.getAttribute('data-nav'),
+          to: routeShape(navLink.getAttribute('href') ?? ''),
+          ...(area ? { area } : {}),
+          route: window.location.pathname,
+        });
+        return;
+      }
       const el = target?.closest('button[aria-label], a[aria-label]');
       const label = el?.getAttribute('aria-label');
       if (!label) return;
       this.breadcrumb('ui', 'click', { label, route: window.location.pathname });
     }, { capture: true });
+  }
+
+  /** Hears route changes from here on. Returns the unsubscribe. */
+  onRoute(fn: RouteListener): () => void {
+    this.routeListeners.add(fn);
+    return () => this.routeListeners.delete(fn);
+  }
+
+  /** Entries in this session's ring (a size the perf log samples). */
+  ringSize(): number {
+    return this.current.length;
   }
 
   /** SPA route changes: Next's router (and any other pushState navigation)
@@ -138,18 +168,26 @@ class ClientLogger {
     this.lastRoute = window.location.pathname;
     this.breadcrumb('route', this.lastRoute);
 
-    const recordIfChanged = () => {
+    const recordIfChanged = (how: 'push' | 'pop') => {
       const path = window.location.pathname;
       if (path === this.lastRoute) return;
+      const from = this.lastRoute;
       this.lastRoute = path;
       this.breadcrumb('route', path);
+      for (const fn of this.routeListeners) {
+        try {
+          fn(path, from, how);
+        } catch {
+          // A listener never breaks navigation.
+        }
+      }
     };
-    window.addEventListener('popstate', recordIfChanged);
+    window.addEventListener('popstate', () => recordIfChanged('pop'));
 
     const origPushState = history.pushState.bind(history);
     history.pushState = ((...args: Parameters<History['pushState']>) => {
       origPushState(...args);
-      recordIfChanged();
+      recordIfChanged('push');
     }) as History['pushState'];
   }
 

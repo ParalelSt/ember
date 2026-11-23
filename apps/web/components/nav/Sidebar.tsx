@@ -57,7 +57,7 @@ export function Sidebar({ covers = false }: { covers?: boolean }) {
     // unit, 480 to 600px tall): the playlists keep a few rows and the
     // profile row stays reachable instead of being cut off. `touch-hit`:
     // 44px hit boxes on a touch screen (globals.css).
-    <aside className="touch-hit hidden md:flex flex-col w-(--sidebar-w) shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border h-full overflow-x-hidden overflow-y-auto">
+    <aside data-nav-area="sidebar" className="touch-hit hidden md:flex flex-col w-(--sidebar-w) shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border h-full overflow-x-hidden overflow-y-auto">
       <Link
         href="/"
         className="flex items-center gap-2 px-4 pt-5 pb-4 hover:opacity-80 transition-opacity"
@@ -118,6 +118,7 @@ export function Sidebar({ covers = false }: { covers?: boolean }) {
           <ScanQrButton look="nav" />
           <Link
             href="/settings/profile"
+            data-nav="Profile"
             className="flex items-center gap-3 px-2 py-2 min-w-0 rounded-md hover:bg-sidebar-accent/60 transition-colors"
           >
             <Avatar

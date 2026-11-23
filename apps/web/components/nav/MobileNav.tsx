@@ -23,6 +23,7 @@ export function MobileNav({ onSearchClick }: MobileNavProps) {
   return (
     <nav
       data-testid="mobile-nav"
+      data-nav-area="bottom"
       className="safe-area-bottom md:hidden shrink-0 flex items-stretch justify-around bg-sidebar border-t border-sidebar-border"
     >
       {NAV.map(({ href, label, icon: Icon, isSearch }) => {
@@ -31,6 +32,7 @@ export function MobileNav({ onSearchClick }: MobileNavProps) {
           <Link
             key={href}
             href={href}
+            data-nav={label}
             onClick={(e) => {
               if (isSearch && onSearchClick && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) {
                 e.preventDefault();

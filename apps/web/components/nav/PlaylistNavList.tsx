@@ -8,6 +8,7 @@ import { useHold } from '@/hooks/useHold';
 import { cn } from '@/lib/utils';
 import { formatCount } from '@/lib/format';
 import type { NavImportState } from '@/lib/import/nav';
+import { perfCount } from '@/lib/perf';
 
 export type { NavImportState };
 
@@ -83,12 +84,17 @@ export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen,
           onClick={(e) => {
             if (onTogglePin && hold.consumeHold()) {
               e.preventDefault();
+              // A slow tap read as a long press (docs/android-performance.md 4.2.3).
+              perfCount('hold.cancel');
               return;
             }
             onOpen?.(p.id);
             onNavigate?.();
           }}
           data-testid={p.importState ? 'import-nav-row' : 'playlist-nav-row'}
+          // The name is the member's own words: logged as "Playlist" and
+          // its path with the id taken out (lib/logger/client.ts).
+          data-nav="Playlist"
           data-import={p.importState?.kind}
           data-pinned={p.pinned || undefined}
           title={p.sharedLabel ? `${p.name}, ${p.sharedLabel}` : undefined}
