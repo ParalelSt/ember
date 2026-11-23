@@ -13,7 +13,8 @@ async function restricted(file: string, source: string): Promise<string[]> {
   return result.messages.filter((m) => m.ruleId === 'no-restricted-imports').map((m) => m.message);
 }
 
-describe('Classic look import boundary', () => {
+// The first lint warms ESLint up (several seconds under a full-suite load).
+describe('Classic look import boundary', { timeout: 30_000 }, () => {
   it('a switch point in app/(app)/ may load the legacy tree', async () => {
     expect(await restricted('app/(app)/radio/page.tsx', "export { default } from '@legacy/app/radio/page';\n")).toEqual([]);
   });
