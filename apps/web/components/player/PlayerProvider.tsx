@@ -257,9 +257,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    *  that goes with it: set at startup, and again when a broken desktop
    *  engine falls back to web audio (which cannot open the Rust cache). */
   const [initialKind, setInitialKind] = useState<BackendKind | null>(null);
-  /** The engine extends the queue with radio itself (the Android app's
-   *  native player): the page's radio then neither fetches nor sends. */
-  const [engineRadio, setEngineRadio] = useState(false);
   const fellBackRef = useRef(false);
   /** Track id currently handed to the backend, guards redundant re-loads. */
   const loadedTrackRef = useRef<string | null>(null);
@@ -799,7 +796,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       : create === createTauriBackend ? 'tauri-native' : 'native-stub';
     backendRef.current = create(eventsRef.current);
     setInitialKind(backendKindRef.current);
-    setEngineRadio(backendKindRef.current === 'android' && backendRef.current.extendsRadio === true);
     // Casting: AirPlay (Safari) moves the web engine's own element; the
     // controller finds out which way this page can cast at all.
     setCastMediaElement(backendRef.current.mediaElement?.() ?? null);
@@ -1626,10 +1622,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       announce([{ ...waiting, outcome: 'stopped' }]);
     }
   }, [announce]);
-  // A device this one controls extends its own queue, and so does the
-  // Android app's native player (unless a cast engine of this page plays).
-  const radioHere = !controlling && !(engineRadio && !casting);
-  useRadioExtend({ current: radioHere ? current : null, queue, index, history, liked, context, loopMode, onExtended: onRadioExtended });
+  // A device this one controls extends its own queue. On Android the page's
+  // radio (ranked with history and likes) runs while the page is alive; the
+  // native player's own radio sees it got there first and stays out
+  // (EmberPlaybackService.fetchRadio), and covers the car and a closed app.
+  useRadioExtend({ current: controlling ? null : current, queue, index, history, liked, context, loopMode, onExtended: onRadioExtended });
 
   // Discord presence: see DiscordPresence below (rendered as a child).
   const [discordHere, setDiscordHere] = useState<'page' | 'app' | null>(null);

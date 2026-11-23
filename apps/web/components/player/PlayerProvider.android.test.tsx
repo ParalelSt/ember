@@ -70,29 +70,25 @@ beforeEach(() => {
   });
 });
 
-describe('android: radio runs once', () => {
+describe('android: radio', () => {
   const lastRadioCurrent = () => vi.mocked(useRadioExtend).mock.calls.at(-1)?.[0].current;
 
-  it('an app whose player extends the queue itself: the page\'s radio has no song to follow', () => {
-    (fake as { extendsRadio?: boolean }).extendsRadio = true;
-    try {
-      usePlayerStore.setState({ queue: [A], index: 0 });
-      render(<PlayerProvider><div /></PlayerProvider>);
-      expect(lastRadioCurrent()).toBeNull();
-      // Native's own extension comes back as a new queue; nothing goes back.
-      native.setQueue.mockClear();
-      act(() => { ev!.onQueueReplaced!([A, B, C], 0); });
-      expect(native.setQueue).not.toHaveBeenCalled();
-      expect(lastRadioCurrent()).toBeNull();
-    } finally {
-      delete (fake as { extendsRadio?: boolean }).extendsRadio;
+  // The page's radio ranks with history, likes and the list (variant
+  // blocking, artist drift); native's own is plainer and only covers the
+  // car and a closed app. With the page alive the page's runs, and native
+  // sees it got there first.
+  it('the page\'s radio follows the song on Android, whatever the app build', () => {
+    for (const extends_ of [false, true]) {
+      (fake as { extendsRadio?: boolean }).extendsRadio = extends_;
+      try {
+        usePlayerStore.setState({ queue: [A], index: 0 });
+        const { unmount } = render(<PlayerProvider><div /></PlayerProvider>);
+        expect(lastRadioCurrent()?.id).toBe(A.id);
+        unmount();
+      } finally {
+        delete (fake as { extendsRadio?: boolean }).extendsRadio;
+      }
     }
-  });
-
-  it('an older app build without native radio keeps the page\'s radio', () => {
-    usePlayerStore.setState({ queue: [A], index: 0 });
-    render(<PlayerProvider><div /></PlayerProvider>);
-    expect(lastRadioCurrent()?.id).toBe(A.id);
   });
 });
 

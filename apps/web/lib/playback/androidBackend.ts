@@ -504,10 +504,6 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
 
   return {
     ...overlay,
-    // An app build that explains failed songs (drainUnplayable, 2026-09-30
-    // on) also extends the queue with radio by itself, at the last song and
-    // after a dead last song (EmberPlaybackService.maybeExtendQueue).
-    extendsRadio: nativeExplains,
     // Single-track load is not how this backend works; the provider calls
     // setQueue for queue-owning backends. Kept as a harmless no-op.
     load() {},

@@ -27,18 +27,6 @@ const notice = { trackId: 'youtube:0LYiIUMeO1o', title: 'Radio Song', kind: 'una
 
 afterEach(() => { delete (window as unknown as { Capacitor?: unknown }).Capacitor; });
 
-describe('androidBackend: native radio', () => {
-  it('an app build that explains failures extends its own queue with radio', () => {
-    installPlugin({ explains: true });
-    expect(createAndroidBackend(makeFakeEvents()).extendsRadio).toBe(true);
-  });
-
-  it('an older one leaves radio to the page', () => {
-    installPlugin({ explains: false });
-    expect(createAndroidBackend(makeFakeEvents()).extendsRadio).toBe(false);
-  });
-});
-
 describe('androidBackend: songs native could not play', () => {
   it('passes the live event on, checked', () => {
     const n = installPlugin({ explains: true });
