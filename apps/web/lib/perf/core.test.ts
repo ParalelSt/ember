@@ -78,6 +78,25 @@ describe('routeShape', () => {
     expect(routeShape('/')).toBe('/');
   });
 
+  it('takes artist names and every other dynamic segment out by the app\'s own route tree', () => {
+    expect(routeShape('/mix/artist-gojira')).toBe('/mix/:id');
+    expect(routeShape('/api/mixes/artist-gojira')).toBe('/api/mixes/:id');
+    expect(routeShape('/api/admin/artist-genres/gojira')).toBe('/api/admin/artist-genres/:id');
+    expect(routeShape('/chart/rock')).toBe('/chart/:id');
+    // A dynamic value that happens to spell a folder name is still an id.
+    expect(routeShape('/playlist/settings')).toBe('/playlist/:id');
+    // Paths the app does not know keep nothing.
+    expect(routeShape('/somewhere/private-name')).toBe('/:id/:id');
+    expect(routeShape('/pb/api/collections/users/records')).toBe('/pb/:id');
+    expect(routeShape('/settings/help')).toBe('/settings/help');
+  });
+
+  it('walks any tree it is given', () => {
+    const tree = { s: { a: { d: { s: { b: {} } } }, files: { c: 1 as const } } };
+    expect(routeShape('/a/x1/b', tree)).toBe('/a/:id/b');
+    expect(routeShape('/files/one/two/three', tree)).toBe('/files/:id');
+  });
+
   it('spots RSC requests', () => {
     expect(isRscUrl('https://h/settings?_rsc=abc')).toBe(true);
     expect(isRscUrl('https://h/settings')).toBe(false);

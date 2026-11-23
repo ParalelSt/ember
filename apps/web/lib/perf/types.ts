@@ -156,3 +156,14 @@ export interface PerfDigest {
   dom?: number;
   api?: [string, number, number, number][];
 }
+
+/** The app's route tree (lib/perf/routeTree.ts), built from the app/
+ *  folders: which segments are fixed words and where an id goes. */
+export interface RouteNode {
+  /** Static child segments. */
+  s?: Record<string, RouteNode>;
+  /** A dynamic child ([id], [slug], ...). */
+  d?: RouteNode;
+  /** A catch-all child ([...x]): the rest of the path. */
+  c?: 1;
+}
