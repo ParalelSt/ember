@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { serverLogger, requestContext } from './server';
 import { verifiedUserId } from '@/lib/auth';
+import { perfLogEnabled } from '@/lib/perf/hostSwitch';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RouteHandler<Ctx = any> = (req: NextRequest, ctx: Ctx) => Promise<Response> | Response;
@@ -40,6 +41,17 @@ async function readErrorField(res: Response): Promise<string | undefined> {
     return undefined;
   } catch {
     return undefined;
+  }
+}
+
+/** `Server-Timing: handler;dur=N` for the page's resource timing. Some
+ *  responses (a redirect, a proxied fetch) have headers that cannot be
+ *  changed: those just go without. */
+function addHandlerTiming(res: Response, ms: number): void {
+  try {
+    res.headers.append('server-timing', `handler;dur=${ms}`);
+  } catch {
+    // Immutable headers.
   }
 }
 
@@ -89,6 +101,7 @@ export function withRequestLog<Ctx = unknown>(
     }
 
     const durationMs = Date.now() - start;
+    if (perfLogEnabled()) addHandlerTiming(res, durationMs);
     if (res.status === 429) {
       const level = QUIET_429_ROUTES.has(name) ? 'info' : 'warn';
       serverLogger[level]('api', `${method} ${name} -> 429`, { status: 429, durationMs }, undefined, {

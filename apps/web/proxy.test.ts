@@ -520,3 +520,37 @@ describe('proxy [classic look]: ?ui= switches the device and comes back without 
     expect(uiCookie(res)).toBeUndefined();
   });
 });
+
+describe('proxy [perf]: the session check is timed for the page (Server-Timing)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.EMBER_PERF_LOG;
+  });
+
+  function pocketBaseRefreshes() {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ token: futureToken(), record: { id: 'u1', collectionName: 'users' } })));
+  }
+
+  it('adds auth;dur=N to a signed-in request', async () => {
+    pocketBaseRefreshes();
+    const res = await proxy(req('/library', { cookie: staleCookie() }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('server-timing')).toMatch(/^auth;dur=\d+(\.\d)?$/);
+  });
+
+  it('times a refused session check too, and adds nothing without a session', async () => {
+    pocketBaseAnswers(401);
+    const refused = await proxy(req('/auth', { cookie: staleCookie() }));
+    expect(refused.headers.get('server-timing')).toMatch(/^auth;dur=/);
+    const anon = await proxy(req('/auth'));
+    expect(anon.headers.get('server-timing')).toBeNull();
+  });
+
+  it('adds nothing when the host switched perf logging off', async () => {
+    process.env.EMBER_PERF_LOG = 'off';
+    pocketBaseRefreshes();
+    const res = await proxy(req('/library', { cookie: staleCookie() }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('server-timing')).toBeNull();
+  });
+});

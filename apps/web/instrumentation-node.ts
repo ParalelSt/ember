@@ -12,6 +12,18 @@ export async function registerNode() {
     spawnReport: spawnCrashReport,
   });
 
+  // Request timing and host health (lib/perf/serverTiming.ts), one perf
+  // line every 5 min. EMBER_PERF_LOG=off leaves it out. Never stops the boot.
+  try {
+    const { perfLogEnabled } = await import('@/lib/perf/hostSwitch');
+    if (perfLogEnabled()) {
+      const { registerServerTiming } = await import('@/lib/perf/serverTiming');
+      await registerServerTiming(serverLogger);
+    }
+  } catch (e) {
+    console.warn('[perf] request timing could not start', e);
+  }
+
   // Start/stop record and heartbeat (lib/serverLife.ts), so an outage and its
   // length show up in the digest. Never allowed to stop the boot.
   try {

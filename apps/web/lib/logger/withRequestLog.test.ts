@@ -301,3 +301,28 @@ describe('withRequestLog request context', () => {
   });
 });
 
+
+describe('withRequestLog: Server-Timing for the perf log', () => {
+  it('adds handler;dur=N to the response', async () => {
+    const wrapped = withRequestLog('test/route', async () => Response.json({ ok: true }));
+    const res = await wrapped(makeReq() as never, {});
+    expect(res.headers.get('server-timing')).toMatch(/^handler;dur=\d+$/);
+  });
+
+  it('leaves a response with fixed headers as it is', async () => {
+    const wrapped = withRequestLog('test/route', async () => Response.redirect('http://localhost/x', 302));
+    const res = await wrapped(makeReq() as never, {});
+    expect(res.status).toBe(302);
+  });
+
+  it('adds nothing when EMBER_PERF_LOG=off', async () => {
+    process.env.EMBER_PERF_LOG = 'off';
+    try {
+      const wrapped = withRequestLog('test/route', async () => Response.json({ ok: true }));
+      const res = await wrapped(makeReq() as never, {});
+      expect(res.headers.get('server-timing')).toBeNull();
+    } finally {
+      delete process.env.EMBER_PERF_LOG;
+    }
+  });
+});

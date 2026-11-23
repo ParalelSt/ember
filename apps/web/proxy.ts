@@ -5,6 +5,7 @@ import { PUBLIC_PATHS, isPublicPage as isPublicPath } from '@/lib/publicPaths';
 import { checkRateLimit, clientIp, type RateLimitConfig } from '@/lib/rateLimitCore';
 import { linkCookie } from '@/lib/qrLogin/codes';
 import { UI_MODE_PARAM, parseUiMode, uiModeSetCookie } from '@/lib/uiMode';
+import { perfLogEnabled } from '@/lib/perf/hostSwitch';
 
 // Middleware runs server-side, so it needs an absolute URL. The public
 // NEXT_PUBLIC_POCKETBASE_URL may be the relative `/pb` proxy path; fall back to
@@ -249,12 +250,16 @@ export default async function proxy(req: NextRequest) {
   /** PocketBase could not be asked at all (down, unreachable): the session
    *  may be fine, so an API call must not hear "signed out". */
   let checkFailed = false;
+  /** How long the session check took, for the Server-Timing header. */
+  let authMs: number | null = null;
 
   // If the token is close to expiring, refresh and write the new cookie back
   // so subsequent requests don't re-hit the same code path.
   if (pb.authStore.isValid) {
+    const authStart = performance.now();
     try {
       await pb.collection('users').authRefresh();
+      authMs = performance.now() - authStart;
       setCookies.push(pb.authStore.exportToCookie(cookieOpts));
     } catch (e) {
       // An expired or invalid token is ROUTINE, someone came back after a
@@ -271,6 +276,7 @@ export default async function proxy(req: NextRequest) {
         });
         checkFailed = true;
       }
+      authMs = performance.now() - authStart;
       pb.authStore.clear();
       if (expiredSession) {
         // A session PocketBase refuses is dead for good (bughunt V5): drop
@@ -285,6 +291,9 @@ export default async function proxy(req: NextRequest) {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('x-request-id', reqId);
+  // The page reads this from its resource timing to tell a slow session
+  // check from a slow page (docs/android-performance.md, section 3).
+  if (authMs !== null && perfLogEnabled()) response.headers.append('server-timing', `auth;dur=${authMs.toFixed(1)}`);
   for (const c of setCookies) response.headers.append('set-cookie', c);
 
   const user = pb.authStore.record;
