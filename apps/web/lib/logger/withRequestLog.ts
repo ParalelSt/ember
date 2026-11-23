@@ -12,8 +12,9 @@ type RouteHandler<Ctx = any> = (req: NextRequest, ctx: Ctx) => Promise<Response>
  *  problem worth a human's attention: keep it out of the digest by logging
  *  it at 'info' instead of 'warn'. A real 5xx from these routes still logs
  *  normally (see below), so an actual failure stays visible. native-log is
- *  the phone app's player log over its batch budget: the limit working. */
-const QUIET_429_ROUTES = new Set(['bug-report', 'requests', 'native-log']);
+ *  the phone app's player log over its batch budget, perf-log a page's perf
+ *  digests over theirs: the limit working. */
+const QUIET_429_ROUTES = new Set(['bug-report', 'requests', 'native-log', 'perf-log']);
 
 /** Best-effort current user id, verified the same way requireUser() does
  *  (PocketBase's answer to the session token, not the cookie's editable
