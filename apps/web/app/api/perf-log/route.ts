@@ -5,6 +5,7 @@ import { rateLimitResponse } from '@/lib/rateLimit';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { perfLogEnabled, perfSample } from '@/lib/perf/hostSwitch';
+import { digestOs } from '@/lib/perf/os';
 import { appendPerf } from '@/lib/perf/store';
 import { cleanDigest, PERF_LOG_LIMITS, PerfDigestSchema, readCapped } from '@/lib/perf/upload';
 
@@ -47,7 +48,10 @@ export const POST = withRequestLog('perf-log', async (request: NextRequest) => {
     if (!parsed.success) return jsonError('Invalid perf digest', 400);
 
     const reqId = request.headers.get('x-request-id') || randomUUID();
-    const stored = await appendPerf({ ts: Date.now(), userId: user.id, reqId, digest: cleanDigest(parsed.data) });
+    const digest = cleanDigest(parsed.data);
+    // An app from before the field: the request's user agent says it.
+    if (!digest.os) digest.os = digestOs(digest, request.headers.get('user-agent'));
+    const stored = await appendPerf({ ts: Date.now(), userId: user.id, reqId, digest });
     return Response.json({ ok: true, stored, sample: perfSample() });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

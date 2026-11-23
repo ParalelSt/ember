@@ -6,6 +6,7 @@ import { detectShell } from '@/lib/playback/detectShell';
 import { isSignedIn } from '@/lib/autoReport';
 import { pagePerf } from './index';
 import { buildDigest } from './digest';
+import { pageOs } from './os';
 import { applyHostAnswer, configChecked, markConfigChecked, onPerfSwitch, sessionOff } from './switch';
 
 /** Boots the page perf log (docs/android-performance.md, 5.2 and 5.5) and
@@ -79,6 +80,7 @@ export async function flushDigest(beacon: boolean): Promise<void> {
       t0: timeOrigin(),
       app: process.env.NEXT_PUBLIC_APP_VERSION ?? 'unknown',
       shell: detectShell(),
+      os: pageOs(),
       withLaunch: !launchSent && pagePerf.launchReady(),
     });
     if (!digest) return;

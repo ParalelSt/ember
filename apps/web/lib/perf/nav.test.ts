@@ -153,6 +153,36 @@ describe('NavTracker: navigation records', () => {
     expect(h.navs).toEqual([expect.objectContaining({ to: '/settings', abandoned: true, at: 1000 })]);
   });
 
+  it('tags a tap in a nav (side nav, drawer, bottom bar) with its area, abandoned or not', () => {
+    const h = makeHost();
+    const nav = new NavTracker(h.host);
+    const inArea = (area: string, href: string) => {
+      const box = document.createElement('div');
+      box.setAttribute('data-nav-area', area);
+      document.body.appendChild(box);
+      const a = link(href, { 'data-nav': href.slice(1) });
+      box.appendChild(a);
+      return a;
+    };
+    h.set({ clock: 1000 });
+    nav.onClick(click(inArea('drawer', '/settings'), 1000));
+    h.set({ clock: 4000 });
+    nav.onClick(click(inArea('sidebar', '/library'), 4000));
+    h.set({ clock: 5000 });
+    nav.onRoute('/library', '/', 'push');
+    h.runLaters();
+    expect(h.navs[0]).toMatchObject({ to: '/settings', abandoned: true, area: 'drawer' });
+    expect(h.navs[1]).toMatchObject({ to: '/library', via: 'tap', area: 'sidebar' });
+    // A link outside any nav, and an unknown area value, carry none.
+    nav.onClick(click(link('/radio'), 6000));
+    nav.onRoute('/radio', '/library', 'push');
+    nav.onClick(click(inArea('footer', '/search'), 7000));
+    nav.onRoute('/search', '/radio', 'push');
+    h.runLaters();
+    expect(h.navs[2].area).toBeUndefined();
+    expect(h.navs[3].area).toBeUndefined();
+  });
+
   it('ignores links to other sites, new tabs, downloads and modified clicks', () => {
     const h = makeHost();
     const nav = new NavTracker(h.host);

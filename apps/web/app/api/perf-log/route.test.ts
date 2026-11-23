@@ -105,6 +105,27 @@ describe('POST /api/perf-log', () => {
     ]);
   });
 
+  it('keeps the os a batch carries, and the nav area of a tap', async () => {
+    const ev = [{ k: 'nav', at: 1, to: '/settings', via: 'tap', ms: 900, server: 600, commit: 200, lt: 0, area: 'drawer' }];
+    expect((await post(digest({ os: 'ios', ev }), { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0)' })).status).toBe(200);
+    expect(state.stored[0].digest.os).toBe('ios');
+    expect(state.stored[0].digest.ev?.[0]).toMatchObject({ area: 'drawer' });
+  });
+
+  it('accepts an old batch without os, filled in from the user agent or the shell', async () => {
+    await post(digest({ shell: 'web', device: {} }), { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' });
+    await post(digest({ shell: 'capacitor', device: {} }));
+    await post(digest({ shell: 'web', device: {} }));
+    expect(state.stored.map((e) => e.digest.os)).toEqual(['macos', 'android', 'other']);
+  });
+
+  it('refuses an unknown os or nav area', async () => {
+    expect((await post(digest({ os: 'beos' }))).status).toBe(400);
+    expect((await post(digest({ os: 7 }))).status).toBe(400);
+    expect((await post(digest({ ev: [{ k: 'nav', at: 1, to: '/', via: 'tap', lt: 0, area: 'footer' }] }))).status).toBe(400);
+    expect(state.stored).toHaveLength(0);
+  });
+
   it('refuses a batch without its number or start, or with an unknown event', async () => {
     expect((await post(digest({ seq: undefined }))).status).toBe(400);
     expect((await post(digest({ t0: 5 }))).status).toBe(400);

@@ -1,5 +1,5 @@
 import { routeShape } from './route';
-import type { NavRecord, RageRecord } from './types';
+import type { NavArea, NavRecord, RageRecord } from './types';
 
 /** What the navigation tracker needs from the perf core. */
 export interface NavHost {
@@ -37,6 +37,16 @@ interface Pending {
   from: string;
   toPath: string;
   lt0: number;
+  area?: NavArea;
+}
+
+const NAV_AREAS: readonly NavArea[] = ['sidebar', 'drawer', 'bottom'];
+
+/** Which nav the tapped link sits in (its `data-nav-area` ancestor): the
+ *  side nav on a computer, the drawer on a phone, or the bottom bar. */
+export function navArea(el: Element | null): NavArea | undefined {
+  const v = el?.closest('[data-nav-area]')?.getAttribute('data-nav-area');
+  return NAV_AREAS.find((a) => a === v);
 }
 
 const RAGE_TAPS = 3;
@@ -111,9 +121,11 @@ export class NavTracker {
         via: 'tap',
         lt: Math.round(this.host.ltTotal() - this.pending.lt0),
         abandoned: true,
+        ...(this.pending.area ? { area: this.pending.area } : {}),
       });
     }
-    const pending = { tapAt: at, from, toPath: url.pathname, lt0: this.host.ltTotal() };
+    const area = navArea(a);
+    const pending: Pending = { tapAt: at, from, toPath: url.pathname, lt0: this.host.ltTotal(), ...(area ? { area } : {}) };
     this.pending = pending;
     // Seen in the capture phase, before the app's own handler: a link that
     // handler cancels (the Search link opens the search sheet) is no
@@ -132,6 +144,7 @@ export class NavTracker {
     const start = fromTap && p ? p.tapAt : undefined;
     const lt0 = fromTap && p ? p.lt0 : this.host.ltTotal();
     const playing = this.host.playing();
+    const area = fromTap && p ? p.area : undefined;
     this.host.afterPaint(() => {
       const paintAt = this.host.now();
       const finish = (retry: boolean) => {
@@ -140,7 +153,7 @@ export class NavTracker {
           this.host.later(() => finish(false), RSC_RETRY_MS);
           return;
         }
-        this.host.addNav(buildNav({ path, from, via: fromTap ? 'tap' : how, start, commitAt, paintAt, rsc, lt: this.host.ltTotal() - lt0, playing }));
+        this.host.addNav(buildNav({ path, from, via: fromTap ? 'tap' : how, start, commitAt, paintAt, rsc, lt: this.host.ltTotal() - lt0, playing, area }));
       };
       finish(true);
     });
@@ -198,6 +211,7 @@ function buildNav(o: {
   rsc?: RscTiming;
   lt: number;
   playing: boolean;
+  area?: NavArea;
 }): NavRecord {
   const { rsc } = o;
   const start = o.start ?? rsc?.start;
@@ -210,6 +224,7 @@ function buildNav(o: {
     lt: r(o.lt),
     playing: o.playing,
   };
+  if (o.area) rec.area = o.area;
   if (start !== undefined) rec.total = r(o.paintAt - start);
   rec.paint = r(o.paintAt - o.commitAt);
   if (rsc) {

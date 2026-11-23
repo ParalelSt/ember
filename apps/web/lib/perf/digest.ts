@@ -1,4 +1,5 @@
 import type { PagePerf, PendingEvent } from './core';
+import type { PerfOs } from './os';
 import type { PerfDigest, SessionEvent } from './types';
 
 /** A batch's hard size limit. */
@@ -12,6 +13,7 @@ export interface DigestMeta {
   t0: number;
   app: string;
   shell: string;
+  os: PerfOs;
   /** Put the launch record in (the first digest of a page load only). */
   withLaunch: boolean;
 }
@@ -30,6 +32,7 @@ export function buildDigest(perf: PagePerf, meta: DigestMeta): PerfDigest | null
     t0: Math.round(meta.t0),
     app: meta.app.slice(0, 40),
     shell: meta.shell.slice(0, 20),
+    os: meta.os,
     device: block.device,
     fgMs: Math.round(w.fgMs),
   };
@@ -80,6 +83,7 @@ export function toSessionEvent(e: PendingEvent): SessionEvent {
         ...(n.commit !== undefined ? { commit: r(n.commit) } : {}),
         ...(n.playing ? { playing: true } : {}),
         ...(n.abandoned ? { abandoned: true } : {}),
+        ...(n.area ? { area: n.area } : {}),
       };
     }
     case 'freeze':

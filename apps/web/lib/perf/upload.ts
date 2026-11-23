@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { scrubText } from '@/lib/logger/sanitize';
+import { PERF_OSES } from './os';
 import { routeShape } from './route';
 import type { PerfDigest } from './types';
 
@@ -48,6 +49,7 @@ const EventSchema = z.discriminatedUnion('k', [
       lt: ms,
       playing: z.boolean().optional(),
       abandoned: z.boolean().optional(),
+      area: z.enum(['sidebar', 'drawer', 'bottom']).optional(),
     })
     .strict(),
   z.object({ k: z.literal('freeze'), at: ms, ms }).strict(),
@@ -66,6 +68,8 @@ export const PerfDigestSchema = z
     t0: z.number().int().min(1_577_836_800_000).max(4_102_444_800_000),
     app: short(40),
     shell: short(20),
+    /** Optional: batches from apps older than the field have none. */
+    os: z.enum(PERF_OSES).optional(),
     device: z
       .object({
         mem: z.number().min(0).max(1024).optional(),

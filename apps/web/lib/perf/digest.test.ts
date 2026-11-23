@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeFakePerformance, type FakePerformance } from '@/test-utils/fakePerformance';
 import { PagePerf } from './core';
-import { buildDigest, DIGEST_MAX_BYTES, fitDigest } from './digest';
+import { buildDigest, DIGEST_MAX_BYTES, fitDigest, toSessionEvent } from './digest';
 import { applyHostAnswer, configChecked, markConfigChecked, onPerfSwitch, sessionOff, switchOff } from './switch';
 import type { PerfDigest } from './types';
 
@@ -10,7 +10,7 @@ import type { PerfDigest } from './types';
 
 let fake: FakePerformance;
 let perf: PagePerf;
-const meta = { session: 'sess-1', seq: 1, t0: 1_763_910_000_000, app: '0.7.51', shell: 'capacitor', withLaunch: true };
+const meta = { session: 'sess-1', seq: 1, t0: 1_763_910_000_000, app: '0.7.51', shell: 'capacitor', os: 'android' as const, withLaunch: true };
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -25,6 +25,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('toSessionEvent', () => {
+  it('keeps the nav area of a tap in a nav, and leaves it out otherwise', () => {
+    const base = { at: 10, from: '/', to: '/settings', via: 'tap' as const, total: 900, server: 600, commit: 200, lt: 0 };
+    expect(toSessionEvent({ k: 'nav', r: { ...base, area: 'drawer' } } as never)).toMatchObject({ k: 'nav', area: 'drawer', ms: 900, server: 600, commit: 200 });
+    expect(toSessionEvent({ k: 'nav', r: base } as never)).not.toHaveProperty('area');
+  });
+});
+
 describe('buildDigest', () => {
   it('carries the window: foreground time, long tasks, navigations, freezes, heap and API routes', () => {
     fake.emit('long-animation-frame', [{ startTime: 0, duration: 300, blockingDuration: 250, scripts: [{ duration: 200, sourceURL: 'https://h/x.js' }] }]);
@@ -34,7 +42,7 @@ describe('buildDigest', () => {
     vi.advanceTimersByTime(2000);
     fake.advance(60_000);
     const d = buildDigest(perf, meta)!;
-    expect(d).toMatchObject({ v: 1, session: 'sess-1', app: '0.7.51', shell: 'capacitor', lt: { n: 1, ms: 250, max: 250, top: [['x.js', 250]] }, heap: { used: 40, limit: 512 } });
+    expect(d).toMatchObject({ v: 1, session: 'sess-1', app: '0.7.51', shell: 'capacitor', os: 'android', lt: { n: 1, ms: 250, max: 250, top: [['x.js', 250]] }, heap: { used: 40, limit: 512 } });
     expect(d.fgMs).toBe(61_000);
     expect(d.api).toEqual([['/api/likes', 1, 900, 900]]);
     expect(typeof d.dom).toBe('number');

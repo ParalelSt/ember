@@ -1,3 +1,5 @@
+import type { PerfOs } from './os';
+
 /** Page perf records (docs/android-performance.md, section 5.2). All times
  *  are whole milliseconds; `at` fields are ms since the page started
  *  (performance.now()), so no record carries the wall clock twice. */
@@ -57,6 +59,10 @@ export interface MemorySample {
   sizes?: Record<string, number>;
 }
 
+/** The nav a tapped link sits in: the side nav (computer), the drawer
+ *  (phone) or the bottom bar. */
+export type NavArea = 'sidebar' | 'drawer' | 'bottom';
+
 /** One client navigation, split as in section 3 of the doc. */
 export interface NavRecord {
   at: number;
@@ -85,6 +91,8 @@ export interface NavRecord {
   playing?: boolean;
   /** Replaced by another tap before it finished. */
   abandoned?: boolean;
+  /** A tap on a link in one of the app's navs. */
+  area?: NavArea;
 }
 
 export interface RageRecord {
@@ -139,7 +147,7 @@ export interface DeviceFacts {
 /** One thing that happened, as a session's batch carries it. `at` is ms
  *  since the page started; the batch's `t0` turns it into a wall time. */
 export type SessionEvent =
-  | { k: 'nav'; at: number; to: string; via: string; ms?: number; server?: number; commit?: number; lt: number; playing?: boolean; abandoned?: boolean }
+  | { k: 'nav'; at: number; to: string; via: string; ms?: number; server?: number; commit?: number; lt: number; playing?: boolean; abandoned?: boolean; area?: NavArea }
   | { k: 'freeze'; at: number; ms: number }
   | { k: 'rage'; at: number; target: string; taps: number; pending?: number; overlay: boolean; inert: boolean }
   | { k: 'slow'; at: number; type: string; ms: number; target?: string };
@@ -156,6 +164,9 @@ export interface PerfDigest {
   t0: number;
   app: string;
   shell: string;
+  /** The operating system (lib/perf/os.ts). Batches from before it
+   *  existed have none; the host fills it in from the request. */
+  os?: PerfOs;
   device: DeviceFacts;
   /** Foreground ms this digest covers. */
   fgMs: number;
