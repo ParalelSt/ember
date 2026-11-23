@@ -33,6 +33,11 @@ vi.mock('@/hooks/player/useAvailabilityProbe', () => ({ useAvailabilityProbe: ()
 vi.mock('@/hooks/player/useRadioExtend', () => ({ useRadioExtend: vi.fn() }));
 vi.mock('@/hooks/player/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: vi.fn() }));
 vi.mock('@/hooks/player/useRemoteCommands', () => ({ useRemoteCommands: vi.fn() }));
+// The provider's own renders, counted through a child it re-renders each time.
+const providerRendered = vi.hoisted(() => vi.fn());
+vi.mock('./PrankReceiver', () => ({ PrankReceiver: () => { providerRendered(); return null; } }));
+const presence = vi.hoisted(() => vi.fn());
+vi.mock('@/hooks/player/useDiscordPresence', () => ({ useDiscordPresence: presence }));
 
 const SONG = makeTrack({ id: 'youtube:song', title: 'Song', durationSec: 200 });
 
@@ -54,6 +59,8 @@ function Clock() {
 
 beforeEach(() => {
   events = null;
+  presence.mockClear();
+  providerRendered.mockClear();
   listRendered.mockClear();
   clockRendered.mockClear();
   fake.currentTime = 0;
@@ -78,6 +85,39 @@ describe('playhead reports', () => {
     // The position's own reader still follows every report.
     expect(clockRendered.mock.calls.length).toBeGreaterThan(clockBefore + 30);
     expect(clockRendered).toHaveBeenLastCalledWith(10);
+  });
+});
+
+describe('playhead reports and the provider itself', () => {
+  it('do not re-render the provider; Discord presence still hears every report', () => {
+    render(
+      <PlayerProvider>
+        <ListPage />
+      </PlayerProvider>,
+    );
+    const before = providerRendered.mock.calls.length;
+    const presenceBefore = presence.mock.calls.length;
+    for (let s = 1; s <= 10; s += 0.25) act(() => events!.onTime(s));
+    expect(providerRendered).toHaveBeenCalledTimes(before);
+    expect(presence.mock.calls.length).toBeGreaterThan(presenceBefore + 30);
+    expect(presence).toHaveBeenLastCalledWith(expect.objectContaining({ position: 10, isPlaying: true, current: SONG }));
+  });
+
+  it('in the Android app nothing on the page follows the playhead for Discord', () => {
+    (window as unknown as { Capacitor?: unknown }).Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: {} };
+    try {
+      render(
+        <PlayerProvider>
+          <ListPage />
+        </PlayerProvider>,
+      );
+      const before = providerRendered.mock.calls.length;
+      for (let s = 1; s <= 5; s += 0.25) act(() => events!.onTime(s));
+      expect(presence).not.toHaveBeenCalled();
+      expect(providerRendered).toHaveBeenCalledTimes(before);
+    } finally {
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    }
   });
 });
 
