@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  PAUSED_GRACE_MS,
   RESUME_FRESH_MS,
   checkForUpdates,
   noteAppUpdateState,
@@ -8,10 +7,7 @@ import {
   requestUpdate,
   resetUpdateForTests,
   setApplyDepsForTests,
-  setPlaybackElsewhereProbe,
-  setUpdatePause,
   takeUpdateResume,
-  updateAtSongEnd,
   watchPendingUpdate,
 } from './apply';
 import { resetDeviceInfoForTests } from '@/lib/versions/device';
@@ -20,15 +16,13 @@ import { makeTrack } from '@/test-utils/fakeBackend';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { INITIAL_UPDATE_STATE, useUpdateStore } from '@/stores/useUpdateStore';
 
-/** Bringing an update in without ever stopping a song: a tap updates at once
- *  when nothing plays, else in the gap after the song, and the next song
- *  starts by itself once the page is back. */
+/** Bringing an update in: a tap updates at once, even while a song plays
+ *  (the song and its position are kept and start again once the page is
+ *  back); offline it waits for the host. */
 
 const reload = vi.fn();
 const installDesktop = vi.fn(async (_note: string | null) => true);
-const downloadDesktop = vi.fn(async () => true);
 const installAndroid = vi.fn(async () => true);
-const downloadAndroid = vi.fn(async () => true);
 const openSettings = vi.fn(async () => true);
 
 function offer(kind: 'web' | 'shell' = 'web', canApply = true) {
@@ -46,14 +40,12 @@ function setOnline(on: boolean) {
 beforeEach(() => {
   resetUpdateForTests();
   useUpdateStore.setState({ ...INITIAL_UPDATE_STATE });
-  setApplyDepsForTests({ reload, installDesktop, downloadDesktop, installAndroid, downloadAndroid, openInstallSettings: openSettings });
+  setApplyDepsForTests({ reload, installDesktop, installAndroid, openInstallSettings: openSettings });
   reload.mockClear();
   installAndroid.mockClear();
-  downloadAndroid.mockClear();
   openSettings.mockClear();
   installDesktop.mockClear();
   installDesktop.mockImplementation(async () => true);
-  downloadDesktop.mockClear();
   playing(false);
   setOnline(true);
 });
@@ -70,26 +62,37 @@ describe('requestUpdate', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('waits for the song to end while one plays, and never reloads under it', () => {
+  // The old rule waited for the song to end. The page only hears that from
+  // its own engine, so repeat-one, the Android app's player and the like
+  // never got there and the tap did nothing (root cause, owner 2026-11-24).
+  it('a tap while a song plays updates at once and keeps the song and its position', () => {
     offer();
-    playing(true);
-    expect(requestUpdate()).toBe('after-song');
-    expect(useUpdateStore.getState().pending).toBe(true);
-    expect(reload).not.toHaveBeenCalled();
+    usePlayerStore.setState({ queue: [makeTrack({ id: 'a' }), makeTrack({ id: 'b' })], index: 1, position: 83.7, isPlaying: true });
+    expect(requestUpdate()).toBe('now');
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(useUpdateStore.getState().pending).toBe(false);
+    expect(takeUpdateResume([{ id: 'a' }, { id: 'b' }])).toEqual({ index: 1, trackId: 'b', positionSec: 83 });
   });
 
-  it('goes ahead when the music plays somewhere a reload cannot stop', () => {
+  it('a tap while a song plays on repeat-one still updates (the song never ends)', () => {
     offer();
-    playing(true);
-    setPlaybackElsewhereProbe(() => true);
+    usePlayerStore.setState({ queue: [makeTrack({ id: 'a' })], index: 0, position: 10, isPlaying: true, loopMode: 'one' });
     expect(requestUpdate()).toBe('now');
-    expect(reload).toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('paused: nothing is noted, the player comes back on its saved queue', () => {
+    offer();
+    usePlayerStore.setState({ queue: [makeTrack({ id: 'a' })], index: 0, position: 10, isPlaying: false });
+    expect(requestUpdate()).toBe('now');
+    expect(takeUpdateResume([{ id: 'a' }])).toBeNull();
   });
 
   it('waits while offline: a reload with no host is a blank page', () => {
     offer();
     setOnline(false);
     expect(requestUpdate()).toBe('waiting-online');
+    expect(useUpdateStore.getState().pending).toBe(true);
     expect(reload).not.toHaveBeenCalled();
   });
 
@@ -100,41 +103,14 @@ describe('requestUpdate', () => {
     expect(reload).not.toHaveBeenCalled();
     expect(installDesktop).not.toHaveBeenCalled();
   });
-});
 
-describe('updateAtSongEnd', () => {
-  it('does nothing when no update waits: the next song plays as usual', () => {
-    offer();
-    expect(updateAtSongEnd({ index: 1, trackId: 'b' })).toBe(false);
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it('reloads in the gap and notes the next song to start once back', () => {
-    offer();
-    playing(true);
-    requestUpdate();
-    expect(updateAtSongEnd({ index: 1, trackId: 'b' })).toBe(true);
-    expect(reload).toHaveBeenCalledTimes(1);
-    expect(takeUpdateResume([{ id: 'a' }, { id: 'b' }])).toEqual({ index: 1, trackId: 'b' });
-  });
-
-  it('the desktop app downloads at the tap and installs at the end of the song, with the note', async () => {
+  it('the desktop app installs at once, even while a song plays, with the note', async () => {
     offer('shell');
-    playing(true);
-    expect(requestUpdate()).toBe('after-song');
-    expect(downloadDesktop).toHaveBeenCalledTimes(1);
-    expect(installDesktop).not.toHaveBeenCalled();
-    expect(updateAtSongEnd({ index: 2, trackId: 'c' })).toBe(true);
-    await vi.waitFor(() => expect(installDesktop).toHaveBeenCalledTimes(1));
-    expect(JSON.parse(installDesktop.mock.calls[0][0] as string)).toMatchObject({ index: 2, trackId: 'c' });
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it('the desktop app installs at once when nothing plays', async () => {
-    offer('shell');
+    usePlayerStore.setState({ queue: [makeTrack({ id: 'a' }), makeTrack({ id: 'c' })], index: 1, position: 42, isPlaying: true });
     expect(requestUpdate()).toBe('now');
     await vi.waitFor(() => expect(installDesktop).toHaveBeenCalledTimes(1));
-    expect(downloadDesktop).not.toHaveBeenCalled();
+    expect(JSON.parse(installDesktop.mock.calls[0][0] as string)).toMatchObject({ index: 1, trackId: 'c', positionSec: 42 });
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it('an install that could not start says so and forgets the note', async () => {
@@ -143,6 +119,16 @@ describe('updateAtSongEnd', () => {
     expect(await performUpdate({ index: 1, trackId: 'b' })).toBe(false);
     expect(useUpdateStore.getState().applyFailed).toBe(true);
     expect(takeUpdateResume([{ id: 'a' }, { id: 'b' }])).toBeNull();
+  });
+
+  it('a failed update can be tapped again', async () => {
+    installDesktop.mockImplementation(async () => false);
+    offer('shell');
+    requestUpdate();
+    await vi.waitFor(() => expect(useUpdateStore.getState().applyFailed).toBe(true));
+    installDesktop.mockImplementation(async () => true);
+    expect(requestUpdate()).toBe('now');
+    await vi.waitFor(() => expect(installDesktop).toHaveBeenCalledTimes(2));
   });
 });
 
@@ -168,31 +154,25 @@ describe('takeUpdateResume', () => {
   });
 });
 
-describe('watchPendingUpdate', () => {
-  it('goes ahead once the music is paused for a moment', () => {
-    vi.useFakeTimers();
+describe('watchPendingUpdate (a tap that waited for the host)', () => {
+  it('goes ahead once the host is back, with the song playing then', () => {
     offer();
-    playing(true);
+    setOnline(false);
+    usePlayerStore.setState({ queue: [makeTrack({ id: 'a' })], index: 0, position: 30, isPlaying: true });
     const stop = watchPendingUpdate();
     requestUpdate();
-    playing(false);
-    vi.advanceTimersByTime(PAUSED_GRACE_MS - 10);
     expect(reload).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(20);
+    setOnline(true);
+    window.dispatchEvent(new Event('online'));
     expect(reload).toHaveBeenCalledTimes(1);
+    expect(takeUpdateResume([{ id: 'a' }])).toEqual({ index: 0, trackId: 'a', positionSec: 30 });
     stop();
   });
 
-  it('a pause that ends at once (the gap between songs) does not count', () => {
-    vi.useFakeTimers();
+  it('does nothing while no tap is waiting', () => {
     offer();
-    playing(true);
     const stop = watchPendingUpdate();
-    requestUpdate();
-    playing(false);
-    vi.advanceTimersByTime(500);
-    playing(true);
-    vi.advanceTimersByTime(PAUSED_GRACE_MS * 2);
+    window.dispatchEvent(new Event('online'));
     expect(reload).not.toHaveBeenCalled();
     stop();
   });
@@ -329,41 +309,23 @@ describe('the Android app (0.4.34 on: it waits for a tap)', () => {
     return vi.waitFor(() => expect(installAndroid).toHaveBeenCalledTimes(1));
   });
 
-  it('a tap while a song plays downloads now and installs nothing, even though the app plays it', () => {
+  it('a tap while a song plays installs at once and hands the app the song and position', async () => {
     androidOffer();
-    playing(true);
-    // The Android app plays the music itself: a web reload would go ahead,
-    // an app install must not.
-    setPlaybackElsewhereProbe(() => true);
-    expect(requestUpdate()).toBe('after-song');
-    expect(downloadAndroid).toHaveBeenCalledTimes(1);
-    expect(installAndroid).not.toHaveBeenCalled();
-  });
-
-  it('the next song showing up is the gap: it is paused, the install starts, and that song is noted', async () => {
-    const pause = vi.fn();
-    setUpdatePause(pause);
-    androidOffer();
-    playing(true);
-    const stop = watchPendingUpdate();
-    requestUpdate();
-    usePlayerStore.setState({ index: 1 });
-    await vi.waitFor(() => expect(installAndroid).toHaveBeenCalledTimes(1));
-    expect(pause).toHaveBeenCalled();
-    expect(takeUpdateResume([A, B])).toEqual({ index: 1, trackId: B.id });
-    stop();
-  });
-
-  it('the install hands the app the resume note, which survives the app being replaced', async () => {
-    androidOffer();
-    playing(true);
-    const stop = watchPendingUpdate();
-    requestUpdate();
-    usePlayerStore.setState({ index: 1 });
+    usePlayerStore.setState({ queue: [A, B], index: 1, position: 61, isPlaying: true });
+    expect(requestUpdate()).toBe('now');
     await vi.waitFor(() => expect(installAndroid).toHaveBeenCalledTimes(1));
     const note = (installAndroid.mock.calls[0] as unknown as [string])[0];
-    expect(JSON.parse(note)).toMatchObject({ index: 1, trackId: B.id });
-    stop();
+    expect(JSON.parse(note)).toMatchObject({ index: 1, trackId: B.id, positionSec: 61 });
+    expect(takeUpdateResume([A, B])).toEqual({ index: 1, trackId: B.id, positionSec: 61 });
+  });
+
+  it('an install the app could not do says so, and a tap tries again', async () => {
+    androidOffer();
+    installAndroid.mockImplementationOnce(async () => false);
+    requestUpdate();
+    await vi.waitFor(() => expect(useUpdateStore.getState().applyFailed).toBe(true));
+    expect(requestUpdate()).toBe('now');
+    await vi.waitFor(() => expect(installAndroid).toHaveBeenCalledTimes(2));
   });
 
   it('with "Install unknown apps" off, its settings open once, and back with it on the install goes ahead', async () => {

@@ -541,6 +541,12 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
   background: var(--update-pill-accent);
   color: var(--update-pill-chip-fg);
 }
+.ember-update-action {
+  background: var(--update-pill-accent);
+  color: var(--update-pill-chip-fg);
+}
+.ember-update-close { color: var(--update-pill-fg); opacity: 0.7; }
+.ember-update-close:hover { opacity: 1; }
 @keyframes ember-update-in {
   from { transform: translateY(-140%); opacity: 0; }
   to   { transform: translateY(0); opacity: 1; }

@@ -1,7 +1,6 @@
-/** An update the listener tapped while a song played goes in only in the
- *  gap after that song (lib/update/apply.ts), and the song that comes next
- *  starts by itself once the page is back. The owner's rule: an update
- *  never cuts a song off. */
+/** An update the listener tapped while a song played goes in at once
+ *  (lib/update/apply.ts); the song and its position are noted, and that song
+ *  starts again by itself, from where it was, once the page is back. */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { PlayerProvider, usePlayer } from './PlayerProvider';
@@ -65,7 +64,7 @@ const C = makeTrack({ id: 'youtube:c', sourceId: 'c', streamUrl: '/s/c', duratio
 const D = makeTrack({ id: 'youtube:d', sourceId: 'd', streamUrl: '/s/d', durationSec: 200 });
 
 const reload = vi.hoisted(() => vi.fn());
-const appNote = vi.hoisted(() => ({ target: null as null | { index: number; trackId: string } }));
+const appNote = vi.hoisted(() => ({ target: null as null | { index: number; trackId: string; positionSec?: number } }));
 vi.mock('@/lib/update/apply', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/update/apply')>();
   return { ...real, takeAppUpdateResume: vi.fn(async () => appNote.target) };
@@ -99,42 +98,9 @@ beforeEach(() => {
 const web = () => engines.web[engines.web.length - 1] as FakeBackend;
 const at = () => usePlayerStore.getState().index;
 
-function waitingUpdate() {
-  useUpdateStore.getState().set({ status: 'available', offer: { kind: 'web', version: '0.7.44', canApply: true, via: 'reload' }, pending: true });
-}
-
-function endSong(w: FakeBackend) {
-  w.currentTime = 200;
-  w.durationSec = 200;
-  act(() => usePlayerStore.setState({ position: 200, duration: 200, isPlaying: true }));
-  act(() => webEvents!.onEnded());
-}
-
-describe('an update waiting for the song to end', () => {
-  it('goes in at the end of the song, loads nothing, and notes the next song', () => {
-    render(<PlayerProvider><Grab /></PlayerProvider>);
-    act(() => controls!.playAt(1)); // B playing
-    const w = web();
-    waitingUpdate();
-    w.load.mockClear();
-    endSong(w);
-    expect(reload).toHaveBeenCalledTimes(1);
-    // The next song did not start under the reload.
-    expect(w.load).not.toHaveBeenCalled();
-    expect(at()).toBe(1);
-    expect(JSON.parse(localStorage.getItem('ember.update.resume')!)).toMatchObject({ index: 2, trackId: C.id });
-  });
-
-  it('without a waiting update, the next song plays as always', () => {
-    render(<PlayerProvider><Grab /></PlayerProvider>);
-    act(() => controls!.playAt(1));
-    endSong(web());
-    expect(reload).not.toHaveBeenCalled();
-    expect(at()).toBe(2);
-  });
-
-  it('back from the reload, the noted song starts by itself from its beginning', () => {
-    localStorage.setItem('ember.update.resume', JSON.stringify({ index: 2, trackId: C.id, at: Date.now() }));
+describe('an update tapped while a song plays', () => {
+  it('back from the reload, the noted song starts by itself from where it was', () => {
+    localStorage.setItem('ember.update.resume', JSON.stringify({ index: 2, trackId: C.id, positionSec: 75, at: Date.now() }));
     usePlayerStore.setState({ index: 1, position: 199 });
     render(<PlayerProvider><Grab /></PlayerProvider>);
     expect(at()).toBe(2);
@@ -142,12 +108,12 @@ describe('an update waiting for the song to end', () => {
     expect(w.load).toHaveBeenCalled();
     const [url, opts] = w.load.mock.calls[w.load.mock.calls.length - 1];
     expect(url).toBe('/s/c');
-    expect(opts).toMatchObject({ autoplay: true });
+    expect(opts).toMatchObject({ autoplay: true, startAt: 75 });
     expect(localStorage.getItem('ember.update.resume')).toBeNull();
   });
 
   it("the Android app's own copy of the note starts that song once the engine is up", async () => {
-    appNote.target = { index: 3, trackId: D.id };
+    appNote.target = { index: 3, trackId: D.id, positionSec: 120 };
     usePlayerStore.setState({ index: 0, position: 0 });
     try {
       render(<PlayerProvider><Grab /></PlayerProvider>);
@@ -156,7 +122,7 @@ describe('an update waiting for the song to end', () => {
       const w = web();
       const [url, opts] = w.load.mock.calls[w.load.mock.calls.length - 1];
       expect(url).toBe('/s/d');
-      expect(opts).toMatchObject({ autoplay: true });
+      expect(opts).toMatchObject({ autoplay: true, startAt: 120 });
     } finally {
       appNote.target = null;
     }

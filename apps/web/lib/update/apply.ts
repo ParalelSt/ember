@@ -3,7 +3,6 @@ import {
   appUpdateWaitsForTap,
   checkForAppUpdate,
   getAppUpdateState,
-  downloadAppUpdate,
   installAppUpdateWithResume,
   openInstallSettings,
   takeAppResumeNote,
@@ -16,57 +15,32 @@ import { useUpdateStore } from '@/stores/useUpdateStore';
 import { findUpdates, pickOffer, type UpdateOffer } from './check';
 
 /** Checking for, and bringing in, a newer Ember (lib/update/check.ts says
- *  what is newer). Nothing here ever interrupts a song:
+ *  what is newer). A tap updates NOW, even while a song plays (owner,
+ *  2026-11-24: waiting for the song to end never arrived when the player
+ *  moved on without the page seeing it, e.g. repeat-one or the Android
+ *  app's own player):
  *
- *   - Nothing playing: a tap updates at once (the page reloads, or the
- *     desktop or Android app downloads the new version and installs it).
- *   - A song playing: the update waits for the song to end
- *     ("Updating after this song"). The player calls `updateAtSongEnd` in
- *     the gap before the next song; the next song is noted down
- *     (`ember.update.resume`) and starts by itself once the page is back
+ *   - The song playing and its position are noted down (`ember.update.resume`;
+ *     the Android and desktop apps keep their own copy through the install)
+ *     and start again by themselves once the page is back
  *     (`takeUpdateResume`, read by the player before it loads anything).
- *   - Paused while waiting: nothing is playing any more, so it goes ahead.
- *   - Offline: it waits; a reload with no host would leave a blank page.
- *   - The music plays somewhere else (the Android app's own player, another
- *     device this one controls): the page reloading cannot stop it, so a
- *     web build goes in at once.
- *   - The Android app itself (from 0.4.34 it waits for this tap): installing
- *     replaces the app and stops its player, so it waits for the song like
- *     anything else. The page never sees that song end (the app's own
- *     player moves on by itself), so the next song showing up is the
- *     moment: it is paused at once and the install starts, and that song
- *     starts again once the new app is open. The download starts at the
- *     tap, so the gap stays short.
- *   - The desktop app itself (from 0.4.27): the page plays through the app's
- *     engine and sees the song end, so it goes in at `updateAtSongEnd` like
- *     a web build. The download starts at the tap (`update_download`), the
- *     install at the end of the song (`update_install`, which ends the app:
- *     the resume note goes with it, `update_take_resume` hands it back). */
+ *   - A web build reloads the page; the desktop and Android apps download
+ *     the new version and install it.
+ *   - Offline: it waits ("Updating once back online"); a reload with no host
+ *     would leave a blank page. It goes ahead when the host answers again.
+ *
+ *  Updates stay optional: nothing here runs without a tap. */
 
 const RESUME_KEY = 'ember.update.resume';
 /** A resume note older than this is from some other day: ignored. An app
  *  install can take a while (a download, an installer, a tap on "Ember
  *  updated" to come back). */
 export const RESUME_FRESH_MS = 10 * 60 * 1000;
-/** Paused this long while an update waits: nothing is playing, go ahead. A
- *  moment's pause between two songs must not count. */
-export const PAUSED_GRACE_MS = 2000;
-
 export interface ResumeTarget {
   index: number;
   trackId: string;
-}
-
-let elsewhere: () => boolean = () => false;
-let pauseForUpdate: () => void = () => {};
-/** The player's pause, for the Android app's install between songs. */
-export function setUpdatePause(fn: (() => void) | null): void {
-  pauseForUpdate = fn ?? (() => {});
-}
-/** The player says whether the music is played by something the page's
- *  reload cannot stop. */
-export function setPlaybackElsewhereProbe(fn: (() => boolean) | null): void {
-  elsewhere = fn ?? (() => false);
+  /** Where in the song it was (seconds); absent = from its beginning. */
+  positionSec?: number;
 }
 
 function online(): boolean {
@@ -76,9 +50,7 @@ function online(): boolean {
 export interface ApplyDeps {
   reload: () => void;
   installDesktop: (resume: string | null) => Promise<boolean>;
-  downloadDesktop: () => Promise<boolean>;
   installAndroid: (resume: string | null) => Promise<boolean>;
-  downloadAndroid: () => Promise<boolean>;
   openInstallSettings: () => Promise<boolean>;
 }
 
@@ -92,15 +64,6 @@ async function tauriInvoke(cmd: string, args?: Record<string, unknown>): Promise
 async function installDesktopViaTauri(resume: string | null): Promise<boolean> {
   try {
     await tauriInvoke('update_install', { resume });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function downloadDesktopViaTauri(): Promise<boolean> {
-  try {
-    await tauriInvoke('update_download');
     return true;
   } catch {
     return false;
@@ -122,9 +85,7 @@ async function takeDesktopResumeNote(): Promise<string | null> {
 const defaultDeps: ApplyDeps = {
   reload: () => window.location.reload(),
   installDesktop: installDesktopViaTauri,
-  downloadDesktop: downloadDesktopViaTauri,
   installAndroid: installAppUpdateWithResume,
-  downloadAndroid: downloadAppUpdate,
   openInstallSettings,
 };
 let deps: ApplyDeps = defaultDeps;
@@ -181,7 +142,12 @@ function readResumeNote(raw: string | null, queue: readonly { id: string }[], no
     if (typeof m.index !== 'number' || typeof m.trackId !== 'string' || typeof m.at !== 'number') return null;
     if (m.at > now || now - m.at > RESUME_FRESH_MS) return null;
     if (queue[m.index]?.id !== m.trackId) return null;
-    return { index: m.index, trackId: m.trackId };
+    const pos = (m as { positionSec?: unknown }).positionSec;
+    return {
+      index: m.index,
+      trackId: m.trackId,
+      ...(typeof pos === 'number' && Number.isFinite(pos) && pos > 0 ? { positionSec: pos } : {}),
+    };
   } catch {
     return null;
   }
@@ -214,9 +180,20 @@ export async function performUpdate(resume: ResumeTarget | null = null, now: num
   return true;
 }
 
-export type UpdateRequest = 'now' | 'after-song' | 'waiting-online' | 'none';
+export type UpdateRequest = 'now' | 'waiting-online' | 'none';
 
-/** The reminder's (or Settings') tap. */
+/** The song playing and where it is, to start again once back from the
+ *  update. Null when nothing plays: a paused song comes back paused from the
+ *  player's own saved queue. */
+export function currentResume(): ResumeTarget | null {
+  const { isPlaying, queue, index, position } = usePlayerStore.getState();
+  const track = queue[index];
+  if (!isPlaying || !track) return null;
+  const sec = Number.isFinite(position) && position > 0 ? Math.floor(position) : 0;
+  return { index, trackId: track.id, ...(sec > 0 ? { positionSec: sec } : {}) };
+}
+
+/** The reminder's (or Settings') tap: updates now, keeping the song. */
 export function requestUpdate(): UpdateRequest {
   const store = useUpdateStore.getState();
   if (!store.offer?.canApply || store.applying) return 'none';
@@ -224,64 +201,17 @@ export function requestUpdate(): UpdateRequest {
     store.set({ pending: true });
     return 'waiting-online';
   }
-  const offer = store.offer;
-  if (!usePlayerStore.getState().isPlaying || (offer.via === 'reload' && elsewhere())) {
-    void performUpdate(null);
-    return 'now';
-  }
-  store.set({ pending: true });
-  // Fetched now, installed at the end of the song.
-  if (offer.via === 'android') void deps.downloadAndroid();
-  if (offer.via === 'desktop') void deps.downloadDesktop();
-  return 'after-song';
+  void performUpdate(currentResume());
+  return 'now';
 }
 
-/** The player, in the gap after a song ended on its own and before the next
- *  one loads. True when an update was waiting and is now going in: the
- *  player then loads nothing. `next`: the song that would have come next. */
-export function updateAtSongEnd(next: ResumeTarget | null): boolean {
-  const store = useUpdateStore.getState();
-  if (!store.pending || !store.offer?.canApply || store.applying || !online()) return false;
-  void performUpdate(next);
-  return true;
-}
-
-/** While an update waits: once nothing plays (paused for PAUSED_GRACE_MS)
- *  and the host is reachable, it goes ahead. Returns the unsubscribe. */
+/** While a tap waits for the host to answer (offline): once it is back, the
+ *  update goes ahead. Returns the unsubscribe. */
 export function watchPendingUpdate(): () => void {
-  let timer: ReturnType<typeof setTimeout> | undefined;
   const evaluate = () => {
-    clearTimeout(timer);
-    timer = undefined;
     const { pending, applying } = useUpdateStore.getState();
-    if (!pending || applying) return;
-    const goesNow = () => {
-      const o = useUpdateStore.getState().offer;
-      return !usePlayerStore.getState().isPlaying || (o?.via === 'reload' && elsewhere());
-    };
-    if (!goesNow()) return;
-    timer = setTimeout(() => {
-      const s = useUpdateStore.getState();
-      if (!s.pending || s.applying || !online()) return;
-      if (!goesNow()) return;
-      void performUpdate(null);
-    }, PAUSED_GRACE_MS);
-  };
-  const offPlayer = usePlayerStore.subscribe((s, prev) => {
-    if (s.isPlaying !== prev.isPlaying) evaluate();
-    // A song the page does not see end (the Android app's own player, a
-    // device this one controls): the next one showing up is the gap.
-    const now = s.queue[s.index];
-    const before = prev.queue[prev.index];
-    if (now && before && now.id !== before.id && s.isPlaying) songChanged({ index: s.index, trackId: now.id });
-  });
-  const songChanged = (next: ResumeTarget) => {
-    const { pending, applying, offer } = useUpdateStore.getState();
-    if (!pending || applying || !offer?.canApply || !online()) return;
-    if (offer.via === 'android' || elsewhere()) {
-      pauseForUpdate();
-      void performUpdate(next);
-    }
+    if (!pending || applying || !online()) return;
+    void performUpdate(currentResume());
   };
   const offUpdate = useUpdateStore.subscribe((s, prev) => {
     if (s.pending !== prev.pending) evaluate();
@@ -290,8 +220,6 @@ export function watchPendingUpdate(): () => void {
   if (typeof window !== 'undefined') window.addEventListener('online', onOnline);
   evaluate();
   return () => {
-    clearTimeout(timer);
-    offPlayer();
     offUpdate();
     if (typeof window !== 'undefined') window.removeEventListener('online', onOnline);
   };
@@ -404,8 +332,6 @@ function sameOffer(a: UpdateOffer | null, b: UpdateOffer | null): boolean {
 /** Test seam. */
 export function resetUpdateForTests(): void {
   checking = null;
-  elsewhere = () => false;
-  pauseForUpdate = () => {};
   askedPermission = false;
   lastAndroidNote = null;
   deps = defaultDeps;

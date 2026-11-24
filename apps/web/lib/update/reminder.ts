@@ -3,14 +3,13 @@ import type { UpdateOffer } from './check';
 /** When the update reminder (components/update/UpdateReminder) shows. Pure,
  *  so each rule is tested on its own.
  *
- *  Owner's picks: a short pill at the top, about six seconds, then it goes
- *  by itself. Once per app start for each new version, until it is
- *  installed (an app start is a page load: the next launch, or the reload
- *  that brings the update in). Never in the first seconds after a song
- *  starts. */
+ *  Owner's picks: a banner at the top that stays until it is tapped or put
+ *  away with its close button (2026-11-24: six seconds was too easy to
+ *  miss). Once per app start for each new version, until it is installed
+ *  (an app start is a page load: the next launch, or the reload that brings
+ *  the update in); put away, it comes back at the next start. Never in the
+ *  first seconds after a song starts. */
 
-/** How long the pill stays. */
-export const SHOW_MS = 6000;
 /** How long after playback starts the pill keeps away. */
 export const QUIET_AFTER_PLAY_MS = 8000;
 /** The first check, after the app has settled in. */

@@ -9,13 +9,12 @@ import {
   CHECK_EVERY_MS,
   FIRST_CHECK_MS,
   RECHECK_ON_RETURN_MS,
-  SHOW_MS,
   offerKey,
   reminderDelay,
 } from '@/lib/update/reminder';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useUpdateStore } from '@/stores/useUpdateStore';
-import { PILL_CLASS, REMINDER_WORDING, ReminderMark } from './updateReminderLook';
+import { ACTION_CLASS, ACTION_LABEL_CLASS, CLOSE_CLASS, PILL_CLASS, REMINDER_WORDING, ReminderMark } from './updateReminderLook';
 
 /** How long the slide out takes before the pill is gone (the
  *  ember-update-out keyframes in app/globals.css). */
@@ -38,11 +37,12 @@ export function reminderPlatform(): boolean {
   return detectShell() === 'tauri' || detectDevicePlatform() === 'android';
 }
 
-/** A newer Ember, said briefly at the top: "[0.7.44] New version". It slides
- *  in under the top bar, stays SHOW_MS and goes by itself; it comes back at
- *  the next app start until the update is in (lib/update/reminder.ts). A tap
- *  updates when the song playing ends, or at once when nothing plays
- *  (lib/update/apply.ts). It never stops the music. The look is in
+/** A newer Ember, said at the top: "[0.7.44] New version ready  [Update]".
+ *  It slides in under the top bar and stays until it is tapped or put away
+ *  with its close button ("Not now"); put away, it comes back at the next
+ *  app start until the update is in (lib/update/reminder.ts). A tap updates
+ *  now, even while a song plays: the song and its position are kept and it
+ *  starts again once back (lib/update/apply.ts). The look is in
  *  updateReminderLook.tsx. Also runs the checks themselves. */
 export function UpdateReminder() {
   const offer = useUpdateStore((s) => s.offer);
@@ -54,7 +54,6 @@ export function UpdateReminder() {
   const [enabled, setEnabled] = useState(false);
   const [tick, setTick] = useState(0);
   const playingSince = useRef(0);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const outTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => setEnabled(reminderPlatform()), []);
@@ -98,20 +97,21 @@ export function UpdateReminder() {
 
   useEffect(
     () => () => {
-      clearTimeout(hideTimer.current);
       clearTimeout(outTimer.current);
     },
     [],
   );
 
   const show = () => {
-    clearTimeout(hideTimer.current);
     clearTimeout(outTimer.current);
     setPhase('in');
-    hideTimer.current = setTimeout(() => {
-      setPhase('out');
-      outTimer.current = setTimeout(() => setPhase('hidden'), OUT_MS);
-    }, SHOW_MS);
+  };
+
+  /** "Not now": it slides away and comes back at the next app start. */
+  const dismiss = () => {
+    clearTimeout(outTimer.current);
+    setPhase('out');
+    outTimer.current = setTimeout(() => setPhase('hidden'), OUT_MS);
   };
 
   // A new update: show once, out of the way of a song that just started.
@@ -136,26 +136,27 @@ export function UpdateReminder() {
 
   if (!enabled || phase === 'hidden' || !offer) return null;
 
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const failed = applyFailed && offer.via !== 'reload';
   const words = applying
     ? REMINDER_WORDING.applying
-    : applyFailed && offer.via !== 'reload'
+    : failed
       ? REMINDER_WORDING.failed
       : !offer.canApply
-      ? REMINDER_WORDING.reopen
-      : pending
-        ? typeof navigator !== 'undefined' && navigator.onLine === false
+        ? REMINDER_WORDING.reopen
+        : pending && offline
           ? REMINDER_WORDING.waitingOnline
-          : REMINDER_WORDING.waiting
-        : REMINDER_WORDING.ready;
+          : REMINDER_WORDING.ready;
+  // The action button: only where a tap does something.
+  const action = applying || !offer.canApply || (pending && offline)
+    ? null
+    : failed
+      ? REMINDER_WORDING.retry
+      : REMINDER_WORDING.action;
 
   const tap = () => {
-    if (!offer.canApply) {
-      show();
-      return;
-    }
-    const r = requestUpdate();
-    // Waiting: say so for another few seconds, then go.
-    if (r === 'after-song' || r === 'waiting-online') show();
+    if (!offer.canApply) return;
+    requestUpdate();
   };
 
   return (
@@ -163,19 +164,36 @@ export function UpdateReminder() {
       className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-block"
       style={{ top: 'calc(var(--ember-topbar-h, 0px) + 0.75rem)' }}
     >
-      <button
-        type="button"
+      <div
         data-testid="update-reminder"
         data-kind={offer.kind}
         data-phase={phase}
         role="status"
-        aria-label={`Ember ${offer.version}: ${words}`}
-        onClick={tap}
         className={`${PILL_CLASS} ${phase === 'out' ? 'ember-update-out' : 'ember-update-in'}`}
       >
-        <ReminderMark version={offer.version} />
-        <span className="truncate">{words}</span>
-      </button>
+        <button
+          type="button"
+          data-testid="update-reminder-action"
+          aria-label={`Ember ${offer.version}: ${words}${action ? `. ${action}` : ''}`}
+          onClick={tap}
+          className={ACTION_CLASS}
+        >
+          <ReminderMark version={offer.version} />
+          <span className="min-w-0 flex-1 truncate">{words}</span>
+          {action && <span className={ACTION_LABEL_CLASS}>{action}</span>}
+        </button>
+        <button
+          type="button"
+          data-testid="update-reminder-close"
+          aria-label={REMINDER_WORDING.dismiss}
+          onClick={dismiss}
+          className={CLOSE_CLASS}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }

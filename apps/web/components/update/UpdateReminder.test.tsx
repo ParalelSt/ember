@@ -2,16 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { UpdateReminder, resetUpdateReminderForTests } from './UpdateReminder';
 import { REMINDER_WORDING } from './updateReminderLook';
-import { resetUpdateForTests, setApplyDepsForTests } from '@/lib/update/apply';
-import { QUIET_AFTER_PLAY_MS, SHOW_MS } from '@/lib/update/reminder';
+import { resetUpdateForTests, setApplyDepsForTests, takeUpdateResume } from '@/lib/update/apply';
+import { makeTrack } from '@/test-utils/fakeBackend';
+import { QUIET_AFTER_PLAY_MS } from '@/lib/update/reminder';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { INITIAL_UPDATE_STATE, useUpdateStore } from '@/stores/useUpdateStore';
 
-/** The reminder at the top: "[0.7.44] New version", a few seconds, then
- *  gone; once per app start; a tap waits for the song to end. */
+/** The banner at the top: "[0.7.44] New version ready [Update]", stays until
+ *  tapped or closed; once per app start; a tap updates now, even while a song
+ *  plays. */
 
 type W = Window & { Capacitor?: unknown; __TAURI_INTERNALS__?: unknown };
 const reload = vi.fn();
+const SHOW_LONG_MS = 10 * 60 * 1000;
+const click = (id: string) => fireEvent.click(screen.getByTestId(id));
 
 function offer(version = '0.7.44', canApply = true) {
   act(() => useUpdateStore.getState().set({ status: 'available', offer: { kind: 'web', version, canApply, via: canApply ? 'reload' : 'desktop' } }));
@@ -72,24 +76,55 @@ describe('UpdateReminder', () => {
     expect(screen.queryByTestId('update-reminder')).toBeNull();
   });
 
-  it('says the new version in the chip and "New version", then goes by itself', () => {
+  it('says the new version in the chip, "New version ready" and an Update button', () => {
     render(<UpdateReminder />);
     offer();
     const pill = screen.getByTestId('update-reminder');
     expect(screen.getByTestId('update-reminder-chip')).toHaveTextContent('0.7.44');
     expect(pill).toHaveTextContent(REMINDER_WORDING.ready);
+    expect(screen.getByTestId('update-reminder-action')).toHaveTextContent(REMINDER_WORDING.action);
     // The version is in the chip only, not repeated in the words.
     expect(pill.textContent?.match(/0\.7\.44/g)).toHaveLength(1);
-    act(() => vi.advanceTimersByTime(SHOW_MS));
+  });
+
+  it('stays visible long past the old six seconds', () => {
+    render(<UpdateReminder />);
+    offer();
+    act(() => vi.advanceTimersByTime(SHOW_LONG_MS));
+    expect(screen.getByTestId('update-reminder')).toHaveAttribute('data-phase', 'in');
+  });
+
+  it('the close button ("Not now") puts it away', () => {
+    render(<UpdateReminder />);
+    offer();
+    expect(screen.getByLabelText('Not now')).toBe(screen.getByTestId('update-reminder-close'));
+    click('update-reminder-close');
     expect(screen.getByTestId('update-reminder')).toHaveAttribute('data-phase', 'out');
     act(() => vi.advanceTimersByTime(400));
     expect(screen.queryByTestId('update-reminder')).toBeNull();
+    expect(reload).not.toHaveBeenCalled();
+    // Put away, it does not come back by itself within this app start.
+    offer();
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+  });
+
+  it('comes back at the next app start after being put away', () => {
+    const first = render(<UpdateReminder />);
+    offer();
+    click('update-reminder-close');
+    act(() => vi.advanceTimersByTime(400));
+    first.unmount();
+    // A new app start: the page's memory of what it showed is gone.
+    resetUpdateReminderForTests();
+    render(<UpdateReminder />);
+    expect(screen.getByTestId('update-reminder')).toBeInTheDocument();
   });
 
   it('shows each version once per app start', () => {
     render(<UpdateReminder />);
     offer();
-    act(() => vi.advanceTimersByTime(SHOW_MS + 400));
+    click('update-reminder-close');
+    act(() => vi.advanceTimersByTime(400));
     // The next check finds the same update: no second reminder.
     offer();
     expect(screen.queryByTestId('update-reminder')).toBeNull();
@@ -106,28 +141,60 @@ describe('UpdateReminder', () => {
     expect(screen.getByTestId('update-reminder')).toBeInTheDocument();
   });
 
-  it('a tap while a song plays waits for it: "Updating after this song", no reload', () => {
+  it('a tap while a song plays updates now with the current song and position', () => {
     render(<UpdateReminder />);
+    act(() => usePlayerStore.setState({ queue: [makeTrack({ id: 'a' }), makeTrack({ id: 'b' })], index: 1, position: 95, isPlaying: true }));
     offer();
-    act(() => usePlayerStore.setState({ isPlaying: true }));
-    fireEvent.click(screen.getByTestId('update-reminder'));
-    expect(screen.getByTestId('update-reminder')).toHaveTextContent(REMINDER_WORDING.waiting);
-    expect(useUpdateStore.getState().pending).toBe(true);
-    expect(reload).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(QUIET_AFTER_PLAY_MS));
+    click('update-reminder-action');
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(useUpdateStore.getState().pending).toBe(false);
+    expect(takeUpdateResume([{ id: 'a' }, { id: 'b' }])).toEqual({ index: 1, trackId: 'b', positionSec: 95 });
   });
 
   it('a tap with nothing playing updates at once', () => {
     render(<UpdateReminder />);
     offer();
-    fireEvent.click(screen.getByTestId('update-reminder'));
+    click('update-reminder-action');
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('a tap while offline waits: "Updating once back online", no reload, still visible', () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    try {
+      render(<UpdateReminder />);
+      offer();
+      click('update-reminder-action');
+      expect(useUpdateStore.getState().pending).toBe(true);
+      expect(reload).not.toHaveBeenCalled();
+      expect(screen.getByTestId('update-reminder')).toHaveTextContent(REMINDER_WORDING.waitingOnline);
+      act(() => vi.advanceTimersByTime(SHOW_LONG_MS));
+      expect(screen.getByTestId('update-reminder')).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+    }
+  });
+
+  it('"Couldn\'t update" stays tappable to retry', async () => {
+    const install = vi.fn(async () => false);
+    setApplyDepsForTests({ reload, installDesktop: install });
+    render(<UpdateReminder />);
+    act(() => useUpdateStore.getState().set({ status: 'available', offer: { kind: 'shell', version: '0.4.30', canApply: true, via: 'desktop' } }));
+    click('update-reminder-action');
+    await act(async () => {});
+    expect(screen.getByTestId('update-reminder')).toHaveTextContent(REMINDER_WORDING.failed);
+    expect(screen.getByTestId('update-reminder-action')).toHaveTextContent(REMINDER_WORDING.retry);
+    click('update-reminder-action');
+    await act(async () => {});
+    expect(install).toHaveBeenCalledTimes(2);
   });
 
   it('a desktop app that cannot restart itself is told to quit and reopen', () => {
     render(<UpdateReminder />);
     offer('0.4.27', false);
     expect(screen.getByTestId('update-reminder')).toHaveTextContent(REMINDER_WORDING.reopen);
-    fireEvent.click(screen.getByTestId('update-reminder'));
+    expect(screen.queryByTestId('update-reminder-action')).toHaveTextContent(REMINDER_WORDING.reopen);
+    click('update-reminder-action');
     expect(reload).not.toHaveBeenCalled();
   });
 
