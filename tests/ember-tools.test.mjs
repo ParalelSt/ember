@@ -412,6 +412,32 @@ test('perf --rollup: the query and the printed platforms with their side nav', a
   assert.match(formatRollup({ posted: false, reason: 'quiet', webhook: 'none', hours: 6, totals: { sessions: 0, members: 0 } })[0], /not posted \(quiet\)\.$/);
 });
 
+test('perf --rollup: tap to content and the host\'s phase split', async () => {
+  const { eventLine, formatRollup, formatTimeline } = await import('../scripts/ember/perfLogic.mjs');
+  const android = {
+    os: 'android', sessions: 1, members: 1, fgHours: 1, shells: { 'phone app': 1 },
+    launch: { hydrated: { n: 1, p50: 4000, p95: 4000 } },
+    nav: { n: 10, p50: 400, p95: 2100, max: 9000, ready: { n: 8, p50: 1400, p95: 4300 } },
+    freezes: { n: 0, max: 0 }, heap: { p50: 42, growth: { p95: 1 } },
+    sideNav: { taps: 4, abandoned: 0, routes: [{ route: '/library', n: 4, abandoned: 0, p50: 300, p95: 500, phased: 0, serverP50: 0, commitP50: 0, ready: { n: 4, p50: 2300, p95: 4250 }, waitP50: 2000, waitApi: '/api/playlists' }] },
+    native: { rendererGone: 0, rendererUnresponsive: 0, lowMemory: 0, trimMemory: 0 }, heapSlopes: [],
+  };
+  const pl = { route: '/api/playlists', n: 87, p50: 600, p95: 2500, max: 4000, ph: { auth: 120, db: 430, upstream: 0 } };
+  const bare = { route: '/api/version', n: 9, p50: 5, p95: 8, max: 9 };
+  const lines = formatRollup({
+    dryRun: true, hours: 6, since: '2026-11-23T06:00:00.000Z', until: '2026-11-23T12:00:00.000Z', webhook: 'x',
+    totals: { sessions: 1, members: 1 },
+    rollup: { platforms: [android], host: { lines: 72, requests: 96, slowRequests: 0, loopP99Max: 10, slowest: [pl, bare], sideNav: [] } },
+  });
+  assert.match(lines[1], /content ready p50\/p95 1\.4s\/4\.3s; freezes 0/);
+  assert.ok(lines.some((l) => /\/library +4x p50 0\.3s p95 0\.5s, tap to content p50 2\.3s p95 4\.3s \(data wait 2\.0s, last \/api\/playlists\)$/.test(l)));
+  assert.ok(lines.some((l) => /\/api\/playlists +p50 0\.6s .*\(87\): auth 120 ms, db 430 ms, other 50 ms$/.test(l)));
+  assert.ok(lines.some((l) => /\/api\/version +p50 0\.0s p95 0\.0s max 0\.0s \(9\)$/.test(l)));
+  assert.match(eventLine({ k: 'nav', via: 'tap', to: '/library', ms: 300, ready: 2300, wait: 2000, api: '/api/playlists', lt: 0 }), /content ready 2\.3s \(data wait 2\.0s, last \/api\/playlists\)/);
+  const tl = formatTimeline({ session: 's', digests: 1, fgMs: 1000, shell: 'web', app: '1' }, [{ ts: 1, seq: 1, fgMs: 1000, nav: { n: 1, ready: [2300, 900] } }], []);
+  assert.ok(tl.some((l) => /nav 1 content ready 2\.3s 0\.9s/.test(l)));
+});
+
 test('perf: the admin query, the cookie and the printed sessions and timeline', async () => {
   const { adminCookie, formatSessions, formatTimeline, perfQuery } = await import('../scripts/ember/perfLogic.mjs');
   assert.equal(perfQuery(), '');

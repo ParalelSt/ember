@@ -1,5 +1,6 @@
 import 'server-only';
 import { Histogram } from './histogram';
+import { attachServerTiming, installPhaseFetch, installPhaseStore, newPhases, phaseSnapshot, type Phases } from './phases';
 import { routeShape } from './route';
 
 /** Server request timing and host health (docs/android-performance.md 5.4).
@@ -44,6 +45,9 @@ export interface RouteStat {
   /** Status classes: 2xx..5xx counts. */
   s: Record<string, number>;
   held?: boolean;
+  /** Median ms of each phase of a request (auth, db, outside hosts); left
+   *  out when no request of the route spent time in any of them. */
+  ph?: { auth: number; db: number; upstream: number };
 }
 
 export interface HostHealth {
@@ -69,6 +73,9 @@ interface Stat {
   h: Histogram;
   s: Record<string, number>;
   held: boolean;
+  ph: { auth: Histogram; db: Histogram; upstream: Histogram };
+  /** Requests of the route that spent time in a phase. */
+  phSeen: boolean;
 }
 
 /** The route key of a request: its shape, with "(rsc)" for a router data
@@ -82,7 +89,7 @@ export function requestRoute(req: RequestLike): string {
 
 export function createServerTiming(opts: { sink: TimingSink; health?: () => HostHealth; now?: () => number }) {
   const now = opts.now ?? (() => performance.now());
-  const starts = new WeakMap<object, number>();
+  const starts = new WeakMap<object, { t0: number; ph?: Phases }>();
   let stats = new Map<string, Stat>();
   let slowLines = 0;
   let slowDropped = 0;
@@ -93,20 +100,21 @@ export function createServerTiming(opts: { sink: TimingSink; health?: () => Host
     if (s) return s;
     const key = stats.size >= SERVER_TIMING_LIMITS.maxRoutes ? 'other' : route;
     s = stats.get(key);
-    if (!s) stats.set(key, (s = { h: new Histogram(), s: {}, held }));
+    if (!s) stats.set(key, (s = { h: new Histogram(), s: {}, held, ph: { auth: new Histogram(), db: new Histogram(), upstream: new Histogram() }, phSeen: false }));
     return s;
   }
 
   return {
-    start(req: object): void {
-      starts.set(req, now());
+    /** `ph` is the request's phases (lib/perf/phases.ts), if it has any. */
+    start(req: object, ph?: Phases): void {
+      starts.set(req, { t0: now(), ph });
     },
 
     finish(req: RequestLike & object, res: ResponseLike): void {
-      const t0 = starts.get(req);
-      if (t0 === undefined) return;
+      const began = starts.get(req);
+      if (began === undefined) return;
       starts.delete(req);
-      const ms = now() - t0;
+      const ms = now() - began.t0;
       const route = requestRoute(req);
       let type = '';
       try {
@@ -117,6 +125,13 @@ export function createServerTiming(opts: { sink: TimingSink; health?: () => Host
       const held = HELD_ROUTE.test(route) || HELD_TYPE.test(type);
       const stat = statFor(route, held);
       stat.h.add(ms);
+      if (began.ph && !held) {
+        const snap = phaseSnapshot(began.ph, ms);
+        stat.ph.auth.add(snap.auth);
+        stat.ph.db.add(snap.db);
+        stat.ph.upstream.add(snap.upstream);
+        if (snap.auth || snap.db || snap.upstream) stat.phSeen = true;
+      }
       const cls = `${Math.floor((res.statusCode ?? 0) / 100)}xx`;
       stat.s[cls] = (stat.s[cls] ?? 0) + 1;
       if (held || ms <= SERVER_TIMING_LIMITS.slowMs) return;
@@ -156,6 +171,9 @@ export function createServerTiming(opts: { sink: TimingSink; health?: () => Host
         s: s.s,
         total: s.h.sum,
         ...(s.held ? { held: true } : {}),
+        ...(s.phSeen
+          ? { ph: { auth: Math.round(s.ph.auth.quantile(0.5)), db: Math.round(s.ph.db.quantile(0.5)), upstream: Math.round(s.ph.upstream.quantile(0.5)) } }
+          : {}),
       }));
       routes.sort((a, b) => (a.held ? 1 : 0) - (b.held ? 1 : 0) || b.total - a.total);
       const out = {
@@ -235,9 +253,36 @@ export async function registerServerTiming(sink: TimingSink): Promise<{ timing: 
     loop = null;
   }
   const timing = createServerTiming({ sink, health: makeHealth(loop, os) });
+  // Each request's phases (auth, db, outside hosts): found by the wrapped
+  // fetch through the request's async context.
+  let undoFetch = () => {};
+  let als: { enterWith(p: Phases): void } | null = null;
+  try {
+    const { AsyncLocalStorage } = await import('node:async_hooks');
+    const store = new AsyncLocalStorage<Phases>();
+    installPhaseStore(store);
+    undoFetch = installPhaseFetch();
+    als = store;
+  } catch {
+    // No phases: routes are still timed, just not split.
+  }
   const onStart = (m: unknown) => {
-    const req = (m as { request?: object }).request;
-    if (req) timing.start(req);
+    const { request, response } = m as { request?: RequestLike & object; response?: object };
+    if (!request) return;
+    let ph: Phases | undefined;
+    if (als) {
+      try {
+        ph = newPhases();
+        als.enterWith(ph);
+        const url = request.url ?? '';
+        if (response && ph && !url.startsWith('/_next/') && !HELD_ROUTE.test(url)) {
+          attachServerTiming(response as Parameters<typeof attachServerTiming>[0], ph, ph.now());
+        }
+      } catch {
+        ph = undefined;
+      }
+    }
+    timing.start(request, ph);
   };
   const onFinish = (m: unknown) => {
     const { request, response } = m as { request?: RequestLike & object; response?: ResponseLike };
@@ -257,6 +302,7 @@ export async function registerServerTiming(sink: TimingSink): Promise<{ timing: 
     clearInterval(timer);
     dc.unsubscribe('http.server.request.start', onStart);
     dc.unsubscribe('http.server.response.finish', onFinish);
+    undoFetch();
     loop?.disable();
   };
   return { timing, stop };

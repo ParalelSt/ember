@@ -18,6 +18,9 @@ export interface HostRouteStat {
   /** The worst 5 min window's p95, and the slowest request. */
   p95: number;
   max: number;
+  /** Request-weighted median of each phase (auth, db, outside hosts), ms;
+   *  left out for routes the host did not split. */
+  ph?: { auth: number; db: number; upstream: number };
 }
 
 export interface NativeCounts {
@@ -59,6 +62,7 @@ interface TimingRoute {
   p95?: unknown;
   max?: unknown;
   held?: unknown;
+  ph?: { auth?: unknown; db?: unknown; upstream?: unknown };
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
@@ -77,7 +81,14 @@ function weightedMedian(pairs: [number, number][]): number {
 
 /** The window's server timing lines summed per route. */
 export function buildHostRollup(entries: ServerLogEntry[]): HostRollup {
-  const byRoute = new Map<string, { n: number; p50s: [number, number][]; p95: number; max: number }>();
+  interface Acc {
+    n: number;
+    p50s: [number, number][];
+    p95: number;
+    max: number;
+    ph: Record<'auth' | 'db' | 'upstream', [number, number][]>;
+  }
+  const byRoute = new Map<string, Acc>();
   let lines = 0;
   let requests = 0;
   let slow = 0;
@@ -99,16 +110,29 @@ export function buildHostRollup(entries: ServerLogEntry[]): HostRollup {
       const n = num(r.n);
       if (!n) continue;
       requests += n;
-      const a = byRoute.get(r.route) ?? { n: 0, p50s: [], p95: 0, max: 0 };
+      const a: Acc = byRoute.get(r.route) ?? { n: 0, p50s: [], p95: 0, max: 0, ph: { auth: [], db: [], upstream: [] } };
       a.n += n;
       a.p50s.push([num(r.p50), n]);
       a.p95 = Math.max(a.p95, num(r.p95));
       a.max = Math.max(a.max, num(r.max));
+      if (r.ph && typeof r.ph === 'object') {
+        for (const k of ['auth', 'db', 'upstream'] as const) a.ph[k].push([num(r.ph[k]), n]);
+      }
       byRoute.set(r.route, a);
     }
   }
   const routes = [...byRoute.entries()]
-    .map(([route, a]): HostRouteStat => ({ route, n: a.n, p50: weightedMedian(a.p50s), p95: a.p95, max: a.max }))
+    .map(([route, a]): HostRouteStat => {
+      const ph = { auth: weightedMedian(a.ph.auth), db: weightedMedian(a.ph.db), upstream: weightedMedian(a.ph.upstream) };
+      return {
+        route,
+        n: a.n,
+        p50: weightedMedian(a.p50s),
+        p95: a.p95,
+        max: a.max,
+        ...(a.ph.auth.length && (ph.auth || ph.db || ph.upstream) ? { ph } : {}),
+      };
+    })
     .sort((a, b) => b.p50 - a.p50 || b.n - a.n || a.route.localeCompare(b.route));
   return {
     lines,
@@ -141,6 +165,18 @@ export function nativeByOs(entries: ServerLogEntry[]): Map<PerfOs, NativeCounts>
     out.set(os, c);
   }
   return out;
+}
+
+/** A route's median split as the list prints it: auth, db, the outside
+ *  hosts (only when they took time) and what is left of the median. */
+export function phaseParts(r: HostRouteStat): { name: string; ms: number }[] {
+  if (!r.ph) return [];
+  const parts = [
+    { name: 'auth', ms: r.ph.auth },
+    { name: 'db', ms: r.ph.db },
+    ...(r.ph.upstream ? [{ name: 'upstream', ms: r.ph.upstream }] : []),
+  ];
+  return [...parts, { name: 'other', ms: Math.max(0, r.p50 - r.ph.auth - r.ph.db - r.ph.upstream) }];
 }
 
 /** The host's numbers for a page's router data request: what a side nav
