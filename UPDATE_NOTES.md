@@ -1,3 +1,14 @@
+# 0.7.51: Smoother on phones (android 0.4.36, windows, macos, linux 0.4.28)
+
+**Host: run `./update.sh` as usual. New: the server stores anonymous
+per-session speed logs in logs/perf-*.jsonl (kept 7 days, capped at 32 MB a
+day) and posts a per-platform summary every 6 hours into the private perf-logs
+thread in #bug-reports, through the existing bug-report webhook. Nothing to
+set up. To turn it off, add EMBER_PERF_LOG=off to .env.local and restart.**
+New apps: Android 0.4.36 (versionCode 41), Windows 0.4.28, macOS 0.4.28, Linux
+0.4.28. Unchanged: iOS 0.4.26. Tags: `android-v0.4.36`, `windows-v0.4.28`,
+`macos-v0.4.28`, `linux-v0.4.28`.
+
 # 0.7.50: Game & Anime mix
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

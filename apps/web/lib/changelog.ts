@@ -26,6 +26,21 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'smoother-android',
+    version: '0.7.51',
+    date: '2026-11-24',
+    title: 'Smoother on phones',
+    summary: 'The app does less in the background, so phones stay faster and use less battery and memory.',
+    bullets: [
+      'The app no longer checks for updates every few hours in the background. It checks once when you open it.',
+      'Less work while a song plays: the player no longer redraws the whole app several times a second.',
+      'Lists that grew during long radio sessions are now kept to a sensible size, so memory doesn\'t keep climbing.',
+      'When the app is in the background, the sidebar and other hidden parts stop checking for news until you come back.',
+      'Cleaned out a lot of old code nobody used, so the app is lighter to load.',
+      'Anonymous speed measurements (how long screens take to open, freezes, memory) help us find what makes the app slow. No names, songs or emails are sent.',
+    ],
+  },
+  {
     id: 'game-anime-mix',
     version: '0.7.50',
     date: '2026-11-23',
