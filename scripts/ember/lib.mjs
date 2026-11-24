@@ -104,6 +104,7 @@ export const EMBER_CHANNELS = {
   suggestions: '1556757335043612752',
   ideas: '1557044378747281458',
   'info-for-changes': '1560258394697375826',
+  'perf-logs': '1574541246045618378',
 };
 
 /** The Ember bot's token, never printed. */
