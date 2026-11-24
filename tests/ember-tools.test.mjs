@@ -195,14 +195,14 @@ test('tracker: sections in order, empty ones left out, newest first', () => {
   assert.deepEqual(out.slice(1), [
     '',
     '**✅ Fixed**',
-    `- New fix (not released yet) [open](<${link(3)}>)`,
-    `- Old fix (0.7.1) [open](<${link(2)}>)`,
+    `- New fix (not released yet) ${link(3)}`,
+    `- Old fix (0.7.1) ${link(2)}`,
     '',
     '**🔨 Accepted, not done yet**',
-    `- Sleep timer [open](<${link(4)}>)`,
+    `- Sleep timer ${link(4)}`,
     '',
     '**❌ Rejected**',
-    `- Dark mode: already there [open](<${link(1)}>)`,
+    `- Dark mode: already there ${link(1)}`,
   ]);
   assert.ok(!out.includes('**✅ Made**'));
 });
@@ -265,7 +265,7 @@ test('tracker: the same bug bumps one group instead of adding lines', () => {
   for (let i = 0; i < 12; i++) s = addBugReport(s, bug(`Playlists jump to the top (${i})`, i), GUILD);
   assert.equal(s.items.length, 1);
   assert.equal(s.items[0].count, 12);
-  assert.match(renderTracker(s), /\*\*🐞 Bugs, not fixed yet\*\*\n- Playlists jump to the top \(0\) x12 \[open\]/);
+  assert.match(renderTracker(s), /\*\*🐞 Bugs, not fixed yet\*\*\n- Playlists jump to the top \(0\) x12 https:/);
   assert.equal(autoSummary(bug('x'.repeat(300))).length, 100);
 });
 
@@ -286,7 +286,7 @@ test('tracker: a bug that comes back after a fix is a new group with a note', ()
   assert.equal(s.items.length, 2);
   assert.equal(s.items[0].status, 'fixed');
   assert.equal(s.items[1].cameBack, '0.7.30');
-  assert.match(renderTracker(s), /Queue loses songs \(came back after fix in 0\.7\.30\) \[open\]/);
+  assert.match(renderTracker(s), /Queue loses songs \(came back after fix in 0\.7\.30\) https:/);
   s = addBugReport(s, bug('Queue loses songs', 6), GUILD);
   assert.equal(s.items[1].count, 2);
 });
