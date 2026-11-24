@@ -100,10 +100,20 @@ export function useSearchQuery(initialQ = '') {
   // the moment the query settles.
   const { data: liked } = useQuery<Track[]>({ queryKey: QK.likes, queryFn: skipToken });
   const { data: history } = useQuery<Track[]>({ queryKey: QK.history, queryFn: skipToken });
-  const own = useMemo(
+  const liveOwn = useMemo(
     () => localMatches(debouncedQ, [liked, recentTracks, history]),
     [debouncedQ, liked, recentTracks, history],
   );
+  // Own matches are pinned for the query once its search has finished, or
+  // the moment a result is played. Playing saves the song to recent
+  // searches and history, which would otherwise pull it up into the own
+  // matches at the top of the list while it is on screen.
+  const [pinned, setPinned] = useState<{ q: string; own: Track[] } | null>(null);
+  const settled = !!parts?.done;
+  useEffect(() => {
+    if (settled && pinned?.q !== debouncedQ) setPinned({ q: debouncedQ, own: liveOwn });
+  }, [settled, pinned, debouncedQ, liveOwn]);
+  const own = pinned?.q === debouncedQ ? pinned.own : liveOwn;
   const view = useMemo(() => buildSearchView(debouncedQ, parts ?? EMPTY_SEARCH_PARTS, own), [debouncedQ, parts, own]);
   const data = view.tracks;
   const hasResults = view.rows.length > 0;
@@ -127,6 +137,7 @@ export function useSearchQuery(initialQ = '') {
   // Playing a result also saves it to recent searches; everything else about
   // playback comes from useTrackActions.
   const onPlay = (track: Track, list?: Track[], context?: PlaybackContext | null) => {
+    if (pinned?.q !== debouncedQ) setPinned({ q: debouncedQ, own });
     addRecentTrack.mutate(track);
     trackActions.onPlay(track, list, context);
   };

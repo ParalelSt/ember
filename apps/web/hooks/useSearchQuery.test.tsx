@@ -249,3 +249,20 @@ describe('useSearchQuery: streamed results', () => {
     }
   });
 });
+
+describe('useSearchQuery: results stay put after playing one', () => {
+  it('does not move a played result to the top when it lands in recent searches', async () => {
+    const a = makeTrack({ id: 'youtube:a', sourceId: 'a', title: 'Night One' });
+    const b = makeTrack({ id: 'youtube:b', sourceId: 'b', title: 'Night Two' });
+    api.search.mockResolvedValue({ tracks: [a, b] });
+    const { result, rerender } = renderHook(() => useSearchQuery('night'), { wrapper });
+    await waitFor(() => expect(result.current.view.tracks.map((t) => t.id)).toEqual(['youtube:a', 'youtube:b']));
+
+    act(() => result.current.onPlay(b, result.current.view.tracks, null));
+    // The play saved the song to recent searches, which the hook reads.
+    recents.tracks = [b];
+    rerender();
+
+    expect(result.current.view.tracks.map((t) => t.id)).toEqual(['youtube:a', 'youtube:b']);
+  });
+});
