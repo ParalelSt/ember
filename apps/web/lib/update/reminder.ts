@@ -12,8 +12,9 @@ import type { UpdateOffer } from './check';
 
 /** How long after playback starts the pill keeps away. */
 export const QUIET_AFTER_PLAY_MS = 8000;
-/** The first check, after the app has settled in. */
-export const FIRST_CHECK_MS = 15_000;
+/** The first check, right after the page is up: a required update
+ *  (lib/update/required.ts) should not wait. */
+export const FIRST_CHECK_MS = 0;
 /** Checks while the app stays open (a desktop window can stay open for
  *  days, and the host updates under it). */
 export const CHECK_EVERY_MS = 30 * 60 * 1000;

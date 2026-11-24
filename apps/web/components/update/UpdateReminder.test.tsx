@@ -255,6 +255,22 @@ describe('UpdateReminder', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
+  it('a required update shows "Updating": no Update button, no swipe, no Escape', () => {
+    render(<UpdateReminder />);
+    offer();
+    act(() => useUpdateStore.getState().set({ forcing: true, applying: true }));
+    const bar = screen.getByTestId('update-reminder');
+    expect(bar).toHaveTextContent(REMINDER_WORDING.applying);
+    expect(screen.queryByText(REMINDER_WORDING.action)).toBeNull();
+    expect(bar).not.toHaveAttribute('aria-description');
+    fireEvent.pointerDown(bar, { clientX: 200, pointerId: 1 });
+    fireEvent.pointerMove(bar, { clientX: 20, pointerId: 1 });
+    fireEvent.pointerUp(bar, { clientX: 20, pointerId: 1 });
+    fireEvent.keyDown(screen.getByTestId('update-reminder-action'), { key: 'Escape' });
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.getByTestId('update-reminder')).toHaveAttribute('data-phase', 'in');
+  });
+
   it('checks the host by itself a little after the app starts', async () => {
     const f = vi.fn(async () => new Response(JSON.stringify({ version: '0.0.1' }), { status: 200 }));
     vi.stubGlobal('fetch', f);

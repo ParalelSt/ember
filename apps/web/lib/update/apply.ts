@@ -9,10 +9,12 @@ import {
   type AppUpdateState,
 } from '@/lib/appUpdate';
 import { detectShell } from '@/lib/playback/detectShell';
+import { sanitizeVersion } from '@/lib/versions/label';
 import { loadDeviceInfo } from '@/lib/versions/device';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useUpdateStore } from '@/stores/useUpdateStore';
-import { findUpdates, pickOffer, type UpdateOffer } from './check';
+import { logger } from '@/lib/logger/client';
+import { findUpdates, newer, pickOffer, type UpdateOffer } from './check';
 
 /** Checking for, and bringing in, a newer Ember (lib/update/check.ts says
  *  what is newer). A tap updates NOW, even while a song plays (owner,
@@ -82,8 +84,20 @@ async function takeDesktopResumeNote(): Promise<string | null> {
   }
 }
 
+/** Loads the page again past any cache: a WebView can keep serving the old
+ *  build for a plain reload, so the address carries a fresh query value. */
+function cacheBustingReload(): void {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_ember_r', String(Date.now()));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
+}
+
 const defaultDeps: ApplyDeps = {
-  reload: () => window.location.reload(),
+  reload: cacheBustingReload,
   installDesktop: installDesktopViaTauri,
   installAndroid: installAppUpdateWithResume,
   openInstallSettings,
@@ -180,6 +194,78 @@ export async function performUpdate(resume: ResumeTarget | null = null, now: num
   return true;
 }
 
+// A required web update (lib/update/required.ts) goes in without a tap. The
+// guard keeps a build that stays old after reloading from reloading forever.
+const FORCE_KEY = 'ember.update.force';
+export const FORCE_MAX_TRIES = 2;
+export const FORCE_WINDOW_MS = 10 * 60 * 1000;
+
+let forceNeed: { running: string; required: string } | null = null;
+
+function forceTries(now: number): number[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FORCE_KEY) ?? '[]') as unknown;
+    return Array.isArray(raw) ? raw.filter((t): t is number => typeof t === 'number' && now - t < FORCE_WINDOW_MS && t <= now) : [];
+  } catch {
+    return [];
+  }
+}
+
+function noteForceTry(tries: number[], now: number): void {
+  try {
+    localStorage.setItem(FORCE_KEY, JSON.stringify([...tries, now]));
+  } catch {
+    // No storage: the page-lifetime flag below still stops a loop in one page.
+  }
+}
+
+/** Reloads into the required web build now (or once the host is reachable).
+ *  Never throws; after FORCE_MAX_TRIES reloads that did not bring the build
+ *  in, it stops and the normal banner takes over. */
+export function evaluateForce(now: number = Date.now()): void {
+  const need = forceNeed;
+  const store = useUpdateStore.getState();
+  if (!need || store.applying) return;
+  if (!newer(need.required, need.running)) {
+    store.set({ forcing: false });
+    return;
+  }
+  const tries = forceTries(now);
+  if (tries.length >= FORCE_MAX_TRIES) {
+    forceNeed = null;
+    store.set({ forcing: false });
+    logger.error('update', 'required web update did not take after reloading, falling back to the banner', {
+      running: need.running,
+      required: need.required,
+      tries: tries.length,
+    });
+    return;
+  }
+  store.set({ forcing: true });
+  // Offline: a reload with no host is a blank page; it goes on coming back.
+  if (!online()) return;
+  noteForceTry(tries, now);
+  const resume = currentResume();
+  if (resume) writeResume(resume, now);
+  store.set({ applying: true, applyFailed: false });
+  deps.reload();
+}
+
+/** A check found what the host requires: starts the forced update when this
+ *  build is older. */
+function noteRequiredWeb(running: string | null, required: string | null): void {
+  const run = running ? sanitizeVersion(running) : null;
+  const need = required ? sanitizeVersion(required) : null;
+  useUpdateStore.getState().set({ requiredWeb: need });
+  if (!run || !need || !newer(need, run)) {
+    forceNeed = null;
+    useUpdateStore.getState().set({ forcing: false });
+    return;
+  }
+  forceNeed = { running: run, required: need };
+  evaluateForce();
+}
+
 export type UpdateRequest = 'now' | 'waiting-online' | 'none';
 
 /** The song playing and where it is, to start again once back from the
@@ -216,9 +302,13 @@ export function watchPendingUpdate(): () => void {
   const offUpdate = useUpdateStore.subscribe((s, prev) => {
     if (s.pending !== prev.pending) evaluate();
   });
-  const onOnline = () => evaluate();
+  const onOnline = () => {
+    evaluate();
+    evaluateForce();
+  };
   if (typeof window !== 'undefined') window.addEventListener('online', onOnline);
   evaluate();
+  evaluateForce();
   return () => {
     offUpdate();
     if (typeof window !== 'undefined') window.removeEventListener('online', onOnline);
@@ -262,6 +352,7 @@ export function checkForUpdates(fetchImpl?: typeof fetch, opts: { manual?: boole
       const found = await findUpdates({ platform: info.platform, shell: info.shellVersion }, fetchImpl);
       if (android) found.shellLatest = useUpdateStore.getState().shellLatest;
       const offer = pickOffer(found, { web: info.webVersion, shell: info.shellVersion, platform: info.platform });
+      if (!found.failed) noteRequiredWeb(info.webVersion, found.requiredWeb ?? null);
       const prev = useUpdateStore.getState().offer;
       const same = !!prev && !!offer && prev.kind === offer.kind && prev.version === offer.version;
       useUpdateStore.getState().set({
@@ -334,6 +425,12 @@ export function resetUpdateForTests(): void {
   checking = null;
   askedPermission = false;
   lastAndroidNote = null;
+  forceNeed = null;
   deps = defaultDeps;
   clearResume();
+  try {
+    localStorage.removeItem(FORCE_KEY);
+  } catch {
+    /* nothing */
+  }
 }

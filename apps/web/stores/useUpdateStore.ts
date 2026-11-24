@@ -12,7 +12,11 @@ export interface UpdateState {
   webLatest: string | null;
   shellLatest: string | null;
   checkedAt: number;
-  /** Tapped while a song plays: the update waits for the song to end. */
+  /** The oldest web build the host allows (GET /api/version). */
+  requiredWeb: string | null;
+  /** This build is older than that: the web update goes in by itself. */
+  forcing: boolean;
+  /** Tapped while offline: the update waits for the host. */
   pending: boolean;
   /** The update is going in (the page reloads, or the app installs it). */
   applying: boolean;
@@ -27,6 +31,8 @@ export const INITIAL_UPDATE_STATE = {
   webLatest: null,
   shellLatest: null,
   checkedAt: 0,
+  requiredWeb: null,
+  forcing: false,
   pending: false,
   applying: false,
   applyFailed: false,

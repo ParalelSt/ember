@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 import { detectShell } from '@/lib/playback/detectShell';
 import { detectDevicePlatform } from '@/lib/versions/device';
 import { appUpdateWaitsForTap, subscribeAppUpdate } from '@/lib/appUpdate';
-import { checkForUpdates, noteAppUpdateState, requestUpdate, watchPendingUpdate } from '@/lib/update/apply';
+import { checkForUpdates, evaluateForce, noteAppUpdateState, requestUpdate, watchPendingUpdate } from '@/lib/update/apply';
 import {
   CHECK_EVERY_MS,
   FIRST_CHECK_MS,
@@ -57,6 +57,7 @@ export function UpdateReminder() {
   const pending = useUpdateStore((s) => s.pending);
   const applying = useUpdateStore((s) => s.applying);
   const applyFailed = useUpdateStore((s) => s.applyFailed);
+  const forcing = useUpdateStore((s) => s.forcing);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const [phase, setPhase] = useState<'hidden' | 'in' | 'out'>('hidden');
   const [enabled, setEnabled] = useState(false);
@@ -77,6 +78,7 @@ export function UpdateReminder() {
     const every = setInterval(() => void checkForUpdates(), CHECK_EVERY_MS);
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
+      evaluateForce();
       const { checkedAt } = useUpdateStore.getState();
       if (checkedAt > 0 && Date.now() - checkedAt >= RECHECK_ON_RETURN_MS) void checkForUpdates();
     };
@@ -140,6 +142,12 @@ export function UpdateReminder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, offer, isPlaying, tick]);
 
+  // A required update goes in by itself: the bar says so, whatever was put away.
+  useEffect(() => {
+    if (forcing && enabled) show();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forcing, enabled]);
+
   // The app could not download or install it: say so (a tap tries again).
   useEffect(() => {
     if (applyFailed && enabled) show();
@@ -150,17 +158,19 @@ export function UpdateReminder() {
 
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
   const failed = applyFailed && offer.via !== 'reload';
-  const words = applying
+  const words = forcing && !offline
+    ? REMINDER_WORDING.applying
+    : applying
     ? REMINDER_WORDING.applying
     : failed
       ? REMINDER_WORDING.failed
       : !offer.canApply
         ? REMINDER_WORDING.reopen
-        : pending && offline
+        : (pending || forcing) && offline
           ? REMINDER_WORDING.waitingOnline
           : REMINDER_WORDING.ready;
   // The action button: only where a tap does something.
-  const action = applying || !offer.canApply || (pending && offline)
+  const action = forcing || applying || !offer.canApply || (pending && offline)
     ? null
     : failed
       ? REMINDER_WORDING.retry
@@ -172,7 +182,7 @@ export function UpdateReminder() {
   };
 
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (phase === 'out') return;
+    if (phase === 'out' || forcing) return;
     drag.current = { x0: e.clientX, t0: Date.now(), id: e.pointerId, moved: false };
     try {
       e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -210,7 +220,7 @@ export function UpdateReminder() {
     setDx(0);
   };
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') dismiss();
+    if (e.key === 'Escape' && !forcing) dismiss();
   };
 
   return (
@@ -223,7 +233,7 @@ export function UpdateReminder() {
         data-kind={offer.kind}
         data-phase={phase}
         role="status"
-        {...{ 'aria-description': REMINDER_WORDING.swipeHint }}
+        {...(forcing ? {} : { 'aria-description': REMINDER_WORDING.swipeHint })}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}

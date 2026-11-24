@@ -42,6 +42,8 @@ export interface UpdateFindings {
   webLatest: string | null;
   /** The newest desktop app for this platform, when it answered. */
   shellLatest: string | null;
+  /** The oldest web build the host lets clients run, when it said. */
+  requiredWeb?: string | null;
 }
 
 /** The first desktop app that installs an update on a tap (`update_download`
@@ -123,5 +125,5 @@ export async function findUpdates(
   const [w, s] = await Promise.all([web, shell]);
   const webLatest = sanitizeVersion(w?.version);
   const shellLatest = sanitizeVersion(s?.latest);
-  return { webLatest, shellLatest, failed: w === null && s === null };
+  return { webLatest, shellLatest, requiredWeb: sanitizeVersion(w?.requiredWeb), failed: w === null && s === null };
 }

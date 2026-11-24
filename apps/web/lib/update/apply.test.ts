@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   RESUME_FRESH_MS,
   checkForUpdates,
+  evaluateForce,
+  FORCE_MAX_TRIES,
+  FORCE_WINDOW_MS,
   noteAppUpdateState,
   performUpdate,
   requestUpdate,
@@ -10,6 +13,7 @@ import {
   takeUpdateResume,
   watchPendingUpdate,
 } from './apply';
+import { logger } from '@/lib/logger/client';
 import { resetDeviceInfoForTests } from '@/lib/versions/device';
 import { IDLE_UPDATE_STATE } from '@/lib/appUpdate';
 import { makeTrack } from '@/test-utils/fakeBackend';
@@ -340,3 +344,94 @@ describe('the Android app (0.4.34 on: it waits for a tap)', () => {
     expect(installAndroid).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('a required web update (requiredWeb from /api/version)', () => {
+  const host = (running: string, required: string | null, latest = required ?? running) =>
+    vi.fn(async () => new Response(JSON.stringify({ version: latest, requiredWeb: required }), { status: 200 })) as unknown as typeof fetch;
+
+  beforeEach(() => {
+    resetDeviceInfoForTests();
+    vi.stubEnv('NEXT_PUBLIC_APP_VERSION', '0.7.51');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetDeviceInfoForTests();
+  });
+
+  it('reloads by itself when this build is older than required, with no tap', async () => {
+    await checkForUpdates(host('0.7.51', '0.7.52'));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(useUpdateStore.getState().forcing).toBe(true);
+    expect(useUpdateStore.getState().applying).toBe(true);
+  });
+
+  it('keeps the song and its position while it plays', async () => {
+    usePlayerStore.setState({ queue: [makeTrack({ id: 'a' }), makeTrack({ id: 'b' })], index: 1, position: 33.2, isPlaying: true });
+    await checkForUpdates(host('0.7.51', '0.7.52'));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(takeUpdateResume([{ id: 'a' }, { id: 'b' }])).toEqual({ index: 1, trackId: 'b', positionSec: 33 });
+  });
+
+  it('only a banner when nothing is required', async () => {
+    await checkForUpdates(host('0.7.51', null, '0.7.52'));
+    expect(reload).not.toHaveBeenCalled();
+    expect(useUpdateStore.getState().offer?.version).toBe('0.7.52');
+    expect(useUpdateStore.getState().forcing).toBe(false);
+  });
+
+  it('ignores the requirement when running at or above it', async () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_VERSION', '0.7.52');
+    resetDeviceInfoForTests();
+    await checkForUpdates(host('0.7.52', '0.7.52'));
+    expect(reload).not.toHaveBeenCalled();
+    expect(useUpdateStore.getState().forcing).toBe(false);
+  });
+
+  it('waits offline and reloads once back online', async () => {
+    setOnline(false);
+    const stop = watchPendingUpdate();
+    await checkForUpdates(host('0.7.51', '0.7.52'));
+    expect(reload).not.toHaveBeenCalled();
+    expect(useUpdateStore.getState().forcing).toBe(true);
+    setOnline(true);
+    window.dispatchEvent(new Event('online'));
+    expect(reload).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('a native shell offer does not hold the web reload back, and is not installed', async () => {
+    useUpdateStore.getState().set({ offer: { kind: 'shell', version: '0.4.40', canApply: true, via: 'desktop' } });
+    await checkForUpdates(host('0.7.51', '0.7.52'));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(installDesktop).not.toHaveBeenCalled();
+  });
+
+  it('stops after two reloads within ten minutes, logs an error, and falls back to the banner', async () => {
+    const err = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    const t0 = Date.now();
+    for (let i = 0; i < FORCE_MAX_TRIES; i++) {
+      // Each loop is a page that loaded still old.
+      resetUpdateForTests2();
+      await checkForUpdates(host('0.7.51', '0.7.52'));
+    }
+    expect(reload).toHaveBeenCalledTimes(FORCE_MAX_TRIES);
+    resetUpdateForTests2();
+    await checkForUpdates(host('0.7.51', '0.7.52'));
+    expect(reload).toHaveBeenCalledTimes(FORCE_MAX_TRIES);
+    expect(useUpdateStore.getState().forcing).toBe(false);
+    expect(err).toHaveBeenCalledWith('update', expect.stringContaining('did not take'), expect.anything());
+    expect(useUpdateStore.getState().offer?.version).toBe('0.7.52');
+    // Ten minutes on, it may try again.
+    evaluateForce(t0 + FORCE_WINDOW_MS + 1);
+    err.mockRestore();
+  });
+});
+
+/** A fresh page load: the page's memory resets, the stored attempts stay. */
+function resetUpdateForTests2() {
+  const keep = localStorage.getItem('ember.update.force');
+  resetUpdateForTests();
+  setApplyDepsForTests({ reload, installDesktop, installAndroid, openInstallSettings: openSettings });
+  useUpdateStore.setState({ ...INITIAL_UPDATE_STATE });
+  if (keep) localStorage.setItem('ember.update.force', keep);
+}

@@ -93,7 +93,7 @@ describe('findUpdates', () => {
       '/api/app/update': { latest: '0.4.27' },
     });
     const r = await findUpdates({ platform: 'windows', shell: '0.4.26' }, f);
-    expect(r).toEqual({ webLatest: '0.7.43', shellLatest: '0.4.27', failed: false });
+    expect(r).toMatchObject({ webLatest: '0.7.43', shellLatest: '0.4.27', failed: false });
     const urls = f.mock.calls.map((c) => c[0]);
     expect(urls).toContain('/api/app/update?platform=windows&version=0.4.26');
     // Never a cached answer: the whole point is noticing a change.
@@ -103,7 +103,7 @@ describe('findUpdates', () => {
   it('asks only for the web version in a browser', async () => {
     const f = fakeFetch({ '/api/version': { version: '0.7.43 (x 2026-11-13)' } });
     const r = await findUpdates({ platform: 'browser', shell: null }, f);
-    expect(r).toEqual({ webLatest: '0.7.43', shellLatest: null, failed: false });
+    expect(r).toMatchObject({ webLatest: '0.7.43', shellLatest: null, failed: false });
     expect(f).toHaveBeenCalledTimes(1);
   });
 
@@ -111,10 +111,22 @@ describe('findUpdates', () => {
     const f = vi.fn(async () => {
       throw new TypeError('Failed to fetch');
     }) as unknown as typeof fetch;
-    expect(await findUpdates({ platform: 'windows', shell: '0.4.26' }, f)).toEqual({
+    expect(await findUpdates({ platform: 'windows', shell: '0.4.26' }, f)).toMatchObject({
       webLatest: null,
       shellLatest: null,
       failed: true,
     });
+  });
+});
+
+describe('findUpdates requiredWeb', () => {
+  it('reads the oldest web build the host allows', async () => {
+    const f = vi.fn(async () => new Response(JSON.stringify({ version: '0.7.52', requiredWeb: '0.7.52' }), { status: 200 })) as unknown as typeof fetch;
+    expect((await findUpdates({ platform: 'android', shell: null }, f)).requiredWeb).toBe('0.7.52');
+  });
+
+  it('ignores a malformed one', async () => {
+    const f = vi.fn(async () => new Response(JSON.stringify({ version: '0.7.52', requiredWeb: 'soon' }), { status: 200 })) as unknown as typeof fetch;
+    expect((await findUpdates({ platform: 'android', shell: null }, f)).requiredWeb).toBeNull();
   });
 });

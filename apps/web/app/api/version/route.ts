@@ -1,9 +1,12 @@
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { REQUIRED_WEB } from '@/lib/update/required';
 
 /** GET /api/version: which Ember this server runs, e.g.
- *  { "version": "0.7.31 (a1b2c3d 2026-10-22)" }. Public on purpose (the same
+ *  { "version": "0.7.31 (a1b2c3d 2026-10-22)", "requiredWeb": "0.7.52" }.
+ *  `requiredWeb` is the oldest web build clients may run: older ones update
+ *  themselves (lib/update/required.ts). Public on purpose (the same
  *  number shows in Settings and in every bug report): `npm run host-check`
  *  compares it with main to say when the host should run ./update.sh. */
 export const GET = withRequestLog('version', async () =>
-  Response.json({ version: process.env.NEXT_PUBLIC_APP_VERSION ?? null }),
+  Response.json({ version: process.env.NEXT_PUBLIC_APP_VERSION ?? null, requiredWeb: REQUIRED_WEB }),
 );
