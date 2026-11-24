@@ -1,4 +1,5 @@
 import { Histogram } from './histogram';
+import { ApiWatch } from './ready';
 import { NavTracker, targetLabel, type NavHost, type RscTiming } from './nav';
 import { Ring } from './ring';
 import { isRscUrl, routeShape } from './route';
@@ -77,6 +78,7 @@ function newWindow() {
     fgMs: 0,
     navN: 0,
     navMs: [] as number[],
+    navReady: [] as number[],
     navWorst: [] as NavRecord[],
     slowN: 0,
     slowMax: 0,
@@ -151,6 +153,7 @@ export class PagePerf {
   private sizeSources = new Map<string, () => number>();
   private playingSource: () => boolean = () => false;
   private nav: NavTracker;
+  private apiWatch = new ApiWatch(() => this.now());
 
   readonly launch: LaunchRecord = {};
   private launchDone = false;
@@ -206,6 +209,12 @@ export class PagePerf {
       },
       doc: () => this.env!.doc,
       currentPath: () => this.env!.win.location.pathname,
+      skeletons: () => this.env!.doc.querySelectorAll('main [data-slot="skeleton"]').length,
+      apiOpen: (after) => this.apiWatch.openSince(after),
+      apiLast: (after) => this.apiWatch.lastEnded(after),
+      readyDone: (rec) => {
+        if (rec.ready !== undefined && this.win.navReady.length < 20) this.win.navReady.push(rec.ready);
+      },
     };
     this.nav = new NavTracker(host);
   }
@@ -237,6 +246,11 @@ export class PagePerf {
     };
     doc.addEventListener('click', onClick, { capture: true });
     this.cleanups.push(() => doc.removeEventListener('click', onClick, { capture: true }));
+    try {
+      this.cleanups.push(this.apiWatch.install(win as Window & typeof globalThis));
+    } catch {
+      // No fetch to watch: navigations just carry no content ready time.
+    }
     const onPageHide = () => this.onHidden();
     win.addEventListener('pagehide', onPageHide);
     this.cleanups.push(() => win.removeEventListener('pagehide', onPageHide));

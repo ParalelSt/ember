@@ -18,6 +18,16 @@ export interface NavHost {
   addRage(rec: RageRecord): void;
   doc(): Document;
   currentPath(): string;
+  /** Skeletons showing in the page's main content. Without the four
+   *  "content ready" readers below, a navigation is not followed past
+   *  its first paint. */
+  skeletons?(): number;
+  /** Same-origin data requests started at or after `after` still in flight. */
+  apiOpen?(after: number): number;
+  /** The route that ended last among those started at or after `after`. */
+  apiLast?(after: number): string | undefined;
+  /** A navigation record got its `ready` and `wait`. */
+  readyDone?(rec: NavRecord): void;
 }
 
 /** The parts of an RSC request's resource timing a navigation record uses. */
@@ -55,6 +65,10 @@ const RAGE_WINDOW_MS = 5000;
 const TAP_MAX_AGE_MS = 120_000;
 /** The resource entry can reach the observer after the route change. */
 const RSC_RETRY_MS = 600;
+/** "Content ready" is never reported later than this after the tap. */
+export const READY_CAP_MS = 15_000;
+/** How often the page is looked at while it is still loading. */
+const READY_POLL_MS = 32;
 
 const TAP_TARGET = '[data-nav],[data-slot],a[href],button,[role]';
 
@@ -89,6 +103,8 @@ export class NavTracker {
    *  since many share one label. Weak, so a closed sheet is not kept. */
   private rageEl: WeakRef<Element> | null = null;
   private rageTaps: number[] = [];
+  /** Numbers the newest "content ready" watch; an older one stops. */
+  private readySeq = 0;
 
   constructor(private host: NavHost) {}
 
@@ -134,6 +150,8 @@ export class NavTracker {
 
   /** The route changed (history.pushState or back/forward). */
   onRoute(path: string, from: string, how: 'push' | 'pop'): void {
+    // A newer route change ends the older page's content watch.
+    this.readySeq++;
     const commitAt = this.host.now();
     const p = this.pending;
     const fromTap = !!p && p.toPath === path && commitAt - p.tapAt < TAP_MAX_AGE_MS;
@@ -150,10 +168,42 @@ export class NavTracker {
           this.host.later(() => finish(false), RSC_RETRY_MS);
           return;
         }
-        this.host.addNav(buildNav({ path, from, via: fromTap ? 'tap' : how, start, commitAt, paintAt, rsc, lt: this.host.ltTotal() - lt0, playing, area }));
+        const rec = buildNav({ path, from, via: fromTap ? 'tap' : how, start, commitAt, paintAt, rsc, lt: this.host.ltTotal() - lt0, playing, area });
+        this.host.addNav(rec);
+        this.watchReady(rec, path, start ?? rsc?.start ?? commitAt, paintAt);
       };
       finish(true);
     });
+  }
+
+  /** After the route is painted: looks until the page's skeletons are gone
+   *  and none of its data requests (started after the tap) is in flight,
+   *  both for a second look a frame later. Sets `ready` (ms from the tap)
+   *  and `wait` (ready minus the route paint) on the record, and the route
+   *  that ended last. Stops quietly when the user has moved on. */
+  private watchReady(rec: NavRecord, path: string, base: number, paintAt: number): void {
+    const h = this.host;
+    if (!h.skeletons || !h.apiOpen) return;
+    const seq = ++this.readySeq;
+    let clearAt: number | null = null;
+    const finish = (at: number) => {
+      const ready = Math.min(READY_CAP_MS, Math.round(at - base));
+      rec.ready = ready;
+      rec.wait = Math.max(0, ready - Math.round(paintAt - base));
+      const last = h.apiLast?.(base);
+      if (last && rec.wait > 0) rec.waitApi = last;
+      h.readyDone?.(rec);
+    };
+    const tick = () => {
+      if (seq !== this.readySeq || h.currentPath() !== path) return;
+      const now = h.now();
+      if (now - base >= READY_CAP_MS) return finish(base + READY_CAP_MS);
+      if (h.skeletons!() > 0 || h.apiOpen!(base) > 0) clearAt = null;
+      else if (clearAt === null) clearAt = now;
+      else return finish(clearAt);
+      h.later(tick, READY_POLL_MS);
+    };
+    tick();
   }
 
   /** Age of the navigation still waiting for its route change, if any. */

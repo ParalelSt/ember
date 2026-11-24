@@ -42,6 +42,7 @@ export function buildDigest(perf: PagePerf, meta: DigestMeta): PerfDigest | null
     d.nav = {
       n: w.navN,
       ms: w.navMs,
+      ...(w.navReady.length ? { ready: w.navReady } : {}),
       worst: w.navWorst.map((r) => ({
         to: r.to,
         ms: r.total ?? 0,
@@ -84,6 +85,9 @@ export function toSessionEvent(e: PendingEvent): SessionEvent {
         ...(n.playing ? { playing: true } : {}),
         ...(n.abandoned ? { abandoned: true } : {}),
         ...(n.area ? { area: n.area } : {}),
+        ...(n.ready !== undefined ? { ready: r(n.ready) } : {}),
+        ...(n.wait ? { wait: r(n.wait) } : {}),
+        ...(n.waitApi ? { api: n.waitApi.slice(0, 60) } : {}),
       };
     }
     case 'freeze':
@@ -117,6 +121,7 @@ export function fitDigest(d: PerfDigest): PerfDigest {
     () => delete d.api,
     () => d.lt && delete d.lt.top,
     () => d.nav && delete d.nav.worst,
+    () => d.nav && delete d.nav.ready,
     () => d.nav && (d.nav.ms = d.nav.ms.slice(0, 5)),
     () => d.launch && delete d.launch.proto,
     () => delete d.device.model,

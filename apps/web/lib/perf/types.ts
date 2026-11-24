@@ -91,6 +91,13 @@ export interface NavRecord {
   playing?: boolean;
   /** Replaced by another tap before it finished. */
   abandoned?: boolean;
+  /** Tap (or start) to the page's content being ready: skeletons gone and
+   *  none of its data requests in flight. At most 15 s. */
+  ready?: number;
+  /** ready minus the route paint: the wait for data after the page showed. */
+  wait?: number;
+  /** The route shape of the data request that ended last, when it waited. */
+  waitApi?: string;
   /** A tap on a link in one of the app's navs. */
   area?: NavArea;
 }
@@ -147,7 +154,7 @@ export interface DeviceFacts {
 /** One thing that happened, as a session's batch carries it. `at` is ms
  *  since the page started; the batch's `t0` turns it into a wall time. */
 export type SessionEvent =
-  | { k: 'nav'; at: number; to: string; via: string; ms?: number; server?: number; commit?: number; lt: number; playing?: boolean; abandoned?: boolean; area?: NavArea }
+  | { k: 'nav'; at: number; to: string; via: string; ms?: number; server?: number; commit?: number; lt: number; playing?: boolean; abandoned?: boolean; area?: NavArea; ready?: number; wait?: number; api?: string }
   | { k: 'freeze'; at: number; ms: number }
   | { k: 'rage'; at: number; target: string; taps: number; pending?: number; overlay: boolean; inert: boolean }
   | { k: 'slow'; at: number; type: string; ms: number; target?: string };
@@ -173,7 +180,7 @@ export interface PerfDigest {
   launch?: LaunchRecord;
   lt?: { n: number; ms: number; max: number; top?: [string, number][] };
   /** Navigation totals (ms) and the slowest ones in short form. */
-  nav?: { n: number; ms: number[]; worst?: { to: string; ms: number; server?: number; commit?: number }[] };
+  nav?: { n: number; ms: number[]; worst?: { to: string; ms: number; server?: number; commit?: number }[]; ready?: number[] };
   slow?: { n: number; max: number };
   freeze?: { n: number; max: number };
   rage?: number;
