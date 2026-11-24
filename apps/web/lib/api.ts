@@ -123,6 +123,23 @@ const UNREADABLE = Symbol('unreadable');
 const isAbort = (e: unknown, signal?: AbortSignal) =>
   !!signal?.aborted || (e instanceof Error && e.name === 'AbortError');
 
+/** What a call that got no answer from Ember met, for its log entry: the
+ *  status of whatever answered in Ember's place (`answered`: the Funnel's
+ *  502 while Ember restarts, a Wi-Fi sign-in page's 200), or the browser's
+ *  own error when nothing answered at all (`error`: DNS, TLS, a dropped
+ *  socket), plus how long the attempt took (`ms`: a quick refusal or a
+ *  stall), and whether the page was in the background. Without these an
+ *  outage report could not tell a stopped server from a phone that could
+ *  not get out (reports 2026-11-13 and 2026-11-21). */
+function failureCause(failure: unknown, startedAt: number): Record<string, unknown> {
+  const out: Record<string, unknown> = { ms: Math.round(performance.now() - startedAt) };
+  const answered = (failure as { answered?: unknown } | null)?.answered;
+  if (typeof answered === 'number') out.answered = answered;
+  else if (failure instanceof Error) out.error = `${failure.name}: ${failure.message}`;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') out.hidden = true;
+  return out;
+}
+
 /** The thrown error for an HTTP failure: logged (a warning for answers
  *  like 401/429 or `expected`, an error otherwise), carrying `status` and
  *  the body, and a 401 sends the browser to sign in. */
@@ -168,6 +185,7 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected, ba
   const retryDelays = method === 'GET' || background ? NETWORK_RETRY_DELAYS_MS : [];
   for (let attempt = 0; ; attempt++) {
     let failure: unknown;
+    const startedAt = performance.now();
     try {
       res = await fetch(`${API_BASE}/api${path}`, {
         method,
@@ -200,14 +218,14 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected, ba
     // `network` tells autoReport this is a possible blip, not a fault on its
     // own.
     const aborted = isAbort(failure, signal);
-    const entry = { method, path, network: !aborted };
+    const entry = { method, path, network: !aborted, ...failureCause(failure, startedAt) };
     if (!aborted && attempt < retryDelays.length) {
       logger.warn('api', `${method} ${path} network error, retrying`, { ...entry, attempt: attempt + 1 });
       await sleep(retryDelays[attempt]);
       continue;
     }
     if (background) {
-      logger.warn('api', `${method} ${path} network error`, { ...entry, error: (failure as Error)?.message });
+      logger.warn('api', `${method} ${path} network error`, entry);
     } else {
       logger.error('api', `${method} ${path} network error`, entry, failure as Error);
     }
@@ -323,17 +341,19 @@ export async function* searchStream(q: string, signal?: AbortSignal): AsyncGener
   const path = `/search?q=${encodeURIComponent(clipSearchQuery(q ?? ''))}&stream=1`;
   let res: Response;
   for (let attempt = 0; ; attempt++) {
+    const startedAt = performance.now();
     try {
       res = await fetch(`${API_BASE}/api${path}`, { credentials: 'include', signal });
       break;
     } catch (e) {
       const aborted = isAbort(e, signal);
+      const entry = { method: 'GET', path, network: true, ...failureCause(e, startedAt) };
       if (!aborted && attempt < NETWORK_RETRY_DELAYS_MS.length) {
-        logger.warn('api', `GET ${path} network error, retrying`, { method: 'GET', path, network: true, attempt: attempt + 1 });
+        logger.warn('api', `GET ${path} network error, retrying`, { ...entry, attempt: attempt + 1 });
         await sleep(NETWORK_RETRY_DELAYS_MS[attempt]);
         continue;
       }
-      if (!aborted) logger.error('api', `GET ${path} network error`, { method: 'GET', path, network: true }, e as Error);
+      if (!aborted) logger.error('api', `GET ${path} network error`, entry, e as Error);
       throw e;
     }
   }

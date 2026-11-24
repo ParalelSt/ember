@@ -62,7 +62,7 @@ describe('req(): GETs retry a network failure', () => {
     expect(logger.error).toHaveBeenCalledWith(
       'api',
       'GET /playlists network error',
-      { method: 'GET', path: '/playlists', network: true },
+      expect.objectContaining({ method: 'GET', path: '/playlists', network: true }),
       expect.any(TypeError),
     );
   });
@@ -89,7 +89,7 @@ describe('req(): GETs retry a network failure', () => {
     expect(logger.error).toHaveBeenCalledWith(
       'api',
       'GET /playlists network error',
-      { method: 'GET', path: '/playlists', network: false },
+      expect.objectContaining({ method: 'GET', path: '/playlists', network: false }),
       expect.anything(),
     );
   });
@@ -133,5 +133,71 @@ describe('req(): background writes retry quietly', () => {
       'POST /discord/update network error',
       expect.objectContaining({ method: 'POST', path: '/discord/update', network: true }),
     );
+  });
+});
+
+// Reports 2026-11-03/13/21 ("api: network errors for over 30s"): every entry
+// read only { method, path, network }, so a report could not tell a gateway
+// answering for a stopped Ember (the Funnel's 502 during an update) from a
+// fetch that never got through (DNS, TLS, a dead socket) or one that hung.
+// Each network entry now says what came back and how long it took.
+describe('req(): a network entry says what failed', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const gateway502 = () => ({
+    ok: false,
+    status: 502,
+    headers: new Headers(),
+    json: async () => {
+      throw new SyntaxError('Unexpected token <');
+    },
+  });
+
+  it('a gateway answer (502, not JSON) is logged with its status and the time it took', async () => {
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      now += 120;
+      return gateway502();
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const p = api.listPlaylists();
+    const settled = expect(p).rejects.toThrow("Can't reach Ember");
+    await vi.advanceTimersByTimeAsync(1300);
+    await settled;
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'api',
+      'GET /playlists network error, retrying',
+      expect.objectContaining({ attempt: 1, answered: 502, ms: 120 }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      'api',
+      'GET /playlists network error',
+      expect.objectContaining({ method: 'GET', path: '/playlists', network: true, answered: 502, ms: 120 }),
+      expect.any(Error),
+    );
+  });
+
+  it('a fetch that never got an answer is logged with the browser error and the time it took', async () => {
+    let now = 5_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      now += 30_000;
+      throw networkError();
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const p = api.listPlaylists();
+    const settled = expect(p).rejects.toThrow('Failed to fetch');
+    await vi.advanceTimersByTimeAsync(1300);
+    await settled;
+
+    const data = vi.mocked(logger.error).mock.calls[0][2] as Record<string, unknown>;
+    expect(data).toMatchObject({ network: true, error: 'TypeError: Failed to fetch', ms: 30_000 });
+    expect(data).not.toHaveProperty('answered');
   });
 });
