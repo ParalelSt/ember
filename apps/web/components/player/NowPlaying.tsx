@@ -79,7 +79,9 @@ export function NowPlaying() {
   const shuffle = usePlayerStore((s) => s.shuffle);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const context = usePlayerStore((s) => s.context);
-  const isPlaylist = context?.type === 'playlist';
+  // Lists worth shuffling. Search, radio, stations and a single song are not
+  // (but a shuffle that is already on always shows its button, to turn it off).
+  const canShuffle = !!context && !['search', 'radio', 'stations', 'single'].includes(context.type);
   const title = contextTitle(context);
   const desktopPlugins = useDesktopPlugins();
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled) && desktopPlugins;
@@ -294,9 +296,9 @@ export function NowPlaying() {
   }
 
   // Pinned left, mirroring the loop button on the right: keeping both OUT of
-  // the flex flow is what keeps prev/play/next centered. Playlists only:
-  // shuffling a search/radio queue makes no sense.
-  const shuffleButton = isPlaylist ? (
+  // the flex flow is what keeps prev/play/next centered. A real toggle: on
+  // re-deals the queue behind the song playing, off puts the order back.
+  const shuffleButton = canShuffle || shuffle ? (
     <Button
       variant="ghost"
       size="icon"
