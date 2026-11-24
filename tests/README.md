@@ -1,5 +1,9 @@
 # Tests
 
+> Passwords: no test keeps a password in the repo. Load them from the private
+> file on your machine before a live test: `set -a; . ~/.ember-tools/sandbox.env; set +a`
+> (POCKETBASE_ADMIN_EMAIL, POCKETBASE_ADMIN_PASSWORD, ADMIN_USER_EMAIL, ADMIN_USER_PASSWORD).
+
 > Sandbox servers and Discord: the bug-report route posts to the app's default
 > webhook (the owner's channel) unless `DISCORD_BUG_REPORT_WEBHOOK_URL` is set.
 > Reports from `@ember.test` accounts are dropped when the default webhook is in
@@ -894,7 +898,7 @@ SB=/tmp/ember-unavailable-test && mkdir -p "$SB/music"
 cd apps/web && POCKETBASE_URL=http://127.0.0.1:8092 STREAM_MODE= PYTHON_BIN=/bin/bash \
 PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" MUSIC_DIR="$SB/music" FAKE_PLAYER_LOG="$SB/calls.log" \
 FAKE_UNAVAILABLE_FILE="$SB/unavailable.txt" FAKE_TRANSIENT_FILE="$SB/transient.txt" STREAM_CACHE_WARM=0 \
-POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 npx next start -p 3011 &
+POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD="$POCKETBASE_ADMIN_PASSWORD" npx next start -p 3011 &
 ```
 
 Then:
@@ -1085,7 +1089,7 @@ cd apps/web && POCKETBASE_URL=http://127.0.0.1:8094 \
   SPOTIFY_EMBED_BASE=http://127.0.0.1:4331 \
   PYTHON_BIN=/bin/bash PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" \
   FAKE_PLAYER_LOG="$SB/calls.log" MUSIC_DIR="$SB/music" \
-  POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 \
+  POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=<sandbox admin password> \
   DISCORD_BUG_REPORT_WEBHOOK_URL=http://127.0.0.1:4312/hook \
   npx next start -p 3034 &
 cd ../.. && PB_URL=http://127.0.0.1:8094 APP_URL=http://127.0.0.1:3034 node tests/import.test.mjs

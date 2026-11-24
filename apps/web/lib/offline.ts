@@ -51,8 +51,6 @@ export async function pinList(id: string, name: string, tracks: Track[]): Promis
   useOfflineStore.getState().setNativeStatus(await nativePin(id, name, playableFor(tracks)));
 }
 
-export const OFFLINE_SCHEMA_VERSION = 1 as const;
-
 export interface OfflineTrackEntry {
   id: string;
   sourceId: string;

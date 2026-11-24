@@ -61,7 +61,7 @@ export function scrubText(text: string): string {
       // into a bug report.
       let out = redactSecrets(line, SCRUBBED_MARKER);
       out = out.replace(BEARER_RE, `bearer ${SCRUBBED_MARKER}`);
-      out = out.replace(COOKIE_HEADER_RE, (m, name) => `${name}: ${SCRUBBED_MARKER}`);
+      out = out.replace(COOKIE_HEADER_RE, (_, name) => `${name}: ${SCRUBBED_MARKER}`);
       out = out.replace(PB_AUTH_RE, `pb_auth=${SCRUBBED_MARKER}`);
       out = out.replace(QUERY_VALUE_RE, `$1${SCRUBBED_MARKER}`);
       out = out.replace(LONG_HEX_RE, SCRUBBED_MARKER);

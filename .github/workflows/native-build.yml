@@ -169,7 +169,7 @@ jobs:
       #   APPLE_CERTIFICATE_PASSWORD its export password
       #   APPLE_SIGNING_IDENTITY     "Developer ID Application: NAME (TEAMID)"
       #   APPLE_ID / APPLE_PASSWORD  Apple ID + app-specific password
-      #   APPLE_TEAM_ID              e.g. 8B8D2GSC9U
+      #   APPLE_TEAM_ID              your 10-character team id
       - name: Configure Apple signing
         if: matrix.platform == 'macos-latest'
         env:
@@ -454,7 +454,7 @@ jobs:
     if: vars.BUILD_IOS == 'true' && needs.plan.outputs.ios == 'true'
     runs-on: macos-latest
     env:
-      TEAM_ID: 8B8D2GSC9U
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

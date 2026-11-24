@@ -11,9 +11,9 @@
  *  machine. PocketBase first (8088, this worktree's pb_hooks), then the app
  *  on 3050 with the fake matcher:
  *
- *    /Users/aronmatoic/Documents/Main Projects/spotify-clone-wt/_sandbox/start-pb.sh
+ *    $SANDBOX_DIR/start-pb.sh
  *    cd apps/web && POCKETBASE_URL=http://127.0.0.1:8088 \
- *      POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 \
+ *      POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=<sandbox admin password> \
  *      PYTHON_BIN=/bin/bash PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" \
  *      FAKE_PLAYER_LOG=/tmp/transfer-calls.log \
  *      FAKE_MATCH_FIXTURE="$PWD/../../tests/fixtures/imports/transfer/ytm-transfer-candidates.json" \
@@ -30,7 +30,7 @@ const FIXTURES = path.join(HERE, 'fixtures/imports/transfer');
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8088';
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3050';
 const ADMIN_EMAIL = process.env.POCKETBASE_ADMIN_EMAIL ?? 'admin@ember.com';
-const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD;
 const PW = 'TransferTest2026!';
 
 const out = [];

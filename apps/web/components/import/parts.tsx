@@ -10,22 +10,6 @@ import { cn } from '@/lib/utils';
 // candidates: Tabs dialog, progress, Side sheet review). Data in, callbacks
 // out, nothing fetched.
 
-/** Brand dot colours for the sources: stand-ins for the services' own marks,
- *  kept to a 6px dot so the badge still reads as Ember. */
-const SOURCE_DOT: Record<ImportSourceKind, string> = {
-  spotify: 'bg-[#1ed760]',
-  ytmusic: 'bg-[#ff0033]',
-  youtube: 'bg-[#ff0033]',
-  'spotify-export': 'bg-[#1ed760]',
-  'apple-export': 'bg-[#fa2d48]',
-  lastfm: 'bg-[#d51007]',
-  deezer: 'bg-[#a238ff]',
-  // A file or a pasted list belongs to no service: the accent dot says
-  // "from you" rather than naming a brand.
-  csv: 'bg-accent',
-  paste: 'bg-accent',
-};
-
 export const SOURCE_NAME: Record<ImportSourceKind, string> = {
   spotify: 'Spotify',
   ytmusic: 'YouTube Music',
@@ -46,22 +30,6 @@ export const SOURCE_PHRASE: Record<ImportSourceKind, string> = {
   csv: 'a file',
   paste: 'a pasted list',
 };
-
-/** "Spotify" / "YouTube Music" pill: where the pasted playlist lives. */
-export function SourceBadge({ kind, className }: { kind: ImportSourceKind; className?: string }) {
-  return (
-    <span
-      data-testid="source-badge"
-      className={cn(
-        'inline-flex items-center gap-cluster rounded-full border border-border px-cluster py-inset text-xs font-medium text-foreground/85',
-        className,
-      )}
-    >
-      <span className={cn('size-1.5 rounded-full', SOURCE_DOT[kind])} />
-      {SOURCE_NAME[kind]}
-    </span>
-  );
-}
 
 /** A candidate's type ("Official audio"). */
 export function KindBadge({ kind }: { kind: string }) {

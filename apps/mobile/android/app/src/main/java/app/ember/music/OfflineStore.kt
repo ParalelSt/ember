@@ -22,7 +22,6 @@ class OfflineStore(private val root: File) {
     }
 
     data class Pin(val id: String, val name: String, val trackIds: List<String>, val updatedAt: Long)
-    data class TrackFile(val id: String, val track: JSONObject, val audio: File?, val art: File?, val bytesAudio: Long, val bytesArt: Long)
 
     private val indexFile = File(root, "index.json")
     private val audioDir = File(root, "audio")

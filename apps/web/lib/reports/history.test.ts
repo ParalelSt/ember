@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countOccurrences, historyFor } from './history';
+import { historyFor } from './history';
 import { fingerprint } from './fingerprint';
 import type { ServerLogEntry } from '../logger/types';
 
@@ -17,41 +17,6 @@ function serverEntry(overrides: Partial<ServerLogEntry> = {}): ServerLogEntry {
     ...overrides,
   };
 }
-
-describe('countOccurrences', () => {
-  it('counts only entries matching the given fingerprint', () => {
-    const a = serverEntry({ ts: 1000, message: 'yt-dlp exit 1 (attempt 2)' });
-    const b = serverEntry({ ts: 2000, message: 'yt-dlp exit 1 (attempt 5)' }); // same fingerprint (number normalized away)
-    const other = serverEntry({ ts: 3000, route: '/api/library/scan', message: 'scan failed' });
-    const fp = fingerprint(a);
-
-    const result = countOccurrences([a, b, other], fp);
-    expect(result.count).toBe(2);
-    expect(result.firstSeen).toBe(1000);
-    expect(result.lastSeen).toBe(2000);
-  });
-
-  it('returns nulls and zero count when nothing matches', () => {
-    const result = countOccurrences([serverEntry()], 'nonexistent');
-    expect(result).toEqual({ count: 0, firstSeen: null, lastSeen: null });
-  });
-
-  it('handles empty input', () => {
-    expect(countOccurrences([], 'anything')).toEqual({ count: 0, firstSeen: null, lastSeen: null });
-  });
-
-  it('tracks first/last across out-of-order timestamps', () => {
-    const fp = fingerprint(serverEntry());
-    const entries = [
-      serverEntry({ ts: 5000 }),
-      serverEntry({ ts: 1000 }),
-      serverEntry({ ts: 3000 }),
-    ];
-    const result = countOccurrences(entries, fp);
-    expect(result.firstSeen).toBe(1000);
-    expect(result.lastSeen).toBe(5000);
-  });
-});
 
 describe('historyFor', () => {
   it('computes history for multiple fingerprints in one pass', () => {

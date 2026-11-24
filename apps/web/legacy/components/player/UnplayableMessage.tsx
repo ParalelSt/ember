@@ -93,15 +93,3 @@ export function UnplayableMessage({ size, onRetry, onOpenQueue, className }: Unp
     </button>
   );
 }
-
-/** The one polite announcement of the bar's message, for screen readers
- *  (the whole sentence: which song, why, what happened). Always mounted, so
- *  the live region exists before anything is said into it. */
-export function UnplayableAnnouncer() {
-  const shown = useUnplayableMessage();
-  return (
-    <div role="status" aria-live="polite" aria-atomic="true" data-testid="unplayable-announcer" className="sr-only">
-      {shown?.lines.announcement ?? ''}
-    </div>
-  );
-}

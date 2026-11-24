@@ -2,7 +2,7 @@
  *  about 1279 wide.
  *
  *      APP_URL=http://127.0.0.1:3050 PB_URL=http://127.0.0.1:8088 \
- *      ADMIN_USER_EMAIL=strixparalel@gmail.com ADMIN_USER_PASSWORD='EmberTest2026!' \
+ *      ADMIN_USER_EMAIL=<admin email> ADMIN_USER_PASSWORD=<admin password> \
  *        node tests/layout-v1-player-bar.test.mjs
  *
  *  components/player/PlayerBar.tsx split the bar 1fr / 2fr / 1fr with like,
@@ -33,8 +33,12 @@ try {
 
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3050';
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8088';
-const EMAIL = process.env.ADMIN_USER_EMAIL ?? 'strixparalel@gmail.com';
-const PASSWORD = process.env.ADMIN_USER_PASSWORD ?? 'EmberTest2026!';
+const EMAIL = process.env.ADMIN_USER_EMAIL;
+const PASSWORD = process.env.ADMIN_USER_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  console.log('SKIP: set ADMIN_USER_EMAIL and ADMIN_USER_PASSWORD to run this test.');
+  process.exit(0);
+}
 const SHOT_DIR = process.env.SHOT_DIR ?? '';
 const SHOT_TAG = process.env.SHOT_TAG ?? 'V1';
 

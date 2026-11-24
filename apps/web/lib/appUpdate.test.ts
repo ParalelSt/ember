@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   IDLE_UPDATE_STATE,
-  appUpdateAvailable,
   checkForAppUpdate,
   installAppUpdate,
   openInstallSettings,
@@ -115,16 +114,6 @@ describe('updateLine', () => {
 });
 
 describe('the plugin bridge', () => {
-  it('is there only in the Android app with the updater', () => {
-    expect(appUpdateAvailable()).toBe(false);
-    fakeApp('ios', { getState: vi.fn() });
-    expect(appUpdateAvailable()).toBe(false);
-    fakeApp('android');
-    expect(appUpdateAvailable()).toBe(false);
-    fakeApp('android', { getState: vi.fn() });
-    expect(appUpdateAvailable()).toBe(true);
-  });
-
   it('does nothing and never throws without it', async () => {
     expect(await checkForAppUpdate()).toBe(false);
     expect(await installAppUpdate()).toBe(false);

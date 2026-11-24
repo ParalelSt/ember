@@ -110,9 +110,9 @@ instead of streaming (its `cacheKey` argument is the track id); a copy that
 will not decode is deleted and the song streams.
 
 Commands (all in `permissions/app-commands.toml`): `cache_prefetch` (`url`,
-`key`, `cookie`), `cache_cancel`, `cache_has` (`key`), `cache_keys`,
+`key`, `cookie`), `cache_cancel`,
 `cache_entries` (key, bytes and last played per song: the web policy sizes
-its room check and orders eviction by them), `cache_path` (`key`), `cache_touch` (`key`), `cache_evict` (`keys`),
+its room check and orders eviction by them), `cache_touch` (`key`), `cache_evict` (`keys`),
 `cache_stats`, `cache_clear`. An older build refuses them ("not allowed by
 ACL"), which the web app reads as "automatic caching unavailable, update the
 app".

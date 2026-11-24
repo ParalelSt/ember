@@ -11,10 +11,10 @@ import {
 } from '@/lib/import/runner';
 import {
   BACKOFF_MS,
+  countsFrom,
   MAX_PACE_MS,
   PACE_MS,
   YIELD_AFTER_BATCHES,
-  countItems,
   type ItemStatus,
   type JobStatus,
 } from '@/lib/import/jobState';
@@ -27,6 +27,12 @@ import { parseYtmusicLiked } from '@/lib/import/sources/ytmusicLiked';
 import { jobFromRecord } from '@/lib/import/records';
 import { plainTransferResult } from '@/lib/import/transferCopy';
 import { fakeYoutubeMusic, liked16, LIKED16_NOT_MUSIC, LIKED16_SONGS, LIKED16_UPLOADS } from '@/test-utils/fakeYoutubeMusic';
+
+const countsOf = (statuses: ItemStatus[]) => {
+  const n: Partial<Record<ItemStatus, number>> = {};
+  for (const s of statuses) n[s] = (n[s] ?? 0) + 1;
+  return countsFrom(n);
+};
 
 // The runner against an in-memory PocketBase: jobs, items and the
 // playlist's tracks are plain arrays, the matcher and the clock are fakes.
@@ -154,7 +160,7 @@ function memoryStore(total: number, opts: StoreOpts = {}) {
       return { created: true, id: `like-${t.sourceId}` };
     }),
     hasOtherQueued: vi.fn(async () => opts.othersQueued === true),
-    counts: vi.fn(async () => countItems(items.map((i) => i.status))),
+    counts: vi.fn(async () => countsOf(items.map((i) => i.status))),
   };
   return { job, items, playlist, likes, patches, store };
 }
@@ -206,7 +212,7 @@ describe('ImportRunner', () => {
     expect(m.job.cursor).toBe(20);
     const accepted = m.items.filter((i) => i.status === 'accepted').map((i) => i.position);
     expect(m.playlist.map((p) => p.position)).toEqual(accepted.map((p) => p + 1));
-    expect({ accepted: m.job.accepted, review: m.job.review, missing: m.job.missing }).toEqual(countItems(m.items.map((i) => i.status)));
+    expect({ accepted: m.job.accepted, review: m.job.review, missing: m.job.missing }).toEqual(countsOf(m.items.map((i) => i.status)));
     expect(m.job.review).toBeGreaterThan(0);
     expect(m.job.missing).toBeGreaterThan(0);
   });

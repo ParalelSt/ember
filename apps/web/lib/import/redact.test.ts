@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasSecret, redactSecrets, REDACTED } from '@/lib/import/redact';
+import { redactSecrets, REDACTED } from '@/lib/import/redact';
 import { scrubText } from '@/lib/logger/sanitize';
 
 // A transfer from YouTube Music puts somebody's Google session through this
@@ -72,11 +72,6 @@ describe('redactSecrets', () => {
     const line = '[import] job jx1 accepted 12 of 40, next batch at position 12';
     expect(redactSecrets(line)).toBe(line);
     expect(redactSecrets('title: Cookie Jar, artist: The Sessions')).toBe('title: Cookie Jar, artist: The Sessions');
-  });
-
-  it('hasSecret says whether anything was found', () => {
-    expect(hasSecret(COOKIE_LINE)).toBe(true);
-    expect(hasSecret('nothing to see here')).toBe(false);
   });
 });
 

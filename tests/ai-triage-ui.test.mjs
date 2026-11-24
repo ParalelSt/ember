@@ -30,7 +30,7 @@ const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:3005';
 const FAKE_ANTHROPIC_PORT = Number(process.env.FAKE_ANTHROPIC_PORT ?? 4311);
 const FAKE_DISCORD_PORT = Number(process.env.FAKE_DISCORD_PORT ?? 4312);
 const PB_ADMIN_EMAIL = process.env.PB_ADMIN_EMAIL ?? 'admin@ember.com';
-const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? process.env.POCKETBASE_ADMIN_PASSWORD;
 
 /** Playwright's cache layout differs per platform/version; find any Chromium
  *  it has downloaded rather than hard-coding one. */

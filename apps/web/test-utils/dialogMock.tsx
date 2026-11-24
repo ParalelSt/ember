@@ -45,5 +45,4 @@ export {
   Title as SheetTitle,
   Description as SheetDescription,
   Pass as SheetHeader,
-  Pass as SheetFooter,
 };

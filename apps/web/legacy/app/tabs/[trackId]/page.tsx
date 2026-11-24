@@ -1,8 +1,5 @@
-import type { Metadata } from 'next';
 import { TabsPage } from '@legacy/app/lazy';
 import { trackIdFromParam } from '@/lib/tabSources';
-
-export const metadata: Metadata = { title: 'Guitar tab · Ember' };
 
 /** The tab page for a track (the Sheet
  *  page). The id is the app's compound track id, `youtube:abc`. */

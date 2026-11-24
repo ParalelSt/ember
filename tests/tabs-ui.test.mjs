@@ -46,7 +46,7 @@ function findChrome() {
 async function adminToken() {
   for (const p of ['/api/collections/_superusers/auth-with-password', '/api/admins/auth-with-password']) {
     const res = await fetch(`${PB_URL}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identity: 'admin@ember.com', password: 'egKa5WNMx3QpuG7' }) });
+      body: JSON.stringify({ identity: 'admin@ember.com', password: process.env.POCKETBASE_ADMIN_PASSWORD }) });
     if (res.ok) return (await res.json()).token;
   }
   throw new Error('could not authenticate as PB admin');

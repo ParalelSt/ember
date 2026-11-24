@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkTheme, isUnreadable, PAIRS, problems, type Finding, type PairId } from '@/lib/theme/guard';
+import { checkTheme, PAIRS, problems, type Finding, type PairId } from '@/lib/theme/guard';
 import { contrast } from '@/lib/theme/oklch';
 import { INPUT_KEYS, type ThemeInputs } from '@/lib/theme/model';
 import { EMBER_INPUTS, PRESETS, PRESET_BY_ID } from '@/lib/theme/presets';
@@ -105,13 +105,12 @@ describe('fix', () => {
   });
 });
 
-describe('problems / isUnreadable', () => {
-  it('lists only warn and fail, and a fail makes the theme unreadable', () => {
+describe('problems', () => {
+  it('lists only warn and fail', () => {
     expect(problems(MIDNIGHT)).toEqual([]);
-    expect(isUnreadable(MIDNIGHT)).toBe(false);
     expect(problems(CASES.muted.warn).map((f) => f.pair)).toEqual(['muted']);
-    expect(isUnreadable(CASES.muted.warn)).toBe(false);
-    expect(isUnreadable(CASES.accent.fail)).toBe(true);
+    expect(problems(CASES.muted.warn).some((f) => f.level === 'fail')).toBe(false);
+    expect(problems(CASES.accent.fail).some((f) => f.level === 'fail')).toBe(true);
   });
 
   // bughunt N9: the guard checked text on surface+0.04 (the hover row) but
@@ -124,13 +123,11 @@ describe('problems / isUnreadable', () => {
     const badMenu: ThemeInputs = { ...EMBER_INPUTS, surface: [0.46, 0.005, 260] };
     expect(finding(badMenu, 'hover').level).not.toBe('fail');
     expect(finding(badMenu, 'menu').level).toBe('fail');
-    expect(isUnreadable(badMenu)).toBe(true);
   });
 
   it('every preset stays fully readable, menu highlights included', () => {
     for (const preset of PRESETS) {
       expect(problems(preset.inputs), preset.id).toEqual([]);
-      expect(isUnreadable(preset.inputs), preset.id).toBe(false);
     }
   });
 });

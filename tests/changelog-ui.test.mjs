@@ -31,7 +31,7 @@ const APP = process.env.APP_URL ?? 'http://127.0.0.1:3005';
 const SHOTS = process.env.SHOTS_DIR ?? '';
 const PASSWORD = 'BugTest2026!';
 const ADMIN_EMAIL = process.env.POCKETBASE_ADMIN_EMAIL ?? 'admin@ember.com';
-const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const ADMIN_PASSWORD = process.env.POCKETBASE_ADMIN_PASSWORD;
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP_VERSION = JSON.parse(fs.readFileSync(path.join(root, 'apps/web/package.json'), 'utf8')).version;

@@ -63,7 +63,7 @@ const check = (name, pass, detail = '') => {
 async function adminToken() {
   for (const p of ['/api/collections/_superusers/auth-with-password', '/api/admins/auth-with-password']) {
     const r = await fetch(PB_URL + p, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identity: 'admin@ember.com', password: 'egKa5WNMx3QpuG7' }) });
+      body: JSON.stringify({ identity: 'admin@ember.com', password: process.env.POCKETBASE_ADMIN_PASSWORD }) });
     if (r.ok) return (await r.json()).token;
   }
   throw new Error('no admin');

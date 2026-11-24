@@ -59,9 +59,3 @@ export function redactSecrets(text: string, marker = REDACTED): string {
   for (const [re, replacement] of RULES) out = out.replace(re, replacement.replace(REDACTED, marker));
   return out;
 }
-
-/** Does this text still hold something that looks like a credential? Used by
- *  the tests, and by anything that would rather refuse than risk it. */
-export function hasSecret(text: string): boolean {
-  return redactSecrets(text) !== text;
-}

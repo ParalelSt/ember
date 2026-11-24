@@ -21,7 +21,7 @@ catch { console.error('needs playwright-core: npm i -D playwright-core'); proces
 const PB_URL = process.env.PB_URL ?? 'http://127.0.0.1:8086';
 const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:3053';
 const PB_ADMIN_EMAIL = process.env.PB_ADMIN_EMAIL ?? 'admin@ember.com';
-const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? process.env.POCKETBASE_ADMIN_PASSWORD;
 const PASSWORD = 'BugTest2026!';
 
 function findChrome() {

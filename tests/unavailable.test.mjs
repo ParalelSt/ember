@@ -9,15 +9,15 @@
  *  Sandbox (this worktree's own, never :8091/:3010, another worker owns
  *  those):
  *
- *    PB_DIR=/private/tmp/claude-501/-Users-aronmatoic-Documents-Main-Projects/b6633bdb-0822-453b-a2b4-a986b08153a8/scratchpad/unavail-pb
- *    "/Users/aronmatoic/Documents/Main Projects/spotify-clone/pocketbase/pocketbase" serve \
+ *    PB_DIR=/tmp/unavail-pb
+ *    "$PB_BIN" serve \
  *      --http=127.0.0.1:8092 --dir="$PB_DIR/pb_data" --hooksDir="$PWD/pocketbase/pb_hooks" &
  *
  *    SB="$PB_DIR" && mkdir -p "$SB" && : > "$SB/unavailable.txt" && : > "$SB/transient.txt"
  *    cd apps/web && POCKETBASE_URL=http://127.0.0.1:8092 STREAM_MODE= PYTHON_BIN=/bin/bash \
  *    PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" MUSIC_DIR="$SB/music" FAKE_PLAYER_LOG="$SB/calls.log" \
  *    FAKE_UNAVAILABLE_FILE="$SB/unavailable.txt" FAKE_TRANSIENT_FILE="$SB/transient.txt" STREAM_CACHE_WARM=0 \
- *    POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 npx next start -p 3011 &
+ *    POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD="$POCKETBASE_ADMIN_PASSWORD" npx next start -p 3011 &
  *
  *  Then: PB_URL=http://127.0.0.1:8092 APP_URL=http://127.0.0.1:3011 SB="$PB_DIR" node tests/unavailable.test.mjs
  */
@@ -58,7 +58,7 @@ const FLAKY = 'ccccccccccc';
 async function adminToken() {
   for (const p of ['/api/collections/_superusers/auth-with-password', '/api/admins/auth-with-password']) {
     const r = await fetch(PB + p, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identity: 'admin@ember.com', password: 'egKa5WNMx3QpuG7' }) });
+      body: JSON.stringify({ identity: 'admin@ember.com', password: process.env.POCKETBASE_ADMIN_PASSWORD }) });
     if (r.ok) return (await r.json()).token;
   }
   throw new Error('no admin');
@@ -402,8 +402,7 @@ check('B6 recommended excludes DEAD', !recIds.includes(`youtube:${DEAD}`), JSON.
 
   process.env.POCKETBASE_URL ??= PB;
   process.env.POCKETBASE_ADMIN_EMAIL ??= 'admin@ember.com';
-  process.env.POCKETBASE_ADMIN_PASSWORD ??= 'egKa5WNMx3QpuG7';
-  const { markTrackUnavailable } = await import('../apps/web/lib/trackAvailability.ts');
+    const { markTrackUnavailable } = await import('../apps/web/lib/trackAvailability.ts');
 
   await markTrackUnavailable(`youtube:${GEO_TEST}`, 'geo');
   await markTrackUnavailable(`youtube:${GEO_TEST}`, 'removed');

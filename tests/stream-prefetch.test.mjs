@@ -30,7 +30,7 @@ const MUSIC = process.env.MUSIC_DIR ?? '/tmp/ember-prefetch-test/music';
 const LOG = process.env.FAKE_PLAYER_LOG ?? '/tmp/ember-prefetch-test/calls.log';
 const PB_URL = process.env.PB_URL ?? 'http://127.0.0.1:8086';
 const PB_ADMIN_EMAIL = process.env.PB_ADMIN_EMAIL ?? 'admin@ember.com';
-const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
+const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? process.env.POCKETBASE_ADMIN_PASSWORD;
 
 const results = [];
 const check = (name, pass, detail = '') => {

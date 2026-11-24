@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { TrackList, type TrackActions } from '@/components/track/TrackList';
 import { CheckIcon, CopyIcon, SearchIcon, ShuffleIcon, SortIcon } from '@/components/icons';
 import { ReorderList } from '@/components/track/ReorderList';

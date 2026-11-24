@@ -27,7 +27,6 @@ vi.mock('@/components/providers/serverUiMode', () => ({ serverUiMode: async () =
 const NEW_ONLY = [
   'chart/[slug]/loading.tsx',
   'chart/[slug]/page.tsx',
-  'dizajn/page.tsx',
   'mix/[key]/loading.tsx',
   'mix/[key]/page.tsx',
   'settings/uploads/page.tsx',

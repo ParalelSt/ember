@@ -17,7 +17,7 @@ from ffmpeg_path import ffmpeg_exe
 import loudness
 
 # ============= CONFIG =============
-# MUSIC_DIR resolves relative to this script (not cwd) so the Express API can
+# MUSIC_DIR resolves relative to this script (not cwd) so the web app can
 # spawn it from any working directory. Override with the MUSIC_DIR env var.
 MUSIC_DIR = Path(os.environ.get("MUSIC_DIR", Path(__file__).parent / "my_music"))
 MUSIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -186,15 +186,6 @@ def _js_runtime_opts():
     return {"js_runtimes": {"node": {}}} if shutil.which("node") else {}
 
 
-def sanitize_filename(name: str) -> str:
-    """Clean filename for saving."""
-    return re.sub(r'[\\/*?:"<>|]', "", name)[:150]
-
-def get_local_path(title: str, artist: str) -> Path:
-    """Generate consistent filename (interactive mode)."""
-    filename = f"{artist} - {title}.mp3"
-    return MUSIC_DIR / sanitize_filename(filename)
-
 CACHE_EXTS = ('m4a', 'webm', 'opus', 'mp3', 'mp4')
 
 def find_cached(video_id: str) -> Path | None:
@@ -204,16 +195,6 @@ def find_cached(video_id: str) -> Path | None:
         if p.exists():
             return p
     return None
-
-def search_song(query: str, limit=5):
-    """Interactive search: prints + returns first hit."""
-    results = yt.search(query, filter="songs")
-    if not results:
-        print("No results found.")
-        return None
-    best = results[0]
-    print(f"Found: {best.get('title')} by {best.get('artists')[0].get('name')}")
-    return best
 
 def parse_length(s):
     """'3:22' -> 202. '1:02:33' -> 3753. Anything else -> None."""
@@ -335,38 +316,6 @@ def _download_with_403_retry(run, cleanup):
         return run()
 
 
-def download_if_needed(video_id: str, title: str, artist: str) -> Path:
-    """Interactive: human-named file, verbose output."""
-    file_path = get_local_path(title, artist)
-    if file_path.exists():
-        print(f"Already downloaded: {file_path.name}")
-        return file_path
-    print(f"Downloading: {title}...")
-    base = file_path.with_suffix('')
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': str(base),
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'embedthumbnail': True,
-        'addmetadata': True,
-        'quiet': False,
-        **_cookie_opts(),
-        **_ffmpeg_opts(),
-        **_js_runtime_opts(),
-    }
-    url = f"https://www.youtube.com/watch?v={video_id}"
-
-    def _attempt():
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        return file_path
-
-    return _download_with_403_retry(_attempt, lambda: _clean_partials(base))
-
 class TooLargeError(Exception):
     """The video is over an opted-in length or size cap, or is a live stream
     (which never finishes, so it can never be "downloaded"). Its message
@@ -461,15 +410,6 @@ def download_by_id(video_id: str) -> Path:
         return path
 
     return _download_with_403_retry(_attempt, lambda: _clean_partials(base))
-
-def play_song(file_path: Path):
-    """Play the MP3 (interactive mode only)."""
-    from playsound3 import playsound  # lazy: API mode never needs audio output
-    print(f"Playing: {file_path.name}")
-    try:
-        playsound(str(file_path), block=True)
-    except Exception as e:
-        print("Playback error:", e)
 
 # ============= CLI HANDLERS =============
 # What a ytmusicapi parser crash raises (its nav() on a response shape it
@@ -1671,17 +1611,6 @@ def cmd_classify(args):
     json.dump({"results": results, "failed": failed, "busy": busy}, sys.stdout)
 
 
-def cmd_interactive():
-    """Original behavior: prompt → search → download → play."""
-    query = input("Search for a song: ")
-    song = search_song(query)
-    if song:
-        video_id = song['videoId']
-        title = song['title']
-        artist = song.get('artists', [{}])[0].get('name', 'Unknown')
-        mp3_file = download_if_needed(video_id, title, artist)
-        play_song(mp3_file)
-
 def main():
     parser = argparse.ArgumentParser(description="Ember music player / YouTube Music helper.")
     sub = parser.add_subparsers(dest="cmd")
@@ -1782,7 +1711,7 @@ def main():
     elif args.cmd == "loudness":
         sys.exit(loudness.main([args.video_id] if args.video_id else []))
     else:
-        cmd_interactive()
+        parser.print_help()
 
 def run():
     """main, then the cookie save only a run that ended well makes (a
