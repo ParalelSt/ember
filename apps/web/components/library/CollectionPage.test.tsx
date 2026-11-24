@@ -131,7 +131,7 @@ describe('CollectionPage', () => {
     expect(off).toHaveClass('size-12', 'rounded-full', 'bg-secondary', 'border-transparent');
     expect(off).not.toHaveClass('border-ember');
     rerender(<CollectionPage {...props({ playback: { play: noop, shuffle: noop, shuffleOn: true, active: true } })} />);
-    const on = screen.getByRole('button', { name: 'Shuffle off' });
+    const on = screen.getByRole('button', { name: 'Shuffle play' });
     expect(on).toHaveAttribute('aria-pressed', 'true');
     expect(on).toHaveClass('border-ember', 'text-ember');
   });

@@ -27,19 +27,20 @@ export function useCollectionPlayback(tracks: Track[], context: PlaybackContext)
     if (tracks.length) playTrack(tracks[0], tracks, context);
   };
 
-  // While THIS collection is playing it's a toggle: shuffle the tracks ahead
-  // and leave the current song alone. It used to reshuffle from scratch and
-  // jump to a new first track on every press, which felt like the button was
-  // skipping.
-  // When the collection isn't playing there's nothing to preserve, so it
-  // behaves as "shuffle play" and starts somewhere random.
+  // Every press is a shuffle play: a fresh random order replaces the queue
+  // and starts on a random song, also while this collection is the one
+  // playing. It used to be a toggle there (shuffle the tracks ahead, or turn
+  // shuffle off and bring the old order back), so a second press never built
+  // a new order. Shuffle on/off for the playing queue is the player's own
+  // button.
   const shuffle = () => {
     if (!tracks.length) return;
-    if (active) {
-      toggleShuffle();
-      return;
-    }
-    const shuffled = shuffleList(tracks);
+    const queued = usePlayerStore.getState().queue;
+    const sameAsQueued = (list: Track[]) => list.length === queued.length && list.every((s, k) => queued[k]?.id === s.id);
+    let shuffled = shuffleList(tracks);
+    // The very order already queued would look like nothing happened (likely
+    // on a short list): draw again.
+    for (let n = 0; n < 8 && tracks.length > 1 && sameAsQueued(shuffled); n++) shuffled = shuffleList(tracks);
     playTrack(shuffled[0], shuffled, context);
     // playTrack clears any previous shuffle snapshot, so record THIS
     // collection's original order right after, so shuffle-off can restore it.

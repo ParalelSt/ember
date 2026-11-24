@@ -44,3 +44,62 @@ describe('useCollectionPlayback: Shuffle on a list that is not playing', () => {
     expect(st.orderBackup).toEqual(tracks);
   });
 });
+
+describe('useCollectionPlayback: Shuffle pressed again on the list already playing', () => {
+  const tracks = Array.from({ length: 12 }, (_, i) => t(`s${i}`));
+  const ids = (list: Track[]) => list.map((s) => s.id).join(',');
+
+  /** What the first press leaves behind: the list shuffled and playing. */
+  const firstPress = () => {
+    const hook = renderHook(() => useCollectionPlayback(tracks, playlist));
+    act(() => hook.result.current.shuffle());
+    return hook;
+  };
+
+  it('builds a fresh order and replaces the queue on every press, never a toggle', () => {
+    const { result } = firstPress();
+    const seen = new Set([ids(usePlayerStore.getState().queue)]);
+    for (let n = 0; n < 5; n++) {
+      playTrack.mockClear();
+      act(() => result.current.shuffle());
+      expect(playTrack).toHaveBeenCalledTimes(1);
+      const st = usePlayerStore.getState();
+      expect(st.shuffle).toBe(true);
+      expect(st.orderBackup).toEqual(tracks);
+      expect([...st.queue].sort((a, b) => a.id.localeCompare(b.id))).toEqual([...tracks].sort((a, b) => a.id.localeCompare(b.id)));
+      seen.add(ids(st.queue));
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('never rebuilds the order that is already queued', () => {
+    const two = [t('p'), t('q')];
+    const { result } = renderHook(() => useCollectionPlayback(two, playlist));
+    act(() => result.current.shuffle());
+    for (let n = 0; n < 30; n++) {
+      const queued = ids(usePlayerStore.getState().queue);
+      act(() => result.current.shuffle());
+      expect(ids(usePlayerStore.getState().queue)).not.toBe(queued);
+    }
+  });
+
+  it('starts somewhere random each time, not always the same first song', () => {
+    const { result } = firstPress();
+    const firsts = new Set<string>();
+    for (let n = 0; n < 40; n++) {
+      act(() => result.current.shuffle());
+      firsts.add(usePlayerStore.getState().queue[0].id);
+    }
+    expect(firsts.size).toBeGreaterThan(3);
+  });
+
+  it('shuffle-plays when shuffle is off but the list is playing too', () => {
+    const { result } = renderHook(() => useCollectionPlayback(tracks, playlist));
+    act(() => result.current.play());
+    expect(usePlayerStore.getState().shuffle).toBe(false);
+    playTrack.mockClear();
+    act(() => result.current.shuffle());
+    expect(playTrack).toHaveBeenCalledTimes(1);
+    expect(usePlayerStore.getState().shuffle).toBe(true);
+  });
+});
