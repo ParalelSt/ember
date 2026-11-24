@@ -86,6 +86,11 @@ function plugin(): EmberUpdatePlugin | null {
   return p && typeof p.getState === 'function' ? p : null;
 }
 
+/** Only in the Android app, and only one with the updater in it. */
+export function appUpdateAvailable(): boolean {
+  return plugin() !== null;
+}
+
 /** An Android app that downloads and installs only when the person taps the
  *  update reminder (it has `download()`, from 0.4.34). Older ones fetch by
  *  themselves and have their own pill (AppUpdatePill). */
