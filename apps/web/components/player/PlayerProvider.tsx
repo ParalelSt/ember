@@ -48,6 +48,7 @@ import { useAndroidDiscordSwitch } from '@/hooks/player/useAndroidDiscordSwitch'
 import { androidOwnsDiscord } from '@/lib/androidDiscord';
 import { usePositionPersistence } from '@/hooks/player/usePositionPersistence';
 import { useRadioExtend } from '@/hooks/player/useRadioExtend';
+import { radioFromCurrent } from '@/lib/playback/startRadio';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
 import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
 import { useRemoteLink, type RemoteIdentity, type RemoteLinkActions } from '@/hooks/player/useRemoteLink';
@@ -91,6 +92,10 @@ interface PlayerControls {
   index: number;
   context: PlaybackContext | null;
   playTrack: (track: Track, list?: Track[], context?: PlaybackContext | null) => void;
+  /** Start radio from a song: it first, then similar songs from the same
+   *  recommendations radio uses (not the list it was picked from). The song
+   *  playing now keeps playing; only what follows it is replaced. */
+  startRadio: (track: Track) => void;
   /** Jump to the song at `index` of the queue as it is (the queue sheet):
    *  the queue, its context, the shuffle and the loop point all stay. */
   playAt: (index: number) => void;
@@ -1861,6 +1866,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     clearCouldntPlay();
     playTrack(track, list, nextContext);
   }, [playTrack]);
+  const startRadio = useCallback((track: Track) => {
+    // Loop-all wraps the queue instead of extending it, so radio would never
+    // start: turn it off (loop-one keeps its meaning).
+    if (usePlayerStore.getState().loopMode === 'all') usePlayerStore.getState().setLoopMode('off');
+    const same = controllingRef.current ? null : radioFromCurrent(usePlayerStore.getState(), track);
+    if (!same) {
+      userPlayTrack(track, [track], { type: 'single' });
+      return;
+    }
+    dismissUnplayable();
+    clearCouldntPlay();
+    setPlayed([]);
+    usePlayerStore.setState({ ...same, context: { type: 'single' } });
+  }, [userPlayTrack, setPlayed]);
   const userPlayAt = useCallback((i: number) => { dismissUnplayable(); playAt(i); }, [playAt]);
   const userPlayBack = useCallback((steps: number) => { dismissUnplayable(); playBack(steps); }, [playBack]);
   const userToggle = useCallback(() => { dismissUnplayable(); toggle(); }, [toggle]);
@@ -1954,10 +1973,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PlayerControls>(
     () => ({
       current, isPlaying, duration, queue, index, context,
-      playTrack: userPlayTrack, playAt: userPlayAt, playBack: userPlayBack, toggle: userToggle, next: userNext, prev: userPrev,
+      playTrack: userPlayTrack, startRadio, playAt: userPlayAt, playBack: userPlayBack, toggle: userToggle, next: userNext, prev: userPrev,
       seek, setVolume, rate, setRate, canSetRate, retry, moveTo, moveHere,
     }),
-    [current, isPlaying, duration, queue, index, context, userPlayTrack, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry, moveTo, moveHere],
+    [current, isPlaying, duration, queue, index, context, userPlayTrack, startRadio, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry, moveTo, moveHere],
   );
 
   // Pranks (admin only, never announced) sit beside the tree rather than in

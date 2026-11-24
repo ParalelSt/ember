@@ -3,12 +3,13 @@
 import { toast } from 'sonner';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
 import { canShare, shareTrack } from '../ShareButton';
-import { ArtistIcon, BlockIcon, CloseIcon, MusicIcon, QueueIcon, RefreshIcon, ShareIcon, TrashIcon } from '@/components/icons';
+import { ArtistIcon, BlockIcon, CloseIcon, MusicIcon, QueueIcon, RadioIcon, RefreshIcon, ShareIcon, TrashIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useBlockedTracks } from '@/hooks/useBlockedTracks';
 import type { MenuAction } from '@/components/ui/action-sheet';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { addToQueue } from '@/lib/playback/addToQueue';
+import { isLiveTrack } from '@/lib/radio/station';
 import { isUnavailable } from '@/lib/playback/queueNav';
 import { artistPageHref, songPageHref } from '@/lib/songPage';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -42,7 +43,7 @@ export function TrackMenu({
   /** The More button's look, where it is not a row's (the song page). */
   triggerClassName?: string;
 }) {
-  const { playTrack } = usePlayer();
+  const { playTrack, startRadio } = usePlayer();
   const { user } = useAuth();
   const { isBlocked, block, unblock } = useBlockedTracks();
   const blocked = isBlocked(track);
@@ -72,6 +73,11 @@ export function TrackMenu({
     toast.success(`Added "${track.title}" to the queue`);
   };
 
+  const radio = () => {
+    startRadio(track);
+    toast.success(`Started radio from "${track.title}"`);
+  };
+
   const red = removeStyle === 'R2' || removeStyle === 'R4';
   const remove: MenuAction | null = onRemove
     ? { key: 'remove', label: removeLabel, icon: red ? TrashIcon : CloseIcon, onSelect: onRemove, destructive: red }
@@ -83,6 +89,7 @@ export function TrackMenu({
   const actions: MenuAction[] = [
     ...(remove && removeStyle === 'R3' ? [remove] : []),
     ...(!isUnavailable(track) ? [{ key: 'queue', label: 'Add to queue', icon: QueueIcon, onSelect: queue }] : []),
+    ...(!isUnavailable(track) && !isLiveTrack(track) ? [{ key: 'radio', label: 'Start radio', icon: RadioIcon, onSelect: radio }] : []),
     ...(songHref ? [{ key: 'song', label: 'Go to song', icon: MusicIcon, onSelect: go, href: songHref }] : []),
     ...(artistHref ? [{ key: 'artist', label: 'Go to artist', icon: ArtistIcon, onSelect: go, href: artistHref }] : []),
     ...(canShare(track) ? [{ key: 'share', label: 'Share', icon: ShareIcon, onSelect: () => void shareTrack(track) }] : []),

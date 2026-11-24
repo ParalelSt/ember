@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { LikeButton } from '@/components/primitives/LikeButton';
 import {
-  AlbumIcon, ArtistIcon, BlockIcon, ChevronDownIcon, DevicesIcon, EqualizerIcon, FlagIcon, LinkIcon, ListPlusIcon,
+  AlbumIcon, ArtistIcon, BlockIcon, RadioIcon, ChevronDownIcon, DevicesIcon, EqualizerIcon, FlagIcon, LinkIcon, ListPlusIcon,
   LyricsIcon, MoreIcon, MusicIcon, QueueIcon, RepeatIcon, RepeatOneIcon, ShareIcon, ShuffleIcon, TabsIcon,
 } from '@/components/icons';
 import { toast } from 'sonner';
@@ -69,7 +69,7 @@ export function NowPlaying() {
   useBackDismiss(open, close);
   const focus = useUiStore((s) => s.nowPlayingFocus);
   const setFocus = useUiStore((s) => s.setNowPlayingFocus);
-  const { current, isPlaying, duration, toggle, next, prev, seek, retry } = usePlayer();
+  const { current, isPlaying, duration, toggle, next, prev, seek, retry, startRadio } = usePlayer();
   const { user } = useAuth();
   // A song that could not play: the title area says so, as the bar does.
   const unplayable = useUnplayableMessage();
@@ -235,6 +235,18 @@ export function NowPlaying() {
   const canAdd = !!(current && user && !isUnavailable(current) && !live);
   const blocking = useBlockedTracks();
   const items: MoreItem[] = [];
+  if (current && !live && !isUnavailable(current)) {
+    const seed = current;
+    items.push({
+      key: 'radio',
+      label: 'Start radio',
+      Icon: RadioIcon,
+      onSelect: () => {
+        startRadio(seed);
+        toast.success(`Started radio from "${seed.title}"`);
+      },
+    });
+  }
   if (canAdd) items.push({ key: 'add', label: 'Add to playlist', Icon: ListPlusIcon, onSelect: () => setAddOpen(true) });
   if (current && tabsEnabled && !live) items.push({ key: 'tabs', label: 'Guitar tabs', Icon: TabsIcon, onSelect: openTabs });
   if (eqAvailable) {

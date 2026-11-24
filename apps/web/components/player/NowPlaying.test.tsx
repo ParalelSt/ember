@@ -31,7 +31,7 @@ const TRACK: Track = {
   artworkUrl: null,
   streamUrl: '/x',
 };
-const player = vi.hoisted(() => ({ toggle: vi.fn(), next: vi.fn(), prev: vi.fn(), current: null as unknown }));
+const player = vi.hoisted(() => ({ startRadio: vi.fn(), toggle: vi.fn(), next: vi.fn(), prev: vi.fn(), current: null as unknown }));
 vi.mock('@/components/player/PlayerProvider', () => ({
   usePlayer: () => ({
     current: player.current,
@@ -41,6 +41,7 @@ vi.mock('@/components/player/PlayerProvider', () => ({
     next: player.next,
     prev: player.prev,
     seek: () => {},
+    startRadio: player.startRadio,
   }),
   // The store's own playhead, read the way the real hook reads it.
   usePlayerPosition: () => usePlayerStore((s) => s.position),
@@ -273,11 +274,20 @@ describe('NowPlaying: the More sheet', () => {
     expect(within(sheet()).getByText('Coastline')).toBeInTheDocument();
     // One of the player's own sheets: its keyboard shortcuts keep working.
     expect(sheet()).toHaveAttribute('data-player-view');
-    expect(rows()).toEqual(['add', 'tabs', 'eq', 'share', 'artist', 'album', 'block', 'report']);
+    expect(rows()).toEqual(['radio', 'add', 'tabs', 'eq', 'share', 'artist', 'album', 'block', 'report']);
     expect(sheet().querySelectorAll('[role="group"]')).toHaveLength(0);
     expect(row('share')).toHaveTextContent('Copy link');
     // Like, Lyrics and Devices are on the player, not in the sheet.
     expect(within(sheet()).queryByText(/^(Like|Liked|Lyrics|Devices)$/)).toBeNull();
+  });
+
+  it('Start radio starts radio from the song playing', () => {
+    auth.user = { id: 'u1' };
+    player.current = TRACK;
+    render(<NowPlaying />);
+    openMore();
+    fireEvent.click(row('radio'));
+    expect(player.startRadio).toHaveBeenCalledWith(expect.objectContaining({ id: TRACK.id }));
   });
 
   it('Block song blocks the song playing (owner request 2026-10-22)', () => {
@@ -311,7 +321,7 @@ describe('NowPlaying: the More sheet', () => {
   it('signed out, keeps what needs no account', () => {
     render(<NowPlaying />);
     openMore();
-    expect(rows()).toEqual(['tabs', 'eq', 'share']);
+    expect(rows()).toEqual(['radio', 'tabs', 'eq', 'share']);
     expect(within(view()).queryByRole('button', { name: 'Like' })).toBeNull();
   });
 
