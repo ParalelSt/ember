@@ -116,6 +116,24 @@ describe('fitDigest', () => {
     expect(out.nav?.n).toBe(20);
   });
 
+  it('keeps a batch of events with ready times under the cap, dropping the window list before the events', () => {
+    const d: PerfDigest = {
+      v: 1,
+      session: 's',
+      seq: 1,
+      t0: 1,
+      app: '1',
+      shell: 'web',
+      device: {},
+      fgMs: 1,
+      nav: { n: 20, ms: Array.from({ length: 20 }, () => 1234), ready: Array.from({ length: 20 }, () => 15000) },
+      ev: Array.from({ length: 60 }, (_, i) => ({ k: 'nav' as const, at: i, to: '/a'.repeat(30), via: 'tap', lt: 0, ms: i, ready: 15000, wait: 14000, api: '/api/youtube/recommended' })),
+    };
+    const out = fitDigest(d);
+    expect(new TextEncoder().encode(JSON.stringify(out)).length).toBeLessThanOrEqual(DIGEST_MAX_BYTES);
+    expect(out.ev![out.ev!.length - 1].at).toBe(59);
+  });
+
   it('lets the oldest events go first, keeping the newest', () => {
     const d: PerfDigest = {
       v: 1,

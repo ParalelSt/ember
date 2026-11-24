@@ -1,5 +1,5 @@
 import { DISCORD_EMBED_CHARS, DISCORD_FIELD_CHARS, type EmbedField } from '@/lib/reports/discord';
-import { nativeTotal, type HostRollup, type HostRouteStat, type NativeCounts } from '@/lib/perf/hostRollup';
+import { nativeTotal, phaseParts, type HostRollup, type HostRouteStat, type NativeCounts } from '@/lib/perf/hostRollup';
 import {
   PLATFORM_LABEL,
   ROLLUP_PLATFORMS,
@@ -73,8 +73,11 @@ function sideNavLines(p: PlatformStats, max: number): string[] {
   const lines = [`${plural(s.taps, 'tap')} loaded, ${s.abandoned} re-tapped before loading`];
   for (const r of s.routes.slice(0, max)) {
     const where = r.phased ? ` · host ${ms(r.serverP50)} / page ${ms(r.commitP50)}` : '';
+    const content = r.ready
+      ? ` · tap to content p50 ${ms(r.ready.p50)} p95 ${ms(r.ready.p95)}${r.waitP50 ? ` (data wait p50 ${ms(r.waitP50)}${r.waitApi ? `, last ${r.waitApi}` : ''})` : ''}`
+      : '';
     const left = r.abandoned ? ` · ${r.abandoned} re-tapped` : '';
-    lines.push(r.n ? `${r.route} ${r.n}× p50 ${ms(r.p50)} p95 ${ms(r.p95)}${where}${left}` : `${r.route}${left}`);
+    lines.push(r.n ? `${r.route} ${r.n}× p50 ${ms(r.p50)} p95 ${ms(r.p95)}${where}${content}${left}` : `${r.route}${left}`);
   }
   return lines;
 }
@@ -111,6 +114,7 @@ function platformEmbed(p: PlatformStats, title: string, timestamp: string, sideN
   const fields = [
     field('Launch', [q('first paint', p.launch.fcp), q('ready', p.launch.hydrated)]),
     field('Navigation', [p.nav.n ? `${p.nav.n} · p50 ${ms(p.nav.p50)} · p95 ${ms(p.nav.p95)} · max ${ms(p.nav.max)}` : 'none']),
+    field('Tap to content', [q('all pages', p.nav.ready)]),
     field('Side nav', sideNavLines(p, sideNavMax)),
     field('Jank', [
       `long tasks ${p.longTaskMsPerMin} ms per minute · freezes ${p.freezes.n}${p.freezes.n ? ` (max ${ms(p.freezes.max)})` : ''}`,
@@ -131,13 +135,15 @@ function platformEmbed(p: PlatformStats, title: string, timestamp: string, sideN
     ]),
     native,
     field('Typical device', [device.length ? device.join(' · ') : null]),
-    field('Slowest routes', p.slowestRoutes.map((r) => `${r.route} p95 ${ms(r.p95)} (${r.n})`)),
+    field('Slowest routes', p.slowestRoutes.map((r) => `${r.route} p95 ${ms(r.p95)} (${r.n})${r.ready ? ` · content p50 ${ms(r.ready.p50)} p95 ${ms(r.ready.p95)}` : ''}`)),
   ].filter((f): f is EmbedField => f !== null);
   return { ...base, color: COLOR[p.os] ?? COLOR_EMPTY, description, fields };
 }
 
 function hostRouteLine(r: HostRouteStat): string {
-  return `${r.route} p50 ${ms(r.p50)} · p95 ${ms(r.p95)} · max ${ms(r.max)} (${r.n})`;
+  const parts = phaseParts(r);
+  const split = parts.length ? ` · ${parts.map((p) => `${p.name} ${ms(p.ms)}`).join(', ')}` : '';
+  return `${r.route} p50 ${ms(r.p50)} · p95 ${ms(r.p95)} · max ${ms(r.max)} (${r.n})${split}`;
 }
 
 function hostEmbed(h: HostRollup & { sideNav: HostRouteStat[] }, title: string, timestamp: string, lines: number): RollupEmbed {
