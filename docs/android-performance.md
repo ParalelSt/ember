@@ -339,7 +339,7 @@ timed at all. Add `W/lib/perf/serverTiming.ts`, registered from
   every 6 hours (00, 06, 12, 18 UTC) one Discord message with the
   collective performance of every device, one embed per platform, always
   all five (Android, iOS, Windows, macOS, Linux; an empty one says so),
-  titled with the window. Each batch carries the device's `os` (the
+  plus one for the host, each titled with the window. Each batch carries the device's `os` (the
   Capacitor platform in the app, else the user agent, an iPad asking for
   the desktop site counting as iOS); browser users count under their OS
   and the shell (phone app, desktop app, browser) is the sub-breakdown.
@@ -355,7 +355,17 @@ timed at all. Add `W/lib/perf/serverTiming.ts`, registered from
   destination the count, p50 and p95 tap to shown, where the time went
   (p50 host wait, request sent to first byte, against p50 page work,
   response end to the route change) and how many were re-tapped before
-  they loaded. A `perf-rollup.json` file comes with it: the same numbers
+  they loaded. Also per platform, what the digest's Performance section
+  carried: the native app's renderer deaths, unresponsive renderers, low
+  memory and trim events (phone and car surfaces count as Android), and
+  heap growth per hour per device model. A sixth embed, **Host**, has the
+  host's own timing lines summed over the window: requests, slow requests,
+  event loop p99, the slowest server routes (p50, p95, max), the host's
+  numbers for every side nav destination's router data request (so side
+  nav slowness can be told apart into host time and the rest), and the
+  desktop app's native events (its log does not say the OS). Lines are
+  shortened, never more embeds, to stay under Discord's 6000 characters.
+  A `perf-rollup.json` file comes with it: the same numbers
   plus one row per session with the member and session ids replaced by a
   short salted hash (`PERF_ROLLUP_SALT`, else a random salt kept in
   `logs/perf-rollup-salt`), capped near 1 MB by leaving out the oldest

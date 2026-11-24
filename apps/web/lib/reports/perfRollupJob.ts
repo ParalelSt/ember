@@ -7,11 +7,13 @@ import { perfLogEnabled } from '@/lib/perf/hostSwitch';
 import { anonSessions, buildPlatformRollup, type AnonSession, type PlatformRollup } from '@/lib/perf/platformRollup';
 import { readPerf } from '@/lib/perf/store';
 import { perfWebhook, type PerfWebhook } from '@/lib/reports/discord';
+import { isPerfNativeEntry } from '@/lib/reports/perfDigest';
 import { rollupMessage } from '@/lib/reports/perfRollupEmbeds';
 
 /** The perf channel (docs/android-performance.md 5.5): every 6 hours, one
  *  Discord message with every device's performance summed up per platform
- *  (Android, iOS, Windows, macOS, Linux, always all five) and a JSON file
+ *  (Android, iOS, Windows, macOS, Linux, always all five), one for the host
+ *  (its own route timings, the desktop app's renderer events), and a JSON file
  *  with the numbers and one anonymous row per session. Scheduled from
  *  instrumentation-node.ts next to the daily digest; an admin can post one
  *  now or see it without posting (app/api/admin/perf-rollup).
@@ -175,7 +177,11 @@ export async function runPerfRollup(options: RunRollupOptions = {}): Promise<Rol
   const target = perfWebhook();
 
   const entries = await readPerf(since, (e) => e.ts <= until, until).catch(() => []);
-  const rollup = buildPlatformRollup(entries, since, until);
+  // The host's timing lines and the native apps' renderer and memory events.
+  const server = await serverLogger
+    .entriesSince(since, (e) => (e.category === 'perf' && e.message === 'server timing') || isPerfNativeEntry(e))
+    .catch(() => []);
+  const rollup = buildPlatformRollup(entries, since, until, server);
   const salt = await rollupSalt();
   const file = rollupFile(rollup, anonSessions(entries, since, until, (kind, id) => anonHash(salt, kind, id)));
   const message = rollupMessage(rollup);

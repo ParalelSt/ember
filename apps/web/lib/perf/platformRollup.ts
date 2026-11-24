@@ -1,4 +1,7 @@
+import type { ServerLogEntry } from '@/lib/logger/types';
+import { heapSlopes } from '@/lib/reports/perfDigest';
 import { quantileOf } from './histogram';
+import { buildHostRollup, emptyNative, hostForPage, nativeByOs, type HostRollup, type HostRouteStat, type NativeCounts } from './hostRollup';
 import { digestOs, type PerfOs } from './os';
 import { routeShape } from './route';
 import { missingBatches, type StoredDigest } from './sessions';
@@ -90,6 +93,11 @@ export interface PlatformStats {
   device: { memGb?: number; cores?: number };
   slowestRoutes: RouteStat[];
   sideNav: { taps: number; abandoned: number; routes: SideNavRoute[] };
+  /** The native app's renderer deaths and memory warnings. */
+  native: NativeCounts;
+  /** Heap growth per hour per device model, fastest first (sessions with
+   *  readings 10 min or more apart). */
+  heapSlopes: { model: string; mbPerHour: number; sessions: number }[];
 }
 
 export interface PlatformRollup {
@@ -98,6 +106,9 @@ export interface PlatformRollup {
   totals: { sessions: number; members: number; batches: number; byOs: Record<PerfOs, number> };
   /** Always the five of ROLLUP_PLATFORMS, then 'other'. */
   platforms: PlatformStats[];
+  /** The host's own timing, and the host's numbers for every side nav
+   *  destination's router data request (host time vs the rest). */
+  host: HostRollup & { sideNav: HostRouteStat[] };
 }
 
 /** One session for the attached file, its ids hashed by the caller. */
@@ -231,11 +242,13 @@ function heapReadings(list: StoredDigest[]): number[] {
   return list.map((e) => e.digest.heap?.used).filter((n): n is number => typeof n === 'number');
 }
 
-function emptyStats(os: PerfOs): PlatformStats {
-  return platformStats(os, []);
+function emptyStats(os: PerfOs, native: NativeCounts): PlatformStats {
+  return platformStats(os, [], native);
 }
 
-function platformStats(os: PerfOs, sessions: StoredDigest[][]): PlatformStats {
+const HEAP_SLOPES = 5;
+
+function platformStats(os: PerfOs, sessions: StoredDigest[][], native: NativeCounts): PlatformStats {
   const all = sessions.flat();
   const members = new Set(all.map((e) => e.userId)).size;
   const shells: Record<string, number> = {};
@@ -312,13 +325,19 @@ function platformStats(os: PerfOs, sessions: StoredDigest[][]): PlatformStats {
     },
     slowestRoutes: routeStats(sessions.flatMap(routeSamples)).slice(0, TOP_ROUTES),
     sideNav: sideNavStats(sessions.flatMap(navEvents)),
+    native,
+    heapSlopes: heapSlopes(all).slice(0, HEAP_SLOPES),
   };
 }
 
 /** The window's batches (`since` exclusive, `until` inclusive) summed up per
- *  platform. Every platform is there, empty or not. */
-export function buildPlatformRollup(entries: StoredDigest[], since: number, until: number): PlatformRollup {
+ *  platform, with the host's timing lines and the native apps' perf events
+ *  from the server log (`server`) in the same window. Every platform is
+ *  there, empty or not. */
+export function buildPlatformRollup(entries: StoredDigest[], since: number, until: number, server: ServerLogEntry[] = []): PlatformRollup {
   const sessions = bySession(entries.filter((e) => inWindow(e, since, until)));
+  const serverIn = server.filter((e) => e.ts > since && e.ts <= until);
+  const native = nativeByOs(serverIn);
   const grouped = new Map<PerfOs, StoredDigest[][]>();
   for (const list of sessions) {
     const os = sessionOs(list);
@@ -328,6 +347,13 @@ export function buildPlatformRollup(entries: StoredDigest[], since: number, unti
   }
   const order: PerfOs[] = [...ROLLUP_PLATFORMS, 'other'];
   const byOs = Object.fromEntries(order.map((os) => [os, grouped.get(os)?.length ?? 0])) as Record<PerfOs, number>;
+  const platforms = order.map((os) => {
+    const n = native.get(os) ?? emptyNative();
+    return grouped.has(os) ? platformStats(os, grouped.get(os)!, n) : emptyStats(os, n);
+  });
+  const host = buildHostRollup(serverIn);
+  const sideNavRoutes = [...new Set(platforms.flatMap((p) => p.sideNav.routes.map((r) => r.route)))];
+  const sideNav = sideNavRoutes.map((r) => hostForPage(host, r)).filter((r): r is HostRouteStat => !!r);
   return {
     since,
     until,
@@ -337,7 +363,8 @@ export function buildPlatformRollup(entries: StoredDigest[], since: number, unti
       batches: sessions.reduce((n, l) => n + l.length, 0),
       byOs,
     },
-    platforms: order.map((os) => (grouped.has(os) ? platformStats(os, grouped.get(os)!) : emptyStats(os))),
+    platforms,
+    host: { ...host, sideNav },
   };
 }
 

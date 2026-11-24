@@ -21,6 +21,18 @@ export function isPerfNativeEntry(e: ServerLogEntry): boolean {
   return typeof ev === 'string' && (RENDERER_GONE.test(ev) || RENDERER_STUCK.test(ev) || LOW_MEMORY.test(ev));
 }
 
+export type NativePerfKind = 'rendererGone' | 'rendererUnresponsive' | 'lowMemory' | 'trimMemory';
+
+/** Which perf event a native log line is (the perf channel counts them per
+ *  platform), or null for any other line. */
+export function nativePerfKind(e: ServerLogEntry): NativePerfKind | null {
+  if (!isPerfNativeEntry(e)) return null;
+  const ev = (e.data as { event: string }).event;
+  if (RENDERER_GONE.test(ev)) return 'rendererGone';
+  if (RENDERER_STUCK.test(ev)) return 'rendererUnresponsive';
+  return /^memory\.trim/.test(ev) ? 'trimMemory' : 'lowMemory';
+}
+
 export interface PerfSection {
   lines: string[];
   /** For digest.json. */

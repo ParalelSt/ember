@@ -31,6 +31,9 @@ describe('buildPlatformRollup', () => {
     expect(ios.launch.hydrated).toEqual({ n: 0, p50: 0, p95: 0 });
     expect(ios.heap.growth).toEqual({ sessions: 0, p50: 0, p95: 0, max: 0 });
     expect(ios.sideNav).toEqual({ taps: 0, abandoned: 0, routes: [] });
+    expect(ios.native).toEqual({ rendererGone: 0, rendererUnresponsive: 0, lowMemory: 0, trimMemory: 0 });
+    expect(ios.heapSlopes).toEqual([]);
+    expect(r.host).toMatchObject({ lines: 0, requests: 0, slowest: [], sideNav: [] });
   });
 
   it('keeps only the window: after since, up to and including until', () => {
@@ -189,7 +192,11 @@ describe('buildPlatformRollup', () => {
       ],
       SINCE,
       UNTIL,
+      [
+        { ts: T(5), kind: 'error', level: 'info', category: 'native', message: 'n', sessionId: 'sess-secret-1', side: 'server', reqId: '', route: '', userId: 'userid12345abcd', surface: 'phone', data: { event: 'renderer.gone' } },
+      ],
     );
+    expect(p(r, 'android').native.rendererGone).toBe(1);
     const text = JSON.stringify(r);
     for (const secret of ['userid12345abcd', 'sess-secret-1', 'somesecretartist', 'secretsongid']) expect(text).not.toContain(secret);
   });

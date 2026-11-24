@@ -108,7 +108,7 @@ describe('runScheduledRollup', () => {
     expect(res?.rollup.totals.byOs).toMatchObject({ android: 1, windows: 1, linux: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const p = posted();
-    expect(p.payload.embeds).toHaveLength(5);
+    expect(p.payload.embeds).toHaveLength(6);
     expect(p.payload.embeds[0].title).toBe('Android · 2026-11-23 06:00 to 12:00 UTC');
     expect(p.fileName).toBe('perf-rollup.json');
     expect(await readRollupState()).toEqual({ lastWindow: SLOT - ROLLUP_PERIOD_MS });
@@ -171,6 +171,30 @@ describe('runScheduledRollup', () => {
   });
 });
 
+describe('the host side', () => {
+  it('reads the host\'s timing lines and the native apps\' perf events in the window from the server log', async () => {
+    const { serverLogger } = await import('@/lib/logger/server');
+    const base = { kind: 'log', sessionId: 'server', side: 'server', reqId: '', route: '' };
+    const lines = [
+      { ...base, ts: SLOT - H, level: 'info', category: 'perf', message: 'server timing', data: { routes: [{ route: '/settings (rsc)', n: 4, p50: 900, p95: 4000, max: 5000 }], slow: 1, health: { loopP99: 40 } } },
+      { ...base, ts: SLOT - H, level: 'info', category: 'native', message: 'n', userId: 'secretuserid01', surface: 'phone', data: { event: 'renderer.gone' } },
+      // After the window: left out.
+      { ...base, ts: SLOT + H, level: 'info', category: 'native', message: 'n', surface: 'phone', data: { event: 'memory.low' } },
+    ];
+    const spy = vi.spyOn(serverLogger, 'entriesSince').mockImplementation(async (_since, keep) => lines.filter((l) => !keep || keep(l as never)) as never);
+    try {
+      writeBatches([{ ts: SLOT - H, userId: 'u1', session: 'a', os: 'android' }]);
+      const res = await runPerfRollup({ now: SLOT, since: SLOT - ROLLUP_PERIOD_MS, until: SLOT, dryRun: true });
+      expect(res.rollup.host).toMatchObject({ lines: 1, requests: 4, slowRequests: 1, loopP99Max: 40 });
+      expect(res.rollup.platforms[0].native).toEqual({ rendererGone: 1, rendererUnresponsive: 0, lowMemory: 0, trimMemory: 0 });
+      expect(res.message.embeds[5].title).toBe('Host · 2026-11-23 06:00 to 12:00 UTC');
+      expect(JSON.stringify(res.file)).not.toContain('secretuserid01');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 describe('createPerfRollupTick', () => {
   it('never runs twice at once and never throws', async () => {
     let release!: () => void;
@@ -194,7 +218,7 @@ describe('runPerfRollup (the admin side)', () => {
     const res = await runPerfRollup({ now: SLOT, dryRun: true });
     expect(res).toMatchObject({ posted: false, reason: 'dry-run', webhook: 'bug-report-thread' });
     expect(res.file.totals.sessions).toBe(1);
-    expect(res.message.embeds).toHaveLength(5);
+    expect(res.message.embeds).toHaveLength(6);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(existsSync(join(LOG_DIR, 'perf-rollup-state.json'))).toBe(false);
   });

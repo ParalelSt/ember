@@ -31,8 +31,47 @@ describe('windowLabel', () => {
   });
 });
 
+describe('rollupMessage: what the digest\'s Performance section carried', () => {
+  const srv = (over: Record<string, unknown>) =>
+    ({ ts: SINCE + 1000, kind: 'log', level: 'info', category: 'native', message: 'n', sessionId: 'server', side: 'server', reqId: '', route: '', ...over }) as never;
+
+  it('shows native renderer and memory events per platform, the desktop app\'s on the host, and heap per hour per model', () => {
+    const H = 3_600_000;
+    const entries = [
+      { ...stored('u1', 'a', 'android', { heap: { used: 40 }, device: { model: 'Pixel 8' } }), ts: SINCE + 1000 },
+      { ...stored('u1', 'a', 'android', { seq: 2, heap: { used: 52 }, device: { model: 'Pixel 8' } }), ts: SINCE + 1000 + H },
+    ];
+    const server = [
+      srv({ surface: 'phone', data: { event: 'renderer.gone' } }),
+      srv({ surface: 'android-auto', data: { event: 'memory.trim' } }),
+      srv({ data: { event: 'memory.low' } }),
+      srv({ surface: 'desktop', data: { event: 'renderer.unresponsive' } }),
+      srv({ category: 'perf', message: 'server timing', data: { routes: [{ route: '/settings (rsc)', n: 4, p50: 900, p95: 4000, max: 5000 }], slow: 2, health: { loopP99: 40 } } }),
+    ];
+    const { embeds } = rollupMessage(buildPlatformRollup(entries, SINCE, SINCE + 6 * H, server));
+    const android = embeds[0];
+    expect(android.fields.find((f) => f.name === 'Native app')!.value).toBe('renderer deaths 1 · unresponsive 0 · low memory 1 · trim 1');
+    expect(android.fields.find((f) => f.name === 'Memory')!.value).toContain('heap per hour: Pixel 8 +12 MB (1)');
+    const host = embeds[5];
+    expect(host.description).toBe('4 requests · 2 slow · event loop p99 up to 40 ms');
+    expect(host.fields.find((f) => f.name === 'Slowest server routes')!.value).toBe('/settings (rsc) p50 900 ms · p95 4.0 s · max 5.0 s (4)');
+    expect(host.fields.find((f) => f.name === 'Desktop app (any OS)')!.value).toBe('renderer deaths 0 · unresponsive 1 · low memory 0 · trim 0');
+  });
+
+  it('puts the host\'s numbers for each side nav destination next to the platforms\' taps', () => {
+    const ev = [{ k: 'nav', at: 1, to: '/settings', via: 'tap', ms: 6000, server: 5000, commit: 300, lt: 0, area: 'drawer' }];
+    const server = [
+      srv({ category: 'perf', message: 'server timing', data: { routes: [{ route: '/settings (rsc)', n: 10, p50: 4800, p95: 6000, max: 9000 }, { route: '/library (rsc)', n: 3, p50: 100, p95: 200, max: 300 }] } }),
+    ];
+    const r = buildPlatformRollup([stored('u1', 'a', 'android', { ev })], SINCE, UNTIL, server);
+    expect(r.host.sideNav).toEqual([{ route: '/settings (rsc)', n: 10, p50: 4800, p95: 6000, max: 9000 }]);
+    const field = rollupMessage(r).embeds[5].fields.find((f) => f.name === 'Side nav pages on the host')!;
+    expect(field.value).toBe('/settings (rsc) p50 4.8 s · p95 6.0 s · max 9.0 s (10)');
+  });
+});
+
 describe('rollupMessage', () => {
-  it('always five embeds, Android to Linux, empty ones saying so, iOS included', () => {
+  it('always five platform embeds, Android to Linux, empty ones saying so, iOS included, then the host', () => {
     const r = buildPlatformRollup([stored('u1', 'a', 'android', { nav: { n: 1, ms: [900] } }), stored('u2', 'o', 'other')], SINCE, UNTIL);
     const { content, embeds } = rollupMessage(r);
     expect(embeds.map((e) => e.title)).toEqual([
@@ -41,7 +80,9 @@ describe('rollupMessage', () => {
       'Windows · 2026-11-23 06:00 to 12:00 UTC',
       'macOS · 2026-11-23 06:00 to 12:00 UTC',
       'Linux · 2026-11-23 06:00 to 12:00 UTC',
+      'Host · 2026-11-23 06:00 to 12:00 UTC',
     ]);
+    expect(embeds[5].description).toBe('No host timing lines in this window.');
     expect(embeds[0].description).toContain('1 session · 1 member');
     expect(embeds[0].description).toContain('phone app 1');
     expect(embeds[0].fields.map((f) => f.name)).toEqual(expect.arrayContaining(['Navigation', 'Side nav', 'Jank', 'Typical device']));
@@ -78,8 +119,21 @@ describe('rollupMessage', () => {
         );
       }
     }
-    const { content, embeds } = rollupMessage(buildPlatformRollup(entries, SINCE, UNTIL));
-    expect(embeds).toHaveLength(5);
+    const server = Array.from({ length: 72 }, (_, i) => ({
+      ts: SINCE + 1000 + i,
+      kind: 'log',
+      level: 'info',
+      category: 'perf',
+      message: 'server timing',
+      sessionId: 'server',
+      side: 'server',
+      reqId: '',
+      route: '',
+      data: { routes: Array.from({ length: 20 }, (_, j) => ({ route: `/${'y'.repeat(100)}${j} (rsc)`, n: 5, p50: 100 * j, p95: 1000 * j, max: 2000 * j })), slow: 3, health: { loopP99: 80 } },
+    })) as never[];
+    for (let i = 0; i < 40; i++) entries.push(stored(`h${i}`, `heap-${i}`, 'android', { device: { model: `model ${'z'.repeat(30)} ${i}` }, heap: { used: 40 } }));
+    const { content, embeds } = rollupMessage(buildPlatformRollup(entries, SINCE, UNTIL, server));
+    expect(embeds).toHaveLength(6);
     expect(embeds.reduce((n, e) => n + embedChars(e), 0)).toBeLessThanOrEqual(DISCORD_EMBED_CHARS);
     for (const e of embeds) {
       expect(e.title.length).toBeLessThanOrEqual(256);

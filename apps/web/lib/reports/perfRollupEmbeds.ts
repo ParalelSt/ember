@@ -1,4 +1,5 @@
 import { DISCORD_EMBED_CHARS, DISCORD_FIELD_CHARS, type EmbedField } from '@/lib/reports/discord';
+import { nativeTotal, type HostRollup, type HostRouteStat, type NativeCounts } from '@/lib/perf/hostRollup';
 import {
   PLATFORM_LABEL,
   ROLLUP_PLATFORMS,
@@ -7,9 +8,9 @@ import {
   type Quantiles,
 } from '@/lib/perf/platformRollup';
 
-/** The perf channel's Discord message for one rollup: a line of totals and
- *  one embed per platform (always five, empty ones included), each titled
- *  with the window. Pure. Discord counts every embed of a message against
+/** The perf channel's Discord message for one rollup: a line of totals,
+ *  one embed per platform (always five, empty ones included) and one for
+ *  the host, each titled with the window. Pure. Discord counts every embed of a message against
  *  one 6000-character budget, so the whole message is kept under it. */
 
 export interface RollupEmbed {
@@ -29,6 +30,7 @@ const COLOR: Record<string, number> = {
   linux: 0xf7b500,
 };
 const COLOR_EMPTY = 0x4b5563;
+const COLOR_HOST = 0x9a6a2a;
 /** Room left under Discord's cap for its own counting quirks. */
 const MESSAGE_BUDGET = DISCORD_EMBED_CHARS - 300;
 const SIDE_NAV_LINES = 5;
@@ -77,15 +79,24 @@ function sideNavLines(p: PlatformStats, max: number): string[] {
   return lines;
 }
 
+function nativeLine(c: NativeCounts): string | null {
+  return nativeTotal(c)
+    ? `renderer deaths ${c.rendererGone} · unresponsive ${c.rendererUnresponsive} · low memory ${c.lowMemory} · trim ${c.trimMemory}`
+    : null;
+}
+
+const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}`;
+
 function platformEmbed(p: PlatformStats, title: string, timestamp: string, sideNavMax: number): RollupEmbed {
   const label = PLATFORM_LABEL[p.os];
   const base = { title: `${label} · ${title}`, timestamp };
+  const native = field('Native app', [nativeLine(p.native)]);
   if (!p.sessions) {
     return {
       ...base,
       color: COLOR_EMPTY,
       description: p.os === 'ios' ? 'No sessions yet. (No iOS app yet: iPhone and iPad browsers count here.)' : 'No sessions in this window.',
-      fields: [],
+      fields: native ? [native] : [],
     };
   }
   const shells = Object.entries(p.shells)
@@ -111,11 +122,40 @@ function platformEmbed(p: PlatformStats, title: string, timestamp: string, sideN
         ? `growth per session p95 ${p.heap.growth.p95 >= 0 ? '+' : ''}${p.heap.growth.p95} MB (${plural(p.heap.growth.sessions, 'session')})`
         : null,
       p.domMax ? `DOM nodes max ${p.domMax}` : null,
+      p.heapSlopes.length && sideNavMax > 0
+        ? `heap per hour: ${p.heapSlopes
+            .slice(0, Math.min(3, sideNavMax))
+            .map((h) => `${h.model} ${signed(h.mbPerHour)} MB (${h.sessions})`)
+            .join(', ')}`
+        : null,
     ]),
+    native,
     field('Typical device', [device.length ? device.join(' · ') : null]),
     field('Slowest routes', p.slowestRoutes.map((r) => `${r.route} p95 ${ms(r.p95)} (${r.n})`)),
   ].filter((f): f is EmbedField => f !== null);
   return { ...base, color: COLOR[p.os] ?? COLOR_EMPTY, description, fields };
+}
+
+function hostRouteLine(r: HostRouteStat): string {
+  return `${r.route} p50 ${ms(r.p50)} · p95 ${ms(r.p95)} · max ${ms(r.max)} (${r.n})`;
+}
+
+function hostEmbed(h: HostRollup & { sideNav: HostRouteStat[] }, title: string, timestamp: string, lines: number): RollupEmbed {
+  const base = { title: `Host · ${title}`, timestamp, color: COLOR_HOST };
+  const desktop = field('Desktop app (any OS)', [nativeLine(h.desktopNative)]);
+  if (!h.lines) {
+    return { ...base, description: 'No host timing lines in this window.', fields: desktop ? [desktop] : [] };
+  }
+  const description = `${h.requests} requests · ${h.slowRequests} slow · event loop p99 up to ${ms(h.loopP99Max)}`;
+  const fields = [
+    field('Slowest server routes', h.slowest.slice(0, Math.max(1, lines)).map(hostRouteLine)),
+    field(
+      'Side nav pages on the host',
+      h.sideNav.length ? h.sideNav.slice(0, Math.max(1, lines)).map(hostRouteLine) : ['No side nav page requests timed.'],
+    ),
+    desktop,
+  ].filter((f): f is EmbedField => f !== null);
+  return { ...base, description, fields };
 }
 
 export function embedChars(e: RollupEmbed): number {
@@ -127,7 +167,7 @@ export function embedChars(e: RollupEmbed): number {
   );
 }
 
-/** The message: `content` (totals) and the five platform embeds. */
+/** The message: `content` (totals), the five platform embeds and the host's. */
 export function rollupMessage(rollup: PlatformRollup): { content: string; embeds: RollupEmbed[] } {
   const title = windowLabel(rollup.since, rollup.until);
   const timestamp = new Date(rollup.until).toISOString();
@@ -139,9 +179,9 @@ export function rollupMessage(rollup: PlatformRollup): { content: string; embeds
     2000,
   );
   const platforms = ROLLUP_PLATFORMS.map((os) => rollup.platforms.find((p) => p.os === os)!);
-  // Fewer side-nav lines until the whole message fits.
+  // Fewer lines (side nav, host routes, heap slopes) until the whole message fits.
   for (let lines = SIDE_NAV_LINES; ; lines--) {
-    const embeds = platforms.map((p) => platformEmbed(p, title, timestamp, lines));
+    const embeds = [...platforms.map((p) => platformEmbed(p, title, timestamp, lines)), hostEmbed(rollup.host, title, timestamp, lines)];
     const total = embeds.reduce((n, e) => n + embedChars(e), 0);
     if (total <= MESSAGE_BUDGET) return { content, embeds };
     if (lines === 0) {

@@ -125,11 +125,32 @@ export function formatRollup(body) {
       `${name} ${p.sessions} sessions, ${p.members} members, ${p.fgHours} h (${shells}); ready p50 ${sec(p.launch?.hydrated?.p50)}; ` +
         `nav ${p.nav.n} p50/p95/max ${sec(p.nav.p50)}/${sec(p.nav.p95)}/${sec(p.nav.max)}; freezes ${p.freezes.n}; heap p50 ${p.heap.p50} MB, growth p95 ${p.heap.growth.p95} MB`,
     );
+    const n = p.native;
+    if (n && n.rendererGone + n.rendererUnresponsive + n.lowMemory + n.trimMemory > 0) {
+      lines.push(`         native: renderer deaths ${n.rendererGone}, unresponsive ${n.rendererUnresponsive}, low memory ${n.lowMemory}, trim ${n.trimMemory}`);
+    }
+    if (p.heapSlopes?.length) {
+      lines.push(`         heap per hour: ${p.heapSlopes.map((h) => `${h.model} ${h.mbPerHour >= 0 ? '+' : ''}${h.mbPerHour} MB (${h.sessions})`).join(', ')}`);
+    }
     const side = p.sideNav ?? { taps: 0, abandoned: 0, routes: [] };
     lines.push(`         side nav: ${side.taps} taps loaded, ${side.abandoned} re-tapped before loading`);
     for (const r of side.routes) {
       const where = r.phased ? `, host ${sec(r.serverP50)} / page ${sec(r.commitP50)} (${r.phased})` : '';
       lines.push(`           ${pad(r.route, 24)} ${r.n}x p50 ${sec(r.p50)} p95 ${sec(r.p95)}${where}${r.abandoned ? `, ${r.abandoned} re-tapped` : ''}`);
+    }
+  }
+  const h = body.rollup?.host;
+  if (h) {
+    const route = (r) => `${pad(r.route, 30)} p50 ${sec(r.p50)} p95 ${sec(r.p95)} max ${sec(r.max)} (${r.n})`;
+    lines.push(h.lines ? `Host     ${h.requests} requests, ${h.slowRequests} slow, event loop p99 up to ${h.loopP99Max} ms` : 'Host     no timing lines in this window');
+    for (const r of h.slowest ?? []) lines.push(`           ${route(r)}`);
+    if (h.sideNav?.length) {
+      lines.push('         side nav pages on the host:');
+      for (const r of h.sideNav) lines.push(`           ${route(r)}`);
+    }
+    const d = h.desktopNative;
+    if (d && d.rendererGone + d.rendererUnresponsive + d.lowMemory + d.trimMemory > 0) {
+      lines.push(`         desktop app native: renderer deaths ${d.rendererGone}, unresponsive ${d.rendererUnresponsive}, low memory ${d.lowMemory}, trim ${d.trimMemory}`);
     }
   }
   return lines;
