@@ -545,21 +545,14 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
   background: var(--update-pill-accent);
   color: var(--update-pill-chip-fg);
 }
-.ember-update-close { color: var(--update-pill-fg); opacity: 0.7; }
-.ember-update-close:hover { opacity: 1; }
 @keyframes ember-update-in {
   from { transform: translateY(-140%); opacity: 0; }
   to   { transform: translateY(0); opacity: 1; }
 }
-@keyframes ember-update-out {
-  from { transform: translateY(0); opacity: 1; }
-  to   { transform: translateY(-140%); opacity: 0; }
-}
-.ember-update-in { animation: ember-update-in 320ms cubic-bezier(.2,.8,.2,1) both; }
-.ember-update-out { animation: ember-update-out 260ms ease-in both; }
+.ember-update-in { animation: ember-update-in 320ms cubic-bezier(.2,.8,.2,1) backwards; }
 @media (prefers-reduced-motion: reduce) {
-  .ember-update-in,
-  .ember-update-out { animation: none !important; }
+  .ember-update-in { animation: none !important; }
+  .ember-update-drag { transition: none !important; }
 }
 
 /* The Windows app's own show-password eye (Edge WebView2) is dark grey on

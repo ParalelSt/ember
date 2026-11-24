@@ -9,13 +9,24 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { INITIAL_UPDATE_STATE, useUpdateStore } from '@/stores/useUpdateStore';
 
 /** The banner at the top: "[0.7.44] New version ready [Update]", stays until
- *  tapped or closed; once per app start; a tap updates now, even while a song
+ *  tapped or swiped away; once per app start; a tap updates now, even while a song
  *  plays. */
 
 type W = Window & { Capacitor?: unknown; __TAURI_INTERNALS__?: unknown };
 const reload = vi.fn();
 const SHOW_LONG_MS = 10 * 60 * 1000;
 const click = (id: string) => fireEvent.click(screen.getByTestId(id));
+/** A drag on the bar: down at x0, moves, up at x1 (after `ms`). */
+function swipe(x1: number, ms = 400) {
+  const bar = screen.getByTestId('update-reminder');
+  fireEvent.pointerDown(bar, { clientX: 200, pointerId: 1 });
+  fireEvent.pointerMove(bar, { clientX: (200 + x1) / 2, pointerId: 1 });
+  fireEvent.pointerMove(bar, { clientX: x1, pointerId: 1 });
+  act(() => vi.advanceTimersByTime(ms));
+  fireEvent.pointerUp(bar, { clientX: x1, pointerId: 1 });
+  // The click a browser sends after a drag on the same element.
+  fireEvent.click(screen.getByTestId('update-reminder-action'));
+}
 
 function offer(version = '0.7.44', canApply = true) {
   act(() => useUpdateStore.getState().set({ status: 'available', offer: { kind: 'web', version, canApply, via: canApply ? 'reload' : 'desktop' } }));
@@ -94,11 +105,21 @@ describe('UpdateReminder', () => {
     expect(screen.getByTestId('update-reminder')).toHaveAttribute('data-phase', 'in');
   });
 
-  it('the close button ("Not now") puts it away', () => {
+  it('has no close button; it says how to put it away', () => {
     render(<UpdateReminder />);
     offer();
-    expect(screen.getByLabelText('Not now')).toBe(screen.getByTestId('update-reminder-close'));
-    click('update-reminder-close');
+    expect(screen.queryByTestId('update-reminder-close')).toBeNull();
+    expect(screen.queryByLabelText('Not now')).toBeNull();
+    expect(screen.getByTestId('update-reminder')).toHaveAttribute('aria-description', expect.stringContaining('Swipe away'));
+  });
+
+  it.each([
+    ['left', -120],
+    ['right', 120],
+  ])('a swipe %s past the threshold hides it, and does not update', (_n, x) => {
+    render(<UpdateReminder />);
+    offer();
+    swipe(200 + x);
     expect(screen.getByTestId('update-reminder')).toHaveAttribute('data-phase', 'out');
     act(() => vi.advanceTimersByTime(400));
     expect(screen.queryByTestId('update-reminder')).toBeNull();
@@ -108,10 +129,46 @@ describe('UpdateReminder', () => {
     expect(screen.queryByTestId('update-reminder')).toBeNull();
   });
 
+  it('a fast flick hides it even when short', () => {
+    render(<UpdateReminder />);
+    offer();
+    swipe(200 + 40, 30);
+    expect(screen.getByTestId('update-reminder')).toHaveAttribute('data-phase', 'out');
+  });
+
+  it('a short drag springs back and does not count as a tap on Update', () => {
+    render(<UpdateReminder />);
+    offer();
+    swipe(200 + 40, 600);
+    const bar = screen.getByTestId('update-reminder');
+    expect(bar).toHaveAttribute('data-phase', 'in');
+    expect(bar.style.transform).toBe('');
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('a plain tap still updates', () => {
+    render(<UpdateReminder />);
+    offer();
+    const bar = screen.getByTestId('update-reminder');
+    fireEvent.pointerDown(bar, { clientX: 200, pointerId: 1 });
+    fireEvent.pointerUp(bar, { clientX: 201, pointerId: 1 });
+    click('update-reminder-action');
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape hides it', () => {
+    render(<UpdateReminder />);
+    offer();
+    fireEvent.keyDown(screen.getByTestId('update-reminder-action'), { key: 'Escape' });
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
   it('comes back at the next app start after being put away', () => {
     const first = render(<UpdateReminder />);
     offer();
-    click('update-reminder-close');
+    swipe(-100);
     act(() => vi.advanceTimersByTime(400));
     first.unmount();
     // A new app start: the page's memory of what it showed is gone.
@@ -123,7 +180,7 @@ describe('UpdateReminder', () => {
   it('shows each version once per app start', () => {
     render(<UpdateReminder />);
     offer();
-    click('update-reminder-close');
+    swipe(-100);
     act(() => vi.advanceTimersByTime(400));
     // The next check finds the same update: no second reminder.
     offer();

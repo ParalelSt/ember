@@ -7,25 +7,22 @@
  *  Owner's picks (2026-11-13): a dark pill with a soft orange outline and a
  *  faint haze; at its front the new version in a small solid orange chip.
  *  2026-11-24: bigger and plainer so it is not missed: 15px bold "New version
- *  ready", an orange "Update" button inside it, a close button, at least 44px
- *  tall. The slide in and out are the `ember-update-in` / `ember-update-out`
- *  keyframes in app/globals.css (no motion under reduced motion). */
+ *  ready", an orange "Update" button inside it, swipe it away to hide it, at least 52px
+ *  tall, full width under the top bar. The slide in is the `ember-update-in`
+ *  keyframe in app/globals.css (no motion under reduced motion). */
 
-/** The banner: its colours, outline and glow are `.ember-update-pill`. */
+/** The bar: edge to edge under the top bar, no rounding; its colours,
+ *  outline and glow are `.ember-update-pill`. */
 export const PILL_CLASS =
-  'ember-update-pill pointer-events-auto flex min-h-[48px] w-full max-w-[min(26rem,calc(100vw-2rem))] items-stretch rounded-full text-[15px] font-bold leading-6';
+  'ember-update-pill pointer-events-auto flex min-h-[52px] w-full items-stretch text-[15px] font-bold leading-6 select-none';
 
-/** The tappable part (everything but the close button). */
+/** The tappable part (the whole bar). */
 export const ACTION_CLASS =
-  'flex min-h-[48px] min-w-0 flex-1 items-center gap-cluster rounded-full py-inset pl-cluster pr-inset text-left';
+  'flex min-h-[52px] min-w-0 flex-1 items-center gap-cluster py-inset pl-block pr-block text-left';
 
-/** The "Update" button inside the banner (a label: the whole area is the tap). */
+/** The "Update" button inside the bar (a label: the whole area is the tap). */
 export const ACTION_LABEL_CLASS =
-  'ember-update-action shrink-0 rounded-full px-row py-inset text-[15px] font-bold leading-5';
-
-/** The close button: a 44px tap target. */
-export const CLOSE_CLASS =
-  'ember-update-close flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full';
+  'ember-update-action shrink-0 rounded-full px-block py-cluster text-[15px] font-bold leading-5';
 
 /** The front mark: the new version in a small solid orange chip. */
 export function ReminderMark({ version }: { version: string }) {
@@ -55,6 +52,6 @@ export const REMINDER_WORDING = {
   reopen: 'Quit and reopen Ember to update',
   /** The app could not download or install it; a tap tries again. */
   failed: "Couldn't update",
-  /** The close button's name. */
-  dismiss: 'Not now',
+  /** Read out with the bar: how to put it away. */
+  swipeHint: 'Swipe away to hide. Escape also hides it.',
 } as const;

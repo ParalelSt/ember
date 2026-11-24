@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { detectShell } from '@/lib/playback/detectShell';
 import { detectDevicePlatform } from '@/lib/versions/device';
 import { appUpdateWaitsForTap, subscribeAppUpdate } from '@/lib/appUpdate';
@@ -14,11 +14,18 @@ import {
 } from '@/lib/update/reminder';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useUpdateStore } from '@/stores/useUpdateStore';
-import { ACTION_CLASS, ACTION_LABEL_CLASS, CLOSE_CLASS, PILL_CLASS, REMINDER_WORDING, ReminderMark } from './updateReminderLook';
+import { ACTION_CLASS, ACTION_LABEL_CLASS, PILL_CLASS, REMINDER_WORDING, ReminderMark } from './updateReminderLook';
 
 /** How long the slide out takes before the pill is gone (the
- *  ember-update-out keyframes in app/globals.css). */
-const OUT_MS = 280;
+ *  slide out after a swipe). */
+const OUT_MS = 240;
+/** Dragged this far (px) a release slides it away; less springs back. */
+export const SWIPE_AWAY_PX = 70;
+/** A quick flick (px per ms) also counts, past FLICK_MIN_PX. */
+const FLICK_SPEED = 0.5;
+const FLICK_MIN_PX = 20;
+/** Moved more than this (px) is a drag, not a tap. */
+const DRAG_SLOP_PX = 8;
 
 /** Versions the pill was shown for since this app start (this page load). */
 const shown = new Set<string>();
@@ -37,9 +44,10 @@ export function reminderPlatform(): boolean {
   return detectShell() === 'tauri' || detectDevicePlatform() === 'android';
 }
 
-/** A newer Ember, said at the top: "[0.7.44] New version ready  [Update]".
- *  It slides in under the top bar and stays until it is tapped or put away
- *  with its close button ("Not now"); put away, it comes back at the next
+/** A newer Ember, said in a full-width bar under the top bar:
+ *  "[0.7.44] New version ready  [Update]". It slides in and stays until it is
+ *  tapped or swiped away left or right (Escape does the same from the
+ *  keyboard); put away, it comes back at the next
  *  app start until the update is in (lib/update/reminder.ts). A tap updates
  *  now, even while a song plays: the song and its position are kept and it
  *  starts again once back (lib/update/apply.ts). The look is in
@@ -54,6 +62,9 @@ export function UpdateReminder() {
   const [enabled, setEnabled] = useState(false);
   const [tick, setTick] = useState(0);
   const playingSince = useRef(0);
+  const drag = useRef<{ x0: number; t0: number; id: number; moved: boolean } | null>(null);
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const outTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => setEnabled(reminderPlatform()), []);
@@ -107,9 +118,10 @@ export function UpdateReminder() {
     setPhase('in');
   };
 
-  /** "Not now": it slides away and comes back at the next app start. */
-  const dismiss = () => {
+  /** Swiped away: it slides out and comes back at the next app start. */
+  const dismiss = (dir: 1 | -1 = 1) => {
     clearTimeout(outTimer.current);
+    setDx(dir * 600);
     setPhase('out');
     outTimer.current = setTimeout(() => setPhase('hidden'), OUT_MS);
   };
@@ -159,39 +171,88 @@ export function UpdateReminder() {
     requestUpdate();
   };
 
+  const onDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (phase === 'out') return;
+    drag.current = { x0: e.clientX, t0: Date.now(), id: e.pointerId, moved: false };
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* no capture: the drag still follows moves over the bar */
+    }
+  };
+  const onMove = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    const x = e.clientX - d.x0;
+    if (!d.moved && Math.abs(x) <= DRAG_SLOP_PX) return;
+    d.moved = true;
+    setDragging(true);
+    setDx(x);
+  };
+  const onUp = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    const x = e.clientX - d.x0;
+    const speed = Math.abs(x) / Math.max(1, Date.now() - d.t0);
+    setDragging(false);
+    if (d.moved && (Math.abs(x) >= SWIPE_AWAY_PX || (Math.abs(x) >= FLICK_MIN_PX && speed >= FLICK_SPEED))) {
+      dismiss(x < 0 ? -1 : 1);
+    } else {
+      setDx(0);
+    }
+    // The click that follows a drag must not count as a tap on Update.
+    if (d.moved) setTimeout(() => (drag.current = null), 0);
+    else drag.current = null;
+  };
+  const onCancel = () => {
+    drag.current = null;
+    setDragging(false);
+    setDx(0);
+  };
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') dismiss();
+  };
+
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-block"
-      style={{ top: 'calc(var(--ember-topbar-h, 0px) + 0.75rem)' }}
+      className="pointer-events-none absolute inset-x-0 z-40"
+      style={{ top: 'var(--ember-topbar-h, 0px)' }}
     >
       <div
         data-testid="update-reminder"
         data-kind={offer.kind}
         data-phase={phase}
         role="status"
-        className={`${PILL_CLASS} ${phase === 'out' ? 'ember-update-out' : 'ember-update-in'}`}
+        {...{ 'aria-description': REMINDER_WORDING.swipeHint }}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onCancel}
+        onKeyDown={onKey}
+        style={{
+          touchAction: 'pan-y',
+          transform: dx ? `translateX(${dx}px)` : undefined,
+          opacity: phase === 'out' ? 0 : dx ? Math.max(0.35, 1 - Math.abs(dx) / 300) : undefined,
+          transition: dragging ? 'none' : `transform ${OUT_MS}ms ease-out, opacity ${OUT_MS}ms ease-out`,
+        }}
+        className={`${PILL_CLASS} ember-update-drag ${phase === 'in' ? 'ember-update-in' : ''}`}
       >
         <button
           type="button"
           data-testid="update-reminder-action"
           aria-label={`Ember ${offer.version}: ${words}${action ? `. ${action}` : ''}`}
-          onClick={tap}
+          onClick={(e) => {
+            if (drag.current?.moved) {
+              e.preventDefault();
+              return;
+            }
+            tap();
+          }}
           className={ACTION_CLASS}
         >
           <ReminderMark version={offer.version} />
           <span className="min-w-0 flex-1 truncate">{words}</span>
           {action && <span className={ACTION_LABEL_CLASS}>{action}</span>}
-        </button>
-        <button
-          type="button"
-          data-testid="update-reminder-close"
-          aria-label={REMINDER_WORDING.dismiss}
-          onClick={dismiss}
-          className={CLOSE_CLASS}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
-          </svg>
         </button>
       </div>
     </div>
