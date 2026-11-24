@@ -17,12 +17,29 @@ import { detectShell } from '@/lib/playback/detectShell';
 import { isIosApp } from '@/lib/playback/nativePlatform';
 import { micUnavailableMessage } from '@/lib/speech/messages';
 import { addSearchChunk, EMPTY_SEARCH_PARTS, type SearchChunk, type SearchParts } from '@/lib/search/types';
-import { localMatches } from '@/lib/search/rank';
+import { localMatches, normalizeForSearch } from '@/lib/search/rank';
 import { buildSearchView } from '@/lib/search/view';
 import type { PlaybackContext, Track } from '@/types/track';
 
 /** How long after a rate limit (429) the search asks again by itself. */
 export const SEARCH_RATE_LIMIT_RETRY_MS = 10_000;
+
+/** Pinned own matches per normalized query, so Back from a song page (which
+ *  remounts the hook) shows the results in the order they had. Bounded to
+ *  the last few queries; typing a new query drops that query's entry so a
+ *  fresh search ranks live. */
+const PINNED_MAX = 10;
+const pinnedCache = new Map<string, Track[]>();
+function pinOwn(q: string, own: Track[]) {
+  const key = normalizeForSearch(q);
+  pinnedCache.delete(key);
+  pinnedCache.set(key, own);
+  while (pinnedCache.size > PINNED_MAX) pinnedCache.delete(pinnedCache.keys().next().value as string);
+}
+/** Test hook: forget every pinned query. */
+export function clearPinnedOwnForTests() {
+  pinnedCache.clear();
+}
 
 function statusOf(error: unknown): number | undefined {
   return (error as { status?: number } | null)?.status;
@@ -66,7 +83,13 @@ export function useSearchQuery(initialQ = '') {
     // Trim during debounce so " " / "   abc   " collapse to "" / "abc" ,
     // pressing space alone (or starting/ending with whitespace) no longer
     // triggers a search.
-    const t = setTimeout(() => setDebouncedQ(q.trim()), 250);
+    const t = setTimeout(() => {
+      const next = q.trim();
+      setDebouncedQ((cur) => {
+        if (next !== cur) pinnedCache.delete(normalizeForSearch(next));
+        return next;
+      });
+    }, 250);
     return () => clearTimeout(t);
   }, [q]);
 
@@ -108,10 +131,16 @@ export function useSearchQuery(initialQ = '') {
   // the moment a result is played. Playing saves the song to recent
   // searches and history, which would otherwise pull it up into the own
   // matches at the top of the list while it is on screen.
-  const [pinned, setPinned] = useState<{ q: string; own: Track[] } | null>(null);
+  const [pinned, setPinned] = useState<{ q: string; own: Track[] } | null>(() => {
+    const own = pinnedCache.get(normalizeForSearch(initialQ));
+    return own ? { q: initialQ, own } : null;
+  });
   const settled = !!parts?.done;
   useEffect(() => {
-    if (settled && pinned?.q !== debouncedQ) setPinned({ q: debouncedQ, own: liveOwn });
+    if (settled && pinned?.q !== debouncedQ) {
+      pinOwn(debouncedQ, liveOwn);
+      setPinned({ q: debouncedQ, own: liveOwn });
+    }
   }, [settled, pinned, debouncedQ, liveOwn]);
   const own = pinned?.q === debouncedQ ? pinned.own : liveOwn;
   const view = useMemo(() => buildSearchView(debouncedQ, parts ?? EMPTY_SEARCH_PARTS, own), [debouncedQ, parts, own]);
@@ -137,7 +166,10 @@ export function useSearchQuery(initialQ = '') {
   // Playing a result also saves it to recent searches; everything else about
   // playback comes from useTrackActions.
   const onPlay = (track: Track, list?: Track[], context?: PlaybackContext | null) => {
-    if (pinned?.q !== debouncedQ) setPinned({ q: debouncedQ, own });
+    if (pinned?.q !== debouncedQ) {
+      pinOwn(debouncedQ, own);
+      setPinned({ q: debouncedQ, own });
+    }
     addRecentTrack.mutate(track);
     trackActions.onPlay(track, list, context);
   };
