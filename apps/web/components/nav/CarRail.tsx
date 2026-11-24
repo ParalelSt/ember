@@ -40,6 +40,7 @@ function RailButton({
     <Link
       href={href}
       onClick={onClick}
+      data-perf-nonav={href === '/search' && onClick ? '' : undefined}
       aria-label={label}
       title={label}
       aria-current={active ? 'page' : undefined}

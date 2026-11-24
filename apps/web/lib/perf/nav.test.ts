@@ -132,15 +132,26 @@ describe('NavTracker: navigation records', () => {
     expect(h.navs[0].tapToRequest).toBeUndefined();
   });
 
-  it('a link its own handler cancels (the Search link opening the sheet) is no navigation', () => {
+  it('a link marked data-perf-nonav (the Search link opening the sheet) is no navigation', () => {
     const h = makeHost();
     const nav = new NavTracker(h.host);
-    const ev = click(link('/search'), 10);
+    nav.onClick(click(link('/search', { 'data-perf-nonav': '' }), 10));
+    expect(nav.pendingAge()).toBeUndefined();
+  });
+
+  it("a Next <Link> tap still counts though Next cancels the browser's own navigation", () => {
+    const h = makeHost();
+    const nav = new NavTracker(h.host);
+    h.set({ clock: 1000 });
+    const ev = click(link('/library'), 1000);
     nav.onClick(ev);
-    expect(nav.pendingAge()).toBeDefined();
     (ev as { defaultPrevented: boolean }).defaultPrevented = true;
     h.runLaters();
+    h.set({ clock: 1400 });
+    nav.onRoute('/library', '/', 'push');
+    h.runLaters();
     expect(nav.pendingAge()).toBeUndefined();
+    expect(h.navs.some((n) => n.via === 'tap' && n.to === '/library')).toBe(true);
   });
 
   it('a second tap on another link marks the first one abandoned', () => {

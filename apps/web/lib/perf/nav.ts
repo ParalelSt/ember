@@ -113,7 +113,7 @@ export class NavTracker {
     if (url.origin !== new URL(this.host.doc().baseURI).origin) return;
     const from = this.host.currentPath();
     if (url.pathname === from) return;
-    if (this.pending && at - this.pending.tapAt > 1000) {
+    if (this.pending && at - this.pending.tapAt > 1000 && at - this.pending.tapAt < TAP_MAX_AGE_MS) {
       this.host.addNav({
         at: Math.round(this.pending.tapAt),
         from: routeShape(this.pending.from),
@@ -124,15 +124,12 @@ export class NavTracker {
         ...(this.pending.area ? { area: this.pending.area } : {}),
       });
     }
+    // A link the app opens something else for (the Search link opens the
+    // search sheet) says so with data-perf-nonav. defaultPrevented cannot
+    // tell: Next's <Link> cancels every click it navigates itself.
+    if (a.closest('[data-perf-nonav]')) return;
     const area = navArea(a);
-    const pending: Pending = { tapAt: at, from, toPath: url.pathname, lt0: this.host.ltTotal(), ...(area ? { area } : {}) };
-    this.pending = pending;
-    // Seen in the capture phase, before the app's own handler: a link that
-    // handler cancels (the Search link opens the search sheet) is no
-    // navigation.
-    this.host.later(() => {
-      if (e.defaultPrevented && this.pending === pending) this.pending = null;
-    }, 0);
+    this.pending = { tapAt: at, from, toPath: url.pathname, lt0: this.host.ltTotal(), ...(area ? { area } : {}) };
   }
 
   /** The route changed (history.pushState or back/forward). */
