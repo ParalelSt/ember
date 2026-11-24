@@ -78,13 +78,17 @@ describe('bootPerf and the digest upload', () => {
     m.pagePerf.stop('test');
   });
 
-  it('sends every 5 min while open, through sendBeacon when hidden, at most 20 an hour', async () => {
+  it('sends a first batch 1 min after opening, then every 5 min while open, through sendBeacon when hidden, at most 20 an hour', async () => {
     const m = await load();
     const beacon = vi.fn(() => true);
     vi.stubGlobal('navigator', { ...navigator, sendBeacon: beacon });
     m.bootPerf();
+    await tick(m.FIRST_UPLOAD_MS - 1000);
+    expect(posts()).toHaveLength(0);
+    await tick(1000);
+    expect(posts()).toHaveLength(1);
     for (let i = 0; i < 3; i++) await tick(m.UPLOAD_EVERY_MS);
-    expect(posts()).toHaveLength(3);
+    expect(posts()).toHaveLength(4);
     await tick(10_000);
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
@@ -92,10 +96,10 @@ describe('bootPerf and the digest upload', () => {
     expect(beacon).toHaveBeenCalledTimes(1);
     // Hidden: no timer sends anything.
     await tick(m.UPLOAD_EVERY_MS * 2);
-    expect(posts()).toHaveLength(3);
+    expect(posts()).toHaveLength(4);
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
-    // The hourly budget: 4 used, 16 left.
+    // The hourly budget: 5 used, 15 left.
     for (let i = 0; i < 30; i++) {
       await tick(5000);
       await m.flushDigest(false);
@@ -127,7 +131,7 @@ describe('bootPerf and the digest upload', () => {
     m.bootPerf();
     const emit = (e: unknown) => (m.pagePerf as unknown as { addNav(r: unknown): void }).addNav(e);
     emit({ at: 1000, from: '/', to: '/settings', via: 'tap', lt: 0, total: 9100, server: 8000 });
-    await tick(m.UPLOAD_EVERY_MS);
+    await tick(m.FIRST_UPLOAD_MS);
     const first = JSON.parse((posts()[0][1] as RequestInit).body as string);
     expect(first).toMatchObject({ seq: 1, ev: [{ k: 'nav', to: '/settings', ms: 9100, server: 8000 }] });
     expect(first.t0).toBeGreaterThan(0);

@@ -20,6 +20,9 @@ import { applyHostAnswer, configChecked, markConfigChecked, onPerfSwitch, sessio
 
 export const PERF_ENDPOINT = '/api/perf-log';
 export const UPLOAD_EVERY_MS = 5 * 60 * 1000;
+/** The session's first batch goes this soon after opening, so even a short
+ *  visit is heard from well inside the first 5 minutes. */
+export const FIRST_UPLOAD_MS = 60 * 1000;
 export const MAX_UPLOADS_PER_HOUR = 20;
 /** The host is asked for its perf settings this long after hydrating, so
  *  the question never competes with the launch. */
@@ -32,6 +35,7 @@ export const CONFIG_EVERY_MS = 30 * 60 * 1000;
 let booted = false;
 let uploadTimer: ReturnType<typeof setInterval> | null = null;
 let configTimer: ReturnType<typeof setInterval> | null = null;
+let firstUploadTimer: ReturnType<typeof setTimeout> | null = null;
 let lastConfigCheck = 0;
 let launchSent = false;
 /** The last batch number this page load sent. */
@@ -127,6 +131,12 @@ export async function checkConfig(): Promise<void> {
 function startTimers(): void {
   if (!pagePerf.on) return;
   if (!uploadTimer) uploadTimer = setInterval(() => void flushDigest(false), UPLOAD_EVERY_MS);
+  if (seq === 0 && !firstUploadTimer) {
+    firstUploadTimer = setTimeout(() => {
+      firstUploadTimer = null;
+      void flushDigest(false);
+    }, FIRST_UPLOAD_MS);
+  }
   if (!configTimer) configTimer = setInterval(() => void checkConfig(), CONFIG_EVERY_MS);
 }
 
@@ -135,6 +145,8 @@ function stopTimers(): void {
   if (configTimer) clearInterval(configTimer);
   uploadTimer = null;
   configTimer = null;
+  if (firstUploadTimer) clearTimeout(firstUploadTimer);
+  firstUploadTimer = null;
 }
 
 /** LoggerInit calls this after logger.boot(), once hydrated. */
