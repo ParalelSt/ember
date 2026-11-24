@@ -1,3 +1,9 @@
+# 0.7.52: Updates that work
+
+**Host: run `./update.sh` as usual. Run ./update.sh as usual. Nothing new to
+set up. Apps on 0.7.52 or later update their web part by themselves when a
+newer required version is out.**
+
 # 0.7.51: Smoother on phones (android 0.4.36, windows, macos, linux 0.4.28)
 
 **Host: run `./update.sh` as usual. New: the server stores anonymous

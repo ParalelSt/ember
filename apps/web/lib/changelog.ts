@@ -26,6 +26,18 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'update-bar',
+    version: '0.7.52',
+    date: '2026-11-24',
+    title: 'Updates that work',
+    summary: 'A clear bar tells you when a new version is ready, and Update now really updates.',
+    bullets: [
+      'A new version now shows as a clear bar at the top. Tap Update and Ember updates right away; your song carries on where it was.',
+      'Not now? Swipe the bar away. It comes back the next time you open the app.',
+      'This version installs itself, so everyone is on the fixed update bar.',
+    ],
+  },
+  {
     id: 'smoother-android',
     version: '0.7.51',
     date: '2026-11-24',
