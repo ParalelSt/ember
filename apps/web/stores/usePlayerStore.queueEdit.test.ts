@@ -73,12 +73,14 @@ describe('Next up edits in the player store', () => {
   it('with the shuffle mode on, edits go to the shuffled queue and the mode stays on', () => {
     usePlayerStore.getState().toggleShuffle();
     const backup = usePlayerStore.getState().orderBackup;
-    const [, , x, y, z] = ids();
+    // The song playing moved to the front; the rest follows shuffled.
+    const [, w, x, y, z] = ids();
+    expect(ids()[0]).toBe('b');
     usePlayerStore.getState().moveUpcoming(4, 2);
-    expect(ids()).toEqual(['a', 'b', z, x, y]);
+    expect(ids()).toEqual(['b', w, z, x, y]);
     usePlayerStore.getState().shuffleUpcoming();
-    expect(ids().slice(0, 2)).toEqual(['a', 'b']);
-    expect(ids().slice(2).sort()).toEqual(['c', 'd', 'e']);
+    expect(ids()[0]).toBe('b');
+    expect(ids().slice(1).sort()).toEqual(['a', 'c', 'd', 'e']);
     const s = usePlayerStore.getState();
     expect(s.shuffle).toBe(true);
     expect(s.orderBackup).toBe(backup);
@@ -91,11 +93,11 @@ describe('Next up edits in the player store', () => {
   it('Clear with the shuffle mode on: off afterwards does not bring the songs back', () => {
     usePlayerStore.getState().toggleShuffle();
     usePlayerStore.getState().clearUpcoming();
-    expect(ids()).toEqual(['a', 'b']);
+    expect(ids()).toEqual(['b']);
     expect(usePlayerStore.getState().shuffle).toBe(true);
     usePlayerStore.getState().toggleShuffle();
-    expect(ids()).toEqual(['a', 'b']);
-    expect(usePlayerStore.getState().index).toBe(1);
+    expect(ids()).toEqual(['b']);
+    expect(usePlayerStore.getState().index).toBe(0);
   });
 
   it('a Next up edit made after the song changed acts on the queue as it is now', () => {

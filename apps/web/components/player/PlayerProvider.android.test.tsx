@@ -140,7 +140,7 @@ describe('android: one setQueue per queue change', () => {
     expect(native.setQueue.mock.calls).toEqual([[[C], 0, true, { context: { type: 'search', query: 'c' }, baseCount: 1 }]]);
   });
 
-  it('shuffle hands native the new order once, same song at the same index', () => {
+  it('shuffle hands native the new order once, same song first, still playing', () => {
     usePlayerStore.setState({ queue: [A, B, C, D], index: 1, isPlaying: true });
     render(<PlayerProvider><Grab /></PlayerProvider>);
     native.setQueue.mockClear();
@@ -148,7 +148,7 @@ describe('android: one setQueue per queue change', () => {
     expect(native.setQueue).toHaveBeenCalledTimes(1);
     const [tracks, i, play] = native.setQueue.mock.calls[0];
     expect(tracks[i]).toBe(B);
-    expect(i).toBe(1);
+    expect(i).toBe(0);
     expect(play).toBe(true);
   });
 

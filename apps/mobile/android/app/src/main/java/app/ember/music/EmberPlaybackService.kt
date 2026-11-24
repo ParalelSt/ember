@@ -550,7 +550,7 @@ class EmberPlaybackService : MediaLibraryService() {
         shuffleFlag(on)
         if (items.isEmpty() || index == C.INDEX_UNSET) return
         if (on && items.size > 1) {
-            QueueSync.apply(p, QueueShuffle.shuffledOrder(items.size, index).map { items[it] }, index)
+            QueueSync.apply(p, QueueShuffle.shuffledOrder(items.size, index).map { items[it] }, 0)
         } else if (!on && original != null) {
             val (order, at) = QueueShuffle.restoredOrder(original, ids, index)
             QueueSync.apply(p, order.map { items[it] }, at)

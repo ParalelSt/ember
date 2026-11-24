@@ -3,7 +3,7 @@
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { sameContext } from '@/lib/collections';
-import { shuffle as shuffleList } from '@/lib/shuffle';
+import { shuffle as shuffleList, shuffleFresh } from '@/lib/shuffle';
 import type { PlaybackContext, Track } from '@/types/track';
 
 export interface CollectionPlayback {
@@ -15,32 +15,48 @@ export interface CollectionPlayback {
 
 /** Play and shuffle for a collection (playlist, Liked, Recent, Uploads).
  *  `active` is whether THIS collection is the one currently playing: it
- *  drives both the shuffle button's toggle-vs-shuffle-play behavior and its
- *  pressed styling. */
+ *  decides between re-dealing the queue behind the song playing and a fresh
+ *  shuffle play, and drives the button's pressed styling. */
 export function useCollectionPlayback(tracks: Track[], context: PlaybackContext): CollectionPlayback {
   const { playTrack } = usePlayer();
   const shuffleOn = usePlayerStore((s) => s.shuffle);
-  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const active = usePlayerStore((s) => sameContext(s.context, context));
 
   const play = () => {
     if (tracks.length) playTrack(tracks[0], tracks, context);
   };
 
-  // Every press is a shuffle play: a fresh random order replaces the queue
-  // and starts on a random song, also while this collection is the one
-  // playing. It used to be a toggle there (shuffle the tracks ahead, or turn
-  // shuffle off and bring the old order back), so a second press never built
-  // a new order. Shuffle on/off for the playing queue is the player's own
-  // button.
+  // Every press builds a fresh random order, never a toggle (it used to
+  // turn shuffle off on the second press). Shuffle on/off for the playing
+  // queue is the player's own button.
+  // - This collection is playing: the song playing is left alone (no load,
+  //   same position). It becomes the queue's first entry, with songs added by
+  //   hand next and every OTHER song of the collection behind them in a new
+  //   random order, the ones already played included.
+  // - Otherwise: a shuffle play, a random order that starts on a random song.
   const shuffle = () => {
     if (!tracks.length) return;
-    const queued = usePlayerStore.getState().queue;
-    const sameAsQueued = (list: Track[]) => list.length === queued.length && list.every((s, k) => queued[k]?.id === s.id);
-    let shuffled = shuffleList(tracks);
-    // The very order already queued would look like nothing happened (likely
-    // on a short list): draw again.
-    for (let n = 0; n < 8 && tracks.length > 1 && sameAsQueued(shuffled); n++) shuffled = shuffleList(tracks);
+    const st = usePlayerStore.getState();
+    const playing = st.queue[st.index];
+    const isQueued = (s: Track) => !!(s as { queued?: boolean }).queued;
+    if (active && playing) {
+      const handQueued = st.queue.filter((s, k) => k > st.index && isQueued(s));
+      const others = tracks.slice();
+      const at = others.findIndex((s) => s.id === playing.id);
+      if (at >= 0) others.splice(at, 1);
+      const old = st.queue.slice(st.index + 1).filter((s) => !isQueued(s)).map((s) => s.id);
+      const order = shuffleFresh(others, old);
+      usePlayerStore.setState({
+        queue: [playing, ...handQueued, ...order],
+        index: 0,
+        baseCount: 1 + handQueued.length + order.length,
+        shuffle: true,
+        orderBackup: tracks,
+        radioHeldFor: null,
+      });
+      return;
+    }
+    const shuffled = shuffleFresh(tracks, st.queue.map((s) => s.id));
     playTrack(shuffled[0], shuffled, context);
     // playTrack clears any previous shuffle snapshot, so record THIS
     // collection's original order right after, so shuffle-off can restore it.
