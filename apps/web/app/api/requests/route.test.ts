@@ -176,9 +176,16 @@ describe('POST /api/requests: validation', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejects an empty main field', async () => {
-    const res = await POST(request(validBody({ main: '' })), undefined as never);
-    expect(res.status).toBe(400);
+  it.each(['feature', 'fix'])('accepts an empty or missing description for a %s', async (kind) => {
+    for (const main of ['', '   ', undefined]) {
+      fetchMock.mockClear();
+      const res = await POST(request(validBody({ kind, main })), undefined as never);
+      expect(res.status).toBe(200);
+      const embed = postedPayload().body.embeds[0];
+      expect(embed.title).toContain('Sleep timer');
+      expect('description' in embed).toBe(false);
+      expect(embed.fields).toEqual([VERSION_FIELD]);
+    }
   });
 
   it('rejects a main field over 2000 characters', async () => {

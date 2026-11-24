@@ -34,14 +34,14 @@ const COPY: Record<Kind, Copy> = {
   feature: {
     nameLabel: 'Name',
     namePlaceholder: 'Short name, e.g. Sleep timer',
-    mainLabel: 'Description',
+    mainLabel: 'Description (optional)',
     mainPlaceholder:
       'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
   },
   fix: {
     nameLabel: 'Name',
     namePlaceholder: 'What needs fixing, e.g. Queue jumps to the top',
-    mainLabel: 'Recommended approach',
+    mainLabel: 'Recommended approach (optional)',
     mainPlaceholder:
       "What happens now and what you'd expect instead. For UI: what you'd see, where, and how it should work.",
   },
@@ -67,7 +67,7 @@ export function RequestDialog({ open, onOpenChange, initialKind = 'feature' }: R
 
   const copy = COPY[kind];
   const canSend =
-    name.trim().length > 0 && main.trim().length > 0 && !busy && attachmentProblem(files) === null;
+    name.trim().length > 0 && !busy && attachmentProblem(files) === null;
 
   const reset = () => {
     setKind(initialKind);
