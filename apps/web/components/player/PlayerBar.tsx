@@ -28,6 +28,7 @@ import { VolumeControl } from '@/components/player/VolumeControl';
 import { DevicesButton, DevicesSheet, PlayingOnLabel, useDevicesEntry } from '@/components/player/DevicesButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useSwipeSkip } from '@/hooks/player/useSwipeSkip';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useHeadUnitControls } from '@/hooks/useHeadUnit';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
@@ -75,6 +76,9 @@ export function PlayerBar() {
   // A car head unit with the car layout on (owner's pick): its own bar,
   // big previous, play and next, and a swipe on the cover to skip.
   const carLayout = useHeadUnitControls();
+  // A tablet shows the wide bar: a finger swiping the song's cluster skips
+  // too (never a mouse drag).
+  const touchSwipe = useSwipeSkip({ onNext: next, onPrev: prev, enabled: true, touchOnly: true });
 
   // Desktop only, the button is hidden on phones (md:inline-flex), where
   // lyrics live inside the full-screen NowPlaying view instead.
@@ -215,7 +219,7 @@ export function PlayerBar() {
     <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[minmax(13.5rem,1fr)_1fr_auto] lg:grid-cols-[minmax(16.5rem,1fr)_2fr_1fr] xl:grid-cols-[minmax(20rem,1fr)_2fr_1fr] gap-4 items-center">
       {/* Now playing. No tap-to-open here: this bar only renders on an md
           and wider window, and the phone bar owns that gesture. */}
-      <div className="flex items-center gap-3 min-w-0" data-testid="player-bar-now">
+      <div className="flex items-center gap-3 min-w-0" data-testid="player-bar-now" {...touchSwipe}>
         {unplayable ? (
           <UnplayableMessage size="desktop" onRetry={retry} onOpenQueue={() => setQueueOpen(true)} />
         ) : (

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from './PhonePlayerBar';
@@ -242,19 +242,30 @@ describe('PhonePlayerBar offline', () => {
 });
 
 describe('PhonePlayerBar swipe to skip', () => {
-  const swipe = (el: HTMLElement, dx: number, dy = 0) => {
-    fireEvent.pointerDown(el, { pointerId: 1, clientX: 200, clientY: 100 });
+  const down = (el: HTMLElement, x = 200, y = 100) => fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+  const move = (el: HTMLElement, dx: number, dy = 0) =>
     fireEvent.pointerMove(el, { pointerId: 1, clientX: 200 + dx, clientY: 100 + dy });
+  const up = (el: HTMLElement, dx: number, dy = 0) =>
     fireEvent.pointerUp(el, { pointerId: 1, clientX: 200 + dx, clientY: 100 + dy });
+  const swipe = (el: HTMLElement, dx: number, dy = 0) => {
+    down(el);
+    move(el, dx, dy);
+    up(el, dx, dy);
   };
+  const settle = () => act(() => void vi.advanceTimersByTime(600));
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
 
   it('swipe left goes to the next song, right to the previous', () => {
     const { onNext, onPrev } = setup();
     const row = screen.getByTestId('phone-player-row');
     swipe(row, -90);
+    settle();
     expect(onNext).toHaveBeenCalledTimes(1);
     expect(onPrev).not.toHaveBeenCalled();
     swipe(row, 90);
+    settle();
     expect(onPrev).toHaveBeenCalledTimes(1);
     expect(onNext).toHaveBeenCalledTimes(1);
   });
@@ -265,8 +276,38 @@ describe('PhonePlayerBar swipe to skip', () => {
     swipe(row, -20);
     swipe(row, 60, 80);
     swipe(row, 0, 150);
+    settle();
     expect(onNext).not.toHaveBeenCalled();
     expect(onPrev).not.toHaveBeenCalled();
+  });
+
+  it('a sideways swipe whose thumb drifts up or down on the way still skips', () => {
+    const { onNext } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    down(row);
+    move(row, -30, 4);
+    move(row, -60, 30);
+    up(row, -70, 55);
+    settle();
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('a drag that starts up and down is never a swipe, even if it ends far to the side', () => {
+    const { onNext, onPrev } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    down(row);
+    move(row, 2, 30);
+    move(row, -120, 40);
+    up(row, -120, 40);
+    settle();
+    expect(onNext).not.toHaveBeenCalled();
+    expect(onPrev).not.toHaveBeenCalled();
+    expect(row.style.transform).toBe('');
+  });
+
+  it('the browser may not claim the drag as a page pan', () => {
+    setup();
+    expect(screen.getByTestId('phone-player-row').style.touchAction).toBe('none');
   });
 
   it('a tap still opens Now Playing; a swipe does not', () => {
@@ -277,31 +318,64 @@ describe('PhonePlayerBar swipe to skip', () => {
     swipe(screen.getByTestId('phone-player-title-row'), -90);
     fireEvent.click(screen.getByTestId('phone-player-title-row'));
     expect(onOpen).toHaveBeenCalledTimes(1);
+    settle();
+    fireEvent.pointerDown(row, { pointerId: 2, clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(row, { pointerId: 2, clientX: 5, clientY: 5 });
     fireEvent.click(row);
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
-  it('the bar follows the finger, then springs back', () => {
+  it('the bar follows the finger, then springs back when it is let go short', () => {
     setup();
     const row = screen.getByTestId('phone-player-row');
-    fireEvent.pointerDown(row, { pointerId: 1, clientX: 200, clientY: 100 });
-    fireEvent.pointerMove(row, { pointerId: 1, clientX: 150, clientY: 100 });
-    expect(row.style.transform).toBe('translateX(-50px)');
-    fireEvent.pointerUp(row, { pointerId: 1, clientX: 150, clientY: 100 });
+    down(row);
+    move(row, -30);
+    expect(row.style.transform).toBe('translateX(-30px)');
+    expect(row.style.transition).toBe('none');
+    up(row, -30);
+    expect(row.style.transform).toBe('');
+    expect(row.style.transition).toContain('transform');
+  });
+
+  it('past the threshold the bar slides out, the skip happens, and the new song slides in', () => {
+    const { onNext } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    down(row);
+    move(row, -90);
+    up(row, -90);
+    // Sliding out the left side; the skip has not happened yet.
+    expect(row.style.transform).toMatch(/^translateX\(-\d+px\)$/);
+    expect(onNext).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(140));
+    expect(onNext).toHaveBeenCalledTimes(1);
+    // Waiting on the right edge, no transition, to slide in.
+    expect(row.style.transform).toMatch(/^translateX\(\d+px\)$/);
+    expect(row.style.transition).toBe('none');
+    settle();
     expect(row.style.transform).toBe('');
   });
 
-  it('does not follow under prefers-reduced-motion, but still skips', () => {
+  it('a right swipe slides the new song in from the left', () => {
+    const { onPrev } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    swipe(row, 90);
+    act(() => void vi.advanceTimersByTime(140));
+    expect(onPrev).toHaveBeenCalledTimes(1);
+    expect(row.style.transform).toMatch(/^translateX\(-\d+px\)$/);
+  });
+
+  it('does not move under prefers-reduced-motion, but a long swipe still skips', () => {
     const orig = window.matchMedia;
     window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {} })) as never;
     try {
       const { onNext } = setup();
       const row = screen.getByTestId('phone-player-row');
-      fireEvent.pointerDown(row, { pointerId: 1, clientX: 200, clientY: 100 });
-      fireEvent.pointerMove(row, { pointerId: 1, clientX: 150, clientY: 100 });
+      down(row);
+      move(row, -50);
       expect(row.style.transform).toBe('');
-      fireEvent.pointerUp(row, { pointerId: 1, clientX: 100, clientY: 100 });
+      up(row, -100);
       expect(onNext).toHaveBeenCalledTimes(1);
+      expect(row.style.transform).toBe('');
     } finally {
       window.matchMedia = orig;
     }
