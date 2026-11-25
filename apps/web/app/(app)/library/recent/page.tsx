@@ -9,6 +9,7 @@ import { useOnline } from '@/lib/useOnline';
 import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
 import { useQueryHistory } from '@/hooks/useLibrary';
+import { useHeldOrder } from '@/hooks/useHeldOrder';
 import { EmptyState } from '@/components/page/EmptyState';
 import { ClockIcon } from '@/components/icons';
 import dynamic from 'next/dynamic';
@@ -19,7 +20,10 @@ const REF = { kind: 'recent' } as const;
 function NewRecentPage() {
   const { user } = useAuth();
   const isOnline = useOnline();
-  const { data: tracks = [], isLoading, isError } = useQueryHistory();
+  const { data: history = [], isLoading, isError } = useQueryHistory();
+  // Playing a song moves it to the top of the history cache at once; keep
+  // the order this page was opened with so the song does not jump away.
+  const tracks = useHeldOrder(history);
   const context = contextFor(REF);
   const playback = useCollectionPlayback(tracks, context);
   const download = useOfflinePin(REF, titleFor(REF), tracks);
