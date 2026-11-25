@@ -1,8 +1,11 @@
+'use client';
+
 import Link from 'next/link';
 import { HomeIcon, SearchIcon, LibraryIcon, RadioIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
 import { isNavActive, type NavIcon, type NavItem } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import { forgetNavigationIntent } from '@/lib/chunkReload';
+import { pendingNavClick, pendingNavHandlers, usePendingNav } from '@/lib/pendingNav';
 
 export interface NavLinksProps {
   items: NavItem[];
@@ -35,24 +38,28 @@ const ICONS: Record<NavIcon, typeof HomeIcon> = {
  *  Link elements for the top nav; Sidebar and Drawer each keep their own
  *  wrapping <nav> since its padding differs between the two. */
 export function NavLinks({ items, activePath, onNavigate, onSearchClick, size = 'md' }: NavLinksProps) {
+  const pending = usePendingNav(activePath);
   return (
     <>
       {items.map(({ href, label, icon }) => {
         const Icon = ICONS[icon];
-        const isActive = isNavActive(href, activePath);
         const isSearch = icon === 'search';
+        // The search item opens an overlay, not a route: nothing to wait on.
+        const navigates = !(isSearch && onSearchClick);
+        const isActive = pending ? pending === href : isNavActive(href, activePath);
         return (
           <Link
             key={href}
             href={href}
             data-nav={label}
             data-perf-nonav={isSearch && onSearchClick ? '' : undefined}
+            {...pendingNavHandlers(href, activePath, navigates)}
             onClick={(e) => {
               if (isSearch && onSearchClick && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) {
                 e.preventDefault();
                 forgetNavigationIntent();
                 onSearchClick();
-              }
+              } else if (navigates) pendingNavClick(e, href, activePath);
               onNavigate?.();
             }}
             className={cn(

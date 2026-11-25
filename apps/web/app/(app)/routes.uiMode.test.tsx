@@ -33,6 +33,17 @@ const NEW_ONLY = [
   'whats-new/[id]/page.tsx',
 ];
 
+/** Skeletons only the new look draws: the Classic look is frozen and has no
+ *  skeleton for these pages, so its loading is empty (nav feedback still
+ *  comes from lib/pendingNav). */
+const NEW_LOOK_SKELETONS = [
+  'loading.tsx',
+  'radio/loading.tsx',
+  'settings/loading.tsx',
+  'transfer/loading.tsx',
+  'whats-new/loading.tsx',
+];
+
 const APP = __dirname;
 const LEGACY = join(__dirname, '../../legacy/app');
 const ROUTE_FILE = /^(page|layout|loading)\.tsx$/;
@@ -54,7 +65,7 @@ function routeFiles(root: string): string[] {
 const loaders = import.meta.glob<{ default: unknown }>('./**/{page,layout,loading}.tsx');
 const newFiles = routeFiles(APP);
 const legacyFiles = new Set(routeFiles(LEGACY));
-const shared = newFiles.filter((f) => !NEW_ONLY.includes(f));
+const shared = newFiles.filter((f) => !NEW_ONLY.includes(f) && !NEW_LOOK_SKELETONS.includes(f));
 
 const props = {
   params: Promise.resolve({ id: 'x1', slug: 'x1', key: 'x1', token: 'x1', code: 'x1', trackId: 'x1' }),
@@ -89,7 +100,7 @@ describe('Classic look: the route table', () => {
   });
 
   it('every route file is either shared with the Classic look or listed as new-only', () => {
-    expect(newFiles.filter((f) => !legacyFiles.has(f))).toEqual(NEW_ONLY);
+    expect(newFiles.filter((f) => !legacyFiles.has(f))).toEqual([...NEW_ONLY, ...NEW_LOOK_SKELETONS].sort());
     // And the frozen tree has no page the app cannot reach.
     expect([...legacyFiles].filter((f) => !newFiles.includes(f))).toEqual([]);
   });
@@ -133,6 +144,17 @@ describe('Classic look: the route table', () => {
         expect(isValidElement(out) && (out as ReactElement).type === marker).toBe(false);
       }
       expect(marker).not.toHaveBeenCalled();
+    });
+  });
+
+  describe.each(NEW_LOOK_SKELETONS)('%s (new look skeleton)', (file) => {
+    it('draws placeholders in the new look and nothing in the Classic look', async () => {
+      ui.mode = 'new';
+      const Loading = (await load(file)) as unknown as () => Promise<ReactElement | null>;
+      const out = await Loading();
+      expect(isValidElement(out)).toBe(true);
+      ui.mode = 'legacy';
+      expect(await Loading()).toBeNull();
     });
   });
 
