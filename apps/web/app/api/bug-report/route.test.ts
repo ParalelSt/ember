@@ -849,7 +849,7 @@ describe('POST /api/bug-report: the perf block', () => {
 describe('POST /api/bug-report: outage reports across a server restart', () => {
   const OUTAGE_NOTE = 'api: network errors for over 30s, last: GET /playlists network error';
   const life = (message: string, agoMs: number): ServerLogEntry =>
-    serverError({ kind: 'event', level: 'info', category: 'server', message, ts: Date.now() - agoMs, userId: undefined, reqId: '' });
+    serverError({ kind: 'breadcrumb', level: 'info', category: 'server', message, ts: Date.now() - agoMs, userId: undefined, reqId: '' });
 
   it('an automatic outage report that arrives just after Ember restarted is not posted', async () => {
     vi.mocked(serverLogger.recentSince).mockResolvedValue([
