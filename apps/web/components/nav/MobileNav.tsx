@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { HomeIcon, SearchIcon, LibraryIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import { forgetNavigationIntent } from '@/lib/chunkReload';
+import { pendingNavClick, pendingNavHandlers, usePendingNav } from '@/lib/pendingNav';
 
 const NAV = [
   { href: '/', label: 'Home', icon: HomeIcon },
@@ -20,6 +21,7 @@ export interface MobileNavProps {
 
 export function MobileNav({ onSearchClick }: MobileNavProps) {
   const pathname = usePathname();
+  const pending = usePendingNav(pathname);
   return (
     <nav
       data-testid="mobile-nav"
@@ -27,19 +29,21 @@ export function MobileNav({ onSearchClick }: MobileNavProps) {
       className="safe-area-bottom md:hidden shrink-0 flex items-stretch justify-around bg-sidebar border-t border-sidebar-border"
     >
       {NAV.map(({ href, label, icon: Icon, isSearch }) => {
-        const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
+        const navigates = !(isSearch && onSearchClick);
+        const isActive = pending ? pending === href : href === '/' ? pathname === '/' : pathname.startsWith(href);
         return (
           <Link
             key={href}
             href={href}
             data-nav={label}
             data-perf-nonav={isSearch && onSearchClick ? '' : undefined}
+            {...pendingNavHandlers(href, pathname, navigates)}
             onClick={(e) => {
               if (isSearch && onSearchClick && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) {
                 e.preventDefault();
                 forgetNavigationIntent();
                 onSearchClick();
-              }
+              } else if (navigates) pendingNavClick(e, href, pathname);
             }}
             className={cn(
               'flex-1 flex flex-col items-center justify-center gap-1 py-2 text-[11px] font-medium',

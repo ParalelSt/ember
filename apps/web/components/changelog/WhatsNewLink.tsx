@@ -1,7 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 import { SparklesIcon } from '@/components/icons';
 import { ACTIVE_MD } from '@/components/nav/NavLinks';
 import { cn } from '@/lib/utils';
+import { pendingNavClick, pendingNavHandlers, usePendingNav } from '@/lib/pendingNav';
 import { NewBadge } from '@/components/changelog/NewBadge';
 
 export const WHATS_NEW_HREF = '/whats-new';
@@ -16,11 +19,16 @@ export interface WhatsNewLinkProps {
  *  Classes match NavLinks so it reads as one more nav row, with the pulsing
  *  New tag pushed to its right edge while something is unread. */
 export function WhatsNewLink({ showNew, activePath, onNavigate }: WhatsNewLinkProps) {
-  const isActive = activePath.startsWith(WHATS_NEW_HREF);
+  const pending = usePendingNav(activePath);
+  const isActive = pending ? pending === WHATS_NEW_HREF : activePath.startsWith(WHATS_NEW_HREF);
   return (
     <Link
       href={WHATS_NEW_HREF}
-      onClick={onNavigate}
+      {...pendingNavHandlers(WHATS_NEW_HREF, activePath)}
+      onClick={(e) => {
+        pendingNavClick(e, WHATS_NEW_HREF, activePath);
+        onNavigate?.();
+      }}
       data-testid="whats-new-link"
       data-nav="What's new"
       className={cn(
