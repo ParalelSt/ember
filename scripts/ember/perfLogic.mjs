@@ -50,7 +50,7 @@ export function formatSessions(sessions) {
 export function eventLine(e) {
   switch (e.k) {
     case 'nav':
-      return `nav ${e.via} to ${e.to}${e.ms !== undefined ? ` ${sec(e.ms)}` : ''}${e.server !== undefined ? ` (server ${sec(e.server)}` + `${e.commit !== undefined ? `, after answer ${sec(e.commit)}` : ''})` : ''}${e.lt ? ` long tasks ${e.lt}ms` : ''}${e.playing ? ' while playing' : ''}${e.abandoned ? ' ABANDONED' : ''}`;
+      return `nav ${e.via} to ${e.to}${e.ms !== undefined ? ` ${sec(e.ms)}` : ''}${e.server !== undefined ? ` (server ${sec(e.server)}` + `${e.commit !== undefined ? `, after answer ${sec(e.commit)}` : ''})` : ''}${e.ready !== undefined ? ` content ready ${sec(e.ready)}${e.wait ? ` (data wait ${sec(e.wait)}${e.api ? `, last ${e.api}` : ''})` : ''}` : ''}${e.lt ? ` long tasks ${e.lt}ms` : ''}${e.playing ? ' while playing' : ''}${e.abandoned ? ' ABANDONED' : ''}`;
     case 'freeze':
       return `FREEZE ${sec(e.ms)}`;
     case 'rage':
@@ -65,7 +65,7 @@ export function eventLine(e) {
 /** One batch as a line. */
 function batchLine(r) {
   const parts = [`batch ${r.seq}: fg ${Math.round(r.fgMs / 1000)}s`];
-  if (r.nav?.n) parts.push(`nav ${r.nav.n}`);
+  if (r.nav?.n) parts.push(`nav ${r.nav.n}${r.nav.ready?.length ? ` content ready ${r.nav.ready.map((n) => sec(n)).join(' ')}` : ''}`);
   if (r.lt?.n) parts.push(`long tasks ${r.lt.n} ${sec(r.lt.ms)} max ${r.lt.max}ms${r.lt.top?.length ? ` [${r.lt.top.map(([s, ms]) => `${s} ${ms}ms`).join(', ')}]` : ''}`);
   if (r.slow?.n) parts.push(`slow taps ${r.slow.n} max ${r.slow.max}ms`);
   if (r.freeze?.n) parts.push(`freezes ${r.freeze.n} max ${sec(r.freeze.max)}`);
@@ -123,7 +123,7 @@ export function formatRollup(body) {
     const shells = Object.entries(p.shells ?? {}).map(([s, n]) => `${s} ${n}`).join(', ');
     lines.push(
       `${name} ${p.sessions} sessions, ${p.members} members, ${p.fgHours} h (${shells}); ready p50 ${sec(p.launch?.hydrated?.p50)}; ` +
-        `nav ${p.nav.n} p50/p95/max ${sec(p.nav.p50)}/${sec(p.nav.p95)}/${sec(p.nav.max)}; freezes ${p.freezes.n}; heap p50 ${p.heap.p50} MB, growth p95 ${p.heap.growth.p95} MB`,
+        `nav ${p.nav.n} p50/p95/max ${sec(p.nav.p50)}/${sec(p.nav.p95)}/${sec(p.nav.max)}; ${p.nav.ready?.n ? `content ready p50/p95 ${sec(p.nav.ready.p50)}/${sec(p.nav.ready.p95)}; ` : ''}freezes ${p.freezes.n}; heap p50 ${p.heap.p50} MB, growth p95 ${p.heap.growth.p95} MB`,
     );
     const n = p.native;
     if (n && n.rendererGone + n.rendererUnresponsive + n.lowMemory + n.trimMemory > 0) {
@@ -136,12 +136,18 @@ export function formatRollup(body) {
     lines.push(`         side nav: ${side.taps} taps loaded, ${side.abandoned} re-tapped before loading`);
     for (const r of side.routes) {
       const where = r.phased ? `, host ${sec(r.serverP50)} / page ${sec(r.commitP50)} (${r.phased})` : '';
-      lines.push(`           ${pad(r.route, 24)} ${r.n}x p50 ${sec(r.p50)} p95 ${sec(r.p95)}${where}${r.abandoned ? `, ${r.abandoned} re-tapped` : ''}`);
+      const content = r.ready ? `, tap to content p50 ${sec(r.ready.p50)} p95 ${sec(r.ready.p95)}${r.waitP50 ? ` (data wait ${sec(r.waitP50)}${r.waitApi ? `, last ${r.waitApi}` : ''})` : ''}` : '';
+      lines.push(`           ${pad(r.route, 24)} ${r.n}x p50 ${sec(r.p50)} p95 ${sec(r.p95)}${where}${content}${r.abandoned ? `, ${r.abandoned} re-tapped` : ''}`);
     }
   }
   const h = body.rollup?.host;
   if (h) {
-    const route = (r) => `${pad(r.route, 30)} p50 ${sec(r.p50)} p95 ${sec(r.p95)} max ${sec(r.max)} (${r.n})`;
+    const split = (r) => {
+      if (!r.ph) return '';
+      const parts = [['auth', r.ph.auth], ['db', r.ph.db], ...(r.ph.upstream ? [['upstream', r.ph.upstream]] : []), ['other', Math.max(0, r.p50 - r.ph.auth - r.ph.db - r.ph.upstream)]];
+      return `: ${parts.map(([n, v]) => `${n} ${v} ms`).join(', ')}`;
+    };
+    const route = (r) => `${pad(r.route, 30)} p50 ${sec(r.p50)} p95 ${sec(r.p95)} max ${sec(r.max)} (${r.n})${split(r)}`;
     lines.push(h.lines ? `Host     ${h.requests} requests, ${h.slowRequests} slow, event loop p99 up to ${h.loopP99Max} ms` : 'Host     no timing lines in this window');
     for (const r of h.slowest ?? []) lines.push(`           ${route(r)}`);
     if (h.sideNav?.length) {

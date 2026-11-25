@@ -12,6 +12,7 @@ import {
   useQueryLikes,
   useQueryRecommended,
   useQueryTrending,
+  useQueryNewReleases,
 } from '@/hooks/useLibrary';
 import { OnlineOnly } from '@/components/OnlineOnly';
 import { usePlayer } from '@/components/player/PlayerProvider';
@@ -22,6 +23,7 @@ import { RowShelf } from '@/components/page/RowShelf';
 import { CollectionCard } from '@/components/library/CollectionCard';
 import { QuickGrid } from '@/components/home/QuickGrid';
 import { HomeChips } from '@/components/home/HomeChips';
+import { NewReleasesRow } from '@/components/home/NewReleasesRow';
 import { BecauseYouPlayed } from '@/components/home/BecauseYouPlayed';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -143,6 +145,8 @@ function NewHomePage() {
   const { data: trending = [], isLoading: trendingLoading } = useQueryTrending();
   const { data: charts } = useQueryCharts();
   const genreCharts = charts?.genres ?? [];
+  const { data: releasesData } = useQueryNewReleases();
+  const releases = releasesData?.releases ?? [];
   const { data: mixesData } = useQueryMixes();
   const mixes = (mixesData?.mixes ?? []).filter((m) => m.count > 0);
   // Radio grows from a YouTube video: an upload's (or Jamendo's) id is no
@@ -174,6 +178,7 @@ function NewHomePage() {
   if (playlists.length > 0) available.add('playlists');
   if (trending.length > 0 || trendingLoading || genreCharts.length > 0) available.add('charts');
   if (mixes.length > 0) available.add('mixes');
+  if (releases.length > 0) available.add('releases');
   const chips = homeChips(available);
   const view = phoneHomeView(filter, available);
   const myName = publicName(user);
@@ -286,6 +291,7 @@ function NewHomePage() {
         </RowShelf>
       );
     }
+    if (key === 'releases') return <NewReleasesRow key={key} releases={releases} isDesktop={isDesktop} />;
     if (key === 'friends') return <FriendsListening key={key} layout={isDesktop ? 'desktop-row' : 'row'} />;
     if (key === 'recommended' && !isDesktop) {
       return (

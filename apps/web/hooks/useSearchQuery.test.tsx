@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { failWhenNothingFound, SEARCH_RATE_LIMIT_RETRY_MS, useSearchQuery } from './useSearchQuery';
+import { clearPinnedOwnForTests, failWhenNothingFound, SEARCH_RATE_LIMIT_RETRY_MS, useSearchQuery } from './useSearchQuery';
 import type { SearchChunk } from '@/lib/search/types';
 import type { Track } from '@/types/track';
 
@@ -74,6 +74,7 @@ function wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   vi.clearAllMocks();
   recents.tracks = [];
+  clearPinnedOwnForTests();
   shell.value = 'web';
   api.search.mockResolvedValue({ tracks: [] });
 });
@@ -247,5 +248,42 @@ describe('useSearchQuery: streamed results', () => {
     } finally {
       api.searchStream = original;
     }
+  });
+});
+
+describe('useSearchQuery: results stay put after playing one', () => {
+  it('does not move a played result to the top when it lands in recent searches', async () => {
+    const a = makeTrack({ id: 'youtube:a', sourceId: 'a', title: 'Night One' });
+    const b = makeTrack({ id: 'youtube:b', sourceId: 'b', title: 'Night Two' });
+    api.search.mockResolvedValue({ tracks: [a, b] });
+    const { result, rerender } = renderHook(() => useSearchQuery('night'), { wrapper });
+    await waitFor(() => expect(result.current.view.tracks.map((t) => t.id)).toEqual(['youtube:a', 'youtube:b']));
+
+    act(() => result.current.onPlay(b, result.current.view.tracks, null));
+    // The play saved the song to recent searches, which the hook reads.
+    recents.tracks = [b];
+    rerender();
+
+    expect(result.current.view.tracks.map((t) => t.id)).toEqual(['youtube:a', 'youtube:b']);
+  });
+
+  it('keeps the order across a remount (song page and Back); another query is live', async () => {
+    const a = makeTrack({ id: 'youtube:a', sourceId: 'a', title: 'Night One' });
+    const b = makeTrack({ id: 'youtube:b', sourceId: 'b', title: 'Night Two' });
+    api.search.mockResolvedValue({ tracks: [a, b] });
+    const first = renderHook(() => useSearchQuery('night'), { wrapper });
+    await waitFor(() => expect(first.result.current.view.tracks.length).toBe(2));
+    act(() => first.result.current.onPlay(b, first.result.current.view.tracks, null));
+    first.unmount();
+
+    recents.tracks = [b];
+    const again = renderHook(() => useSearchQuery('night'), { wrapper });
+    await waitFor(() => expect(again.result.current.view.tracks.length).toBe(2));
+    expect(again.result.current.view.tracks.map((t) => t.id)).toEqual(['youtube:a', 'youtube:b']);
+    again.unmount();
+
+    const other = renderHook(() => useSearchQuery('two'), { wrapper });
+    await waitFor(() => expect(other.result.current.view.tracks.length).toBe(2));
+    expect(other.result.current.view.tracks[0].id).toBe('youtube:b');
   });
 });

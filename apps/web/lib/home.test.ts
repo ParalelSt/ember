@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QUICK_MAX, QUICK_MAX_DESKTOP, homeChips, phoneHomeView, quickPicks, recentFirst, rowEnds, rowStep, type HomeRowKey } from './home';
+import { QUICK_MAX, QUICK_MAX_DESKTOP, PHONE_ORDER, homeChips, phoneHomeView, quickPicks, recentFirst, rowEnds, rowStep, type HomeRowKey } from './home';
 import { toSummary } from './collections';
 
 const liked = toSummary({ kind: 'liked' }, { count: 3 });
@@ -135,17 +135,45 @@ describe('filter chips and order B', () => {
     expect(homeChips(later).map((c) => c.label)).toEqual(['All', 'Playlists', 'Mixes', 'Charts']);
   });
 
-  it('All is order B: Recently played, Because you played, Popular now, Your playlists, Friends', () => {
+  it('All is order B with Friends first: Friends, Recently played, Because you played, Popular now, Your playlists', () => {
     expect(phoneHomeView('all', today)).toEqual({
       filter: 'all',
       quickGrid: true,
-      rows: ['history', 'recommended', 'charts', 'playlists', 'friends'],
+      rows: ['friends', 'history', 'recommended', 'charts', 'playlists'],
     });
   });
 
-  it('puts Your mixes right after the grid, and the Popular now tile row after Because you played', () => {
+  it('keeps Friends ahead of Your mixes, and the Popular now tile row after Because you played', () => {
     const later = new Set<HomeRowKey>([...today, 'mixes']);
-    expect(phoneHomeView('all', later).rows).toEqual(['mixes', 'history', 'recommended', 'charts', 'playlists', 'friends']);
+    expect(phoneHomeView('all', later).rows).toEqual(['friends', 'mixes', 'history', 'recommended', 'charts', 'playlists']);
+  });
+
+  it('puts New releases right after Because you played and right before Popular now', () => {
+    const withReleases = new Set<HomeRowKey>([...today, 'releases']);
+    const rows = phoneHomeView('all', withReleases).rows;
+    expect(rows).toEqual(['friends', 'history', 'recommended', 'releases', 'charts', 'playlists']);
+    expect(PHONE_ORDER.indexOf('releases')).toBe(PHONE_ORDER.indexOf('recommended') + 1);
+    expect(PHONE_ORDER.indexOf('releases')).toBe(PHONE_ORDER.indexOf('charts') - 1);
+  });
+
+  it('shows New releases only when it is available', () => {
+    expect(phoneHomeView('all', today).rows).not.toContain('releases');
+  });
+
+  it('the Playlists, Mixes and Charts chips never keep New releases, and it adds no chip', () => {
+    const all = new Set<HomeRowKey>([...today, 'mixes', 'releases']);
+    for (const chip of ['playlists', 'mixes', 'charts'] as const) {
+      expect(phoneHomeView(chip, all).rows).not.toContain('releases');
+    }
+    expect(homeChips(all).map((c) => c.label)).toEqual(['All', 'Playlists', 'Mixes', 'Charts']);
+    expect(homeChips(new Set<HomeRowKey>(['releases'])).map((c) => c.label)).toEqual(['All']);
+  });
+
+  it('leaves Friends out of every chip but All', () => {
+    const later = new Set<HomeRowKey>([...today, 'mixes']);
+    for (const chip of ['playlists', 'mixes', 'charts'] as const) {
+      expect(phoneHomeView(chip, later).rows).not.toContain('friends');
+    }
   });
 
   it('the Charts chip keeps the Popular now tile row only, with no quick grid', () => {

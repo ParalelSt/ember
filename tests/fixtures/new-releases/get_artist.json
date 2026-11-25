@@ -1,0 +1,27 @@
+{
+  "name": "Dražen Zečić",
+  "description": null,
+  "thumbnails": [{"url": "https://lh3.googleusercontent.com/artist=w226-h226", "width": 226, "height": 226}],
+  "albums": {
+    "browseId": "UCzecic0000000000000000",
+    "params": "ggMCCAI",
+    "results": [
+      {"title": "Zlatne godine", "type": null, "year": "2026", "browseId": "MPREb_album0001AAA", "isExplicit": false,
+       "thumbnails": [{"url": "https://lh3.googleusercontent.com/a1=w60-h60", "width": 60, "height": 60}, {"url": "https://lh3.googleusercontent.com/a1=w226-h226", "width": 226, "height": 226}]},
+      {"title": "Stari dani", "year": "2019", "browseId": "MPREb_album0002BBB", "isExplicit": false,
+       "thumbnails": [{"url": "https://lh3.googleusercontent.com/a2=w226-h226", "width": 226, "height": 226}]},
+      {"title": "Bez ID-a", "year": "2020", "isExplicit": false, "thumbnails": []}
+    ]
+  },
+  "singles": {
+    "browseId": "UCzecic0000000000000000",
+    "params": "ggMCCAI",
+    "results": [
+      {"title": "Zadnja pjesma", "type": "Single", "year": "2026", "browseId": "MPREb_single001CCC", "isExplicit": false,
+       "thumbnails": [{"url": "https://lh3.googleusercontent.com/s1=w226-h226", "width": 226, "height": 226}]},
+      {"title": "Ljetne price", "type": "EP", "year": "2025", "browseId": "MPREb_single002DDD", "isExplicit": false,
+       "thumbnails": [{"url": "https://lh3.googleusercontent.com/s2=w226-h226", "width": 226, "height": 226}]},
+      {"title": "Bez godine", "type": "Single", "year": null, "browseId": "MPREb_single003EEE", "isExplicit": false, "thumbnails": []}
+    ]
+  }
+}

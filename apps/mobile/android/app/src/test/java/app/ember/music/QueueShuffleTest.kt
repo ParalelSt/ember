@@ -17,13 +17,22 @@ import kotlin.random.Random
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class QueueShuffleTest {
-    @Test fun `only the songs still to come are shuffled`() {
+    @Test fun `the song playing goes first and every other song, played ones too, follows`() {
         val order = QueueShuffle.shuffledOrder(10, 3, Random(7))
-        assertEquals(listOf(0, 1, 2, 3), order.take(4))
-        assertEquals((4 until 10).toSet(), order.drop(4).toSet())
+        assertEquals(3, order.first())
+        assertEquals((0 until 10).filter { it != 3 }.toSet(), order.drop(1).toSet())
         assertEquals(10, order.size)
+        assertEquals(10, order.toSet().size)
         assertEquals(emptyList<Int>(), QueueShuffle.shuffledOrder(0, 0))
         assertEquals(listOf(0), QueueShuffle.shuffledOrder(1, 0))
+    }
+
+    @Test fun `a reshuffle is never the order the songs were already in`() {
+        repeat(50) { seed ->
+            val order = QueueShuffle.shuffledOrder(3, 0, Random(seed))
+            assertEquals(0, order.first())
+            assertTrue(order.drop(1) != listOf(1, 2))
+        }
     }
 
     @Test fun `off puts the queue back in its order, keeping the song that plays`() {

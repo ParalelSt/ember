@@ -151,7 +151,11 @@ export function createChartsCache(deps: Deps) {
     return all.charts.find((c) => c.slug === slug) ?? null;
   }
 
-  return { getAll, get };
+  /** True while a refresh is in flight. Another paced player run (the new
+   *  releases one) steps aside rather than fetch alongside it. */
+  const busy = () => inFlight !== null;
+
+  return { getAll, get, busy };
 }
 
 const SHARED = Symbol.for('ember.chartsCache');

@@ -950,6 +950,30 @@ def _artist_fallback(channel_id):
     return {"name": name, "description": None, "thumbnails": micro_thumbs}
 
 
+def release_json(item, default_type=None):
+    """One album, single or EP of an artist page. Without `default_type` it is
+    the artist page's own shape (thumbnails passed through). With it, the
+    new-releases shape: `type` is the item's own type (singles carry Single or
+    EP, albums carry none) or the shelf's default, and the cover is one url.
+    The year is passed through untouched: YouTube gives a year string and no
+    finer date, and deciding what counts as new is the server's job."""
+    if default_type is None:
+        return {
+            "browseId": item.get("browseId"),
+            "title": item.get("title"),
+            "year": item.get("year"),
+            "thumbnails": item.get("thumbnails"),
+        }
+    thumbs = item.get("thumbnails") or []
+    return {
+        "browseId": item.get("browseId"),
+        "title": item.get("title"),
+        "year": item.get("year"),
+        "type": item.get("type") or default_type,
+        "artworkUrl": thumbs[-1].get("url") if thumbs else None,
+    }
+
+
 def cmd_artist(args):
     """Resolve a YT Music artist channelId to the artist profile + their
     top songs. The user clicks an artist name in a track row, which routes
@@ -1001,21 +1025,13 @@ def cmd_artist(args):
     # The Migrant"). Same shape as albums, each is an album-type browseId.
     singles = (info.get("singles") or {}).get("results") or []
 
-    def album_json(a):
-        return {
-            "browseId": a.get("browseId"),
-            "title": a.get("title"),
-            "year": a.get("year"),
-            "thumbnails": a.get("thumbnails"),
-        }
-
     out = {
         "name": info.get("name"),
         "description": info.get("description"),
         "thumbnails": info.get("thumbnails") or [],
         "tracks": [to_track_json(t) for t in songs if t.get("videoId")],
-        "albums": [album_json(a) for a in albums if a.get("browseId")],
-        "singles": [album_json(a) for a in singles if a.get("browseId")],
+        "albums": [release_json(a) for a in albums if a.get("browseId")],
+        "singles": [release_json(a) for a in singles if a.get("browseId")],
     }
     json.dump(out, sys.stdout)
 
@@ -1480,6 +1496,93 @@ def cmd_genre_charts(args):
     json.dump({"charts": charts, "failed": failed}, sys.stdout)
 
 
+def fetch_new_releases(artist_ids, explore=False):
+    """(artists, explore_items, failed) for the new-releases scan. One paced
+    live call per artist (get_artist only, never the 30 result song search the
+    artist page adds) plus one for the explore shelf when asked, CHART_FETCH_PACING_SEC
+    apart and none before the first. A layout ytmusicapi cannot parse takes one
+    raw browse instead, counted and paced like any call; a missing page is
+    simply failed. `explore_items` is None when the shelf was not asked for or
+    failed (then "explore" is in `failed` too, only if it was asked for)."""
+    artists, failed, explore_items = [], [], None
+    calls = 0
+
+    def pace():
+        nonlocal calls
+        if calls > 0:
+            time.sleep(CHART_FETCH_PACING_SEC)
+        calls += 1
+
+    if explore:
+        pace()
+        try:
+            shelf = (yt.get_explore() or {}).get("new_releases") or []
+            explore_items = []
+            for it in shelf:
+                if not it.get("browseId"):
+                    continue
+                credit = (it.get("artists") or [{}])[0]
+                thumbs = it.get("thumbnails") or []
+                explore_items.append({
+                    "browseId": it.get("browseId"),
+                    "title": it.get("title"),
+                    "type": it.get("type") or "Album",
+                    "artist": credit.get("name"),
+                    "artistId": credit.get("id"),
+                    "artworkUrl": thumbs[-1].get("url") if thumbs else None,
+                })
+        except Exception as e:
+            print(f"new-releases: explore failed ({type(e).__name__}: {e})", file=sys.stderr)
+            explore_items = None
+            failed.append("explore")
+
+    for artist_id in artist_ids:
+        pace()
+        try:
+            try:
+                info = yt.get_artist(channelId=artist_id)
+            except Exception as e:
+                if BROWSE_MISSING_RE.search(str(e)):
+                    raise
+                # A layout get_artist cannot parse: one raw browse, never the
+                # search half of _artist_fallback.
+                pace()
+                info = artist_from_browse(yt._send_request("browse", {"browseId": artist_id}))
+                if not info:
+                    raise
+            albums = (info.get("albums") or {}).get("results") or []
+            singles = (info.get("singles") or {}).get("results") or []
+            artists.append({
+                "id": artist_id,
+                "name": info.get("name"),
+                "releases": [release_json(a, "Album") for a in albums if a.get("browseId")]
+                            + [release_json(a, "Single") for a in singles if a.get("browseId")],
+            })
+        except Exception as e:
+            print(f"new-releases: {artist_id} failed ({type(e).__name__}: {e})", file=sys.stderr)
+            failed.append(artist_id)
+    return artists, explore_items, failed
+
+
+def cmd_new_releases(args):
+    """{artists: [{id, name, releases}], explore: [...] | null, failed: [...]}.
+    Exits non-zero only when nothing at all came back; the server then keeps
+    the releases it already holds."""
+    ids = []
+    for a in (args.artists or "").split(","):
+        a = a.strip()
+        if a and a not in ids:
+            ids.append(a)
+    if not ids and not args.explore:
+        json.dump({"artists": [], "explore": None, "failed": []}, sys.stdout)
+        return
+    artists, explore_items, failed = fetch_new_releases(ids, explore=args.explore)
+    if not artists and explore_items is None:
+        print("ERROR: new-releases: nothing came back", file=sys.stderr)
+        sys.exit(1)
+    json.dump({"artists": artists, "explore": explore_items, "failed": failed}, sys.stdout)
+
+
 def radio_batch(seeds, limit=30):
     """The up-next radio of each seed, CHART_FETCH_PACING_SEC apart, as
     ([{seed, tracks}], failed_seeds). The seed itself is left out of its
@@ -1706,6 +1809,11 @@ def main():
     p_genre = sub.add_parser("genre-charts", help="Every YT Music genre chart plus the Balkan (RS daily) chart. Prints JSON.")
     p_genre.add_argument("--country", default="US", help="Country whose genre charts to read (YouTube only has them for US)")
 
+    p_new = sub.add_parser("new-releases", help="Newest albums and singles of several artists, plus the explore shelf. Prints JSON.")
+    # --artists=<a,b,c> so a hyphen-leading channel id is not read as an option.
+    p_new.add_argument("--artists", default="", help="Comma list of artist channel ids")
+    p_new.add_argument("--explore", action="store_true", help="Also read YouTube's New albums & singles shelf")
+
     p_radio_batch = sub.add_parser("radio-batch", help="Up-next radio for several seed videoIds. Prints JSON.")
     # Pass as --seeds=<a,b,c> so a hyphen-leading id is not read as an option.
     p_radio_batch.add_argument("--seeds", default="", help="Comma list of seed videoIds")
@@ -1758,6 +1866,8 @@ def main():
         cmd_trending(args)
     elif args.cmd == "genre-charts":
         cmd_genre_charts(args)
+    elif args.cmd == "new-releases":
+        cmd_new_releases(args)
     elif args.cmd == "radio-batch":
         cmd_radio_batch(args)
     elif args.cmd == "info":

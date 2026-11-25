@@ -53,6 +53,9 @@ export interface RouteStat {
   p50: number;
   p95: number;
   max: number;
+  /** Tap to content ready (skeletons gone, data loaded), over the visits
+   *  that measured it. */
+  ready?: Quantiles;
 }
 
 export interface SideNavRoute {
@@ -68,6 +71,11 @@ export interface SideNavRoute {
   phased: number;
   serverP50: number;
   commitP50: number;
+  /** Tap to content ready, and the wait after the route showed. */
+  ready?: Quantiles;
+  waitP50?: number;
+  /** The data route that most often ended last on a visit that waited. */
+  waitApi?: string;
 }
 
 export interface PlatformStats {
@@ -79,7 +87,7 @@ export interface PlatformStats {
   shells: Record<string, number>;
   fgHours: number;
   launch: { fcp: Quantiles; hydrated: Quantiles };
-  nav: { n: number; p50: number; p95: number; max: number };
+  nav: { n: number; p50: number; p95: number; max: number; ready: Quantiles };
   /** Long task ms per minute in the foreground. */
   longTaskMsPerMin: number;
   freezes: { n: number; max: number };
@@ -125,7 +133,7 @@ export interface AnonSession {
   missing: number;
   fgMs: number;
   launch?: { fcp?: number; hydrated?: number };
-  nav: { n: number; p50: number; p95: number; max: number };
+  nav: { n: number; p50: number; p95: number; max: number; readyP50?: number; readyP95?: number };
   longTaskMs: number;
   freezes: { n: number; max: number };
   rage: number;
@@ -182,7 +190,33 @@ function routeSamples(list: StoredDigest[]): [string, number][] {
   return out;
 }
 
-function routeStats(samples: [string, number][]): RouteStat[] {
+/** Tap to content ready per route: the batch's nav events, or its
+ *  window list (untagged by route) is left out, since a route is needed. */
+function readySamples(list: StoredDigest[]): [string, number][] {
+  const out: [string, number][] = [];
+  for (const { digest: d } of list) {
+    for (const ev of d.ev ?? []) {
+      if (ev.k === 'nav' && !ev.abandoned && typeof ev.ready === 'number') out.push([routeShape(ev.to), ev.ready]);
+    }
+  }
+  return out;
+}
+
+/** Every ready time of a window: from events, or from the batch's own list
+ *  when its events were dropped to fit. */
+function readyTimes(list: StoredDigest[]): number[] {
+  const out: number[] = [];
+  for (const { digest: d } of list) {
+    const evs = (d.ev ?? []).filter((ev): ev is NavEvent => ev.k === 'nav' && !ev.abandoned && typeof ev.ready === 'number');
+    if (evs.length) out.push(...evs.map((ev) => ev.ready!));
+    else out.push(...(d.nav?.ready ?? []));
+  }
+  return out;
+}
+
+function routeStats(samples: [string, number][], ready: [string, number][] = []): RouteStat[] {
+  const readyBy = new Map<string, number[]>();
+  for (const [route, ms] of ready) readyBy.set(route, [...(readyBy.get(route) ?? []), ms]);
   const byRoute = new Map<string, number[]>();
   for (const [route, ms] of samples) {
     const list = byRoute.get(route);
@@ -190,18 +224,37 @@ function routeStats(samples: [string, number][]): RouteStat[] {
     else byRoute.set(route, [ms]);
   }
   return [...byRoute.entries()]
-    .map(([route, ms]) => ({ route, n: ms.length, p50: quantileOf(ms, 0.5), p95: quantileOf(ms, 0.95), max: Math.max(...ms) }))
+    .map(([route, ms]): RouteStat => {
+      const rd = readyBy.get(route);
+      return {
+        route,
+        n: ms.length,
+        p50: quantileOf(ms, 0.5),
+        p95: quantileOf(ms, 0.95),
+        max: Math.max(...ms),
+        ...(rd?.length ? { ready: quantiles(rd) } : {}),
+      };
+    })
     .sort((a, b) => b.p95 - a.p95 || b.n - a.n || a.route.localeCompare(b.route));
 }
 
 function sideNavStats(events: NavEvent[], cap = SIDE_NAV_ROUTES): PlatformStats['sideNav'] {
-  const byRoute = new Map<string, { ms: number[]; server: number[]; commit: number[]; abandoned: number }>();
+  interface Acc {
+    ms: number[];
+    server: number[];
+    commit: number[];
+    abandoned: number;
+    ready: number[];
+    wait: number[];
+    api: Map<string, number>;
+  }
+  const byRoute = new Map<string, Acc>();
   let taps = 0;
   let abandoned = 0;
   for (const ev of events) {
     if (ev.via !== 'tap' || !ev.area || !SIDE_NAV_AREAS.has(ev.area)) continue;
     const route = routeShape(ev.to);
-    const r = byRoute.get(route) ?? { ms: [], server: [], commit: [], abandoned: 0 };
+    const r: Acc = byRoute.get(route) ?? { ms: [], server: [], commit: [], abandoned: 0, ready: [], wait: [], api: new Map() };
     byRoute.set(route, r);
     if (ev.abandoned) {
       r.abandoned++;
@@ -211,6 +264,11 @@ function sideNavStats(events: NavEvent[], cap = SIDE_NAV_ROUTES): PlatformStats[
     if (typeof ev.ms !== 'number') continue;
     taps++;
     r.ms.push(ev.ms);
+    if (typeof ev.ready === 'number') {
+      r.ready.push(ev.ready);
+      r.wait.push(ev.wait ?? 0);
+      if (ev.api) r.api.set(routeShape(ev.api), (r.api.get(routeShape(ev.api)) ?? 0) + 1);
+    }
     if (typeof ev.server === 'number' && typeof ev.commit === 'number') {
       r.server.push(ev.server);
       r.commit.push(ev.commit);
@@ -226,6 +284,13 @@ function sideNavStats(events: NavEvent[], cap = SIDE_NAV_ROUTES): PlatformStats[
       phased: r.server.length,
       serverP50: quantileOf(r.server, 0.5),
       commitP50: quantileOf(r.commit, 0.5),
+      ...(r.ready.length
+        ? {
+            ready: quantiles(r.ready),
+            waitP50: quantileOf(r.wait, 0.5),
+            ...(r.api.size ? { waitApi: [...r.api.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0] } : {}),
+          }
+        : {}),
     }))
     .sort((a, b) => b.n + b.abandoned - (a.n + a.abandoned) || b.p95 - a.p95 || a.route.localeCompare(b.route))
     .slice(0, cap);
@@ -302,7 +367,7 @@ function platformStats(os: PerfOs, sessions: StoredDigest[][], native: NativeCou
     shells,
     fgHours: round(fg / 3_600_000, 2),
     launch: { fcp: quantiles(fcp), hydrated: quantiles(hydrated) },
-    nav: { n: navN, p50: quantileOf(navMs, 0.5), p95: quantileOf(navMs, 0.95), max: navMax },
+    nav: { n: navN, p50: quantileOf(navMs, 0.5), p95: quantileOf(navMs, 0.95), max: navMax, ready: quantiles(sessions.flatMap(readyTimes)) },
     longTaskMsPerMin: fgMin > 0 ? round(lt / fgMin) : 0,
     freezes: { n: freezeN, max: freezeMax },
     rageTaps: rage,
@@ -323,7 +388,7 @@ function platformStats(os: PerfOs, sessions: StoredDigest[][], native: NativeCou
       ...(mems.length ? { memGb: quantileOf(mems, 0.5) } : {}),
       ...(cores.length ? { cores: quantileOf(cores, 0.5) } : {}),
     },
-    slowestRoutes: routeStats(sessions.flatMap(routeSamples)).slice(0, TOP_ROUTES),
+    slowestRoutes: routeStats(sessions.flatMap(routeSamples), sessions.flatMap(readySamples)).slice(0, TOP_ROUTES),
     sideNav: sideNavStats(sessions.flatMap(navEvents)),
     native,
     heapSlopes: heapSlopes(all).slice(0, HEAP_SLOPES),
@@ -384,6 +449,7 @@ export function anonSessions(
       const heaps = heapReadings(list);
       const launch = list.find((e) => e.digest.launch)?.digest.launch;
       const side = sideNavStats(navEvents(list), 0);
+      const ready = readyTimes(list);
       const device = sessionDevice(list);
       const doms = list.map((e) => e.digest.dom).filter((n): n is number => typeof n === 'number');
       return {
@@ -410,6 +476,7 @@ export function anonSessions(
           p50: quantileOf(navMs, 0.5),
           p95: quantileOf(navMs, 0.95),
           max: Math.max(0, ...navMs, ...list.flatMap((e) => (e.digest.nav?.worst ?? []).map((w) => w.ms))),
+          ...(ready.length ? { readyP50: quantileOf(ready, 0.5), readyP95: quantileOf(ready, 0.95) } : {}),
         },
         longTaskMs: Math.round(list.reduce((n, e) => n + (e.digest.lt?.ms ?? 0), 0)),
         freezes: {

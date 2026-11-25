@@ -81,13 +81,58 @@ export function forgetFailure(videoId: string): void {
   memo.delete(videoId);
 }
 
+/** How long a song whose download failed is relayed live without asking
+ *  yt-dlp again: longer than most songs, so one listen never waits on it. */
+export const DOWNLOAD_FAILED_MEMO_MS = 10 * 60 * 1000;
+
+/** Songs whose DOWNLOAD failed while YouTube still streamed them, so the
+ *  stream route relays them live. Kept apart from `memo`: a live relay that
+ *  works forgets the failures in there (forgetFailure), and must not forget
+ *  this one.
+ *
+ *  Why it exists (2026-11 reports, "the host did not answer a request for
+ *  more of the song while seeking (nothing for 25s)"): a relayed song is a
+ *  fragmented mp4, which the desktop engine plays forward-only, so each seek
+ *  back, each re-open and each retry is a new request. Every one of those ran
+ *  yt-dlp again, or waited on the cache warm already running it, before it
+ *  sent a byte. */
+const DOWNLOAD_KEY = Symbol.for('ember.downloadFailedMemo');
+const downloadFailed: Map<string, { message: string; until: number }> = ((globalThis as Record<symbol, unknown>)[DOWNLOAD_KEY] ??= new Map()) as Map<string, { message: string; until: number }>;
+
+export function rememberDownloadFailed(videoId: string, message: string, now = Date.now()): void {
+  downloadFailed.delete(videoId);
+  if (downloadFailed.size >= MAX_ENTRIES) {
+    const oldest = downloadFailed.keys().next().value;
+    if (oldest !== undefined) downloadFailed.delete(oldest);
+  }
+  downloadFailed.set(videoId, { message, until: now + DOWNLOAD_FAILED_MEMO_MS });
+}
+
+/** Why this song's download failed moments ago, or null. */
+export function recentDownloadFailure(videoId: string, now = Date.now()): string | null {
+  const entry = downloadFailed.get(videoId);
+  if (!entry) return null;
+  if (entry.until <= now) {
+    downloadFailed.delete(videoId);
+    return null;
+  }
+  return entry.message;
+}
+
+/** The song downloaded after all. */
+export function forgetDownloadFailure(videoId: string): void {
+  downloadFailed.delete(videoId);
+}
+
 /** After a yt-dlp upgrade: forget every transient failure, and the
  *  "unavailable" ones whose message was a 403 (a stale yt-dlp said those, not
- *  YouTube). Real removals stay remembered. */
+ *  YouTube). Real removals stay remembered. Every failed download gets a new
+ *  try too: the upgrade is usually what it needed. */
 export function forgetUpgradeFixable(): void {
   for (const [videoId, entry] of memo) {
     if (entry.kind === 'transient' || /\b403\b|forbidden/i.test(entry.message)) memo.delete(videoId);
   }
+  downloadFailed.clear();
 }
 
 /** Track ids (`youtube:<videoId>`) currently remembered as unavailable, for
@@ -103,4 +148,5 @@ export function unavailableTrackIds(now = Date.now()): Set<string> {
 /** Tests only. */
 export function _resetFailureMemo(): void {
   memo.clear();
+  downloadFailed.clear();
 }

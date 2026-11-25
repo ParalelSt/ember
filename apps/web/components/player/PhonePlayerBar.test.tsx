@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from './PhonePlayerBar';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import type { Track } from '@/types/track';
 
 // base-ui's Slider reaches the repo root's hoisted React 18 through its own
@@ -70,14 +71,14 @@ function fontPx(el: Element): number {
 }
 
 describe('PhonePlayerBar', () => {
-  it('draws the artwork, the name, the artist and two controls: play/pause, then next', () => {
+  it('draws the artwork, the name, the artist and three controls: shuffle, play/pause, then next', () => {
     const { container } = setup();
     const bar = screen.getByTestId('phone-player-bar');
     const titleRow = within(bar).getByTestId('phone-player-title-row');
     // The artwork sits beside the name, in one row, the old bar's shape.
     expect(titleRow.querySelector('.size-art-bar')).not.toBeNull();
     expect(titleRow).toHaveTextContent(TRACK.artist);
-    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open player', 'Pause', 'Next']);
+    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open player', 'Shuffle', 'Pause', 'Next']);
     // Previous and the queue live on the full-screen view.
     for (const name of ['Previous', 'Queue']) {
       expect(within(bar).queryByRole('button', { name })).toBeNull();
@@ -242,19 +243,30 @@ describe('PhonePlayerBar offline', () => {
 });
 
 describe('PhonePlayerBar swipe to skip', () => {
-  const swipe = (el: HTMLElement, dx: number, dy = 0) => {
-    fireEvent.pointerDown(el, { pointerId: 1, clientX: 200, clientY: 100 });
+  const down = (el: HTMLElement, x = 200, y = 100) => fireEvent.pointerDown(el, { pointerId: 1, clientX: x, clientY: y });
+  const move = (el: HTMLElement, dx: number, dy = 0) =>
     fireEvent.pointerMove(el, { pointerId: 1, clientX: 200 + dx, clientY: 100 + dy });
+  const up = (el: HTMLElement, dx: number, dy = 0) =>
     fireEvent.pointerUp(el, { pointerId: 1, clientX: 200 + dx, clientY: 100 + dy });
+  const swipe = (el: HTMLElement, dx: number, dy = 0) => {
+    down(el);
+    move(el, dx, dy);
+    up(el, dx, dy);
   };
+  const settle = () => act(() => void vi.advanceTimersByTime(600));
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
 
   it('swipe left goes to the next song, right to the previous', () => {
     const { onNext, onPrev } = setup();
     const row = screen.getByTestId('phone-player-row');
     swipe(row, -90);
+    settle();
     expect(onNext).toHaveBeenCalledTimes(1);
     expect(onPrev).not.toHaveBeenCalled();
     swipe(row, 90);
+    settle();
     expect(onPrev).toHaveBeenCalledTimes(1);
     expect(onNext).toHaveBeenCalledTimes(1);
   });
@@ -265,8 +277,38 @@ describe('PhonePlayerBar swipe to skip', () => {
     swipe(row, -20);
     swipe(row, 60, 80);
     swipe(row, 0, 150);
+    settle();
     expect(onNext).not.toHaveBeenCalled();
     expect(onPrev).not.toHaveBeenCalled();
+  });
+
+  it('a sideways swipe whose thumb drifts up or down on the way still skips', () => {
+    const { onNext } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    down(row);
+    move(row, -30, 4);
+    move(row, -60, 30);
+    up(row, -70, 55);
+    settle();
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('a drag that starts up and down is never a swipe, even if it ends far to the side', () => {
+    const { onNext, onPrev } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    down(row);
+    move(row, 2, 30);
+    move(row, -120, 40);
+    up(row, -120, 40);
+    settle();
+    expect(onNext).not.toHaveBeenCalled();
+    expect(onPrev).not.toHaveBeenCalled();
+    expect(row.style.transform).toBe('');
+  });
+
+  it('the browser may not claim the drag as a page pan', () => {
+    setup();
+    expect(screen.getByTestId('phone-player-row').style.touchAction).toBe('none');
   });
 
   it('a tap still opens Now Playing; a swipe does not', () => {
@@ -277,33 +319,108 @@ describe('PhonePlayerBar swipe to skip', () => {
     swipe(screen.getByTestId('phone-player-title-row'), -90);
     fireEvent.click(screen.getByTestId('phone-player-title-row'));
     expect(onOpen).toHaveBeenCalledTimes(1);
+    settle();
+    fireEvent.pointerDown(row, { pointerId: 2, clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(row, { pointerId: 2, clientX: 5, clientY: 5 });
     fireEvent.click(row);
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
-  it('the bar follows the finger, then springs back', () => {
+  it('the bar follows the finger, then springs back when it is let go short', () => {
     setup();
     const row = screen.getByTestId('phone-player-row');
-    fireEvent.pointerDown(row, { pointerId: 1, clientX: 200, clientY: 100 });
-    fireEvent.pointerMove(row, { pointerId: 1, clientX: 150, clientY: 100 });
-    expect(row.style.transform).toBe('translateX(-50px)');
-    fireEvent.pointerUp(row, { pointerId: 1, clientX: 150, clientY: 100 });
+    down(row);
+    move(row, -30);
+    expect(row.style.transform).toBe('translateX(-30px)');
+    expect(row.style.transition).toBe('none');
+    up(row, -30);
+    expect(row.style.transform).toBe('');
+    expect(row.style.transition).toContain('transform');
+  });
+
+  it('past the threshold the bar slides out, the skip happens, and the new song slides in', () => {
+    const { onNext } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    down(row);
+    move(row, -90);
+    up(row, -90);
+    // Sliding out the left side; the skip has not happened yet.
+    expect(row.style.transform).toMatch(/^translateX\(-\d+px\)$/);
+    expect(onNext).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(140));
+    expect(onNext).toHaveBeenCalledTimes(1);
+    // Waiting on the right edge, no transition, to slide in.
+    expect(row.style.transform).toMatch(/^translateX\(\d+px\)$/);
+    expect(row.style.transition).toBe('none');
+    settle();
     expect(row.style.transform).toBe('');
   });
 
-  it('does not follow under prefers-reduced-motion, but still skips', () => {
+  it('a right swipe slides the new song in from the left', () => {
+    const { onPrev } = setup();
+    const row = screen.getByTestId('phone-player-row');
+    swipe(row, 90);
+    act(() => void vi.advanceTimersByTime(140));
+    expect(onPrev).toHaveBeenCalledTimes(1);
+    expect(row.style.transform).toMatch(/^translateX\(-\d+px\)$/);
+  });
+
+  it('does not move under prefers-reduced-motion, but a long swipe still skips', () => {
     const orig = window.matchMedia;
     window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {} })) as never;
     try {
       const { onNext } = setup();
       const row = screen.getByTestId('phone-player-row');
-      fireEvent.pointerDown(row, { pointerId: 1, clientX: 200, clientY: 100 });
-      fireEvent.pointerMove(row, { pointerId: 1, clientX: 150, clientY: 100 });
+      down(row);
+      move(row, -50);
       expect(row.style.transform).toBe('');
-      fireEvent.pointerUp(row, { pointerId: 1, clientX: 100, clientY: 100 });
+      up(row, -100);
       expect(onNext).toHaveBeenCalledTimes(1);
+      expect(row.style.transform).toBe('');
     } finally {
       window.matchMedia = orig;
     }
+  });
+});
+
+describe('PhonePlayerBar: shuffle', () => {
+  const shuffleBtn = (name: 'Shuffle' | 'Shuffle off' = 'Shuffle') => screen.getByRole('button', { name });
+
+  it('is always there, immediately left of play', () => {
+    usePlayerStore.setState({ shuffle: false });
+    setup();
+    const group = screen.getByRole('button', { name: 'Pause' }).parentElement as HTMLElement;
+    expect(group.firstElementChild).toBe(shuffleBtn());
+    expect(group.children[1]).toBe(screen.getByRole('button', { name: 'Pause' }));
+  });
+
+  it('toggles the store both ways, with aria following', () => {
+    usePlayerStore.setState({ shuffle: false });
+    setup();
+    expect(shuffleBtn()).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(shuffleBtn());
+    expect(usePlayerStore.getState().shuffle).toBe(true);
+    expect(shuffleBtn('Shuffle off')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(shuffleBtn('Shuffle off'));
+    expect(usePlayerStore.getState().shuffle).toBe(false);
+    expect(shuffleBtn()).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('does not open the full-screen player', () => {
+    usePlayerStore.setState({ shuffle: false });
+    const { onOpen } = setup();
+    fireEvent.click(shuffleBtn());
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('is ember when on and muted when off', () => {
+    usePlayerStore.setState({ shuffle: true });
+    const { unmount } = setup();
+    expect(shuffleBtn('Shuffle off')).toHaveClass('text-ember');
+    unmount();
+    usePlayerStore.setState({ shuffle: false });
+    setup();
+    expect(shuffleBtn()).toHaveClass('text-muted-foreground');
+    expect(shuffleBtn()).not.toHaveClass('text-ember');
   });
 });

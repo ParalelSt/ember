@@ -95,7 +95,7 @@ class ServiceCarTest {
 
     // ── Shuffle and repeat from the car ─────────────────────────────────
 
-    @Test fun `the car's shuffle reorders the songs to come and off puts them back`() {
+    @Test fun `the car's shuffle re-deals the other songs behind the one playing and off puts them back`() {
         start()
         val order = listOf("a", "b", "c", "d", "e", "f", "g", "h")
         load(*order.toTypedArray(), index = 1)
@@ -104,14 +104,16 @@ class ServiceCarTest {
         player().shuffleModeEnabled = true // what Media3 calls for a controller's shuffle
         idle()
         val shuffled = ids()
-        assertEquals(listOf("a", "b"), shuffled.take(2))
-        assertEquals(order.drop(2).toSet(), shuffled.drop(2).toSet())
+        assertEquals("b", shuffled.first())
+        assertEquals(order.filter { it != "b" }, shuffled.drop(1).sorted())
+        assertTrue(shuffled.drop(1) != order.filter { it != "b" })
         assertEquals("b", player().currentMediaItem!!.mediaId)
+        assertEquals(0, player().currentMediaItemIndex)
         assertTrue(player().shuffleModeEnabled)
         assertTrue(session().sessionExtras.getBoolean(EmberPlaybackService.EXTRA_SHUFFLE))
         assertEquals(listOf("Shuffle on", "Repeat off"), buttonNames())
         // The flag does not reorder play a second time: next is the next in the list.
-        assertEquals(2, player().nextMediaItemIndex)
+        assertEquals(1, player().nextMediaItemIndex)
 
         // Off from the notification's (or car's) button this time.
         assertEquals(SessionResult.RESULT_SUCCESS, command(EmberPlaybackService.COMMAND_SHUFFLE, who = car).resultCode)

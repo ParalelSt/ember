@@ -86,7 +86,7 @@ describe('buildPlatformRollup', () => {
     const a = p(r, 'android');
     expect(a.launch.fcp).toEqual({ n: 2, p50: 1000, p95: 3000 });
     expect(a.launch.hydrated).toEqual({ n: 2, p50: 4000, p95: 30_000 });
-    expect(a.nav).toEqual({ n: 26, p50: 300, p95: 500, max: 9000 });
+    expect(a.nav).toEqual({ n: 26, p50: 300, p95: 500, max: 9000, ready: { n: 0, p50: 0, p95: 0 } });
     // 900 ms of long tasks over 3 foreground minutes.
     expect(a.longTaskMsPerMin).toBe(300);
     expect(a.freezes).toEqual({ n: 3, max: 7000 });
@@ -169,6 +169,44 @@ describe('buildPlatformRollup', () => {
         { route: '/radio', n: 1, abandoned: 0, p50: 400, p95: 400, phased: 1, serverP50: 100, commitP50: 250 },
       ],
     });
+  });
+
+  it('adds tap to content ready: per platform, per side nav route, per slow route, and the api that ended last', () => {
+    const nav = (to: string, ms: number, ready: number | undefined, more: Record<string, unknown> = {}) =>
+      ({ k: 'nav', at: 1, to, via: 'tap', lt: 0, area: 'sidebar', ms, ...(ready !== undefined ? { ready, wait: ready - ms } : {}), ...more }) as const;
+    const r = buildPlatformRollup(
+      [
+        stored('u1', {
+          session: 'a',
+          ev: [
+            nav('/library', 300, 2300, { api: '/api/playlists' }),
+            nav('/library', 200, 1200, { api: '/api/playlists' }),
+            nav('/library', 250, 4250, { api: '/api/youtube/recommended' }),
+            nav('/library', 250, 3250, { api: '/api/playlists' }),
+            nav('/settings', 100, 100),
+            nav('/radio', 400, undefined),
+          ],
+        }),
+        // A batch whose events were dropped still has its window list.
+        stored('u1', { session: 'a', seq: 2, nav: { n: 2, ms: [300, 300], ready: [900, 1000] } }),
+      ],
+      SINCE,
+      UNTIL,
+    );
+    const a = p(r, 'android');
+    expect(a.nav.ready).toEqual({ n: 7, p50: 1200, p95: 4250 });
+    const lib = a.sideNav.routes.find((x) => x.route === '/library')!;
+    expect(lib.ready).toEqual({ n: 4, p50: 2300, p95: 4250 });
+    expect(lib.waitP50).toBe(2000);
+    expect(lib.waitApi).toBe('/api/playlists');
+    const settings = a.sideNav.routes.find((x) => x.route === '/settings')!;
+    expect(settings.ready).toEqual({ n: 1, p50: 100, p95: 100 });
+    expect(settings.waitApi).toBeUndefined();
+    expect(a.sideNav.routes.find((x) => x.route === '/radio')!.ready).toBeUndefined();
+    expect(a.slowestRoutes.find((x) => x.route === '/library')!.ready).toEqual({ n: 4, p50: 2300, p95: 4250 });
+    const row = anonSessions([stored('u1', { session: 'a', ev: [nav('/library', 300, 2300), nav('/library', 200, 1200)] })], SINCE, UNTIL, (k, id) => `${k}:${id.length}`)[0];
+    expect(row.nav.readyP50).toBe(1200);
+    expect(row.nav.readyP95).toBe(2300);
   });
 
   it('puts an old batch without os under the platform its shell or device says, else other', () => {

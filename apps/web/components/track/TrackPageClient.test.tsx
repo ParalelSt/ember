@@ -27,6 +27,11 @@ vi.mock('@/components/track/menus/TrackMenu', () => ({
   ),
 }));
 
+// The blocks under the header have their own tests (TrackPageSections.test).
+vi.mock('@/components/track/TrackPageSections', () => ({
+  TrackPageSections: ({ track }: { track: Track }) => <div data-testid="track-sections" data-track={track.id} />,
+}));
+
 const { TrackPageClient } = await import('./TrackPageClient');
 
 const TRACK: Track = {
@@ -134,6 +139,16 @@ describe('Song page', () => {
     state.online = false;
     render(<TrackPageClient videoId="a1" />);
     expect(screen.getByText("You're offline")).toBeInTheDocument();
+  });
+
+  it('puts the lyrics, artist, album, more by and similar blocks under the action row, for this song', () => {
+    render(<TrackPageClient videoId="a1" />);
+    const bar = screen.getByTestId('action-bar');
+    const sections = screen.getByTestId('track-sections');
+    expect(sections).toHaveAttribute('data-track', 'youtube:a1');
+    expect(bar.compareDocumentPosition(sections) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 40px (gap-section) below the header block.
+    expect(sections.parentElement?.className).toContain('gap-section');
   });
 
   it('keeps its back button route', () => {

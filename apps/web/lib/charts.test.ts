@@ -145,6 +145,22 @@ describe('createChartsCache', () => {
     expect(await cache.get('nope')).toBeNull();
   });
 
+  it('busy() is true only while a refresh is in flight', async () => {
+    let letGo!: () => void;
+    const fetchCharts = vi.fn(async () => {
+      await new Promise<void>((r) => { letGo = r; });
+      return { charts: [chart('rock', ['rock0000001'])], failed: [] };
+    });
+    const cache = make(fetchCharts);
+    expect(cache.busy()).toBe(false);
+    const pending = cache.getAll();
+    await vi.waitFor(() => expect(fetchCharts).toHaveBeenCalledTimes(1));
+    expect(cache.busy()).toBe(true);
+    letGo();
+    expect((await pending).charts).toHaveLength(1);
+    expect(cache.busy()).toBe(false);
+  });
+
   it('tells onRefresh about each good run, and a failing listener costs nothing', async () => {
     const onRefresh = vi.fn(async () => { throw new Error('listener down'); });
     const cache = make(async () => ({ charts: [chart('rock', ['rock0000001'])], failed: [] }), { onRefresh });

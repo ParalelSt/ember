@@ -8,6 +8,8 @@ import path from 'node:path';
  *  died without saying so (killed, crashed, power loss). */
 
 export const HEARTBEAT_MS = 60 * 1000;
+/** The line every start logs (the bug-report route looks for it). */
+export const SERVER_STARTED = 'server started';
 /** Older than this with no clean stop = the process was down for a while. */
 export const UNCLEAN_GAP_MS = 2 * 60 * 1000;
 
@@ -114,7 +116,7 @@ export async function startServerLife(opts: {
   } else if (prev.kind === 'quick-restart') {
     opts.log.info('server', 'previous run ended without a clean stop (quick restart)', { gapMs: prev.gapMs });
   }
-  opts.log.info('server', 'server started', {
+  opts.log.info('server', SERVER_STARTED, {
     version: opts.version,
     pid: process.pid,
     previous: prev.kind,

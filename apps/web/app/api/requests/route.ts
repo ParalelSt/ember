@@ -102,8 +102,9 @@ export const POST = withRequestLog("requests", async (request: NextRequest) => {
       }
 
       const main = String(body.main ?? "").trim();
-      if (main.length < 1 || main.length > MAX_MAIN_LEN) {
-        return jsonError(`that field must be 1-${MAX_MAIN_LEN} characters`, 400);
+      // The description is optional: a title alone is a complete request.
+      if (main.length > MAX_MAIN_LEN) {
+        return jsonError(`that field must be at most ${MAX_MAIN_LEN} characters`, 400);
       }
 
       const extraRaw = String(body.extra ?? "").trim();
@@ -125,7 +126,7 @@ export const POST = withRequestLog("requests", async (request: NextRequest) => {
       // Scrub every text field: a pasted token or cookie in the description
       // must never reach the webhook payload.
       const scrubbedName = scrubText(name);
-      const scrubbedMain = scrubText(main);
+      const scrubbedMain = main ? scrubText(main) : "";
       const scrubbedExtra = extraRaw ? scrubText(extraRaw) : "";
 
       const title =
@@ -143,7 +144,8 @@ export const POST = withRequestLog("requests", async (request: NextRequest) => {
 
       const embed = {
         title: truncate(title, 256),
-        description: truncate(scrubbedMain, 4096),
+        // Omitted entirely when empty so the embed has no blank body.
+        description: scrubbedMain ? truncate(scrubbedMain, 4096) : undefined,
         color: EMBED_COLOR[kind],
         fields,
         footer: footerParts.length ? { text: footerParts.join(" · ") } : undefined,

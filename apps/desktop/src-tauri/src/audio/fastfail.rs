@@ -44,6 +44,9 @@ enum Behaviour {
     /// proxying an upstream whose body stops mid-transfer. This is the shape
     /// that produced the 25s freeze in the field.
     AnswersThenStalls { sent: usize },
+    /// The same, from a host that says it is relaying YouTube live (the
+    /// stream route after a failed download, `X-Ember-Source: live`).
+    RelaysLiveThenStalls { sent: usize },
     /// The whole body, in small pieces with a gap between them: a weak link
     /// that IS delivering, and must not be cut off.
     SlowButProgressing { chunk: usize, gap_ms: u64 },
@@ -92,6 +95,13 @@ fn fake_host(behaviour: Behaviour) -> String {
                             msg.len()
                         );
                         let _ = stream.write_all(msg);
+                    }
+                    Behaviour::RelaysLiveThenStalls { sent } => {
+                        let live = ok_headers.replace("\r\n\r\n", "\r\nX-Ember-Source: live\r\n\r\n");
+                        let _ = stream.write_all(live.as_bytes());
+                        let _ = stream.write_all(&TRACK[..sent.min(total)]);
+                        let _ = stream.flush();
+                        std::thread::sleep(Duration::from_secs(300));
                     }
                     Behaviour::AnswersThenStalls { sent } => {
                         let _ = stream.write_all(ok_headers.as_bytes());
@@ -293,6 +303,30 @@ async fn a_host_that_goes_quiet_mid_body_is_reported_within_seconds() {
     assert!(took < Duration::from_secs(6), "gave up only after {took:?}: {message}");
     assert!(message.contains("stopped arriving"), "unhelpful message: {message}");
     assert_eq!(retry, super::RETRY_NONE, "the same host cannot do better for web audio");
+}
+
+/// A stall says how the host was serving the song, so the next report of
+/// one tells a live relay (the download failed on the host) from its copy.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stall_says_the_host_was_relaying_youtube_live() {
+    let url = fake_host(Behaviour::RelaysLiveThenStalls { sent: 8 * 1024 });
+    let (_, outcome) = open(&url).await;
+    let (message, _) = outcome.expect_err("a body that never arrives cannot open");
+    assert!(message.contains("stopped arriving"), "unhelpful message: {message}");
+    assert!(message.ends_with(", the host was relaying YouTube live"), "message: {message}");
+
+    let url = fake_host(Behaviour::AnswersThenStalls { sent: 8 * 1024 });
+    let (_, outcome) = open(&url).await;
+    let (message, _) = outcome.expect_err("a body that never arrives cannot open");
+    assert!(!message.contains("relaying"), "a host that says nothing is not named: {message}");
+}
+
+#[test]
+fn the_host_source_note_names_only_what_the_host_said() {
+    assert_eq!(super::host_source_note(Some("live")), ", the host was relaying YouTube live");
+    assert_eq!(super::host_source_note(Some("disk")), ", the host was sending its copy");
+    assert_eq!(super::host_source_note(Some("other")), "");
+    assert_eq!(super::host_source_note(None), "");
 }
 
 /// The same host, with the head of the song sent before it goes quiet. This

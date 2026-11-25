@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ServerLogEntry } from '@/lib/logger/types';
-import { buildHostRollup, hostForPage, nativeByOs } from './hostRollup';
+import { buildHostRollup, hostForPage, nativeByOs, phaseParts } from './hostRollup';
 
 /** The host side of the perf channel: the server's timing lines summed over
  *  the window, and native perf events per platform. */
@@ -62,5 +62,31 @@ describe('nativeByOs', () => {
     ]);
     expect([...m.keys()]).toEqual(['android']);
     expect(m.get('android')).toEqual({ rendererGone: 2, rendererUnresponsive: 1, lowMemory: 1, trimMemory: 2 });
+  });
+});
+
+describe('buildHostRollup: phases', () => {
+  const lineOf = (routes: unknown[]) => timing(routes);
+
+  it('weights each phase\'s median by requests across the 5 min lines, and leaves unsplit routes bare', () => {
+    const r = buildHostRollup([
+      lineOf([{ route: '/api/playlists', n: 1, p50: 900, p95: 900, max: 900, ph: { auth: 300, db: 500, upstream: 0 } }, { route: '/api/version', n: 3, p50: 5, p95: 5, max: 5 }]),
+      lineOf([{ route: '/api/playlists', n: 9, p50: 600, p95: 700, max: 800, ph: { auth: 120, db: 430, upstream: 0 } }]),
+    ]);
+    const pl = r.routes.find((x) => x.route === '/api/playlists')!;
+    expect(pl).toMatchObject({ n: 10, p50: 600, ph: { auth: 120, db: 430, upstream: 0 } });
+    expect(phaseParts(pl)).toEqual([
+      { name: 'auth', ms: 120 },
+      { name: 'db', ms: 430 },
+      { name: 'other', ms: 50 },
+    ]);
+    expect(r.routes.find((x) => x.route === '/api/version')!.ph).toBeUndefined();
+    expect(phaseParts(r.routes.find((x) => x.route === '/api/version')!)).toEqual([]);
+  });
+
+  it('ignores junk phase values and never gives a negative other', () => {
+    const r = buildHostRollup([lineOf([{ route: '/a', n: 2, p50: 100, p95: 100, max: 100, ph: { auth: 'x', db: -4, upstream: 400 } }])]);
+    expect(r.routes[0].ph).toEqual({ auth: 0, db: 0, upstream: 400 });
+    expect(phaseParts(r.routes[0]).find((p) => p.name === 'other')!.ms).toBe(0);
   });
 });

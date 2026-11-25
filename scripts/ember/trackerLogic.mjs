@@ -107,7 +107,7 @@ const stamp = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDat
 const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 
 function itemLine(i) {
-  const link = `[open](<${i.link}>)`;
+  const link = `${i.link}`;
   if (i.status === 'rejected') return `- ${oneLine(i.summary)}${i.reason ? `: ${oneLine(i.reason)}` : ''} ${link}`;
   if (i.status === 'open') return `- ${oneLine(i.summary)} ${link}`;
   return `- ${oneLine(i.summary)} (${i.version || 'not released yet'}) ${link}`;
@@ -127,7 +127,7 @@ function bugLine(i) {
   if (i.held) return `- ${i.count} more reports from ${i.author} (held)`;
   const times = i.count > 1 ? ` x${i.count}` : '';
   const back = i.cameBack ? ` (came back after fix in ${i.cameBack})` : '';
-  return `- ${oneLine(i.summary)}${times}${back} [open](<${i.link}>)`;
+  return `- ${oneLine(i.summary)}${times}${back} ${i.link}`;
 }
 
 /** The summary as lines; empty sections are left out, newest first. The
@@ -142,7 +142,7 @@ export function renderTracker(state, now = new Date()) {
     lines.push('', '**🐞 Bugs, not fixed yet**', ...shown);
   }
   const requests = fresh.filter((i) => !isBug(i)).sort(byNewest);
-  if (requests.length) lines.push('', '**🆕 New requests, not sorted**', ...requests.map((i) => `- ${oneLine(i.summary)} [open](<${i.link}>)`));
+  if (requests.length) lines.push('', '**🆕 New requests, not sorted**', ...requests.map((i) => `- ${oneLine(i.summary)} ${i.link}`));
   for (const [status, title] of SECTIONS) {
     const items = state.items.filter((i) => i.status === status).sort((a, b) => String(b.at).localeCompare(String(a.at)));
     if (!items.length) continue;

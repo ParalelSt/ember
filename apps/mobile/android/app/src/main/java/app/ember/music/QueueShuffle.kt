@@ -13,12 +13,19 @@ import kotlin.random.Random
  *  queue change, like any other (EmberPlayerPlugin's `queue` event), with
  *  the shuffle flag beside it. */
 object QueueShuffle {
-    /** The new order, as indexes into the queue: everything up to and
-     *  including [index] stays, the rest in random order. */
+    /** The new order, as indexes into the queue: the song at [index] first
+     *  (it keeps playing), every other song, the played ones too, behind it
+     *  in a random order that is never the order they were already in (for
+     *  two or more others). */
     fun shuffledOrder(size: Int, index: Int, random: Random = Random.Default): List<Int> {
         if (size <= 0) return emptyList()
-        val at = index.coerceIn(-1, size - 1)
-        return (0..at).toList() + ((at + 1) until size).shuffled(random)
+        val at = index.coerceIn(0, size - 1)
+        val others = (0 until size).filter { it != at }
+        var order = others.shuffled(random)
+        var tries = 0
+        while (others.size > 1 && order == others && tries++ < 8) order = others.shuffled(random)
+        if (others.size > 1 && order == others) order = order.drop(1) + order.first()
+        return listOf(at) + order
     }
 
     /** The queue put back in its pre-shuffle order, as it is NOW (the web

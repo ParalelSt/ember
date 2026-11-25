@@ -109,17 +109,22 @@ export function rowStep(clientWidth: number): number {
 
 /** The phone Home's rows below the quick grid. `charts` is "Popular now":
  *  the Top songs tile (the mixed chart) then one tile per genre chart. It
- *  appears once either has content, and the Charts chip keeps it. */
-export type HomeRowKey = 'mixes' | 'history' | 'recommended' | 'charts' | 'playlists' | 'friends';
+ *  appears once either has content, and the Charts chip keeps it. `releases`
+ *  is "New releases": under the All chip only, no chip of its own. */
+export type HomeRowKey = 'mixes' | 'history' | 'recommended' | 'releases' | 'charts' | 'playlists' | 'friends';
 
-/** The owner's order B: mixes and discovery early, your playlists late. */
+/** The owner's order B: mixes and discovery early, your playlists late.
+ *  Friends are listening to leads (his 2026-11-22 pick): the first row
+ *  under the quick grid, since it is the row you glance at. It renders
+ *  nothing while nobody is listening, so the row below simply moves up. */
 export const PHONE_ORDER: readonly HomeRowKey[] = [
+  'friends',
   'mixes',
   'history',
   'recommended',
+  'releases',
   'charts',
   'playlists',
-  'friends',
 ];
 
 export type HomeFilter = 'all' | 'playlists' | 'mixes' | 'charts';

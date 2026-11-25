@@ -837,6 +837,7 @@ MUSICBRAINZ_CONTACT=       # your email or a URL, sent to MusicBrainz as asked f
 MIXES_HOUR=4               # hour of the local day for the nightly rebuild, 0-23
 MIXES_DISABLED=1           # no mix builds at all (nightly or on opening Home)
 GENRES_LOOKUP_DISABLED=1   # never ask Last.fm or MusicBrainz (only stored genres and charts count)
+NEW_RELEASES_DISABLED=1    # no New releases row and no daily scan for it
 ```
 
 An admin can set an artist's family by hand, which no lookup replaces:

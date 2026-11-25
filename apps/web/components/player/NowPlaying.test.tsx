@@ -31,7 +31,7 @@ const TRACK: Track = {
   artworkUrl: null,
   streamUrl: '/x',
 };
-const player = vi.hoisted(() => ({ toggle: vi.fn(), next: vi.fn(), prev: vi.fn(), current: null as unknown }));
+const player = vi.hoisted(() => ({ startRadio: vi.fn(), toggle: vi.fn(), next: vi.fn(), prev: vi.fn(), current: null as unknown }));
 vi.mock('@/components/player/PlayerProvider', () => ({
   usePlayer: () => ({
     current: player.current,
@@ -41,6 +41,7 @@ vi.mock('@/components/player/PlayerProvider', () => ({
     next: player.next,
     prev: player.prev,
     seek: () => {},
+    startRadio: player.startRadio,
   }),
   // The store's own playhead, read the way the real hook reads it.
   usePlayerPosition: () => usePlayerStore((s) => s.position),
@@ -273,11 +274,20 @@ describe('NowPlaying: the More sheet', () => {
     expect(within(sheet()).getByText('Coastline')).toBeInTheDocument();
     // One of the player's own sheets: its keyboard shortcuts keep working.
     expect(sheet()).toHaveAttribute('data-player-view');
-    expect(rows()).toEqual(['add', 'tabs', 'eq', 'share', 'artist', 'album', 'block', 'report']);
+    expect(rows()).toEqual(['radio', 'add', 'tabs', 'eq', 'share', 'artist', 'album', 'block', 'report']);
     expect(sheet().querySelectorAll('[role="group"]')).toHaveLength(0);
     expect(row('share')).toHaveTextContent('Copy link');
     // Like, Lyrics and Devices are on the player, not in the sheet.
     expect(within(sheet()).queryByText(/^(Like|Liked|Lyrics|Devices)$/)).toBeNull();
+  });
+
+  it('Start radio starts radio from the song playing', () => {
+    auth.user = { id: 'u1' };
+    player.current = TRACK;
+    render(<NowPlaying />);
+    openMore();
+    fireEvent.click(row('radio'));
+    expect(player.startRadio).toHaveBeenCalledWith(expect.objectContaining({ id: TRACK.id }));
   });
 
   it('Block song blocks the song playing (owner request 2026-10-22)', () => {
@@ -311,7 +321,7 @@ describe('NowPlaying: the More sheet', () => {
   it('signed out, keeps what needs no account', () => {
     render(<NowPlaying />);
     openMore();
-    expect(rows()).toEqual(['tabs', 'eq', 'share']);
+    expect(rows()).toEqual(['radio', 'tabs', 'eq', 'share']);
     expect(within(view()).queryByRole('button', { name: 'Like' })).toBeNull();
   });
 
@@ -524,5 +534,46 @@ describe('NowPlaying on playhead reports', () => {
     expect(before).toBeGreaterThan(0);
     for (let s = 1; s <= 5; s += 0.25) act(() => usePlayerStore.getState().reportPosition(s));
     expect(summaryRendered).toHaveBeenCalledTimes(before);
+  });
+});
+
+// The collection page's Shuffle play only ever re-deals, so this button is
+// the one way to turn shuffle off: it must be there for every list that can
+// be shuffled (not only playlists) and a real on/off toggle.
+describe('NowPlaying: the shuffle button', () => {
+  const list = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ ...TRACK, id, sourceId: id }));
+  const ids = () => usePlayerStore.getState().queue.map((s) => s.id);
+
+  it.each([
+    [{ type: 'liked' }],
+    [{ type: 'playlist', playlistId: 'p1', playlistName: 'P' }],
+    [{ type: 'album', albumId: 'a', albumTitle: 'A' }],
+    [{ type: 'chart', chartSlug: 'x', chartTitle: 'X' }],
+    [{ type: 'mix', mixKey: 'k', mixTitle: 'K' }],
+    [{ type: 'history' }],
+    [{ type: 'uploads' }],
+    [{ type: 'artist', artistName: 'B' }],
+  ] as const)('turns shuffle on, then OFF on the second press, in a %o list', (context) => {
+    player.current = list[1];
+    usePlayerStore.setState({ queue: list, index: 1, context: context as never, shuffle: false, orderBackup: null });
+    render(<NowPlaying />);
+    fireEvent.click(within(view()).getByRole('button', { name: 'Shuffle' }));
+    expect(usePlayerStore.getState().shuffle).toBe(true);
+    expect(usePlayerStore.getState().queue[usePlayerStore.getState().index].id).toBe('b');
+    fireEvent.click(within(view()).getByRole('button', { name: 'Shuffle off' }));
+    expect(usePlayerStore.getState().shuffle).toBe(false);
+    expect(ids()).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(usePlayerStore.getState().index).toBe(1);
+    expect(within(view()).getByRole('button', { name: 'Shuffle' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('stays out of a search, radio, stations or single-song queue, unless shuffle is on', () => {
+    player.current = list[1];
+    usePlayerStore.setState({ queue: list, index: 1, context: { type: 'search' }, shuffle: false, orderBackup: null });
+    const { rerender } = render(<NowPlaying />);
+    expect(within(view()).queryByRole('button', { name: 'Shuffle' })).toBeNull();
+    act(() => usePlayerStore.setState({ shuffle: true, orderBackup: list }));
+    rerender(<NowPlaying />);
+    expect(within(view()).getByRole('button', { name: 'Shuffle off' })).toBeInTheDocument();
   });
 });

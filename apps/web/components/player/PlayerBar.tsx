@@ -8,6 +8,7 @@ import {
   TabsIcon,
   QueueIcon,
   RepeatIcon,
+  ShuffleIcon,
   RepeatOneIcon,
   ShareIcon,
   DevicesIcon,
@@ -28,6 +29,7 @@ import { VolumeControl } from '@/components/player/VolumeControl';
 import { DevicesButton, DevicesSheet, PlayingOnLabel, useDevicesEntry } from '@/components/player/DevicesButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useSwipeSkip } from '@/hooks/player/useSwipeSkip';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useHeadUnitControls } from '@/hooks/useHeadUnit';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
@@ -66,6 +68,8 @@ export function PlayerBar() {
   const devices = useDevicesEntry();
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
   const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
+  const shuffleOn = usePlayerStore((s) => s.shuffle);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const loopMode = usePlayerStore((s) => s.loopMode);
   const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
   const muted = usePlayerStore((s) => s.muted);
@@ -75,6 +79,9 @@ export function PlayerBar() {
   // A car head unit with the car layout on (owner's pick): its own bar,
   // big previous, play and next, and a swipe on the cover to skip.
   const carLayout = useHeadUnitControls();
+  // A tablet shows the wide bar: a finger swiping the song's cluster skips
+  // too (never a mouse drag).
+  const touchSwipe = useSwipeSkip({ onNext: next, onPrev: prev, enabled: true, touchOnly: true });
 
   // Desktop only, the button is hidden on phones (md:inline-flex), where
   // lyrics live inside the full-screen NowPlaying view instead.
@@ -138,6 +145,26 @@ export function PlayerBar() {
       </footer>
     );
   }
+
+  // Shuffle toggle: the store's own, so it keeps the current song and
+  // shuffles only what is upcoming. Always shown, on any queue. Desktop
+  // only, like loop; phones have it in PhonePlayerBar.
+  const shuffleButton = (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={toggleShuffle}
+      aria-label={shuffleOn ? 'Shuffle off' : 'Shuffle'}
+      aria-pressed={shuffleOn}
+      title={shuffleOn ? 'Shuffling' : 'Shuffle off'}
+      className={cn(
+        'hidden md:inline-flex h-8 w-8',
+        shuffleOn ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+      )}
+    >
+      <ShuffleIcon className="h-4 w-4" />
+    </Button>
+  );
 
   // Loop toggle: cycles off, loop playlist (wrap queue, radio suppressed),
   // loop one song. Desktop only; phones get the same control in the
@@ -215,7 +242,7 @@ export function PlayerBar() {
     <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[minmax(13.5rem,1fr)_1fr_auto] lg:grid-cols-[minmax(16.5rem,1fr)_2fr_1fr] xl:grid-cols-[minmax(20rem,1fr)_2fr_1fr] gap-4 items-center">
       {/* Now playing. No tap-to-open here: this bar only renders on an md
           and wider window, and the phone bar owns that gesture. */}
-      <div className="flex items-center gap-3 min-w-0" data-testid="player-bar-now">
+      <div className="flex items-center gap-3 min-w-0" data-testid="player-bar-now" {...touchSwipe}>
         {unplayable ? (
           <UnplayableMessage size="desktop" onRetry={retry} onOpenQueue={() => setQueueOpen(true)} />
         ) : (
@@ -239,7 +266,7 @@ export function PlayerBar() {
           onNext={next}
           onPrev={prev}
           size="sm"
-          left={loopButton}
+          left={<>{shuffleButton}{loopButton}</>}
         />
         <PlayheadSeekBar
           live={live}

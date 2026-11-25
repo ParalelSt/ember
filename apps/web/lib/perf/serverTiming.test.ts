@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createServerTiming, makeHealth, registerServerTiming, requestRoute, SERVER_TIMING_LIMITS } from './serverTiming';
 import { perfLogEnabled, perfSample } from './hostSwitch';
+import { addPhase, newPhases } from './phases';
 
 /** Server request timing and host health (slice 3): per route stats with
  *  ids taken out, a capped number of slow lines, held streams never slow,
@@ -134,6 +135,46 @@ describe('makeHealth', () => {
   });
 });
 
+describe('createServerTiming: phases', () => {
+  it('keeps each route\'s median auth, db and upstream beside its total', () => {
+    let clock = 0;
+    const t = createServerTiming({ sink: sink(), now: () => clock });
+    const run = (url: string, total: number, ph: { auth?: number; db?: number; upstream?: number }, held = false) => {
+      const req = { url, method: 'GET' };
+      const phases = newPhases(() => clock);
+      addPhase(phases, 'auth', ph.auth ?? 0);
+      addPhase(phases, 'db', ph.db ?? 0);
+      addPhase(phases, 'upstream', ph.upstream ?? 0);
+      t.start(req, phases);
+      clock += total;
+      t.finish(req, res(200, held ? { 'content-type': 'audio/mpeg' } : {}));
+    };
+    for (let i = 0; i < 5; i++) run('/api/playlists', 600, { auth: 120, db: 430 });
+    run('/api/youtube/recommended', 1900, { upstream: 1500 });
+    run('/api/version', 5, {});
+    run('/api/youtube/stream/abc', 9000, { db: 40 }, true);
+    const { routes } = t.snapshot();
+    const pl = routes.find((r) => r.route === '/api/playlists')!;
+    expect(pl.p50).toBeGreaterThanOrEqual(600);
+    // Medians come out of 1.2-step histogram buckets: within one bucket.
+    expect(pl.ph!.auth).toBeGreaterThanOrEqual(120);
+    expect(pl.ph!.auth).toBeLessThan(150);
+    expect(pl.ph!.db).toBeGreaterThanOrEqual(430);
+    expect(pl.ph!.db).toBeLessThan(520);
+    expect(pl.ph!.upstream).toBe(0);
+    expect(routes.find((r) => r.route === '/api/youtube/recommended')!.ph!.upstream).toBeGreaterThanOrEqual(1500);
+    // Nothing spent in a phase: no split. Held streams are not split.
+    expect(routes.find((r) => r.route === '/api/version')!.ph).toBeUndefined();
+    expect(routes.find((r) => r.route === '/api/youtube/stream/:id')!.ph).toBeUndefined();
+  });
+
+  it('works for a request with no phases, as before', () => {
+    const { t, run } = timed();
+    run('/api/likes', 30);
+    expect(t.snapshot().routes[0].ph).toBeUndefined();
+  });
+});
+
 describe('registerServerTiming', () => {
   it('times a real request through diagnostics_channel and stops cleanly', async () => {
     const http = await import('node:http');
@@ -157,6 +198,59 @@ describe('registerServerTiming', () => {
     expect(typeof snap.health.loopP99).toBe('number');
     // Stopped: a later request is not timed.
     expect(timing.snapshot().requests).toBe(0);
+  });
+});
+
+describe('registerServerTiming: phases through a real request', () => {
+  it('splits a request into auth, db and the rest, sends them as Server-Timing and logs them per route', async () => {
+    const http = await import('node:http');
+    const pb = http.createServer((req, res) => {
+      // PocketBase: sign-in check takes 30 ms, a records read 60 ms.
+      setTimeout(() => res.end('{}'), req.url?.includes('auth-refresh') ? 30 : 60);
+    });
+    await new Promise<void>((r) => pb.listen(0, '127.0.0.1', r));
+    const pbPort = (pb.address() as { port: number }).port;
+    const oldEnv = process.env.POCKETBASE_URL;
+    process.env.POCKETBASE_URL = `http://127.0.0.1:${pbPort}`;
+    const s = sink();
+    const { timing, stop } = await registerServerTiming(s);
+    const app = http.createServer(async (_req, res) => {
+      await fetch(`http://127.0.0.1:${pbPort}/api/collections/users/auth-refresh`, { method: 'POST' });
+      // Two reads at once count as one stretch of db time.
+      await Promise.all([fetch(`http://127.0.0.1:${pbPort}/api/collections/playlists/records`), fetch(`http://127.0.0.1:${pbPort}/api/collections/likes/records`)]);
+      await new Promise((r) => setTimeout(r, 40));
+      res.end('ok');
+    });
+    await new Promise<void>((r) => app.listen(0, '127.0.0.1', r));
+    const appPort = (app.address() as { port: number }).port;
+    let header = '';
+    try {
+      const answer = await fetch(`http://127.0.0.1:${appPort}/api/playlists`);
+      header = answer.headers.get('server-timing') ?? '';
+      await answer.text();
+      await new Promise((r) => setTimeout(r, 20));
+      timing.flush();
+    } finally {
+      stop();
+      await new Promise((r) => app.close(r));
+      await new Promise((r) => pb.close(r));
+      if (oldEnv === undefined) delete process.env.POCKETBASE_URL;
+      else process.env.POCKETBASE_URL = oldEnv;
+    }
+    const entry = (name: string) => Number(new RegExp(`${name};dur=(\\d+)`).exec(header)?.[1]);
+    expect(entry('auth')).toBeGreaterThanOrEqual(25);
+    expect(entry('auth')).toBeLessThan(80);
+    expect(entry('db')).toBeGreaterThanOrEqual(55);
+    // One stretch, not 60 + 60.
+    expect(entry('db')).toBeLessThan(110);
+    expect(entry('upstream')).toBe(0);
+    expect(entry('total')).toBeGreaterThanOrEqual(entry('auth') + entry('db') + 35);
+    const [, , snap] = s.info.mock.calls[0];
+    const route = snap.routes.find((r: { route: string }) => r.route === '/api/playlists');
+    expect(route.ph.db).toBeGreaterThanOrEqual(55);
+    expect(route.ph.auth).toBeGreaterThanOrEqual(25);
+    // Stopped: the real fetch is back.
+    expect((globalThis as Record<symbol, unknown>)[Symbol.for('ember.perfPhaseFetch')]).toBeUndefined();
   });
 });
 

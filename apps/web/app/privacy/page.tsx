@@ -53,6 +53,8 @@ export default function PrivacyPage() {
         <p>
           Ember&rsquo;s use of information received from Google APIs adheres to the{' '}
           <a
+            target="_blank"
+            rel="noopener noreferrer"
             href="https://developers.google.com/terms/api-services-user-data-policy"
             className="text-foreground underline"
           >
@@ -60,7 +62,7 @@ export default function PrivacyPage() {
           </a>
           , including the Limited Use requirements. You can also remove Ember&rsquo;s access at any
           time from your Google account&rsquo;s{' '}
-          <a href="https://myaccount.google.com/permissions" className="text-foreground underline">
+          <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer" className="text-foreground underline">
             third-party access page
           </a>
           .

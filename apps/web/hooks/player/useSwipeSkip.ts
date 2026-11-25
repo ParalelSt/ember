@@ -42,6 +42,7 @@ export function useSwipeSkip({
   onPrev,
   enabled,
   follow = false,
+  touchOnly = false,
 }: {
   onNext: () => void;
   onPrev: () => void;
@@ -49,6 +50,9 @@ export function useSwipeSkip({
   /** The element follows the finger sideways while it drags and springs
    *  back on release (not under prefers-reduced-motion). */
   follow?: boolean;
+  /** Ignore a mouse: a computer's click-and-drag must not skip songs, only
+   *  a finger (a tablet showing the wide bar) does. */
+  touchOnly?: boolean;
 }): SwipeSkipProps {
   const start = useRef<{ x: number; y: number; id: number } | null>(null);
   const swiped = useRef(false);
@@ -62,6 +66,7 @@ export function useSwipeSkip({
   };
   return {
     onPointerDown: (e) => {
+      if (touchOnly && e.pointerType === 'mouse') return;
       start.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
       swiped.current = false;
     },

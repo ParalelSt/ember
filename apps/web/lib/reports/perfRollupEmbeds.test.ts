@@ -103,6 +103,41 @@ describe('rollupMessage', () => {
     expect(side).toContain('/settings 1× p50 6.0 s p95 6.0 s · host 5.0 s / page 300 ms · 1 re-tapped');
   });
 
+  it('puts tap to content in the side nav lines, the slow routes and its own field', () => {
+    const ev = [
+      { k: 'nav', at: 1, to: '/library', via: 'tap', ms: 300, server: 100, commit: 50, lt: 0, area: 'sidebar', ready: 2800, wait: 2500, api: '/api/playlists' },
+      { k: 'nav', at: 2, to: '/library', via: 'tap', ms: 400, lt: 0, area: 'sidebar', ready: 1400, wait: 1000, api: '/api/playlists' },
+    ];
+    const { embeds } = rollupMessage(buildPlatformRollup([stored('u1', 'a', 'android', { ev, nav: { n: 2, ms: [300, 400] } })], SINCE, UNTIL));
+    const side = embeds[0].fields.find((f) => f.name === 'Side nav')!.value;
+    expect(side).toContain('tap to content p50 1.4 s p95 2.8 s (data wait p50 1.0 s, last /api/playlists)');
+    expect(embeds[0].fields.find((f) => f.name === 'Tap to content')!.value).toBe('all pages p50 1.4 s · p95 2.8 s (2)');
+    expect(embeds[0].fields.find((f) => f.name === 'Slowest routes')!.value).toContain('content p50 1.4 s p95 2.8 s');
+  });
+
+  it('shows each slow host route split into auth, db and the rest', () => {
+    const srv = (over: Record<string, unknown>) =>
+      ({ ts: SINCE + 1000, kind: 'log', level: 'info', category: 'native', message: 'n', sessionId: 'server', side: 'server', reqId: '', route: '', ...over }) as never;
+    const server = [
+      srv({
+        category: 'perf',
+        message: 'server timing',
+        data: {
+          routes: [
+            { route: '/api/playlists', n: 87, p50: 600, p95: 2500, max: 4000, ph: { auth: 120, db: 430, upstream: 0 } },
+            { route: '/api/youtube/recommended', n: 20, p50: 1900, p95: 3000, max: 5000, ph: { auth: 10, db: 100, upstream: 1500 } },
+            { route: '/api/version', n: 9, p50: 5, p95: 8, max: 9 },
+          ],
+        },
+      }),
+    ];
+    const r = buildPlatformRollup([], SINCE, UNTIL, server);
+    const slowest = rollupMessage(r).embeds[5].fields.find((f) => f.name === 'Slowest server routes')!.value.split('\n');
+    expect(slowest[0]).toBe('/api/youtube/recommended p50 1.9 s · p95 3.0 s · max 5.0 s (20) · auth 10 ms, db 100 ms, upstream 1.5 s, other 290 ms');
+    expect(slowest[1]).toBe('/api/playlists p50 600 ms · p95 2.5 s · max 4.0 s (87) · auth 120 ms, db 430 ms, other 50 ms');
+    expect(slowest[2]).toBe('/api/version p50 5 ms · p95 8 ms · max 9 ms (9)');
+  });
+
   it('stays under Discord\'s limits with every platform full of long routes', () => {
     const entries: StoredDigest[] = [];
     for (const os of ['android', 'ios', 'windows', 'macos', 'linux']) {
@@ -114,7 +149,7 @@ describe('rollupMessage', () => {
             heap: { used: 40 + i },
             dom: 3000,
             freeze: { n: 1, max: 5000 },
-            ev: [{ k: 'nav', at: 1, to: route, via: 'tap', ms: 1000 + i, server: 500, commit: 100, lt: 0, area: 'sidebar' }],
+            ev: [{ k: 'nav', at: 1, to: route, via: 'tap', ms: 1000 + i, server: 500, commit: 100, lt: 0, area: 'sidebar', ready: 9000 + i, wait: 8000, api: `/${'a'.repeat(60)}` }],
           }),
         );
       }
@@ -129,7 +164,7 @@ describe('rollupMessage', () => {
       side: 'server',
       reqId: '',
       route: '',
-      data: { routes: Array.from({ length: 20 }, (_, j) => ({ route: `/${'y'.repeat(100)}${j} (rsc)`, n: 5, p50: 100 * j, p95: 1000 * j, max: 2000 * j })), slow: 3, health: { loopP99: 80 } },
+      data: { routes: Array.from({ length: 20 }, (_, j) => ({ route: `/${'y'.repeat(100)}${j} (rsc)`, n: 5, p50: 100 * j, p95: 1000 * j, max: 2000 * j, ph: { auth: 10 * j, db: 20 * j, upstream: 30 * j } })), slow: 3, health: { loopP99: 80 } },
     })) as never[];
     for (let i = 0; i < 40; i++) entries.push(stored(`h${i}`, `heap-${i}`, 'android', { device: { model: `model ${'z'.repeat(30)} ${i}` }, heap: { used: 40 } }));
     const { content, embeds } = rollupMessage(buildPlatformRollup(entries, SINCE, UNTIL, server));

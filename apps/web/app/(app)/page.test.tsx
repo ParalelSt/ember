@@ -34,6 +34,7 @@ const state = vi.hoisted(() => ({
   toggle: vi.fn(),
   playCollection: vi.fn(),
   collectionPlaying: null as string | null,
+  releases: [] as unknown[],
   mixes: undefined as undefined | { eligible: boolean; building: boolean; mixes: { key: string; kind?: string; title: string; subtitle: string; cover: { artworkUrls: string[]; color: string }; builtAt: string; count: number }[] },
   charts: undefined as undefined | { popular: unknown; genres: { slug: string; title: string; color: string; artworkUrls: string[]; count: number; fetchedAt: string | null; stale: boolean }[] },
 }));
@@ -56,6 +57,7 @@ vi.mock('@/hooks/useLibrary', () => ({
   },
   useQueryCharts: () => ({ data: state.charts }),
   useQueryMixes: () => ({ data: state.mixes }),
+  useQueryNewReleases: () => ({ data: { releases: state.releases, refreshedAt: null, stale: false } }),
 }));
 vi.mock('@/hooks/useCollections', () => ({
   useCollections: () => ({
@@ -137,6 +139,7 @@ beforeEach(() => {
     collectionPlaying: null,
     charts: undefined,
     mixes: undefined,
+    releases: [],
   });
 });
 
@@ -186,14 +189,14 @@ describe('Home on a phone', () => {
     expect(within(grid).getAllByRole('link').map((a) => a.textContent)).toEqual(['Liked songs', 'Recently played', 'Friday drive', 'Gym', 'Road trip']);
   });
 
-  it('orders the rows like the owner\'s order B, with Popular now and no "From your liked songs"', () => {
+  it('orders the rows like the owner\'s order B, Friends first, with Popular now and no "From your liked songs"', () => {
     render(<HomePage />);
     expect(headings()).toEqual([
+      'Friends are listening to',
       'Recently played',
       'Because you played "hist song 0"',
       'Popular now',
       'Your playlists',
-      'Friends are listening to',
     ]);
     expect(screen.queryByText('Trending right now')).toBeNull();
     expect(screen.queryByText('From your liked songs')).toBeNull();
@@ -203,7 +206,7 @@ describe('Home on a phone', () => {
   it('hides empty rows', () => {
     Object.assign(state, { history: [], liked: [], trending: [], playlists: [] });
     render(<HomePage />);
-    expect(headings()).toEqual(['Recommended for you', 'Friends are listening to']);
+    expect(headings()).toEqual(['Friends are listening to', 'Recommended for you']);
     // Liked songs stays in the quick grid even with no likes yet.
     expect(within(screen.getByRole('list', { name: 'Your collections' })).getAllByRole('link')).toHaveLength(1);
   });
@@ -314,11 +317,11 @@ describe('Home filter chips on a phone', () => {
     expect(headings()).toEqual(['Your playlists']);
     fireEvent.click(chip('All'));
     expect(headings()).toEqual([
+      'Friends are listening to',
       'Recently played',
       'Because you played "hist song 0"',
       'Popular now',
       'Your playlists',
-      'Friends are listening to',
     ]);
   });
 
@@ -435,14 +438,14 @@ describe('Home on a desktop window (the owner\'s picks)', () => {
     expect(names.slice(0, 2)).toEqual(['Liked songs', 'List 0']);
   });
 
-  it('orders the rows like the phone (order B), with Popular now and no "From your liked songs"', () => {
+  it('orders the rows like the phone (order B, Friends first), with Popular now and no "From your liked songs"', () => {
     render(<HomePage />);
     expect(headings()).toEqual([
+      'Friends are listening to',
       'Recently played',
       'Because you played "hist song 0"',
       'Popular now',
       'Your playlists',
-      'Friends are listening to',
     ]);
     expect(screen.queryByText('Trending right now')).toBeNull();
     expect(screen.queryByText('From your liked songs')).toBeNull();
@@ -656,17 +659,17 @@ describe('Popular now chart tiles on Home', () => {
 describe('Your mixes on Home', () => {
   const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name });
 
-  it('puts Your mixes first under the quick grid (order B), Radio cards linking to each mix', () => {
+  it('puts Your mixes under Friends and the quick grid (order B), Radio cards linking to each mix', () => {
     state.mixes = someMixes();
     state.charts = someCharts();
     render(<HomePage />);
     expect(headings()).toEqual([
+      'Friends are listening to',
       'Your mixes',
       'Recently played',
       'Because you played "hist song 0"',
       'Popular now',
       'Your playlists',
-      'Friends are listening to',
     ]);
     state.query = 'row=mixes';
     cleanup();
@@ -897,5 +900,45 @@ describe('Home rows on a phone', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Recently played' })).toBeInTheDocument();
     expect(region('Recently played').getAllByRole('listitem')).toHaveLength(12);
     expect(screen.queryByRole('region', { name: 'Your mixes' })).toBeNull();
+  });
+});
+
+describe('New releases on Home', () => {
+  const rel = (id: string, from: 'liked' | 'similar') => ({
+    browseId: `MPREb_${id}`, title: `Release ${id}`, kind: 'single', artist: `Artist ${id}`, artistId: `UC${id}`,
+    artworkUrl: null, year: 2026, firstSeenAt: '2026-11-20T00:00:00.000Z', from,
+  });
+
+  for (const desktop of [false, true]) {
+    it(`sits after the recommendations and before Popular now on a ${desktop ? 'desktop' : 'phone'}`, () => {
+      state.desktop = desktop;
+      state.releases = [rel('a', 'liked'), rel('b', 'similar')];
+      render(<HomePage />);
+      const h = headings();
+      expect(h.indexOf('New releases')).toBe(h.indexOf('Because you played "hist song 0"') + 1);
+      expect(h.indexOf('New releases')).toBe(h.indexOf('Popular now') - 1);
+      expect(screen.getByRole('region', { name: 'New releases' })).toBeInTheDocument();
+    });
+  }
+
+  it('has no heading and no empty region without releases', () => {
+    render(<HomePage />);
+    expect(screen.queryByRole('heading', { name: 'New releases' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'New releases' })).toBeNull();
+  });
+
+  it('a tile opens its album', () => {
+    state.releases = [rel('a', 'liked')];
+    render(<HomePage />);
+    const region = within(screen.getByRole('region', { name: 'New releases' }));
+    expect(region.getByRole('link', { name: /Release a/ })).toHaveAttribute('href', `/album/${encodeURIComponent('MPREb_a')}`);
+    expect(region.getByText('Single · Artist a')).toBeInTheDocument();
+  });
+
+  it('is not kept by the Playlists chip', () => {
+    state.releases = [rel('a', 'liked')];
+    render(<HomePage />);
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name: 'Playlists' }));
+    expect(screen.queryByRole('region', { name: 'New releases' })).toBeNull();
   });
 });

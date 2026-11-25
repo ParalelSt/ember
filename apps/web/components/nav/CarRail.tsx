@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { HomeIcon, LibraryIcon, RadioIcon, SearchIcon, SettingsIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import { forgetNavigationIntent } from '@/lib/chunkReload';
+import { pendingNavClick, pendingNavHandlers, usePendingNav } from '@/lib/pendingNav';
 
 /** The rail's buttons, in the owner's order (carlayout2, option G). */
 export const CAR_RAIL_NAV = [
@@ -28,18 +29,24 @@ function RailButton({
   label,
   icon: Icon,
   active,
+  pathname,
   onClick,
 }: {
   href: string;
   label: string;
   icon: typeof HomeIcon;
   active: boolean;
+  pathname: string;
   onClick?: (e: MouseEvent) => void;
 }) {
   return (
     <Link
       href={href}
-      onClick={onClick}
+      {...pendingNavHandlers(href, pathname, !onClick)}
+      onClick={(e) => {
+        if (onClick) onClick(e);
+        else pendingNavClick(e, href, pathname);
+      }}
       data-perf-nonav={href === '/search' && onClick ? '' : undefined}
       aria-label={label}
       title={label}
@@ -63,6 +70,8 @@ function RailButton({
  *  (components/nav/NavLinks); /search stays the route under it. */
 export function CarRail({ onSearchClick }: { onSearchClick: () => void }) {
   const pathname = usePathname();
+  const pending = usePendingNav(pathname);
+  const lit = (href: string, byRoute: boolean) => (pending ? pending === href : byRoute);
   return (
     <aside
       data-testid="car-rail"
@@ -75,7 +84,8 @@ export function CarRail({ onSearchClick }: { onSearchClick: () => void }) {
             href={href}
             label={label}
             icon={icon}
-            active={carRailActive(href, pathname)}
+            active={lit(href, carRailActive(href, pathname))}
+            pathname={pathname}
             onClick={
               href === '/search'
                 ? (e) => {
@@ -90,7 +100,7 @@ export function CarRail({ onSearchClick }: { onSearchClick: () => void }) {
         ))}
       </nav>
       <div className="mt-auto">
-        <RailButton href="/settings" label="Settings" icon={SettingsIcon} active={pathname.startsWith('/settings')} />
+        <RailButton href="/settings" label="Settings" icon={SettingsIcon} active={lit('/settings', pathname.startsWith('/settings'))} pathname={pathname} />
       </div>
     </aside>
   );

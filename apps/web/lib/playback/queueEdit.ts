@@ -1,5 +1,5 @@
 import type { Track } from '../../types/track';
-import { shuffle } from '../shuffle';
+import { shuffle, shuffleFresh } from '../shuffle';
 import type { QueuedTrack } from './addToQueue';
 
 interface QueueState {
@@ -67,5 +67,20 @@ export function clearUpcoming(s: QueueState): QueueEdit {
 export function shuffleUpcoming(s: QueueState, rng: () => number = Math.random): QueueEdit {
   if (s.index < 0 || s.queue.length - (s.index + 1) < 2) return null;
   const head = s.queue.slice(0, s.index + 1);
-  return { queue: [...head, ...shuffle(s.queue.slice(s.index + 1), rng)], baseCount: s.baseCount };
+  const upcoming = s.queue.slice(s.index + 1);
+  return { queue: [...head, ...shuffleFresh(upcoming, upcoming.map((t) => t.id), rng)], baseCount: s.baseCount };
+}
+
+/** Shuffle turned on while a song plays: it keeps playing (same entry, now
+ *  first in the queue), songs added by hand stay right after it, and every
+ *  other song, the ones already played too, follows in a random order that
+ *  is not the one queued after it. */
+export function shuffleAround(s: QueueState, rng: () => number = Math.random): { queue: Track[]; index: number } | null {
+  if (s.index < 0 || s.index >= s.queue.length || s.queue.length < 2) return null;
+  const playing = s.queue[s.index];
+  const queuedBy = (t: Track) => !!(t as QueuedTrack).queued;
+  const hand = s.queue.filter((t, k) => k > s.index && queuedBy(t));
+  const others = s.queue.filter((t, k) => k !== s.index && !(k > s.index && queuedBy(t)));
+  const old = s.queue.slice(s.index + 1).filter((t) => !queuedBy(t)).map((t) => t.id);
+  return { queue: [playing, ...hand, ...shuffleFresh(others, old, rng)], index: 0 };
 }

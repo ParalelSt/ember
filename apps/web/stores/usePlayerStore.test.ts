@@ -81,7 +81,7 @@ describe('toggleShuffle', () => {
       vi.restoreAllMocks();
     });
 
-    it('reorders only the upcoming tracks and keeps the current one first, deterministically', () => {
+    it('moves the song playing first and re-deals every other song behind it, deterministically', () => {
       // Fixed sequence of "random" values drives the Fisher-Yates swaps
       // deterministically so the resulting order is exactly reproducible.
       const values = [0.9, 0.1, 0.5, 0.0];
@@ -95,14 +95,11 @@ describe('toggleShuffle', () => {
 
       const s = usePlayerStore.getState();
       expect(s.shuffle).toBe(true);
-      // Played prefix (index 0..1, i.e. tracks 'a' and 'b') is untouched and
-      // 'b' (the current track) stays at index 1.
-      expect(s.queue[0].id).toBe('a');
-      expect(s.queue[1].id).toBe('b');
-      // Upcoming tracks ('c', 'd', 'e') are a reordered permutation of
-      // themselves, not touching the played prefix's members.
-      const upcomingIds = s.queue.slice(2).map((t) => t.id);
-      expect(upcomingIds.sort()).toEqual(['c', 'd', 'e']);
+      // 'b' (the current track) plays on, now first; the played 'a' is
+      // re-dealt with the rest.
+      expect(s.index).toBe(0);
+      expect(s.queue[0].id).toBe('b');
+      expect(s.queue.slice(1).map((t) => t.id).sort()).toEqual(['a', 'c', 'd', 'e']);
     });
   });
 });

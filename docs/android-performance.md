@@ -251,6 +251,7 @@ watchdog, renderer unresponsive callbacks and memory samples.
 | Long tasks | `PerformanceObserver` `long-animation-frame` (fallback `longtask`), buffered | count, total ms, max, top 5 script sources per window |
 | Tap to response | `PerformanceObserver` `event` (over 100 ms): input delay, handler time, time to paint, target `aria-label` or `data-slot` only | ring of 20 slow interactions |
 | Navigation | click on a same-origin link, RSC request timing (`resource` entries with `_rsc`), `Server-Timing`, `pushState`, next frame | ring of 20 records, phases as in section 3 |
+| Content ready | after a route change, `[data-slot="skeleton"]` inside `<main>` and the page's own `/api/` fetches (a wrapped `fetch`, started after the tap, streams and uploads left out), checked every 32 ms | `ready` (ms from the tap, capped at 15 s) and `wait` (ready minus the route paint) on the nav record, plus the route that ended last; nothing when the user moves on first |
 | Rage taps | 3 or more taps on one target in 5 s | record with pending navigation, overlay under the finger, long task ms |
 | API calls | `resource` entries for `/api/*`, ids stripped | per route: count, median and max wait, bytes (cap 40 routes) |
 | Freeze | 2 s heartbeat while visible, drift over 2 s | record with gap and visibility |
@@ -302,6 +303,16 @@ timed at all. Add `W/lib/perf/serverTiming.ts`, registered from
 - Per route (ids stripped, RSC marked): count, median, p95, max. Bounded map.
 - `proxy.ts` times `authRefresh` and adds `Server-Timing: auth;dur=N` so the
   page can read it.
+- Phases: each request carries `auth`, `db`, `upstream` and `total` (the
+  rest is "other"). The global `fetch` is wrapped once; a call to PocketBase
+  is `db` (its sign-in and refresh paths are `auth`), any other non-loopback
+  host is `upstream`, and the request is found through an
+  `AsyncLocalStorage` on `globalThis`. Overlapping calls count once. The
+  response head carries all four as `Server-Timing` (replacing the proxy's
+  lone `auth`, which is kept as the fallback when the proxy's fetch could
+  not be counted). Per route the 5 min line gets the median of each phase
+  (`ph`), and the rollup prints "auth 120 ms, db 430 ms, other 50 ms".
+  Code: `W/lib/perf/phases.ts`.
 - Host health in the same record: event loop delay
   (`perf_hooks.monitorEventLoopDelay`), load average, running download and
   Python job counts.
