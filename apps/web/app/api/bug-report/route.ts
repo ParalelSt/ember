@@ -25,6 +25,7 @@ import {
   type EmbedField as EmbedFieldT,
 } from "@/lib/reports/discord";
 import { readReportBody } from "@/lib/reports/readBody";
+import { outageExplainedByRestart } from "@/lib/reports/restartOutage";
 import { cleanShellFields, reportVersionLabel } from "@/lib/versions/label";
 import { perfLine, sanitizePerfBlock } from "@/lib/perf/reportBlock";
 import {
@@ -151,6 +152,29 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       return Response.json({ ok: true, skipped: "test account" });
     }
 
+    // The last few minutes of the server's log: the report carries the
+    // reporter's share of it, and it says whether Ember just restarted.
+    const recent = await serverLogger.recentSince(Date.now() - REPORT_WINDOW_MS);
+
+    // An automatic "network errors for over 30s" report sent right after
+    // Ember restarted (an update keeps it down for the whole build) reports
+    // the restart, which the host already knows about: not posted, and no
+    // model call spent on it. Logged, so the digest still counts them.
+    if (
+      outageExplainedByRestart({
+        automatic,
+        note: String(body.note ?? ""),
+        serverEntries: recent,
+        now: Date.now(),
+        windowMs: REPORT_WINDOW_MS,
+      })
+    ) {
+      serverLogger.info("api", "bug-report: outage report across a server restart, not posted", {
+        userId: user.id,
+      });
+      return Response.json({ ok: true, skipped: "server restart" });
+    }
+
     const webhook = webhookUrl();
     if (!webhook) {
       return jsonError(
@@ -184,10 +208,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     // Only what the reporter's own requests logged, plus server-wide
     // entries cut to their message: the log is everyone's, and this report
     // goes to Discord and the triage model under the reporter's name.
-    const server = entriesForReporter(
-      await serverLogger.recentSince(Date.now() - REPORT_WINDOW_MS),
-      user.id,
-    ).map(scrubServerEntry);
+    const server = entriesForReporter(recent, user.id).map(scrubServerEntry);
     // Wider window, counts only: how often has each error fingerprint in
     // this report shown up in the kept logs (formatSeenBefore, shared with
     // the triage prompt below). Never displayed verbatim, so it doesn't need

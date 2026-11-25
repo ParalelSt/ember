@@ -8,6 +8,12 @@
 
 export const PERSIST_MS = 30_000;
 
+/** The automatic report about a lasting outage (autoReport.ts) is filed as
+ *  `api: ${outageMessage(last)}`; the bug-report route tells it apart by
+ *  OUTAGE_NOTE_PREFIX. */
+export const outageMessage = (last: string): string => `network errors for over ${PERSIST_MS / 1000}s, last: ${last}`;
+export const OUTAGE_NOTE_PREFIX = 'api: network errors for over ';
+
 /** What a gateway in front of Ember answers when Ember itself does not (the
  *  Tailscale Funnel while Next restarts): that is no answer from the server.
  *  Ember's own routes answer these with a JSON body. */

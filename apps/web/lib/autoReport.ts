@@ -8,7 +8,7 @@ import { useUiStore } from '@/stores/useUiStore';
 import { readDesktopLog } from './desktopLog';
 import { scrubText } from './logger/sanitize';
 import { loadDeviceInfo } from './versions/device';
-import { GATEWAY_STATUSES, PERSIST_MS, networkFailure, whenConnectionBack } from './connectionBlip';
+import { GATEWAY_STATUSES, networkFailure, outageMessage, whenConnectionBack } from './connectionBlip';
 
 /** Silent crash reports: when the client logger records an error-level
  *  entry, post the same body BugReportDialog would send (tagged
@@ -171,7 +171,7 @@ export function maybeAutoReport(entry: LogEntry): void {
     let fp: string;
     if (isNetworkFailure(entry)) {
       if (!networkFailure(entry.ts)) return;
-      report = { ...entry, message: `network errors for over ${PERSIST_MS / 1000}s, last: ${entry.message}` };
+      report = { ...entry, message: outageMessage(entry.message) };
       fp = CONNECTION_FP;
     } else {
       fp = fingerprint(entry);

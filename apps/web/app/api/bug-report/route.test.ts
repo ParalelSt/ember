@@ -22,7 +22,7 @@ vi.mock('@/lib/auth', () => ({
 // vi.mocked() needs a real mock function, not just something shaped like one.
 vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: vi.fn(() => null), releaseRateLimitHit: vi.fn() }));
 vi.mock('@/lib/logger/server', () => ({
-  serverLogger: { recentSince: vi.fn(async () => []), entriesSince: vi.fn(async () => []), error: vi.fn() },
+  serverLogger: { recentSince: vi.fn(async () => []), entriesSince: vi.fn(async () => []), error: vi.fn(), info: vi.fn() },
 }));
 // triageBugReport is the only thing stubbed: it needs a live API key and a
 // network call, neither of which belongs in this suite. formatSeenBefore is
@@ -836,5 +836,62 @@ describe('POST /api/bug-report: the perf block', () => {
     const res = await POST(request({ client: snapshot({ perf: huge } as unknown as Partial<ClientSnapshot>) }), undefined as never);
     expect(res.status).toBe(200);
     expect(JSON.parse(await (postedForm(fetchMock).get('files[0]') as File).text()).client.perf).toBeUndefined();
+  });
+});
+
+// Reports 2026-11-03, 2026-11-13 and 2026-11-21 (three members at once): the
+// automatic "api: network errors for over 30s" report, filed by every
+// signed-in device whenever the host restarts Ember. update.sh stops Ember
+// for the whole build (about two minutes), the Funnel answers 502 meanwhile,
+// and the report lands the moment Ember is back, with "server started" in its
+// own server log. A restart is not a bug in the app: the host already knows
+// about it (update.sh, the watchdog's crash post, the digest's outage line).
+describe('POST /api/bug-report: outage reports across a server restart', () => {
+  const OUTAGE_NOTE = 'api: network errors for over 30s, last: GET /playlists network error';
+  const life = (message: string, agoMs: number): ServerLogEntry =>
+    serverError({ kind: 'breadcrumb', level: 'info', category: 'server', message, ts: Date.now() - agoMs, userId: undefined, reqId: '' });
+
+  it('an automatic outage report that arrives just after Ember restarted is not posted', async () => {
+    vi.mocked(serverLogger.recentSince).mockResolvedValue([
+      life('server stopping (SIGTERM)', 125_000),
+      life('server started', 1_500),
+    ]);
+    const res = await POST(request({ note: OUTAGE_NOTE, automatic: true, client: snapshot() }), undefined as never);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, skipped: 'server restart' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(triageBugReport).not.toHaveBeenCalled();
+  });
+
+  it('an automatic outage report with no restart in the window is still posted', async () => {
+    const res = await POST(request({ note: OUTAGE_NOTE, automatic: true, client: snapshot() }), undefined as never);
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a restart more than five minutes ago does not explain the outage', async () => {
+    vi.mocked(serverLogger.recentSince).mockResolvedValue([life('server started', 6 * 60_000)]);
+    await POST(request({ note: OUTAGE_NOTE, automatic: true, client: snapshot() }), undefined as never);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a person who writes about it by hand is always heard, restart or not', async () => {
+    vi.mocked(serverLogger.recentSince).mockResolvedValue([life('server started', 1_500)]);
+    await POST(request({ note: OUTAGE_NOTE, client: snapshot() }), undefined as never);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('any other automatic report during a restart is still posted', async () => {
+    vi.mocked(serverLogger.recentSince).mockResolvedValue([life('server started', 1_500)]);
+    await POST(
+      request({ note: 'audio: the host did not answer a request for more of the song', automatic: true, client: snapshot() }),
+      undefined as never,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
