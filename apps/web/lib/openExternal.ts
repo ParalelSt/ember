@@ -57,16 +57,31 @@ export function openExternal(url: string): Promise<OpenOutcome> {
   return Promise.resolve('opened');
 }
 
-/** A new-tab link the page did not handle itself, clicked in the desktop
- *  app: open it in the system browser. Returns the uninstall function; a
- *  no-op outside the desktop shell. Bubble phase on the document, so a link
- *  with its own click handler (which prevents the default) is left to it. */
+/** Whether `a` points at another site: an http(s) address whose origin is
+ *  not the page's own. Same-origin links (including the /link QR flow) stay
+ *  in the app. */
+export function isForeignLink(a: HTMLAnchorElement): boolean {
+  if (!isExternalUrl(a.href)) return false;
+  try {
+    return new URL(a.href).origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/** A link to another site, clicked in the desktop app: open it in the system
+ *  browser, whatever its `target`. A plain link would otherwise replace the
+ *  Ember window with the site, with no way back (the desktop shell also
+ *  refuses that on its side, src/external.rs). Returns the uninstall
+ *  function; a no-op outside the desktop shell. Bubble phase on the document,
+ *  so a link with its own click handler (which prevents the default) is left
+ *  to it. Kept under its old name for existing callers. */
 export function routeNewTabLinks(onOutcome?: (outcome: OpenOutcome, url: string) => void): () => void {
   if (typeof document === 'undefined' || detectShell() !== 'tauri') return () => {};
   const onClick = (e: MouseEvent) => {
     if (e.defaultPrevented || e.button !== 0) return;
     const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
-    if (!a || a.target !== '_blank' || !isExternalUrl(a.href)) return;
+    if (!a || !isForeignLink(a)) return;
     e.preventDefault();
     void openExternal(a.href).then((o) => onOutcome?.(o, a.href));
   };
