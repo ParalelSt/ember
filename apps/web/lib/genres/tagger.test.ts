@@ -3,8 +3,8 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { artistKey, firstArtist } from './artistKey';
 import { createRateLimiter } from './rateLimit';
-import { lastfmTopTags, musicbrainzTags, musicbrainzUserAgent, pickMbArtist } from './sources';
-import { createTagger, FOUND_REFRESH_MS, needsLookup, NONE_RETRY_MS, type ArtistGenre, type GenreStore } from './tagger';
+import { lastfmTopTags, musicbrainzTags, musicbrainzUserAgent, pickMbArtist, RateLimitedError } from './sources';
+import { createTagger, FOUND_REFRESH_MS, needsLookup, NONE_RETRY_MS, RATE_LIMIT_REST_MS, type ArtistGenre, type GenreStore } from './tagger';
 import { fromRecord, pbQuote, toRecord } from './store';
 
 // Saved Last.fm and MusicBrainz answers (tests/fixtures/genres/), in the
@@ -92,11 +92,37 @@ describe('musicbrainzTags', () => {
   });
 
   it('throws on a search fault', async () => {
-    await expect(musicbrainzTags('Tool', { userAgent: 'x', fetchImpl: async () => new Response('', { status: 503 }) })).rejects.toThrow(/503/);
+    await expect(musicbrainzTags('Tool', { userAgent: 'x', sleep: async () => {}, fetchImpl: async () => new Response('', { status: 500 }) })).rejects.toThrow(/500/);
   });
 
-  it('has a default User-Agent without a contact set', () => {
-    expect(musicbrainzUserAgent(undefined)).toMatch(/^Ember\/1\.0 \( .+ \)$/);
+  it('retries a 503 with a growing wait, paced every time, then succeeds', async () => {
+    const waits: number[] = [];
+    const pace = vi.fn(async () => {});
+    let n = 0;
+    const fetchImpl = async (url: string) => {
+      if (url.includes('/artist/?') && n++ < 2) return new Response('', { status: 503 });
+      return json(url.includes('/artist/?') ? load('musicbrainz-search-tool.json') : load('musicbrainz-artist-tool.json'));
+    };
+    const tags = await musicbrainzTags('Tool', { userAgent: 'x', pace, fetchImpl, sleep: async (ms) => void waits.push(ms) });
+    expect(tags?.length).toBeGreaterThan(0);
+    expect(waits).toEqual([2000, 4000]);
+    expect(pace).toHaveBeenCalledTimes(4);
+  });
+
+  it('gives up on a 503 that stays as a RateLimitedError, honouring Retry-After', async () => {
+    const waits: number[] = [];
+    const fetchImpl = async () => new Response('', { status: 503, headers: { 'Retry-After': '7' } });
+    const err = await musicbrainzTags('Tool', { userAgent: 'x', fetchImpl, sleep: async (ms) => void waits.push(ms) }).catch((e) => e);
+    expect(err).toBeInstanceOf(RateLimitedError);
+    expect(err.message).toMatch(/search HTTP 503/);
+    expect(err.retryAfterMs).toBe(7000);
+    expect(waits).toEqual([7000, 7000]);
+  });
+
+  it('has a default User-Agent with the app version and a repo contact, no email', () => {
+    expect(musicbrainzUserAgent(undefined, '0.7.52')).toBe('Ember/0.7.52 ( https://github.com/ParalelSt/ember )');
+    expect(musicbrainzUserAgent(' https://x.test ', '1.2.3')).toBe('Ember/1.2.3 ( https://x.test )');
+    expect(musicbrainzUserAgent(undefined)).not.toContain('@');
   });
 });
 
@@ -188,6 +214,32 @@ describe('createTagger', () => {
     clock += 1 * DAY;
     await tagger.ensureTags([{ name: 'Unknown Act' }]);
     expect(musicbrainz).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops the batch after a rate limit and rests, then goes on', async () => {
+    const { store, saves } = memoryStore();
+    let clock = T0;
+    let limited = true;
+    const musicbrainz = vi.fn(async (name: string) => {
+      if (limited) throw new RateLimitedError('musicbrainz: search HTTP 503');
+      return [{ name: 'jazz', count: 3 }];
+    });
+    const warn = vi.fn();
+    const tagger = createTagger({ store, lastfm: null, musicbrainz, now: () => clock, warn });
+    const refs = [{ name: 'A One' }, { name: 'B Two' }, { name: 'C Three' }];
+    await tagger.ensureTags(refs);
+    expect(musicbrainz).toHaveBeenCalledTimes(1);
+    expect(saves).toHaveLength(0);
+    // Still resting: nothing goes out.
+    clock += RATE_LIMIT_REST_MS - 1000;
+    await tagger.ensureTags(refs);
+    expect(musicbrainz).toHaveBeenCalledTimes(1);
+    // Rest over and the source is well again: all three are tagged.
+    clock += 2000;
+    limited = false;
+    const got = await tagger.ensureTags(refs);
+    expect(musicbrainz).toHaveBeenCalledTimes(4);
+    expect(got.get('c three')).toMatchObject({ family: 'jazz-blues' });
   });
 
   it('writes nothing when a source fails, so the next run tries again', async () => {

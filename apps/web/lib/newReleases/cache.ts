@@ -36,13 +36,18 @@ import {
  *  A run steps aside while the charts are refreshing (never two paced runs
  *  together) and is tried again after NEW_RELEASES_RETRY_MS. A failed run
  *  changes nothing: the row keeps what it had, marked stale, until those
- *  releases age out. */
+ *  releases age out. Releases still without a family because the tagger
+ *  failed (a rate limit, say) also mark the ledger stale and are tagged
+ *  again after NEW_RELEASES_RETRY_MS, without another YouTube run. */
 
 export const NEW_RELEASES_TTL_MS = 24 * 60 * 60 * 1000;
 export const NEW_RELEASES_RETRY_MS = 5 * 60 * 1000;
 /** Artist lookups one run may spend on tagging its new releases. They go to
  *  Last.fm and MusicBrainz at their own limits, never to YouTube. */
 export const FAMILY_LOOKUPS_PER_RUN = 25;
+/** Lookups one run may spend on the members' own liked artists, so their
+ *  genres exist for the "similar" part of the row (the route only reads). */
+export const MEMBER_LOOKUPS_PER_RUN = 10;
 
 /** One member's like rows, as narrow as the rules need them. */
 export interface MemberLikes {
@@ -156,6 +161,11 @@ export function createNewReleasesCache(deps: Deps) {
   let loaded = false;
   let inFlight: Promise<Ledger | null> | null = null;
   let lastFailure = -Infinity;
+  /** Some release has no family only because tagging failed or ran out of
+   *  lookups: the ledger is stale until a later pass tags it. */
+  let tagPending = false;
+  let lastTagTry = -Infinity;
+  let tagUnchecked = false;
 
   /** The families some member listens to, from stored artist_genres rows
    *  only (maxLookups: 0, so no run ever waits on Last.fm for this). */
@@ -182,8 +192,13 @@ export function createNewReleasesCache(deps: Deps) {
    *  most FAMILY_LOOKUPS_PER_RUN lookups, the newest releases first; the
    *  rest wait for the next run. A tagger that is down costs nothing. */
   async function tagFamilies(next: Ledger): Promise<void> {
+    lastTagTry = now();
+    tagUnchecked = false;
     const need = next.releases.filter((r) => r.family == null);
-    if (need.length === 0) return;
+    if (need.length === 0) {
+      tagPending = false;
+      return;
+    }
     try {
       const rows = await deps.familiesOf(
         need.map((r) => ({ name: r.artist, artistId: r.artistId })),
@@ -193,8 +208,26 @@ export function createNewReleasesCache(deps: Deps) {
         const family = rows.get(artistKey(r.artist))?.family ?? null;
         if (family) r.family = family;
       }
+      // An artist with no row at all was not looked up (a fault or the cap);
+      // one the sources do not know has a "none" row and is done.
+      tagPending = need.some((r) => !rows.has(artistKey(r.artist)));
     } catch (e) {
+      tagPending = true;
       warn('new releases: could not tag the new releases, trying again next run', { reason: reason(e) });
+    }
+  }
+
+  /** Looks up the genres of the members' top liked artists (a few a run), so
+   *  the route, which only reads rows, can tell a member's genres. A tagger
+   *  that is down costs nothing. */
+  async function tagMembers(members: readonly { id: string; artists: LikedArtist[] }[], order: readonly string[]): Promise<void> {
+    const names = new Map(members.flatMap((m) => m.artists).map((a) => [a.artistId, a.name]));
+    const refs = order.filter((id) => names.has(id)).map((id) => ({ name: names.get(id)!, artistId: id }));
+    if (refs.length === 0) return;
+    try {
+      await deps.familiesOf(refs, { maxLookups: MEMBER_LOOKUPS_PER_RUN });
+    } catch (e) {
+      warn('new releases: could not tag the members artists, trying again next run', { reason: reason(e) });
     }
   }
 
@@ -220,6 +253,7 @@ export function createNewReleasesCache(deps: Deps) {
 
     const next = applyRun(ledger ?? emptyLedger(), toAnswer(got), now(), [...likedWatch, ...genreWatch]);
     await tagFamilies(next);
+    await tagMembers(members, likedWatch);
     ledger = next;
     writeMirror(deps.cacheFile, ledger);
     return ledger;
@@ -241,6 +275,24 @@ export function createNewReleasesCache(deps: Deps) {
     return inFlight;
   }
 
+  /** Tags the releases that still have no family, without a YouTube run. */
+  function retag(): Promise<Ledger | null> {
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      if (!ledger) return ledger;
+      const next: Ledger = { ...ledger, releases: ledger.releases.map((r) => ({ ...r })) };
+      await tagFamilies(next);
+      ledger = next;
+      writeMirror(deps.cacheFile, ledger);
+      return ledger;
+    })()
+      .catch(() => ledger)
+      .finally(() => {
+        inFlight = null;
+      });
+    return inFlight;
+  }
+
   /** The shared ledger's live releases. Never waits and never fetches: it
    *  may start the background run and answers from memory at once. */
   async function get(): Promise<NewReleasesState> {
@@ -248,14 +300,17 @@ export function createNewReleasesCache(deps: Deps) {
     if (!loaded) {
       ledger = readMirror(deps.cacheFile);
       loaded = true;
+      // A restart cannot tell "unknown artist" from "never tried": look once.
+      tagUnchecked = !!ledger?.releases.some((r) => r.family == null);
     }
     const at = now();
     const fresh = !!ledger?.refreshedAt && at - Date.parse(ledger.refreshedAt) < ttlMs;
     if (!fresh && at - lastFailure >= retryMs) void refresh();
+    else if (fresh && (tagPending || tagUnchecked) && !inFlight && at - lastTagTry >= retryMs) void retag();
     if (!ledger) return { refreshedAt: null, stale: false, releases: [] };
     return {
       refreshedAt: ledger.refreshedAt,
-      stale: ledger.refreshedAt != null && !fresh,
+      stale: ledger.refreshedAt != null && (!fresh || tagPending),
       releases: ledger.releases.filter((r) => isNew(r.firstSeenAt, at)).map((r) => ({ ...r })),
     };
   }

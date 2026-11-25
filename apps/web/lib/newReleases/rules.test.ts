@@ -353,6 +353,16 @@ describe('selectForMember', () => {
     expect(out.map((r) => [r.browseId, r.from])).toEqual([['m', 'liked'], ['s', 'similar']]);
   });
 
+  it('a member with no known genres (every lookup failed) still gets their liked artists releases', () => {
+    const out = selectForMember(
+      [release('m', at(5), { artistId: id(1), family: null }), release('s', at(1), { artistId: id(7), family: null })],
+      liked,
+      [],
+      NOV,
+    );
+    expect(out.map((r) => [r.browseId, r.from])).toEqual([['m', 'liked']]);
+  });
+
   it('never makes a liked artist release also a suggestion', () => {
     const out = selectForMember([release('m', at(1), { artistId: id(1), family: 'pop' })], liked, ['pop'], NOV);
     expect(out.map((r) => r.from)).toEqual(['liked']);
