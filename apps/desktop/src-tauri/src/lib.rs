@@ -191,7 +191,16 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     let Some(conf) = app.config().app.windows.iter().find(|w| w.label == "main").cloned() else {
         return Ok(());
     };
-    tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?.build()?;
+    // The window may only ever show the Ember server and the bundled pages;
+    // links to other sites go to the system browser (external.rs).
+    let mut own: Vec<tauri::Url> = connect::server_url(app.config()).into_iter().collect();
+    if tauri::is_dev() {
+        own.extend(app.config().build.dev_url.clone());
+    }
+    tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?
+        .on_navigation(external::guard(own.clone()))
+        .on_new_window(external::new_window_guard(own))
+        .build()?;
     Ok(())
 }
 

@@ -81,10 +81,34 @@ describe('routeNewTabLinks (desktop app)', () => {
     stop();
   });
 
-  it('leaves same-tab links and links with their own handler alone', () => {
+  it('sends a plain same-tab link to another site out too (the Privacy page trap)', async () => {
     const invoke = desktop(async () => null);
     const stop = routeNewTabLinks();
-    link('').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    link('').dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('open_external', { url: UG }));
+    stop();
+  });
+
+  it('keeps links to the app itself (same origin, the /link QR flow) in the window', () => {
+    const invoke = desktop(async () => null);
+    const stop = routeNewTabLinks();
+    for (const href of ['/link/abc123', `${window.location.origin}/privacy`, '#top', 'mailto:a@b.c']) {
+      const a = document.createElement('a');
+      a.href = href;
+      document.body.appendChild(a);
+      const ev = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+      a.dispatchEvent(ev);
+      expect(ev.defaultPrevented, href).toBe(false);
+    }
+    expect(invoke).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('leaves links with their own handler alone', () => {
+    const invoke = desktop(async () => null);
+    const stop = routeNewTabLinks();
     const own = link();
     own.addEventListener('click', (e) => e.preventDefault());
     own.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));

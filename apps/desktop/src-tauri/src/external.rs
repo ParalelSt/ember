@@ -19,6 +19,54 @@ pub(crate) fn openable(url: &str) -> Option<Url> {
     }
 }
 
+/// Whether the app window may navigate to `target` itself. Only the Ember
+/// server's own origin and the pages bundled with the app stay in the window;
+/// every other web address (a Google link on the Privacy page, anything a
+/// future page links to) is handed to the system browser instead, so the
+/// window can never be turned into someone else's site with no way back.
+pub(crate) fn navigation_allowed(target: &Url, own_origins: &[Url]) -> bool {
+    match target.scheme() {
+        // The bundled pages (offline/index.html) and blank pages.
+        "tauri" | "about" | "blob" | "data" => true,
+        "http" | "https" => {
+            // Windows serves the bundled pages as http://tauri.localhost.
+            target.host_str() == Some("tauri.localhost")
+                || own_origins.iter().any(|o| o.origin() == target.origin())
+        }
+        _ => false,
+    }
+}
+
+/// The navigation guard for the main window: a web link to another site
+/// opens in the system browser and the window stays where it is. Other
+/// schemes (`javascript:`, `file:`) are refused and not opened.
+pub(crate) fn guard(own_origins: Vec<Url>) -> impl Fn(&Url) -> bool + Send + 'static {
+    move |target| {
+        if navigation_allowed(target, &own_origins) {
+            return true;
+        }
+        if let Some(u) = openable(target.as_str()) {
+            let _ = launch(u.as_str());
+        }
+        false
+    }
+}
+
+/// The same rule for `window.open` and `target="_blank"` links: never a new
+/// app window; another site opens in the system browser.
+pub(crate) fn new_window_guard<R: tauri::Runtime>(
+    own_origins: Vec<Url>,
+) -> impl Fn(Url, tauri::webview::NewWindowFeatures) -> tauri::webview::NewWindowResponse<R> + Send + 'static {
+    move |target, _features| {
+        if !navigation_allowed(&target, &own_origins) {
+            if let Some(u) = openable(target.as_str()) {
+                let _ = launch(u.as_str());
+            }
+        }
+        tauri::webview::NewWindowResponse::Deny
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn launch(url: &str) -> std::io::Result<std::process::Child> {
     std::process::Command::new("open").arg(url).spawn()
@@ -62,6 +110,48 @@ mod tests {
         for bad in ["file:///etc/passwd", "javascript:alert(1)", "ftp://x.y/z", "mailto:a@b.c", "", "not a url", "https://", "-a https://x.y"] {
             assert!(openable(bad).is_none(), "{bad}");
         }
+    }
+
+    fn own() -> Vec<Url> {
+        vec![Url::parse("https://ember.tailf4de41.ts.net").unwrap()]
+    }
+
+    fn allowed(u: &str) -> bool {
+        navigation_allowed(&Url::parse(u).unwrap(), &own())
+    }
+
+    #[test]
+    fn the_window_stays_on_the_server_and_bundled_pages() {
+        assert!(allowed("https://ember.tailf4de41.ts.net/privacy"));
+        assert!(allowed("https://ember.tailf4de41.ts.net/link/abc?x=1"));
+        assert!(allowed("tauri://localhost/index.html"));
+        assert!(allowed("http://tauri.localhost/index.html"));
+        assert!(allowed("about:blank"));
+    }
+
+    #[test]
+    fn other_sites_do_not_replace_the_window() {
+        for bad in [
+            "https://developers.google.com/terms/api-services-user-data-policy",
+            "https://myaccount.google.com/permissions",
+            // Look-alike hosts and a different scheme or port on the same host.
+            "https://ember.tailf4de41.ts.net.evil.com/",
+            "https://evil.com/ember.tailf4de41.ts.net",
+            "http://ember.tailf4de41.ts.net/",
+            "https://ember.tailf4de41.ts.net:8443/",
+            "https://user@evil.com/",
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+        ] {
+            assert!(!allowed(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_main_window_uses_the_guards() {
+        let lib = include_str!("lib.rs");
+        assert!(lib.contains("external::guard("));
+        assert!(lib.contains("external::new_window_guard("));
     }
 
     #[test]
