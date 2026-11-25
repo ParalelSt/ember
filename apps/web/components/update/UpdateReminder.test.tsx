@@ -32,7 +32,20 @@ function offer(version = '0.7.44', canApply = true) {
   act(() => useUpdateStore.getState().set({ status: 'available', offer: { kind: 'web', version, canApply, via: canApply ? 'reload' : 'desktop' } }));
 }
 
+const realMatchMedia = window.matchMedia;
+/** Pretend the window is desktop width (the md breakpoint) or phone width. */
+function setDesktopWidth(desktop: boolean) {
+  window.matchMedia = ((q: string) => ({
+    matches: desktop && q.includes('min-width: 768px'),
+    media: q,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia;
+}
+
 beforeEach(() => {
+  // The bar's tests run at phone width.
+  setDesktopWidth(false);
   // The desktop app (detectShell: Tauri).
   (window as W).__TAURI_INTERNALS__ = { invoke: vi.fn(async () => null) };
   vi.useFakeTimers();
@@ -45,6 +58,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.matchMedia = realMatchMedia;
   vi.useRealTimers();
   delete (window as W).Capacitor;
   delete (window as W).__TAURI_INTERNALS__;
@@ -285,5 +299,110 @@ describe('UpdateReminder', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('UpdateReminder on a desktop width: the corner card', () => {
+  beforeEach(() => setDesktopWidth(true));
+  const card = () => screen.getByTestId('update-reminder');
+
+  it('shows the card (not the bar) with version, title, line and Update', () => {
+    render(<UpdateReminder />);
+    offer('0.7.52');
+    expect(card()).toHaveAttribute('data-variant', 'card');
+    expect(card()).toHaveTextContent('Ember 0.7.52 is ready');
+    expect(card()).toHaveTextContent(REMINDER_WORDING.cardLine);
+    expect(screen.getByTestId('update-reminder-chip')).toHaveTextContent('0.7.52');
+    expect(screen.getByTestId('update-reminder-action')).toHaveTextContent('Update');
+    expect(card().className).toContain('bottom-4');
+  });
+
+  it('sits left of the Lyrics panel', () => {
+    render(<UpdateReminder />);
+    offer();
+    expect(card().style.right).toContain('--ember-lyrics-w');
+  });
+
+  it('hides by itself after 8 seconds', () => {
+    render(<UpdateReminder />);
+    offer();
+    act(() => vi.advanceTimersByTime(7_900));
+    expect(card()).toHaveAttribute('data-phase', 'in');
+    act(() => vi.advanceTimersByTime(100 + 400));
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+  });
+
+  it('hovering pauses the timer; leaving restarts it', () => {
+    render(<UpdateReminder />);
+    offer();
+    fireEvent.pointerEnter(card());
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(card()).toHaveAttribute('data-phase', 'in');
+    fireEvent.pointerLeave(card());
+    act(() => vi.advanceTimersByTime(7_900));
+    expect(card()).toHaveAttribute('data-phase', 'in');
+    act(() => vi.advanceTimersByTime(600));
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+  });
+
+  it('keyboard focus pauses it', () => {
+    render(<UpdateReminder />);
+    offer();
+    fireEvent.focus(screen.getByTestId('update-reminder-action'));
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(card()).toBeInTheDocument();
+  });
+
+  it('comes back at the next app start, not the same start', () => {
+    const { unmount } = render(<UpdateReminder />);
+    offer();
+    act(() => vi.advanceTimersByTime(9_000));
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+    act(() => vi.advanceTimersByTime(SHOW_LONG_MS));
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+    unmount();
+    resetUpdateReminderForTests();
+    render(<UpdateReminder />);
+    expect(screen.getByTestId('update-reminder')).toBeInTheDocument();
+  });
+
+  it('Update works like the bar', () => {
+    render(<UpdateReminder />);
+    offer();
+    click('update-reminder-action');
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('the Updating state never auto-hides and has no button', () => {
+    render(<UpdateReminder />);
+    offer();
+    act(() => useUpdateStore.getState().set({ forcing: true, applying: true }));
+    act(() => vi.advanceTimersByTime(SHOW_LONG_MS));
+    expect(card()).toHaveAttribute('data-phase', 'in');
+    expect(card()).toHaveTextContent(REMINDER_WORDING.applying);
+    expect(screen.queryByTestId('update-reminder-action')).toBeNull();
+  });
+
+  it('a failed update shows Retry and hides 8 seconds after the failure', () => {
+    render(<UpdateReminder />);
+    act(() => useUpdateStore.getState().set({ status: 'available', offer: { kind: 'shell', version: '0.4.30', canApply: true, via: 'desktop' } }));
+    act(() => vi.advanceTimersByTime(9_000));
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+    act(() => useUpdateStore.getState().set({ applyFailed: true }));
+    expect(screen.getByTestId('update-reminder-action')).toHaveTextContent(REMINDER_WORDING.retry);
+    act(() => vi.advanceTimersByTime(7_000));
+    expect(card()).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1_500));
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+  });
+});
+
+describe('UpdateReminder on a phone width', () => {
+  it('keeps the full-width bar that stays until swiped away', () => {
+    render(<UpdateReminder />);
+    offer();
+    expect(screen.getByTestId('update-reminder')).not.toHaveAttribute('data-variant');
+    act(() => vi.advanceTimersByTime(SHOW_LONG_MS));
+    expect(screen.getByTestId('update-reminder')).toBeInTheDocument();
   });
 });

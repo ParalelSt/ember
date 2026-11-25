@@ -562,7 +562,21 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
   to   { transform: translateY(0); opacity: 1; }
 }
 .ember-update-in { animation: ember-update-in 320ms cubic-bezier(.2,.8,.2,1) backwards; }
+.ember-update-card {
+  background: var(--update-pill-bg);
+  color: var(--update-pill-fg);
+  box-shadow: 0 0 0 1px var(--update-pill-accent), 0 10px 28px rgb(0 0 0 / 0.35);
+  transition: transform 240ms ease-out, opacity 240ms ease-out;
+}
+@keyframes ember-update-card-in {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.ember-update-card-in { animation: ember-update-card-in 320ms cubic-bezier(.2,.8,.2,1) backwards; }
+.ember-update-card-out { transform: translateY(16px); opacity: 0; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
+  .ember-update-card-in { animation: none !important; }
+  .ember-update-card { transition: none !important; }
   .ember-update-in { animation: none !important; }
   .ember-update-drag { transition: none !important; }
 }

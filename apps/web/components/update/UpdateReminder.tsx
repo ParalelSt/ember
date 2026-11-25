@@ -12,9 +12,19 @@ import {
   offerKey,
   reminderDelay,
 } from '@/lib/update/reminder';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useUpdateStore } from '@/stores/useUpdateStore';
-import { ACTION_CLASS, ACTION_LABEL_CLASS, PILL_CLASS, REMINDER_WORDING, ReminderMark } from './updateReminderLook';
+import {
+  ACTION_CLASS,
+  ACTION_LABEL_CLASS,
+  CARD_ACTION_CLASS,
+  CARD_CLASS,
+  CARD_LINE,
+  PILL_CLASS,
+  REMINDER_WORDING,
+  ReminderMark,
+} from './updateReminderLook';
 
 /** How long the slide out takes before the pill is gone (the
  *  slide out after a swipe). */
@@ -26,6 +36,10 @@ const FLICK_SPEED = 0.5;
 const FLICK_MIN_PX = 20;
 /** Moved more than this (px) is a drag, not a tap. */
 const DRAG_SLOP_PX = 8;
+
+/** The desktop card closes by itself after this long (hover and keyboard
+ *  focus pause it). */
+export const CARD_AUTO_HIDE_MS = 8000;
 
 /** Versions the pill was shown for since this app start (this page load). */
 const shown = new Set<string>();
@@ -59,6 +73,8 @@ export function UpdateReminder() {
   const applyFailed = useUpdateStore((s) => s.applyFailed);
   const forcing = useUpdateStore((s) => s.forcing);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const isDesktop = useIsDesktop();
+  const [paused, setPaused] = useState(false);
   const [phase, setPhase] = useState<'hidden' | 'in' | 'out'>('hidden');
   const [enabled, setEnabled] = useState(false);
   const [tick, setTick] = useState(0);
@@ -127,6 +143,17 @@ export function UpdateReminder() {
     setPhase('out');
     outTimer.current = setTimeout(() => setPhase('hidden'), OUT_MS);
   };
+
+  // Desktop card: closes by itself after a few seconds (like the phone bar
+  // is put away), unless it is busy (updating, waiting for the network) or
+  // the pointer or keyboard focus is on it. A failure restarts the count.
+  const busy = forcing || applying || pending;
+  useEffect(() => {
+    if (!isDesktop || phase !== 'in' || busy || paused) return;
+    const t = setTimeout(() => dismiss(), CARD_AUTO_HIDE_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDesktop, phase, busy, paused, applyFailed]);
 
   // A new update: show once, out of the way of a song that just started.
   useEffect(() => {
@@ -222,6 +249,40 @@ export function UpdateReminder() {
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape' && !forcing) dismiss();
   };
+
+  if (isDesktop) {
+    return (
+      <div
+        data-testid="update-reminder"
+        data-variant="card"
+        data-kind={offer.kind}
+        data-phase={phase}
+        role="status"
+        onPointerEnter={() => setPaused(true)}
+        onPointerLeave={() => setPaused(false)}
+        onFocus={() => setPaused(true)}
+        onBlur={() => setPaused(false)}
+        onKeyDown={onKey}
+        style={{ right: 'calc(var(--ember-lyrics-w, 0px) + 1rem)' }}
+        className={`${CARD_CLASS} ${phase === 'in' ? 'ember-update-card-in' : 'ember-update-card-out'}`}
+      >
+        <ReminderMark version={offer.version} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-bold leading-5">
+            {forcing || applying || failed || !offer.canApply || (pending && offline)
+              ? words
+              : `Ember ${offer.version} is ready`}
+          </p>
+          {words === REMINDER_WORDING.ready && <p className={CARD_LINE}>{REMINDER_WORDING.cardLine}</p>}
+        </div>
+        {action && (
+          <button type="button" data-testid="update-reminder-action" onClick={tap} className={CARD_ACTION_CLASS}>
+            {action}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

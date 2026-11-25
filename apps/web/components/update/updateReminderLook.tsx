@@ -24,6 +24,15 @@ export const ACTION_CLASS =
 export const ACTION_LABEL_CLASS =
   'ember-update-action shrink-0 rounded-full px-block py-cluster text-[15px] font-bold leading-5';
 
+/** Desktop and tablet width: a small floating card, bottom right of the
+ *  main window just above the player bar (owner pick "corner", 2026-11-25).
+ *  Same tokens as the bar. */
+export const CARD_CLASS =
+  'ember-update-card pointer-events-auto absolute bottom-4 z-40 flex w-[300px] max-w-[calc(100%-2rem)] items-center gap-cluster rounded-lg p-block select-none';
+export const CARD_LINE = 'text-[12px] font-normal leading-4 opacity-75';
+export const CARD_ACTION_CLASS =
+  'ember-update-action shrink-0 rounded-full px-block py-cluster text-[14px] font-bold leading-5';
+
 /** The front mark: the new version in a small solid orange chip. */
 export function ReminderMark({ version }: { version: string }) {
   return (
@@ -39,6 +48,8 @@ export function ReminderMark({ version }: { version: string }) {
 /** Every line the banner can say. The version is already in the chip. */
 export const REMINDER_WORDING = {
   ready: 'New version ready',
+  /** The desktop card's second line. */
+  cardLine: 'Takes a few seconds, your song carries on',
   /** The action button next to it. */
   action: 'Update',
   /** The action button after a failed try. */
