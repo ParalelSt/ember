@@ -36,6 +36,9 @@ export const GET = withRequestLog('playlists/counts', async () => {
           const page = await db.collection('playlist_tracks').getList(1, 1, {
             filter: db.filter('playlist = {:p}', { p: id }),
             fields: 'id',
+            // Up to 8 of these run at once on one client: without this the
+            // SDK's auto-cancel aborts all but the last of them.
+            requestKey: null,
           });
           counts[id] = page.totalItems;
         }),

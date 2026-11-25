@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
+import PocketBase from 'pocketbase';
 import { createWorld, type World } from '@/test-utils/fakePlaylistPb';
 
 // Songs per playlist for the head unit's covers sidebar. The fake follows
@@ -9,12 +10,13 @@ import { createWorld, type World } from '@/test-utils/fakePlaylistPb';
 
 let world: World;
 const caller = { id: '' };
+let pbOverride: unknown = null;
 
 class UnauthorizedError extends Error {}
 vi.mock('@/lib/auth', () => ({
   requireUser: async () => {
     if (!caller.id) throw new UnauthorizedError();
-    return { pb: world.member(caller.id), user: { id: caller.id, email: `${caller.id}@ember.test` } };
+    return { pb: pbOverride ?? world.member(caller.id), user: { id: caller.id, email: `${caller.id}@ember.test` } };
   },
   UnauthorizedError,
   unauthorizedResponse: () => Response.json({ error: 'Unauthorized' }, { status: 401 }),
@@ -41,6 +43,7 @@ let shared: string, diary: string, empty: string;
 
 beforeEach(() => {
   serverOverride = null;
+  pbOverride = null;
   world = createWorld();
   owner = world.addUser('Olga').id;
   member = world.addUser('Mia').id;
@@ -78,5 +81,37 @@ describe('GET /api/playlists/counts', () => {
 
   it('is for signed-in members only', async () => {
     expect((await call('')).status).toBe(401);
+  });
+});
+
+// The fakes above never cancel anything, but the real SDK does: two requests
+// to the same collection at once on one client share a request key, and the
+// earlier one is aborted. This runs the route on the real SDK over a stubbed
+// fetch that honours the abort signal.
+describe('GET /api/playlists/counts on the real PocketBase SDK', () => {
+  it('counts every playlist when there are several (no request is auto-cancelled)', async () => {
+    const ids = ['p1', 'p2', 'p3', 'p4'];
+    const totals: Record<string, number> = { p1: 3, p2: 0, p3: 7, p4: 1 };
+    const stub = vi.fn(async (input: unknown, init?: { signal?: AbortSignal }) => {
+      const url = new URL(String(input), 'http://pb.test');
+      await new Promise((r) => setTimeout(r, 5));
+      if (init?.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.pathname.endsWith('/collections/playlists/records')) {
+        return json({ page: 1, perPage: 500, totalItems: 4, totalPages: 1, items: ids.map((id) => ({ id })) });
+      }
+      const id = /playlist = "(\w+)"/.exec(url.searchParams.get('filter') ?? '')?.[1] ?? '';
+      return json({ page: 1, perPage: 1, totalItems: totals[id], totalPages: totals[id], items: [] });
+    });
+    vi.stubGlobal('fetch', stub);
+    try {
+      pbOverride = new PocketBase('http://pb.test');
+      serverOverride = { collection: () => { throw new Error('down'); }, filter: () => '' };
+      const r = await call(owner);
+      expect(r.status).toBe(200);
+      expect(r.body.counts).toEqual(totals);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
