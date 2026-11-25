@@ -102,7 +102,7 @@ export function Sidebar({ covers = false }: { covers?: boolean }) {
       </div>
 
       <ScrollArea className="flex-1 min-h-32 mt-3.5">
-        <div className={cn('px-2 pb-3 flex flex-col', covers ? 'gap-0.5' : 'gap-inset')} {...nav.holdProps}>
+        <div className={cn('px-2 pb-3 flex flex-col', covers ? 'gap-0.5' : 'gap-inset')}>
           <PlaylistNavList
             items={nav.items}
             activePath={pathname}

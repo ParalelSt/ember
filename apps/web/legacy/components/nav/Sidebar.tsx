@@ -93,7 +93,7 @@ export function Sidebar({ covers = false }: { covers?: boolean }) {
       </div>
 
       <ScrollArea className="flex-1 min-h-32 mt-2">
-        <div className="px-2 pb-3 flex flex-col gap-0.5" {...nav.holdProps}>
+        <div className="px-2 pb-3 flex flex-col gap-0.5">
           <PlaylistNavList
             items={nav.items}
             activePath={pathname}

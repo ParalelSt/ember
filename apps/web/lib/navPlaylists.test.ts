@@ -9,14 +9,14 @@ describe('orderNavPlaylists', () => {
     expect(ids(orderNavPlaylists(list('a', 'b', 'c'), { pinned: [], opened: {} }))).toEqual(['a', 'b', 'c']);
   });
 
-  it('puts pinned first (newest pin on top), then the rest by recency', () => {
+  it('puts pinned first (newest pin on top), then the rest in library order whatever was opened', () => {
     const out = orderNavPlaylists(list('a', 'b', 'c', 'd', 'e'), { pinned: ['d', 'b'], opened: { a: 5, c: 9, b: 100 } });
-    expect(ids(out)).toEqual(['d', 'b', 'c', 'a', 'e']);
+    expect(ids(out)).toEqual(['d', 'b', 'a', 'c', 'e']);
     expect(out.map((x) => x.pinned)).toEqual([true, true, false, false, false]);
   });
 
-  it('opening a playlist moves it up; never-opened ones and ties keep library order', () => {
-    const out = orderNavPlaylists(list('a', 'b', 'c', 'd'), { pinned: [], opened: { c: 50, b: 50 } });
+  it('byOpened (phone Recents): rest by last opened; never-opened and ties keep library order', () => {
+    const out = orderNavPlaylists(list('a', 'b', 'c', 'd'), { pinned: [], opened: { c: 50, b: 50 } }, { byOpened: true });
     expect(ids(out)).toEqual(['b', 'c', 'a', 'd']);
   });
 

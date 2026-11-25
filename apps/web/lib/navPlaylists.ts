@@ -1,7 +1,8 @@
 /** Order of the playlists in the Sidebar and Drawer: pinned ones first (newest
- *  pin on top), then the rest by when they were last opened, most recent
- *  first. Never-opened playlists and ties keep the order the library gave
- *  them. Stored per user in the `navPlaylists` JSON field
+ *  pin on top), then the rest in the order the library gave them (newest
+ *  created first); opening one never moves anything there. The phone Library's
+ *  Recents view passes `byOpened` to sort the rest by last opened instead.
+ *  Stored per user in the `navPlaylists` JSON field
  *  (pb_hooks/ensure_nav_playlists.pb.js) so it follows the account. */
 
 export interface NavPrefs {
@@ -88,7 +89,11 @@ export function pruneNavPrefs(prefs: NavPrefs, live: ReadonlySet<string>): NavPr
 }
 
 /** `items` ordered by the prefs; each also says whether it is pinned. */
-export function orderNavPlaylists<T extends { id: string }>(items: T[], prefs: NavPrefs): (T & { pinned: boolean })[] {
+export function orderNavPlaylists<T extends { id: string }>(
+  items: T[],
+  prefs: NavPrefs,
+  opts: { byOpened?: boolean } = {},
+): (T & { pinned: boolean })[] {
   const pinRank = new Map(prefs.pinned.map((id, i) => [id, i]));
   return items
     .map((item, index) => ({ item, index }))
@@ -100,6 +105,7 @@ export function orderNavPlaylists<T extends { id: string }>(items: T[], prefs: N
         if (pb === undefined) return -1;
         return pa - pb;
       }
+      if (!opts.byOpened) return a.index - b.index;
       const oa = prefs.opened[a.item.id] ?? 0;
       const ob = prefs.opened[b.item.id] ?? 0;
       return ob - oa || a.index - b.index;

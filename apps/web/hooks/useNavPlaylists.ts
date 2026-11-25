@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -8,20 +8,17 @@ import { applyNavPatch, EMPTY_NAV_PREFS, orderNavPlaylists, type NavPatch, type 
 
 export const NAV_PLAYLISTS_KEY = ['nav-playlists'] as const;
 
-/** The nav playlists in the owner's order (pinned first, then most recently
- *  opened), with `onOpen` (call when a row is tapped) and `onTogglePin`.
- *  Changes show at once and are saved to the account; a failed save puts the
- *  old order back.
- *
- *  `holdProps` go on the list: while the pointer is over it, an opened
- *  playlist keeps its place and the list is sorted again when the pointer
- *  leaves. Clicking down the list no longer pulls each row to the top under
- *  the cursor (bug report 2026-10-22). A pin still moves at once: that is
- *  the order being asked for. */
-export function useNavPlaylists<T extends { id: string }>(items: T[]) {
+/** The nav playlists with `onOpen` (call when a row is tapped) and
+ *  `onTogglePin`. Order: pinned first, then the library's own order, so
+ *  opening a playlist never moves anything. With `byOpened` (the phone
+ *  Library's Recents) the rest is sorted by last opened instead. `ready` says
+ *  the saved prefs have loaded. Changes are saved to the account; a failed
+ *  save puts the old state back. */
+export function useNavPlaylists<T extends { id: string }>(items: T[], opts: { byOpened?: boolean } = {}) {
+  const byOpened = !!opts.byOpened;
   const { user } = useAuth();
   const qc = useQueryClient();
-  const { data: prefs = EMPTY_NAV_PREFS } = useQuery({
+  const { data: prefs = EMPTY_NAV_PREFS, isFetched } = useQuery({
     queryKey: NAV_PLAYLISTS_KEY,
     queryFn: () => api.getNavPlaylists(),
     enabled: !!user,
@@ -43,23 +40,11 @@ export function useNavPlaylists<T extends { id: string }>(items: T[]) {
   });
   const { mutate } = patch;
 
-  // The `opened` times as they were when the pointer came over the list.
-  const [heldOpened, setHeldOpened] = useState<NavPrefs['opened'] | null>(null);
-  const ordered = useMemo(
-    () => orderNavPlaylists(items, heldOpened ? { ...prefs, opened: heldOpened } : prefs),
-    [items, prefs, heldOpened],
-  );
-  const holdProps = useMemo(
-    () => ({
-      onPointerEnter: () => setHeldOpened((held) => held ?? prefs.opened),
-      onPointerLeave: () => setHeldOpened(null),
-    }),
-    [prefs.opened],
-  );
+  const ordered = useMemo(() => orderNavPlaylists(items, prefs, { byOpened }), [items, prefs, byOpened]);
   const onOpen = useCallback((id: string) => mutate({ opened: id }), [mutate]);
   const onTogglePin = useCallback(
     (id: string) => mutate({ pin: id, pinned: !prefs.pinned.includes(id) }),
     [mutate, prefs.pinned],
   );
-  return { items: ordered, onOpen, onTogglePin, holdProps };
+  return { items: ordered, onOpen, onTogglePin, ready: !user || isFetched };
 }
