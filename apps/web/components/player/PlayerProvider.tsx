@@ -464,14 +464,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const st = usePlayerStore.getState();
         setDuration(chooseDuration(st.queue[st.index]?.durationSec ?? 0, d));
       },
-      onQueueIndex: (i) => {
+      onQueueIndex: (i, info) => {
         // Native advanced or the car skipped. Mirror it; do NOT load anything.
         const st = usePlayerStore.getState();
-        if (i >= 0 && i < st.queue.length && i !== st.index) {
+        // By the song native plays when it says which: its index means this
+        // list's entry only while the two lists agree, and a mismatch showed
+        // one song while another played (bug report 2026-11-17). The copy
+        // nearest that index, for a song listed twice; none here leaves the
+        // bar alone (the backend asks native for its queue).
+        const id = info?.trackId;
+        let at = i;
+        if (id && st.queue[i]?.id !== id) {
+          at = -1;
+          st.queue.forEach((t, k) => {
+            if (t.id === id && (at < 0 || Math.abs(k - i) < Math.abs(at - i))) at = k;
+          });
+        }
+        if (at >= 0 && at < st.queue.length && at !== st.index) {
           nativeChangeAt.current = Date.now();
           // Native is playing it now, so it counts as loaded.
-          loadedTrackRef.current = st.queue[i].id;
-          setIndex(i);
+          loadedTrackRef.current = st.queue[at].id;
+          setIndex(at);
         }
       },
       // The native player's play history (Android), for the queue sheet.

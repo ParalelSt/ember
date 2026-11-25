@@ -42,8 +42,10 @@ export interface AudioBackendEvents {
   onPause: () => void; // paused/stalled
   onError: (info?: AudioErrorInfo) => void; // load/playback failed
   /** Queue-owning backends only (Android): the native player moved to another
-   *  item on its own (auto-advance, a skip from the car). */
-  onQueueIndex?: (index: number) => void;
+   *  item on its own (auto-advance, a skip from the car). `trackId`: the song
+   *  native plays there; the page goes to the entry that has it, never to a
+   *  different song that happens to sit at that index in its own list. */
+  onQueueIndex?: (index: number, info?: { trackId?: string }) => void;
   /** Queue-owning backends only: the native side built a new queue (a tap in
    *  the car, native radio, the car's Shuffle button reordering it). The
    *  provider mirrors it; it must NOT push it back. `shuffle` is whether

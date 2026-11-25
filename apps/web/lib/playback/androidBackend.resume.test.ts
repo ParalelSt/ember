@@ -106,7 +106,7 @@ describe('androidBackend: back on screen after the page was frozen', () => {
     // The answer comes down the same line, after all of them.
     await n.answer(st(3, 42));
     expect(events.onQueueIndex).toHaveBeenCalledTimes(1);
-    expect(events.onQueueIndex).toHaveBeenCalledWith(3);
+    expect(events.onQueueIndex).toHaveBeenCalledWith(3, { trackId: 't3' });
     expect(events.onTime).toHaveBeenCalledTimes(1);
     expect(events.onTime).toHaveBeenCalledWith(42);
     // Then the page follows native live again.
@@ -120,7 +120,7 @@ describe('androidBackend: back on screen after the page was frozen', () => {
     n.emit('state', st(1, 5));
     expect(events.onTime).not.toHaveBeenCalled();
     await n.answer(st(2, 7));
-    expect(events.onQueueIndex).toHaveBeenCalledWith(2);
+    expect(events.onQueueIndex).toHaveBeenCalledWith(2, { trackId: 't2' });
     expect(events.onTime).toHaveBeenCalledWith(7);
   });
 
@@ -160,7 +160,7 @@ describe('androidBackend: back on screen after the page was frozen', () => {
     expect(n.plugin.getState).toHaveBeenCalledTimes(2);
     await n.answer(st(4, 9, { at: Date.now() }));
     expect(events.onQueueIndex).toHaveBeenCalledTimes(1);
-    expect(events.onQueueIndex).toHaveBeenCalledWith(4);
+    expect(events.onQueueIndex).toHaveBeenCalledWith(4, { trackId: 't4' });
   });
 
   it('an app build that does not date its states is followed as before', async () => {
@@ -168,7 +168,7 @@ describe('androidBackend: back on screen after the page was frozen', () => {
     n.emit('state', st(1, 3));
     n.emit('state', st(1, 3.25));
     expect(n.plugin.getState).toHaveBeenCalledTimes(1);
-    expect(events.onQueueIndex).toHaveBeenCalledWith(1);
+    expect(events.onQueueIndex).toHaveBeenCalledWith(1, { trackId: 't1' });
     expect(events.onTime).toHaveBeenLastCalledWith(3.25);
   });
 
