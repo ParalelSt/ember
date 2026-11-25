@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { forgetUser } from '@/lib/sessionCache';
 
 /** Per-user changelog state, synced across devices:
  *
@@ -73,6 +74,8 @@ export const PATCH = withRequestLog('changelog', async (request: NextRequest) =>
     }
 
     const updated = await pb.collection('users').update(user.id, patch);
+    // Memory of this session holds the old copy (lib/sessionCache).
+    forgetUser(user.id);
     return Response.json(toState(updated) satisfies ChangelogState);
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

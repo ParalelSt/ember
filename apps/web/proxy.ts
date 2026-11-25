@@ -6,7 +6,7 @@ import { checkRateLimit, clientIp, type RateLimitConfig } from '@/lib/rateLimitC
 import { linkCookie } from '@/lib/qrLogin/codes';
 import { UI_MODE_PARAM, parseUiMode, uiModeSetCookie } from '@/lib/uiMode';
 import { perfLogEnabled } from '@/lib/perf/hostSwitch';
-import { cachedSession, forgetAllSessions, forgetUser, shouldRotate, verifySession } from '@/lib/sessionCache';
+import { cachedSession, holdSessions, shouldRotate, verifySession } from '@/lib/sessionCache';
 
 // Middleware runs server-side, so it needs an absolute URL. The public
 // NEXT_PUBLIC_POCKETBASE_URL may be the relative `/pb` proxy path; fall back to
@@ -281,15 +281,16 @@ export default async function proxy(req: NextRequest) {
   // route checked it all over again.
   if (pb.authStore.isValid) {
     const token = pb.authStore.token;
-    const cookieRecord = JSON.stringify(pb.authStore.record ?? null);
-    /** Keep `nextToken` with PocketBase's record in the auth store, and
-     *  send the browser a cookie when either differs from the one it sent:
-     *  the root layout paints the name and theme from the cookie's copy. */
+    const cookieRecord = pb.authStore.record;
+    /** Keep `nextToken` with PocketBase's record in the auth store. The
+     *  browser gets a cookie only for a new token, or when the cookie's copy
+     *  names another member or another admin flag than PocketBase's: the
+     *  rest of the copy (name, avatar, theme) the browser keeps current
+     *  itself, and memory may be a little older than it. */
     const settle = (nextToken: string, record: RecordModel) => {
       pb.authStore.save(nextToken, record);
-      if (nextToken !== token || JSON.stringify(record) !== cookieRecord) {
-        setCookies.push(pb.authStore.exportToCookie(cookieOpts));
-      }
+      const differs = cookieRecord?.id !== record.id || (cookieRecord?.is_admin === true) !== (record.is_admin === true);
+      if (nextToken !== token || differs) setCookies.push(pb.authStore.exportToCookie(cookieOpts));
     };
     const authStart = performance.now();
     const hit = cachedSession(token);
@@ -335,10 +336,11 @@ export default async function proxy(req: NextRequest) {
 
   // A change to a member's account through /pb (their own password or
   // email) can end their other sessions at PocketBase: stop vouching for
-  // them from memory. A password reset by link names nobody: forget all.
+  // them from memory, and keep nothing about them until PocketBase has had
+  // time to apply it (it has not seen the request yet). A password reset by
+  // link names nobody: everyone.
   const sessionChange = pbSessionChange(req.method, req.nextUrl.pathname);
-  if (sessionChange === 'all') forgetAllSessions();
-  else if (sessionChange) forgetUser(sessionChange);
+  if (sessionChange) holdSessions(sessionChange);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('x-request-id', reqId);

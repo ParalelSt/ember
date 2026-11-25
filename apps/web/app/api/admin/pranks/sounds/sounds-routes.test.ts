@@ -26,7 +26,8 @@ vi.mock('@/lib/auth', async (importOriginal) => {
     if (!ctx.user.isAdmin) throw new actual.ForbiddenError();
     return ctx;
   };
-  return { ...actual, requireUser, requireAdmin };
+  // The remembered admin flag stands in for PocketBase's fresh answer.
+  return { ...actual, requireUser, requireAdmin, adminNow: async (u: { isAdmin: boolean }) => u.isAdmin };
 });
 vi.mock('@/lib/rateLimit', () => ({
   rateLimitResponse: () => (who.limited ? Response.json({ error: 'Slow down' }, { status: 429 }) : null),

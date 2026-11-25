@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
+import { adminNow, requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { notFound, ownerOnly, playlistAccess, toPerson } from '@/lib/playlistAccess';
@@ -20,9 +20,11 @@ export const GET = withRequestLog('playlists/[id]/people', async (_req: NextRequ
       fields: 'id,collectionId,collectionName,name,avatar,email',
       sort: 'name',
     });
+    // Emails are an admin's view: the role checked fresh.
+    const showEmail = await adminNow(user);
     const people = rows.map((r) => ({
       ...toPerson(r),
-      ...(user.isAdmin ? { email: typeof r.email === 'string' ? r.email : '' } : {}),
+      ...(showEmail ? { email: typeof r.email === 'string' ? r.email : '' } : {}),
     }));
     people.sort((a, b) => a.name.localeCompare(b.name));
     return Response.json({ people });

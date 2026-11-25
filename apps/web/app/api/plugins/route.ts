@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { forgetUser } from '@/lib/sessionCache';
 import { parsePluginPatch, readStoredPlugins, type StoredPlugins } from '@/lib/pluginSettings';
 
 /** Per-user plugin switches (Settings > Plugins), synced across devices.
@@ -68,6 +69,8 @@ export const PATCH = withRequestLog('plugins', async (request: NextRequest) => {
         : {};
       return pb.collection('users').update(user.id, { plugins: { ...current, ...patch } });
     });
+    // Memory of this session holds the old copy (lib/sessionCache).
+    forgetUser(user.id);
     return Response.json(readStoredPlugins(updated.plugins) satisfies StoredPlugins);
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

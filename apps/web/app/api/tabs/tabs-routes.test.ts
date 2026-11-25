@@ -18,7 +18,7 @@ process.env.MUSIC_DIR = musicDir;
 const requireUser = vi.fn();
 vi.mock('@/lib/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/auth')>();
-  return { ...actual, requireUser: () => requireUser() };
+  return { ...actual, requireUser: () => requireUser(), adminNow: async (u: { isAdmin: boolean }) => u.isAdmin };
 });
 
 let store: FakePb;

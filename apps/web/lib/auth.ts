@@ -103,6 +103,21 @@ export async function requireAdmin(): Promise<{ pb: PocketBase; user: AuthedUser
   return ctx;
 }
 
+/** Whether `user` (from requireUser) holds the admin role right now. Use
+ *  it wherever is_admin grants a power outside requireAdmin: requireUser's
+ *  flag can be up to the session cache window old (lib/sessionCache), so a
+ *  remembered admin is asked about again, fresh. A member is answered
+ *  without asking. Never throws: no answer is no power. */
+export async function adminNow(user: AuthedUser): Promise<boolean> {
+  if (!user.isAdmin) return false;
+  try {
+    const fresh = await requireUser(true);
+    return fresh.user.id === user.id && fresh.user.isAdmin;
+  } catch {
+    return false;
+  }
+}
+
 export function unauthorizedResponse() {
   return Response.json({ error: 'Unauthorized' }, { status: 401 });
 }

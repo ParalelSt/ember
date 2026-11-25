@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import fs from 'node:fs';
-import { requireUser } from '@/lib/auth';
+import { adminNow, requireUser } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { serveFile } from '@/lib/serveFile';
@@ -23,7 +23,7 @@ export const GET = withRequestLog('pranks/media/[id]', async (req: NextRequest, 
     const { id } = await ctx.params;
     const pb = await createAdminClient();
 
-    if (!user.isAdmin) {
+    if (!(await adminNow(user))) {
       if (!(await pranksEnabled(pb))) return new Response('forbidden', { status: 403 });
       const now = Date.now();
       const live = await pb.collection('pranks').getList(1, 1, {

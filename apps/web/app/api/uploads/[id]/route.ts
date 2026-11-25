@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
+import { adminNow, requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { nullIfNotFound } from '@/lib/pocketbase/notFound';
 import { fromError, jsonError } from '@/lib/upsertTrack';
@@ -56,7 +56,7 @@ export const DELETE = withRequestLog('uploads/[id]', async (_request: Request, c
     const pb = await createAdminClient();
     const row = await pb.collection('uploads').getOne(id).catch(nullIfNotFound);
     if (!row) return jsonError('Upload not found', 404);
-    if (row.uploader !== user.id && !user.isAdmin) {
+    if (row.uploader !== user.id && !(await adminNow(user))) {
       return jsonError('Only the person who uploaded this can remove it', 403);
     }
 

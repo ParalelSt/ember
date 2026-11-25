@@ -40,7 +40,7 @@ function fakeClient() {
 
 vi.mock('@/lib/pocketbase/server', () => ({ createClient: async () => fakeClient() }));
 
-const { requireUser, requireAdmin, UnauthorizedError, ForbiddenError } = await import('./auth');
+const { requireUser, requireAdmin, adminNow, UnauthorizedError, ForbiddenError } = await import('./auth');
 const { _resetSessionCache, SESSION_CACHE_TTL_MS, forgetUser } = await import('./sessionCache');
 
 const member: Rec = { id: 'alice', email: 'alice@ember.test', is_admin: false };
@@ -153,5 +153,34 @@ describe('requireUser / requireAdmin', () => {
     release();
     await burst;
     expect(authRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('adminNow: a member is never an admin, and PocketBase is not asked', async () => {
+    cookie = { token: token(), record: member, valid: true };
+    const { user } = await requireUser();
+    authRefresh.mockClear();
+    expect(await adminNow(user)).toBe(false);
+    expect(authRefresh).not.toHaveBeenCalled();
+  });
+
+  it('adminNow: an admin demoted moments ago (remembered as admin) is refused at once', async () => {
+    authRefresh.mockImplementation(async (t) => ({ token: `${t}-r`, record: admin }));
+    cookie = { token: token(), record: admin, valid: true };
+    const { user } = await requireUser();
+    expect(user.isAdmin).toBe(true);
+    authRefresh.mockImplementation(async (t) => ({ token: `${t}-r`, record: { ...admin, is_admin: false } }));
+    // requireUser still answers from memory: the documented window...
+    expect((await requireUser()).user.isAdmin).toBe(true);
+    // ...but an admin power asks PocketBase.
+    expect(await adminNow(user)).toBe(false);
+  });
+
+  it('adminNow: a still-admin admin keeps the power; a dead session loses it', async () => {
+    authRefresh.mockImplementation(async (t) => ({ token: `${t}-r`, record: admin }));
+    cookie = { token: token(), record: admin, valid: true };
+    const { user } = await requireUser();
+    expect(await adminNow(user)).toBe(true);
+    authRefresh.mockRejectedValue(Object.assign(new Error('revoked'), { status: 401 }));
+    expect(await adminNow(user)).toBe(false);
   });
 });
