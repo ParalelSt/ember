@@ -166,6 +166,20 @@ describe('PlayerBar', () => {
     expect(skip.prev).toHaveBeenCalledTimes(1);
   });
 
+  it('on a tablet (the wide bar), a finger swipe on the song skips, a mouse drag does not', () => {
+    desktopBar();
+    const now = screen.getByTestId('player-bar-now');
+    fireEvent.pointerDown(now, { pointerId: 1, pointerType: 'mouse', clientX: 300, clientY: 40 });
+    fireEvent.pointerUp(now, { pointerId: 1, pointerType: 'mouse', clientX: 200, clientY: 40 });
+    expect(skip.next).not.toHaveBeenCalled();
+    fireEvent.pointerDown(now, { pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 40 });
+    fireEvent.pointerUp(now, { pointerId: 2, pointerType: 'touch', clientX: 200, clientY: 44 });
+    expect(skip.next).toHaveBeenCalledTimes(1);
+    fireEvent.pointerDown(now, { pointerId: 3, pointerType: 'touch', clientX: 200, clientY: 40 });
+    fireEvent.pointerUp(now, { pointerId: 3, pointerType: 'touch', clientX: 300, clientY: 40 });
+    expect(skip.prev).toHaveBeenCalledTimes(1);
+  });
+
   it('a head unit narrower than the desktop bar keeps the phone bar', () => {
     car.value = true;
     desktop.value = false;
@@ -174,14 +188,14 @@ describe('PlayerBar', () => {
     expect(bar()).not.toHaveAttribute('data-layout');
   });
 
-  it('elsewhere the bar keeps its mouse-sized controls and no swipe', () => {
+  it('elsewhere the bar keeps its mouse-sized controls and no mouse swipe', () => {
     const b = desktopBar();
     expect(b).not.toHaveAttribute('data-layout');
     expect(within(b).getByRole('button', { name: 'Previous' })).not.toHaveClass('h-16');
     expect(within(b).getByRole('button', { name: 'Pause' })).toHaveClass('h-10', 'w-10');
     const now = screen.getByTestId('player-bar-now');
-    fireEvent.pointerDown(now, { pointerId: 1, clientX: 300, clientY: 40 });
-    fireEvent.pointerUp(now, { pointerId: 1, clientX: 200, clientY: 40 });
+    fireEvent.pointerDown(now, { pointerId: 1, pointerType: 'mouse', clientX: 300, clientY: 40 });
+    fireEvent.pointerUp(now, { pointerId: 1, pointerType: 'mouse', clientX: 200, clientY: 40 });
     expect(skip.next).not.toHaveBeenCalled();
   });
 

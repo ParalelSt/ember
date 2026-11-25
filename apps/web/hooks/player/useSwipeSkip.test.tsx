@@ -67,3 +67,23 @@ describe('useSwipeSkip', () => {
     expect(screen.getByTestId('cover').style.touchAction).toBe('');
   });
 });
+
+describe('useSwipeSkip touchOnly', () => {
+  function Bar({ onNext }: { onNext: () => void }) {
+    const swipe = useSwipeSkip({ onNext, onPrev: vi.fn(), enabled: true, touchOnly: true });
+    return <div data-testid="bar" {...swipe} />;
+  }
+  const drag = (el: HTMLElement, pointerType: string) => {
+    fireEvent.pointerDown(el, { pointerId: 1, pointerType, clientX: 200, clientY: 100 });
+    fireEvent.pointerUp(el, { pointerId: 1, pointerType, clientX: 100, clientY: 100 });
+  };
+
+  it('a finger skips, a mouse drag does not', () => {
+    const onNext = vi.fn();
+    render(<Bar onNext={onNext} />);
+    drag(screen.getByTestId('bar'), 'mouse');
+    expect(onNext).not.toHaveBeenCalled();
+    drag(screen.getByTestId('bar'), 'touch');
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+});
