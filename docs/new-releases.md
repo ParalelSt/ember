@@ -55,10 +55,22 @@ releases start to appear from that artist's second scan.
   whose family is one of their genres. Candidates come from other members'
   liked artists (free), the explore shelf (1 call), and the top 8 artists of
   each relevant cached genre chart (up to 30 artists, no chart call).
-- **The row**: up to 12 liked-artist releases (2 per artist), then up to 8
-  suggestions (1 per artist). When both groups have something, the row gets an
-  All / Your artists / Similar switch, which starts on All and is not
-  remembered.
+- **The row** (owner decision 2026-11-25: it fills at once, never a baseline
+  wait): each liked or played artist's newest release is eligible, a fresh
+  ledger release first, else the newest release on the artist's page from the
+  last 90 days (`LedgerArtist.latest`, gated by year because YouTube gives no
+  date; so the first scan already shows it). Up to 12 artists are drawn at
+  random, weighted by the member's own plays: 1 for liked only, +1.5 per play
+  in the last month, +5 per play in the last week (`playStats`,
+  `artistWeight`, `weightedSample`, `buildRow` in `rules.ts`). The row varies
+  between visits and favours what they play most. One release per artist, no
+  artist twice. Under 6 personal picks the YouTube "New albums & singles"
+  shelf (the ledger's `via: 'explore'` releases) fills the row up to 8, the
+  member's genres first, otherwise shelf order. The row is hidden only when
+  all of that is empty. Plays are read from the member's own `plays` rows
+  (last 30 days, also counted as watchlist artists) and never leave the
+  server. When both groups have something the row keeps the All / Your
+  artists / Similar switch.
 
 ## The daily run
 

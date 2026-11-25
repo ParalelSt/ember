@@ -26,6 +26,13 @@ export const SCANS_PER_RUN = 18;
 export const LIKED_SCANS = 12;
 export const GENRE_SCANS = 6;
 export const KNOWN_MAX = 60;
+/** A release this recent may fill a member's row at once, even on the first
+ *  scan of its artist (the year is all YouTube gives, so the gate is by year). */
+export const RECENT_WINDOW_DAYS = 90;
+export const PERSONAL_MAX = 12;
+/** Fewer personal picks than this and the shelf fills the row. */
+export const ROW_MIN = 6;
+export const ROW_FILL_TO = 8;
 export const RETIRED_MAX = 500;
 /** An artist that left every watchlist keeps its entry this long, so
  *  coming back is not a second baseline. */
@@ -55,6 +62,9 @@ export interface LikedArtist {
 }
 
 export interface LedgerArtist {
+  /** The artist's newest release on the last scan, when it is recent enough
+   *  (year inside the RECENT_WINDOW_DAYS window) to show on a first look. */
+  latest?: Release | null;
   name: string;
   checkedAt: string;
   /** null until one scan succeeded: that scan is the baseline. */
@@ -340,14 +350,35 @@ export function applyRun(
       });
     }
     const merged = [...page, ...(prev?.known ?? []).filter((k) => !page.includes(k))].slice(0, KNOWN_MAX);
-    artists[a.id] = { name: a.name || prev?.name || '', checkedAt: nowIso, scannedAt: nowIso, known: merged };
+    // The newest release (highest year, page order on a tie), if recent.
+    const recentYear = new Date(now - RECENT_WINDOW_DAYS * DAY_MS).getUTCFullYear();
+    let top: (typeof a.releases)[number] | null = null;
+    for (const rel of a.releases) {
+      if (!rel.browseId || (rel.year != null && rel.year < recentYear)) continue;
+      if (!top || (rel.year ?? Infinity) > (top.year ?? Infinity)) top = rel;
+    }
+    const latest: Release | null = top
+      ? {
+          browseId: top.browseId,
+          title: top.title,
+          kind: kindOf(top.type, 'album'),
+          year: top.year ?? null,
+          artworkUrl: top.artworkUrl ?? null,
+          artist: a.name,
+          artistId: a.id,
+          family: null,
+          firstSeenAt: nowIso,
+          via: 'artist',
+        }
+      : null;
+    artists[a.id] = { name: a.name || prev?.name || '', checkedAt: nowIso, scannedAt: nowIso, known: merged, latest };
   }
 
   // A dead channel keeps its list and still moves on, so it never blocks the queue.
   for (const id of answer.failed) {
     if (id === 'explore') continue;
     const prev = artists[id];
-    artists[id] = { name: prev?.name ?? '', checkedAt: nowIso, scannedAt: prev?.scannedAt ?? null, known: prev?.known ?? [] };
+    artists[id] = { name: prev?.name ?? '', checkedAt: nowIso, scannedAt: prev?.scannedAt ?? null, known: prev?.known ?? [], latest: prev?.latest ?? null };
   }
 
   for (const item of answer.explore ?? []) {
@@ -450,4 +481,107 @@ export function selectForMember(
     .sort((a, b) => newestFirst(a, b) || a.browseId.localeCompare(b.browseId));
 
   return [...cap(mine, MINE_PER_ARTIST, MINE_MAX, 'liked'), ...cap(similar, SIMILAR_PER_ARTIST, SIMILAR_MAX, 'similar')];
+}
+
+/** Plays, as the row needs them: who, and when. */
+export interface PlayRow {
+  source: string;
+  artistId: string | null;
+  artist: string;
+  playedAt: string;
+}
+
+export interface PlayStat {
+  /** Plays in the last 7 days. */
+  p7: number;
+  /** Plays 7 to 30 days ago. */
+  p30: number;
+}
+
+/** Play counts per YouTube artist id, in the last 7 days and the 23 before. */
+export function playStats(rows: readonly PlayRow[], now: number): Map<string, PlayStat> {
+  const out = new Map<string, PlayStat>();
+  for (const r of rows) {
+    if (r.source !== 'youtube' || !r.artistId || !ARTIST_ID.test(r.artistId)) continue;
+    const age = now - Date.parse(r.playedAt);
+    if (!Number.isFinite(age) || age < 0 || age > 30 * DAY_MS) continue;
+    const s = out.get(r.artistId) ?? { p7: 0, p30: 0 };
+    if (age <= 7 * DAY_MS) s.p7++;
+    else s.p30++;
+    out.set(r.artistId, s);
+  }
+  return out;
+}
+
+/** The draw weight of an artist: liked only is 1, a play in the last month
+ *  adds 1.5, one in the last week adds 5. */
+export const artistWeight = (s: PlayStat | undefined): number => 1 + 5 * (s?.p7 ?? 0) + 1.5 * (s?.p30 ?? 0);
+
+/** Draws up to `k` distinct items, each draw proportional to the weights of
+ *  those left. `random` returns [0, 1). */
+export function weightedSample<T>(items: readonly T[], weight: (t: T) => number, k: number, random: () => number): T[] {
+  const left = [...items];
+  const out: T[] = [];
+  while (out.length < k && left.length > 0) {
+    const total = left.reduce((n, t) => n + weight(t), 0);
+    let at = random() * total;
+    let i = 0;
+    for (; i < left.length - 1; i++) {
+      at -= weight(left[i]);
+      if (at < 0) break;
+    }
+    out.push(left.splice(i, 1)[0]);
+  }
+  return out;
+}
+
+const artistSlot = (r: { artistId: string | null; artist: string }) => r.artistId ?? `n:${r.artist.trim().toLowerCase()}`;
+
+/** The row for one member (docs/new-releases.md): each liked or played
+ *  artist's newest recent release, a weighted random draw that favours what
+ *  they played this week, then this month, then liked only; never one artist
+ *  twice. Under ROW_MIN picks, the shelf fills the rest (their genres
+ *  first). Empty only when there is truly nothing. */
+export function buildRow(input: {
+  /** The ledger's live releases (first seen inside the window). */
+  releases: readonly Release[];
+  /** Each scanned artist's newest recent release. */
+  recent: readonly Release[];
+  /** Liked and played artists. */
+  liked: readonly LikedArtist[];
+  plays: ReadonlyMap<string, PlayStat>;
+  families: readonly FamilySlug[];
+  now: number;
+  random?: () => number;
+}): NewReleaseItem[] {
+  const { releases, recent, liked, plays, families, now } = input;
+  const random = input.random ?? Math.random;
+  const fresh = releases.filter((r) => isNew(r.firstSeenAt, now));
+
+  const best = new Map<string, Release>();
+  for (const r of [...fresh].sort(newestFirst)) if (r.artistId && !best.has(r.artistId)) best.set(r.artistId, r);
+  for (const r of recent) if (r.artistId && !best.has(r.artistId)) best.set(r.artistId, r);
+
+  const pool = liked.filter((a) => best.has(a.artistId));
+  const picked = weightedSample(pool, (a) => artistWeight(plays.get(a.artistId)), PERSONAL_MAX, random);
+  const out = picked.map((a) => toItem(best.get(a.artistId)!, 'liked'));
+  const used = new Set(picked.map((a) => a.artistId));
+  const usedNames = new Set(picked.map((a) => a.name.trim().toLowerCase()));
+
+  if (out.length < ROW_MIN) {
+    const fam = new Set(families);
+    const shelf = fresh
+      .filter((r) => r.via === 'explore' && !(r.artistId && used.has(r.artistId)) && !usedNames.has(r.artist.trim().toLowerCase()))
+      .map((r, i) => ({ r, i, match: r.family != null && fam.has(r.family) ? 0 : 1 }))
+      .sort((a, b) => a.match - b.match || a.i - b.i);
+    const seen = new Set(out.map((o) => artistSlot(o)));
+    for (const { r } of shelf) {
+      if (out.length >= ROW_FILL_TO) break;
+      const slot = artistSlot(r);
+      if (seen.has(slot)) continue;
+      seen.add(slot);
+      out.push(toItem(r, 'similar'));
+    }
+  }
+  return out;
 }

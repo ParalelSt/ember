@@ -17,7 +17,7 @@ import {
 import { emptyLedger, type Ledger, type LikeRow } from './rules';
 
 const HOUR = 60 * 60 * 1000;
-const EMPTY = { refreshedAt: null, stale: false, releases: [] };
+const EMPTY = { refreshedAt: null, stale: false, releases: [], recent: [] };
 
 const id = (n: number) => `UC${String(n).padStart(8, '0')}`;
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -392,6 +392,16 @@ describe('createNewReleasesCache', () => {
       [id(1), id(2), id(3)].map((a, i) => ({ name: `A${i + 1}`, artistId: a })),
       { maxLookups: MEMBER_LOOKUPS_PER_RUN },
     );
+  });
+
+  it('exposes each scanned artist newest recent release as recent, from the first scan', async () => {
+    members = [member('m1', [1])];
+    const cache = make({ fetchReleases: async (ids) => fetched(ids, { explore: null }) });
+    await cache.get();
+    await settled(cache);
+    const got = await cache.get();
+    expect(got.releases).toEqual([]);
+    expect(got.recent.map((r) => r.browseId)).toEqual([`r-${id(1)}`]);
   });
 
   it('a run that got only failures is not cached as fresh: nothing is written and it retries', async () => {

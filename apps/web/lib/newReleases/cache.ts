@@ -68,6 +68,8 @@ export interface NewReleasesState {
   /** The ledger is past the TTL (the source could not refresh it yet). */
   stale: boolean;
   releases: Release[];
+  /** Each scanned artist's newest recent release (a first look at an artist). */
+  recent: Release[];
 }
 
 interface Deps {
@@ -100,7 +102,7 @@ function readMirror(file: string | null): Ledger | null {
     const artists: Ledger['artists'] = {};
     for (const [id, a] of Object.entries(data.artists)) {
       if (!a || typeof a.checkedAt !== 'string' || !Array.isArray(a.known)) continue;
-      artists[id] = { name: String(a.name ?? ''), checkedAt: a.checkedAt, scannedAt: a.scannedAt ?? null, known: a.known };
+      artists[id] = { name: String(a.name ?? ''), checkedAt: a.checkedAt, scannedAt: a.scannedAt ?? null, known: a.known, latest: a.latest && typeof a.latest.browseId === 'string' ? a.latest : null };
     }
     const releases = data.releases.filter((r) => r && typeof r.browseId === 'string' && typeof r.firstSeenAt === 'string');
     return {
@@ -296,7 +298,7 @@ export function createNewReleasesCache(deps: Deps) {
   /** The shared ledger's live releases. Never waits and never fetches: it
    *  may start the background run and answers from memory at once. */
   async function get(): Promise<NewReleasesState> {
-    if (deps.disabled) return { refreshedAt: null, stale: false, releases: [] };
+    if (deps.disabled) return { refreshedAt: null, stale: false, releases: [], recent: [] };
     if (!loaded) {
       ledger = readMirror(deps.cacheFile);
       loaded = true;
@@ -307,11 +309,12 @@ export function createNewReleasesCache(deps: Deps) {
     const fresh = !!ledger?.refreshedAt && at - Date.parse(ledger.refreshedAt) < ttlMs;
     if (!fresh && at - lastFailure >= retryMs) void refresh();
     else if (fresh && (tagPending || tagUnchecked) && !inFlight && at - lastTagTry >= retryMs) void retag();
-    if (!ledger) return { refreshedAt: null, stale: false, releases: [] };
+    if (!ledger) return { refreshedAt: null, stale: false, releases: [], recent: [] };
     return {
       refreshedAt: ledger.refreshedAt,
       stale: ledger.refreshedAt != null && (!fresh || tagPending),
       releases: ledger.releases.filter((r) => isNew(r.firstSeenAt, at)).map((r) => ({ ...r })),
+      recent: Object.values(ledger.artists).flatMap((a) => (a.latest ? [{ ...a.latest }] : [])),
     };
   }
 

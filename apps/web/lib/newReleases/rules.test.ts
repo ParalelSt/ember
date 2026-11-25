@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyRun,
+  artistWeight,
+  buildRow,
+  playStats,
+  ROW_FILL_TO,
+  ROW_MIN,
   buildWatchlist,
   emptyLedger,
   genreWatchlist,
@@ -427,5 +432,105 @@ describe('selectForMember', () => {
   it('gives nothing out for nothing in, and skips releases past the window', () => {
     expect(selectForMember([], liked, ['pop'], NOV)).toEqual([]);
     expect(selectForMember([release('x', at(50), { artistId: id(1) })], liked, ['pop'], NOV)).toEqual([]);
+  });
+});
+
+describe('first look: a recent release shows at once', () => {
+  it('the first scan keeps the newest release of the last 90 days as latest', () => {
+    const out = applyRun(emptyLedger(), answer({ artists: [artistAns(id(1), [rel('old', 2019, 'Album'), rel('new', 2026), rel('mid', 2025)], 'Ana')] }), NOV);
+    expect(out.releases).toEqual([]); // nothing is "new" yet
+    expect(out.artists[id(1)].latest).toMatchObject({ browseId: 'new', artist: 'Ana', artistId: id(1), year: 2026 });
+  });
+
+  it('an artist with only old releases has no latest', () => {
+    const out = applyRun(emptyLedger(), answer({ artists: [artistAns(id(1), [rel('old', 2019, 'Album')])] }), NOV);
+    expect(out.artists[id(1)].latest).toBeNull();
+  });
+});
+
+describe('buildRow', () => {
+  const NOW = NOV;
+  const recentOf = (n: number, over: Partial<Release> = {}) =>
+    release(`r${n}`, iso(NOW - 60 * DAY), { artistId: id(n), artist: `A${n}`, family: null, ...over });
+  const base = { releases: [] as Release[], recent: [] as Release[], liked: [] as LikedArtist[], plays: new Map(), families: [], now: NOW };
+  const rng = (seed: number) => () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
+  };
+
+  it('a liked artist with a 60 day old release shows on the first scan', () => {
+    const out = buildRow({ ...base, liked: [la(1, 1)], recent: [recentOf(1)] });
+    expect(out.map((r) => [r.browseId, r.from])).toEqual([['r1', 'liked']]);
+  });
+
+  it('shows one release per artist, the newest, and no artist twice', () => {
+    const out = buildRow({
+      ...base,
+      liked: [la(1, 3)],
+      releases: [release('x', iso(NOW - 2 * DAY), { artistId: id(1), artist: 'A1' }), release('y', iso(NOW - 1 * DAY), { artistId: id(1), artist: 'A1' })],
+      recent: [recentOf(1)],
+    });
+    expect(out.map((r) => r.browseId)).toEqual(['y']);
+  });
+
+  it('weights by plays: an artist played this week is drawn far more often than a liked-only one', () => {
+    const liked = [la(1, 1), la(2, 1)];
+    const recent = [recentOf(1), recentOf(2)];
+    const plays = new Map([[id(1), { p7: 10, p30: 0 }]]);
+    const random = rng(7);
+    let firstHeavy = 0;
+    const N = 600;
+    for (let i = 0; i < N; i++) {
+      // Only one slot matters: look at who comes first.
+      const row = buildRow({ ...base, liked, recent, plays, random });
+      if (row[0].artistId === id(1)) firstHeavy++;
+    }
+    expect(artistWeight(plays.get(id(1)))).toBeGreaterThan(10 * artistWeight(undefined));
+    expect(firstHeavy / N).toBeGreaterThan(0.9);
+    expect(firstHeavy / N).toBeLessThan(1); // liked-only still gets its turn
+  });
+
+  it('the 30 day weight sits between the week and liked-only', () => {
+    expect(artistWeight({ p7: 1, p30: 0 })).toBeGreaterThan(artistWeight({ p7: 0, p30: 1 }));
+    expect(artistWeight({ p7: 0, p30: 1 })).toBeGreaterThan(artistWeight(undefined));
+  });
+
+  it('fills from the shelf under ROW_MIN, own genres first, never repeating an artist', () => {
+    const shelf = (n: number, family: Release['family']) =>
+      release(`s${n}`, iso(NOW - HOUR), { artistId: id(50 + n), artist: `S${n}`, family, via: 'explore' });
+    const releases = [shelf(1, 'jazz-blues'), shelf(2, 'pop'), shelf(3, null), shelf(4, 'pop'),
+      // The liked artist is on the shelf too: already picked, so not twice.
+      release('own', iso(NOW - HOUR), { artistId: id(1), artist: 'A1', via: 'explore', family: 'pop' })];
+    const out = buildRow({ ...base, liked: [la(1, 1)], recent: [recentOf(1)], releases, families: ['pop'] });
+    expect(out.map((r) => r.artistId)).toEqual([id(1), id(52), id(54), id(51), id(53)]);
+    expect(new Set(out.map((r) => r.artistId)).size).toBe(out.length);
+    expect(out[0].from).toBe('liked');
+    expect(out[1].from).toBe('similar');
+    expect(out.length).toBeLessThanOrEqual(ROW_FILL_TO);
+  });
+
+  it('does not touch the shelf once there are ROW_MIN personal picks', () => {
+    const n = ROW_MIN;
+    const liked = Array.from({ length: n }, (_, i) => la(i + 1, 1));
+    const recent = liked.map((_, i) => recentOf(i + 1));
+    const shelf = release('s', iso(NOW - HOUR), { artistId: id(90), artist: 'S', via: 'explore' });
+    const out = buildRow({ ...base, liked, recent, releases: [shelf] });
+    expect(out).toHaveLength(n);
+    expect(out.every((r) => r.from === 'liked')).toBe(true);
+  });
+
+  it('is empty only when there is truly nothing', () => {
+    expect(buildRow({ ...base })).toEqual([]);
+    expect(buildRow({ ...base, liked: [la(1, 5)] })).toEqual([]); // liked but no release anywhere
+    expect(buildRow({ ...base, releases: [release('s', iso(NOW - HOUR), { artistId: id(9), via: 'explore' })] })).toHaveLength(1);
+  });
+});
+
+describe('playStats', () => {
+  it('counts the last 7 days and the 23 before, YouTube only', () => {
+    const NOW = NOV;
+    const p = (days: number, over = {}) => ({ source: 'youtube', artistId: id(1), artist: 'A', playedAt: iso(NOW - days * DAY), ...over });
+    const out = playStats([p(1), p(6), p(10), p(29), p(40), p(1, { source: 'upload' }), p(1, { artistId: null })], NOW);
+    expect(out.get(id(1))).toEqual({ p7: 2, p30: 2 });
   });
 });

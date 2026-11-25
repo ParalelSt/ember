@@ -51,7 +51,15 @@ export function newReleasesCache(): NewReleasesCache {
           fields: 'liked_at,created,expand.track.source,expand.track.artist,expand.track.artist_id',
           batch: 500,
         });
-        out.push({ id: u.id, likes: rows.map(toLikeRow) });
+        // Recent plays count as likes for what is scanned (docs/new-releases.md).
+        const plays = await pb.collection('plays').getFullList<{ played_at?: string; expand?: LikeRecord['expand'] }>({
+          filter: `user = ${pbQuote(u.id)} && played_at >= "${new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().replace('T', ' ')}"`,
+          expand: 'track',
+          fields: 'played_at,expand.track.source,expand.track.artist,expand.track.artist_id',
+          batch: 500,
+        });
+        const playRows = plays.map((p) => toLikeRow({ liked_at: p.played_at, created: p.played_at, expand: p.expand }));
+        out.push({ id: u.id, likes: [...rows.map(toLikeRow), ...playRows] });
       }
       return out;
     },
