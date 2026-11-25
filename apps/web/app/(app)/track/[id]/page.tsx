@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { fetchTrackMeta } from '@/lib/trackMeta';
+import { headers } from 'next/headers';
+import { fetchTrackMetaForPage, isPreviewCrawler } from '@/lib/trackMeta';
 import { TrackPageClient } from '@/components/track/TrackPageClient';
 import { serverUiMode } from '@/components/providers/serverUiMode';
 
@@ -9,7 +10,8 @@ import { serverUiMode } from '@/components/providers/serverUiMode';
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   try {
-    const track = await fetchTrackMeta(id);
+    const patient = isPreviewCrawler((await headers()).get('user-agent'));
+    const track = await fetchTrackMetaForPage(id, { patient });
     if (!track) return { title: 'Ember - Music' };
     const title = `${track.title} - ${track.artist}`;
     const description = track.album ? `${track.album} · Listen on Ember` : 'Listen on Ember';
