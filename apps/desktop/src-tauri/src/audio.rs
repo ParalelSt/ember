@@ -1376,6 +1376,8 @@ pub(crate) struct OpenedSource {
     pub stop: DownloadStop,
     /// How the download is going, for the playback watchdog.
     pub progress: Arc<DownloadProgress>,
+    /// `host_source_note` for this answer, for the app log.
+    pub source_note: String,
 }
 
 /// Why a source could not be opened, in words the app log can print, plus
@@ -1427,9 +1429,12 @@ pub(crate) async fn open_source(
 
     // From here the response has started, so every wait is judged on progress.
     let progress = Arc::new(DownloadProgress::started_now().with_request_grace(budgets.connect));
+    // How the host is serving the song (see `host_source_note`), named in a
+    // stall so its report says whether a file or a live relay went quiet.
+    let source_note = host_source_note(stream.header(HOST_SOURCE_HEADER));
     let stalled = |stop: LoadStop, stage: &str| OpenError {
         stalled: matches!(stop, LoadStop::Stalled | LoadStop::Unanswered),
-        ..host_error(load_stop_message(stop, stage, budgets))
+        ..host_error(format!("{}{}", load_stop_message(stop, stage, budgets), source_note))
     };
 
     let reader = match while_progressing(
@@ -1508,7 +1513,21 @@ pub(crate) async fn open_source(
         decoder.total_duration()
     };
     let stop: DownloadStop = Box::new(move || download.cancel());
-    Ok(OpenedSource { decoder, total, failed, forward_only, stop, progress })
+    Ok(OpenedSource { decoder, total, failed, forward_only, stop, progress, source_note })
+}
+
+/// The stream route's word for how it served a song: `disk` (a file it has)
+/// or `live` (YouTube relayed as it arrives, after its download failed).
+const HOST_SOURCE_HEADER: &str = "x-ember-source";
+
+/// What a stall message adds about the host's answer: nothing for a host
+/// that does not say (another server, or an older Ember).
+pub(crate) fn host_source_note(source: Option<&str>) -> String {
+    match source {
+        Some("live") => ", the host was relaying YouTube live".into(),
+        Some("disk") => ", the host was sending its copy".into(),
+        _ => String::new(),
+    }
 }
 
 /// Why a load gave up waiting while it was `stage` ("decoding", ...), in the
@@ -1808,7 +1827,10 @@ async fn load_claimed<R: Runtime>(
             )
             .await
             .map(|o| {
-                let OpenedSource { decoder, total, failed, forward_only, stop, progress } = o;
+                let OpenedSource { decoder, total, failed, forward_only, stop, progress, source_note } = o;
+                if !source_note.is_empty() {
+                    log_audio(app, "INFO", &format!("load #{my_seq} opened{source_note}"));
+                }
                 let source: Box<dyn rodio::Source + Send> = Box::new(decoder);
                 (source, total, failed, forward_only, Some(stop), Some(progress))
             })
