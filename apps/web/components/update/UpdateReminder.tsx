@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { detectShell } from '@/lib/playback/detectShell';
 import { detectDevicePlatform } from '@/lib/versions/device';
 import { appUpdateWaitsForTap, subscribeAppUpdate } from '@/lib/appUpdate';
@@ -37,9 +37,9 @@ const FLICK_MIN_PX = 20;
 /** Moved more than this (px) is a drag, not a tap. */
 const DRAG_SLOP_PX = 8;
 
-/** The desktop card closes by itself after this long (hover and keyboard
- *  focus pause it). */
-export const CARD_AUTO_HIDE_MS = 8000;
+/** The notice (bar and card) closes by itself after this long; touching,
+ *  hovering or keyboard focus pause it. */
+export const AUTO_HIDE_MS = 6000;
 
 /** Versions the pill was shown for since this app start (this page load). */
 const shown = new Set<string>();
@@ -144,16 +144,15 @@ export function UpdateReminder() {
     outTimer.current = setTimeout(() => setPhase('hidden'), OUT_MS);
   };
 
-  // Desktop card: closes by itself after a few seconds (like the phone bar
-  // is put away), unless it is busy (updating, waiting for the network) or
+  // Closes by itself after a few seconds, unless it is busy (updating, waiting for the network) or
   // the pointer or keyboard focus is on it. A failure restarts the count.
   const busy = forcing || applying || pending;
   useEffect(() => {
-    if (!isDesktop || phase !== 'in' || busy || paused) return;
-    const t = setTimeout(() => dismiss(), CARD_AUTO_HIDE_MS);
+    if (phase !== 'in' || busy || paused) return;
+    const t = setTimeout(() => dismiss(), AUTO_HIDE_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDesktop, phase, busy, paused, applyFailed]);
+  }, [phase, busy, paused, applyFailed]);
 
   // A new update: show once, out of the way of a song that just started.
   useEffect(() => {
@@ -209,6 +208,7 @@ export function UpdateReminder() {
   };
 
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
+    setPaused(true);
     if (phase === 'out' || forcing) return;
     drag.current = { x0: e.clientX, t0: Date.now(), id: e.pointerId, moved: false };
     try {
@@ -227,6 +227,7 @@ export function UpdateReminder() {
     setDx(x);
   };
   const onUp = (e: PointerEvent<HTMLDivElement>) => {
+    setPaused(false);
     const d = drag.current;
     if (!d) return;
     const x = e.clientX - d.x0;
@@ -242,12 +243,26 @@ export function UpdateReminder() {
     else drag.current = null;
   };
   const onCancel = () => {
+    setPaused(false);
     drag.current = null;
     setDragging(false);
     setDx(0);
   };
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape' && !forcing) dismiss();
+  };
+
+  const dragStyle: CSSProperties = {
+    touchAction: 'pan-y',
+    transform: dx ? `translateX(${dx}px)` : undefined,
+    opacity: phase === 'out' ? 0 : dx ? Math.max(0.35, 1 - Math.abs(dx) / 300) : undefined,
+    transition: dragging ? 'none' : `transform ${OUT_MS}ms ease-out, opacity ${OUT_MS}ms ease-out`,
+  };
+  const hoverProps = {
+    onPointerEnter: () => setPaused(true),
+    onPointerLeave: () => setPaused(false),
+    onFocus: () => setPaused(true),
+    onBlur: () => setPaused(false),
   };
 
   if (isDesktop) {
@@ -258,13 +273,14 @@ export function UpdateReminder() {
         data-kind={offer.kind}
         data-phase={phase}
         role="status"
-        onPointerEnter={() => setPaused(true)}
-        onPointerLeave={() => setPaused(false)}
-        onFocus={() => setPaused(true)}
-        onBlur={() => setPaused(false)}
+        {...hoverProps}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onCancel}
         onKeyDown={onKey}
-        style={{ right: 'calc(var(--ember-lyrics-w, 0px) + 1rem)' }}
-        className={`${CARD_CLASS} ${phase === 'in' ? 'ember-update-card-in' : 'ember-update-card-out'}`}
+        style={{ ...dragStyle, right: 'calc(var(--ember-lyrics-w, 0px) + 1rem)' }}
+        className={`${CARD_CLASS} ember-update-drag ${phase === 'in' ? 'ember-update-card-in' : 'ember-update-card-out'}`}
       >
         <ReminderMark version={offer.version} />
         <div className="min-w-0 flex-1">
@@ -276,7 +292,18 @@ export function UpdateReminder() {
           {words === REMINDER_WORDING.ready && <p className={CARD_LINE}>{REMINDER_WORDING.cardLine}</p>}
         </div>
         {action && (
-          <button type="button" data-testid="update-reminder-action" onClick={tap} className={CARD_ACTION_CLASS}>
+          <button
+            type="button"
+            data-testid="update-reminder-action"
+            onClick={(e) => {
+              if (drag.current?.moved) {
+                e.preventDefault();
+                return;
+              }
+              tap();
+            }}
+            className={CARD_ACTION_CLASS}
+          >
             {action}
           </button>
         )}
@@ -295,17 +322,13 @@ export function UpdateReminder() {
         data-phase={phase}
         role="status"
         {...(forcing ? {} : { 'aria-description': REMINDER_WORDING.swipeHint })}
+        {...hoverProps}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onCancel}
         onKeyDown={onKey}
-        style={{
-          touchAction: 'pan-y',
-          transform: dx ? `translateX(${dx}px)` : undefined,
-          opacity: phase === 'out' ? 0 : dx ? Math.max(0.35, 1 - Math.abs(dx) / 300) : undefined,
-          transition: dragging ? 'none' : `transform ${OUT_MS}ms ease-out, opacity ${OUT_MS}ms ease-out`,
-        }}
+        style={dragStyle}
         className={`${PILL_CLASS} ember-update-drag ${phase === 'in' ? 'ember-update-in' : ''}`}
       >
         <button

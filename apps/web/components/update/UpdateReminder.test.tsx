@@ -112,11 +112,27 @@ describe('UpdateReminder', () => {
     expect(pill.textContent?.match(/0\.7\.44/g)).toHaveLength(1);
   });
 
-  it('stays visible long past the old six seconds', () => {
+  it('stays 6 seconds, then hides by itself', () => {
     render(<UpdateReminder />);
     offer();
-    act(() => vi.advanceTimersByTime(SHOW_LONG_MS));
+    act(() => vi.advanceTimersByTime(5_900));
     expect(screen.getByTestId('update-reminder')).toHaveAttribute('data-phase', 'in');
+    act(() => vi.advanceTimersByTime(100 + 400));
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+  });
+
+  it('holding it pauses the 6 second timer; letting go restarts it', () => {
+    render(<UpdateReminder />);
+    offer();
+    const bar = screen.getByTestId('update-reminder');
+    fireEvent.pointerDown(bar, { clientX: 200, pointerId: 1 });
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.getByTestId('update-reminder')).toBeInTheDocument();
+    fireEvent.pointerUp(bar, { clientX: 200, pointerId: 1 });
+    act(() => vi.advanceTimersByTime(5_900));
+    expect(screen.getByTestId('update-reminder')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(600));
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
   });
 
   it('has no close button; it says how to put it away', () => {
@@ -323,10 +339,10 @@ describe('UpdateReminder on a desktop width: the corner card', () => {
     expect(card().style.right).toContain('--ember-lyrics-w');
   });
 
-  it('hides by itself after 8 seconds', () => {
+  it('hides by itself after 6 seconds', () => {
     render(<UpdateReminder />);
     offer();
-    act(() => vi.advanceTimersByTime(7_900));
+    act(() => vi.advanceTimersByTime(5_900));
     expect(card()).toHaveAttribute('data-phase', 'in');
     act(() => vi.advanceTimersByTime(100 + 400));
     expect(screen.queryByTestId('update-reminder')).toBeNull();
@@ -339,10 +355,28 @@ describe('UpdateReminder on a desktop width: the corner card', () => {
     act(() => vi.advanceTimersByTime(60_000));
     expect(card()).toHaveAttribute('data-phase', 'in');
     fireEvent.pointerLeave(card());
-    act(() => vi.advanceTimersByTime(7_900));
+    act(() => vi.advanceTimersByTime(5_900));
     expect(card()).toHaveAttribute('data-phase', 'in');
     act(() => vi.advanceTimersByTime(600));
     expect(screen.queryByTestId('update-reminder')).toBeNull();
+  });
+
+  it('a drag past the threshold slides the card away without updating', () => {
+    render(<UpdateReminder />);
+    offer();
+    swipe(-150);
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('a short drag springs back and never counts as a click on Update', () => {
+    render(<UpdateReminder />);
+    offer();
+    swipe(230, 600);
+    act(() => vi.advanceTimersByTime(400));
+    expect(card()).toHaveAttribute('data-phase', 'in');
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it('keyboard focus pauses it', () => {
@@ -356,7 +390,7 @@ describe('UpdateReminder on a desktop width: the corner card', () => {
   it('comes back at the next app start, not the same start', () => {
     const { unmount } = render(<UpdateReminder />);
     offer();
-    act(() => vi.advanceTimersByTime(9_000));
+    act(() => vi.advanceTimersByTime(7_000));
     expect(screen.queryByTestId('update-reminder')).toBeNull();
     act(() => vi.advanceTimersByTime(SHOW_LONG_MS));
     expect(screen.queryByTestId('update-reminder')).toBeNull();
@@ -383,14 +417,14 @@ describe('UpdateReminder on a desktop width: the corner card', () => {
     expect(screen.queryByTestId('update-reminder-action')).toBeNull();
   });
 
-  it('a failed update shows Retry and hides 8 seconds after the failure', () => {
+  it('a failed update shows Retry and hides 6 seconds after the failure', () => {
     render(<UpdateReminder />);
     act(() => useUpdateStore.getState().set({ status: 'available', offer: { kind: 'shell', version: '0.4.30', canApply: true, via: 'desktop' } }));
-    act(() => vi.advanceTimersByTime(9_000));
+    act(() => vi.advanceTimersByTime(7_000));
     expect(screen.queryByTestId('update-reminder')).toBeNull();
     act(() => useUpdateStore.getState().set({ applyFailed: true }));
     expect(screen.getByTestId('update-reminder-action')).toHaveTextContent(REMINDER_WORDING.retry);
-    act(() => vi.advanceTimersByTime(7_000));
+    act(() => vi.advanceTimersByTime(5_000));
     expect(card()).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(1_500));
     expect(screen.queryByTestId('update-reminder')).toBeNull();
@@ -398,11 +432,11 @@ describe('UpdateReminder on a desktop width: the corner card', () => {
 });
 
 describe('UpdateReminder on a phone width', () => {
-  it('keeps the full-width bar that stays until swiped away', () => {
+  it('keeps the full-width bar (swipeable, hides after 6 seconds)', () => {
     render(<UpdateReminder />);
     offer();
     expect(screen.getByTestId('update-reminder')).not.toHaveAttribute('data-variant');
     act(() => vi.advanceTimersByTime(SHOW_LONG_MS));
-    expect(screen.getByTestId('update-reminder')).toBeInTheDocument();
+    expect(screen.queryByTestId('update-reminder')).toBeNull();
   });
 });
