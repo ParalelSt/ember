@@ -45,10 +45,11 @@ describe('useCollectionPlayback: Shuffle on a list that is not playing', () => {
   });
 });
 
-describe('useCollectionPlayback: Shuffle pressed on the list already playing', () => {
+describe('useCollectionPlayback: Shuffle pressed on the list already playing (the player toggle)', () => {
   const tracks = Array.from({ length: 12 }, (_, i) => t(`s${i}`));
   const ids = (list: Track[]) => list.map((s) => s.id);
   const sorted = (list: string[]) => [...list].sort();
+  const ORIGINAL = ids(tracks);
 
   /** The list playing from song 5, a little way in. */
   const playing = (shuffleOn = false) => {
@@ -56,55 +57,51 @@ describe('useCollectionPlayback: Shuffle pressed on the list already playing', (
     return renderHook(() => useCollectionPlayback(tracks, playlist));
   };
 
-  it('keeps the song playing: no load, same song and position, shuffle on', () => {
+  it('shuffle off: on turns it on, the song keeps playing (no load, same position), the rest re-dealt once each', () => {
     const { result } = playing();
     playTrack.mockClear();
     act(() => result.current.shuffle());
     const st = usePlayerStore.getState();
     expect(playTrack).not.toHaveBeenCalled();
     expect(st.queue[st.index].id).toBe('s5');
-    expect(st.index).toBe(0);
     expect(st.position).toBe(42);
     expect(st.shuffle).toBe(true);
-    expect(st.orderBackup).toEqual(tracks);
+    expect(sorted(ids(st.queue))).toEqual(sorted(ORIGINAL));
+    expect(result.current.shuffleOn).toBe(true);
+    expect(result.current.active).toBe(true);
   });
 
-  it('puts every other song, the played ones too, up next exactly once', () => {
+  it('shuffle on: a press turns it OFF, original order back around the song playing', () => {
     const { result } = playing();
     act(() => result.current.shuffle());
+    playTrack.mockClear();
+    act(() => result.current.shuffle());
     const st = usePlayerStore.getState();
-    expect(sorted(ids(st.queue))).toEqual(sorted(ids(tracks)));
-    expect(st.queue.slice(1)).toHaveLength(11);
+    expect(playTrack).not.toHaveBeenCalled();
+    expect(st.shuffle).toBe(false);
+    expect(st.orderBackup).toBeNull();
+    expect(ids(st.queue)).toEqual(ORIGINAL);
+    expect(st.queue[st.index].id).toBe('s5');
+    expect(st.position).toBe(42);
+    expect(result.current.shuffleOn).toBe(false);
   });
 
-  it('builds a new up next on every press, never a toggle off', () => {
-    const { result } = playing(true);
+  it('off then on again gives a fresh order', () => {
+    const { result } = playing();
     const seen = new Set<string>();
     for (let n = 0; n < 6; n++) {
-      const before = ids(usePlayerStore.getState().queue.slice(1)).join();
       act(() => result.current.shuffle());
       const st = usePlayerStore.getState();
       expect(st.shuffle).toBe(true);
-      expect(st.queue[0].id).toBe('s5');
-      const after = ids(st.queue.slice(1)).join();
-      expect(after).not.toBe(before);
-      seen.add(after);
+      expect(st.queue[st.index].id).toBe('s5');
+      seen.add(ids(st.queue).join());
+      act(() => result.current.shuffle());
+      expect(ids(usePlayerStore.getState().queue)).toEqual(ORIGINAL);
     }
     expect(seen.size).toBeGreaterThan(1);
   });
 
-  it('never rebuilds the up next that is already queued (2 other songs)', () => {
-    const three = [t('p'), t('q'), t('r')];
-    usePlayerStore.setState({ queue: three, index: 0, context: playlist, shuffle: false, orderBackup: null });
-    const { result } = renderHook(() => useCollectionPlayback(three, playlist));
-    for (let n = 0; n < 30; n++) {
-      const before = ids(usePlayerStore.getState().queue.slice(1)).join();
-      act(() => result.current.shuffle());
-      expect(ids(usePlayerStore.getState().queue.slice(1)).join()).not.toBe(before);
-    }
-  });
-
-  it('keeps songs queued by hand right after the song playing', () => {
+  it('keeps songs queued by hand right after the song playing when turned on', () => {
     const hand = { ...t('h'), queued: true } as Track;
     usePlayerStore.setState({ queue: [...tracks.slice(0, 6), hand, ...tracks.slice(6)], index: 5, context: playlist, shuffle: false, orderBackup: null });
     const { result } = renderHook(() => useCollectionPlayback(tracks, playlist));

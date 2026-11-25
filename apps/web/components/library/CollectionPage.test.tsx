@@ -120,18 +120,18 @@ describe('CollectionPage', () => {
     const shuffle = vi.fn();
     render(<CollectionPage {...props({ playback: { play, shuffle, shuffleOn: false, active: false } })} />);
     within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Play' }).click();
-    screen.getByRole('button', { name: 'Shuffle play' }).click();
+    screen.getByRole('button', { name: 'Shuffle' }).click();
     expect(play).toHaveBeenCalledTimes(1);
     expect(shuffle).toHaveBeenCalledTimes(1);
   });
 
   it('draws Shuffle as a soft circle that gets a thin Ember border while on', () => {
     const { rerender } = render(<CollectionPage {...props()} />);
-    const off = screen.getByRole('button', { name: 'Shuffle play' });
+    const off = screen.getByRole('button', { name: 'Shuffle' });
     expect(off).toHaveClass('size-12', 'rounded-full', 'bg-secondary', 'border-transparent');
     expect(off).not.toHaveClass('border-ember');
     rerender(<CollectionPage {...props({ playback: { play: noop, shuffle: noop, shuffleOn: true, active: true } })} />);
-    const on = screen.getByRole('button', { name: 'Shuffle play' });
+    const on = screen.getByRole('button', { name: 'Shuffle off' });
     expect(on).toHaveAttribute('aria-pressed', 'true');
     expect(on).toHaveClass('border-ember', 'text-ember');
   });
@@ -478,7 +478,7 @@ describe('CollectionPage search in list', () => {
     render(<CollectionPage {...props({ tracks: four })} />);
     const box = screen.getByTestId('list-search');
     expect(box.getAttribute('data-variant')).toBe('soft');
-    expect(box.parentElement).toBe(screen.getByLabelText('Shuffle play').parentElement);
+    expect(box.parentElement).toBe(screen.getByLabelText('Shuffle').parentElement);
     expect(screen.queryByTestId('list-search-toggle')).toBeNull();
   });
 
@@ -489,7 +489,7 @@ describe('CollectionPage search in list', () => {
     fireEvent.click(screen.getByTestId('list-search-toggle'));
     const box = screen.getByTestId('list-search');
     expect(box.getAttribute('data-variant')).toBe('underline');
-    expect(box.parentElement).not.toBe(screen.getByLabelText('Shuffle play').parentElement);
+    expect(box.parentElement).not.toBe(screen.getByLabelText('Shuffle').parentElement);
   });
 
   it('empty state with the query and a Clear button; the x and Escape clear', () => {

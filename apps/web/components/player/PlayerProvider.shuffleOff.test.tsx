@@ -71,12 +71,18 @@ describe('player shuffle toggle with the real provider', () => {
     expect(st().orderBackup).toBeNull();
   });
 
-  it('after Shuffle play on the page (and a re-press), the player toggle turns it off for good', async () => {
+  it('the page button is the same toggle: on, off (original order), on again, then the player toggle off', async () => {
     render(<PlayerProvider><Grab /></PlayerProvider>);
     act(() => controls!.playTrack(LIST[2], LIST, CTX));
     await flush();
     act(() => page!.shuffle());
     await flush();
+    expect(st().shuffle).toBe(true);
+    expect(st().queue[st().index].id).toBe(LIST[2].id);
+    act(() => page!.shuffle());
+    await flush();
+    expect(st().shuffle).toBe(false);
+    expect(ids()).toEqual(ORIGINAL);
     act(() => page!.shuffle());
     await flush();
     expect(st().shuffle).toBe(true);
@@ -86,7 +92,6 @@ describe('player shuffle toggle with the real provider', () => {
     expect(st().shuffle).toBe(false);
     expect(ids()).toEqual(ORIGINAL);
     expect(st().queue[st().index].id).toBe(playing);
-    // next follows the original order
     act(() => controls!.next());
     await flush();
     const i = ORIGINAL.indexOf(playing);

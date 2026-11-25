@@ -267,8 +267,8 @@ export function CollectionPage({
                   disabled={!tracks.length}
                   aria-pressed={playback.active && playback.shuffleOn}
                   className={cn(ACTION_CIRCLE, playback.active && playback.shuffleOn && ACTION_CIRCLE_ON)}
-                  aria-label="Shuffle play"
-                  title="Shuffle play"
+                  aria-label={playback.active && playback.shuffleOn ? 'Shuffle off' : 'Shuffle'}
+                  title={playback.active && playback.shuffleOn ? 'Shuffle off' : 'Shuffle play'}
                 >
                   <ShuffleIcon className="h-5 w-5" />
                 </button>
