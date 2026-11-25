@@ -271,6 +271,32 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
   /** The play history native last reported, joined (only a change is passed on). */
   let playedKey: string | null = null;
 
+  /** The song ids of the queue this page has, as far as this backend has
+   *  seen it: what it sent native (setQueue) or was told native has (the
+   *  `queue` event, getQueue). Null until the page has a queue. Native's
+   *  index means an entry of THIS list only while the two agree. */
+  let pageIds: string[] | null = null;
+  /** Counts the page's own setQueue calls: a queue answer asked for before
+   *  the latest one is older than the list the page just sent. */
+  let pageSends = 0;
+  /** The mismatch (index, song, list) a queue answer already failed to
+   *  explain: asked about once, not on every state after it. */
+  let unexplained: string | null = null;
+
+  /** Native's queue as the page's own, unless the page has it already.
+   *  Empty is not taken: a native player that lost its queue must not wipe
+   *  the page's list (play then hands it back). */
+  const takeQueue = (q: { tracks?: Track[]; index?: number; shuffle?: boolean } | null | undefined): void => {
+    if (!q || !Array.isArray(q.tracks) || q.tracks.length === 0 || typeof q.index !== 'number') return;
+    const ids = q.tracks.map((x) => x.id);
+    if (pageIds && pageIds.length === ids.length && pageIds.every((id, k) => id === ids[k])) return;
+    pageIds = ids;
+    index = q.index;
+    trackId = ids[q.index] ?? null;
+    if (nativeShuffle && typeof q.shuffle === 'boolean') onShuffleReport(q.shuffle);
+    events.onQueueReplaced?.(q.tracks, q.index, nativeShuffle && typeof q.shuffle === 'boolean' ? { shuffle: q.shuffle } : undefined);
+  };
+
   /** Catching up after the page was away (hidden, or frozen by the WebView).
    *
    *  Chromium freezes a hidden page that plays no sound of its own after a
@@ -284,7 +310,13 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
    *  So on coming back (and on any state that says it is old) the page asks
    *  native for its state, and drops every state event until the answer
    *  lands: the answer comes down the same line as the events, after all the
-   *  held ones, so everything before it is older than it. */
+   *  held ones, so everything before it is older than it.
+   *
+   *  It asks for native's queue too, and takes it before the state: native
+   *  plays on for hours without the page (radio adds songs, the car picks a
+   *  list), and native's index laid over a list the page never heard about
+   *  showed one song while another played (bug report 2026-11-17). A state
+   *  whose song is not the page's entry at its index asks the same way. */
   let resyncing = false;
   let resyncSeq = 0;
   let resyncTimer: ReturnType<typeof setTimeout> | undefined;
@@ -292,21 +324,26 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     if (!p || resyncing) return;
     resyncing = true;
     const seq = ++resyncSeq;
-    const done = (s: NativeState | null) => {
+    const sendsAtAsk = pageSends;
+    const done = (s: NativeState | null, q: { tracks?: Track[]; index?: number; shuffle?: boolean } | null) => {
       if (seq !== resyncSeq || destroyed) return;
       clearTimeout(resyncTimer);
       resyncing = false;
+      // A list the page sent after asking is newer than this answer.
+      if (sendsAtAsk === pageSends) takeQueue(q);
       if (s && typeof s === 'object') applyState(s);
     };
-    resyncTimer = setTimeout(() => done(null), RESYNC_GIVE_UP_MS);
-    let answer: Promise<NativeState>;
+    resyncTimer = setTimeout(() => done(null, null), RESYNC_GIVE_UP_MS);
+    let answer: Promise<[NativeState, { tracks: Track[]; index: number; shuffle?: boolean } | null]>;
     try {
-      answer = p.getState();
+      const state = p.getState();
+      const queue = typeof p.getQueue === 'function' ? Promise.resolve(p.getQueue()).catch(() => null) : Promise.resolve(null);
+      answer = Promise.all([state, queue]);
     } catch {
-      done(null);
+      done(null, null);
       return;
     }
-    Promise.resolve(answer).then(done, () => done(null));
+    answer.then(([s, q]) => done(s, q), () => done(null, null));
   };
   const onState = (s: NativeState) => {
     // The auto cache's view of the same event (cached ids, offline flags):
@@ -321,11 +358,24 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     applyState(s);
   };
   const applyState = (s: NativeState) => {
+    // Native plays a song that is not the page's entry at that index: the
+    // two lists differ. Ask for native's (once per mismatch) rather than
+    // move the bar to the wrong song; the answer brings a fresh state too.
+    const id = s.trackId ?? null;
+    if (settled && id && s.index >= 0 && pageIds && pageIds[s.index] !== id && typeof p?.getQueue === 'function') {
+      const key = `${s.index}\u0000${id}\u0000${pageIds.join('\u0000')}`;
+      if (key !== unexplained) {
+        unexplained = key;
+        resync();
+        return;
+      }
+    }
     paused = !s.playing;
-    trackId = s.trackId ?? null;
-    if (s.index !== index) {
+    if (s.index !== index || id !== trackId) {
       index = s.index;
-      events.onQueueIndex?.(s.index);
+      trackId = id;
+      // The song id goes along: the page moves to the entry that has it.
+      events.onQueueIndex?.(s.index, id ? { trackId: id } : undefined);
     }
     if (s.duration !== duration) {
       duration = s.duration;
@@ -380,6 +430,7 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
       'queue',
       ((d: { tracks: Track[]; index: number; shuffle?: boolean }) => {
         index = d.index;
+        if (Array.isArray(d?.tracks)) pageIds = d.tracks.map((x) => x.id);
         // The flag comes first from native (session extras before the
         // queue); a report of it here is only news when the state event has
         // not carried it yet.
@@ -429,6 +480,8 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
   let held: Held | null = null;
   const send = (h: Held, play: boolean) => {
     if (!p) return;
+    pageIds = h.tracks.map((x) => x.id);
+    pageSends++;
     const at = h.startSec && h.startSec > 0 ? { startSec: h.startSec } : {};
     call(p.setQueue({ tracks: h.tracks, index: h.i, play, ...nativeQueueContext(h.origin), ...at }));
   };
@@ -442,6 +495,8 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
       const same = (a: Track[], b: Track[]) => a.length === b.length && a.every((t, k) => t.id === b[k]?.id);
       if (q && q.tracks.length > 0 && !same(q.tracks, h.tracks)) {
         index = q.index;
+        pageIds = q.tracks.map((x) => x.id);
+        trackId = pageIds[q.index] ?? null;
         events.onQueueReplaced?.(q.tracks, q.index);
       } else if (!q && h.tracks[s!.index]?.id !== s!.trackId) {
         // An app build that cannot say its queue: the saved one it is.
@@ -449,6 +504,12 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
       }
     } else if (h) {
       send(h, false);
+    } else if (nativeHas && q && pageSends === 0) {
+      // Native answered before the page handed over a saved queue (a page
+      // re-created while the music played): what plays is native's list.
+      // Not after the page sent one of its own (a sign-out's empty queue
+      // goes straight over and must not bring the old one back).
+      takeQueue(q);
     }
     if (s) applyState(s);
   };
@@ -513,6 +574,9 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
       // waits, or native's answer would hand its old queue straight back.
       if (!settled && !play && tracks.length > 0) {
         held = { tracks, i, origin, startSec };
+        // The page shows it already, whether or not native takes it.
+        pageIds = tracks.map((x) => x.id);
+        pageSends++;
         return;
       }
       // Anything the listener did replaces a saved queue still waiting.

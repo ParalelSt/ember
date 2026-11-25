@@ -244,7 +244,7 @@ describe('androidBackend: a page starting while native already plays', () => {
     await flush();
     expect(n.plugin.setQueue).not.toHaveBeenCalled();
     expect(events.onQueueReplaced).not.toHaveBeenCalled();
-    expect(events.onQueueIndex).toHaveBeenCalledWith(2);
+    expect(events.onQueueIndex).toHaveBeenCalledWith(2, { trackId: 'c' });
   });
 
   it('native empty (a fresh start): the saved queue goes over, paused, as before', async () => {

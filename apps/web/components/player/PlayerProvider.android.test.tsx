@@ -281,6 +281,48 @@ describe('android: a queue native built by itself', () => {
   });
 });
 
+// Bug report 2026-11-17: the bar showed the page's entry at native's index,
+// a different song from the one native played. The song id decides.
+describe('android: native moving on, by song and not only by index', () => {
+  it('goes to the entry that holds the song native plays', () => {
+    usePlayerStore.setState({ queue: [A, B, C, D], index: 0, isPlaying: true });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    native.setQueue.mockClear();
+    act(() => { ev!.onQueueIndex!(1, { trackId: D.id }); });
+    expect(usePlayerStore.getState().index).toBe(3);
+    // Native is already on it: nothing goes back over.
+    expect(native.setQueue).not.toHaveBeenCalled();
+  });
+
+  it('an index past the end of the page\'s list still finds the song', () => {
+    usePlayerStore.setState({ queue: [A, B, C], index: 0, isPlaying: true });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onQueueIndex!(7, { trackId: C.id }); });
+    expect(usePlayerStore.getState().index).toBe(2);
+  });
+
+  it('a song the page does not have leaves the bar where it is instead of on a wrong one', () => {
+    usePlayerStore.setState({ queue: [A, B, C], index: 0, isPlaying: true });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onQueueIndex!(1, { trackId: 'youtube:elsewhere' }); });
+    expect(usePlayerStore.getState().index).toBe(0);
+  });
+
+  it('a song listed twice: the copy nearest native\'s index', () => {
+    usePlayerStore.setState({ queue: [B, A, C, B], index: 1, isPlaying: true });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onQueueIndex!(3, { trackId: B.id }); });
+    expect(usePlayerStore.getState().index).toBe(3);
+  });
+
+  it('the same index with another song under it moves to that song', () => {
+    usePlayerStore.setState({ queue: [A, B, C], index: 1, isPlaying: true });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onQueueIndex!(1, { trackId: C.id }); });
+    expect(usePlayerStore.getState().index).toBe(2);
+  });
+});
+
 describe('android: where a restored song starts', () => {
   it('a cold start restoring the saved queue resumes where the listener was', () => {
     usePlayerStore.setState({ queue: [A, B], index: 1, position: 95 });
