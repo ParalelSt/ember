@@ -577,3 +577,33 @@ describe('NowPlaying: the shuffle button', () => {
     expect(within(view()).getByRole('button', { name: 'Shuffle off' })).toBeInTheDocument();
   });
 });
+
+describe('NowPlaying: shuffle off after shuffle on', () => {
+  const list = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => ({ ...TRACK, id, sourceId: id }));
+
+  const pick = (n: string) => within(view()).getByRole('button', { name: n });
+
+  it('puts the original order back around the playing song, flag off, button unlit', () => {
+    usePlayerStore.setState({
+      queue: list, index: 2, context: { type: 'playlist', playlistId: 'p1', playlistName: 'P' }, shuffle: false, orderBackup: null,
+    });
+    player.current = list[2];
+    render(<NowPlaying />);
+    fireEvent.click(pick('Shuffle'));
+    const s = usePlayerStore.getState();
+    expect(s.shuffle).toBe(true);
+    expect(s.queue[s.index].id).toBe('c');
+    const on = pick('Shuffle off');
+    expect(on).toHaveAttribute('aria-pressed', 'true');
+    expect(on).toHaveClass('text-ember');
+    fireEvent.click(on);
+    const after = usePlayerStore.getState();
+    expect(after.shuffle).toBe(false);
+    expect(after.orderBackup).toBeNull();
+    expect(after.queue.map((t) => t.id)).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+    expect(after.queue[after.index].id).toBe('c');
+    const off = pick('Shuffle');
+    expect(off).toHaveAttribute('aria-pressed', 'false');
+    expect(off).not.toHaveClass('text-ember');
+  });
+});

@@ -541,3 +541,30 @@ describe('PlayerBar: offline banner', () => {
     expect(screen.getAllByRole('status')).toHaveLength(1);
   });
 });
+
+describe('PlayerBar: shuffle off after shuffle on', () => {
+  const list = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => ({ ...TRACK, id, sourceId: id }));
+
+  it('puts the original order back around the playing song, flag off, button unlit', () => {
+    usePlayerStore.setState({
+      queue: list, index: 2, context: { type: 'playlist', playlistId: 'p1', playlistName: 'P' }, shuffle: false, orderBackup: null,
+    });
+    render(<PlayerBar />);
+    fireEvent.click(shuffleBtn('Shuffle'));
+    const s = usePlayerStore.getState();
+    expect(s.shuffle).toBe(true);
+    expect(s.queue[s.index].id).toBe('c');
+    const on = shuffleBtn('Shuffle off');
+    expect(on).toHaveAttribute('aria-pressed', 'true');
+    expect(on).toHaveClass('text-ember');
+    fireEvent.click(on);
+    const after = usePlayerStore.getState();
+    expect(after.shuffle).toBe(false);
+    expect(after.orderBackup).toBeNull();
+    expect(after.queue.map((t) => t.id)).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+    expect(after.queue[after.index].id).toBe('c');
+    const off = shuffleBtn('Shuffle');
+    expect(off).toHaveAttribute('aria-pressed', 'false');
+    expect(off).not.toHaveClass('text-ember');
+  });
+});
