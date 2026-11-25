@@ -1,11 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import PocketBase from 'pocketbase';
+import PocketBase, { type RecordModel } from 'pocketbase';
 import { serverLogger } from '@/lib/logger/server';
 import { PUBLIC_PATHS, isPublicPage as isPublicPath } from '@/lib/publicPaths';
 import { checkRateLimit, clientIp, type RateLimitConfig } from '@/lib/rateLimitCore';
 import { linkCookie } from '@/lib/qrLogin/codes';
 import { UI_MODE_PARAM, parseUiMode, uiModeSetCookie } from '@/lib/uiMode';
 import { perfLogEnabled } from '@/lib/perf/hostSwitch';
+import { cachedSession, forgetAllSessions, forgetUser, shouldRotate, verifySession } from '@/lib/sessionCache';
 
 // Middleware runs server-side, so it needs an absolute URL. The public
 // NEXT_PUBLIC_POCKETBASE_URL may be the relative `/pb` proxy path; fall back to
@@ -151,6 +152,24 @@ export function isPbSignUpPath(path: string): boolean {
   return PB_SIGNUP_ROUTE.test(full.slice(3));
 }
 
+/** A users record written through /pb (PocketBase's id for the users
+ *  collection included), and the reset links that change a password or
+ *  email by token. */
+const PB_USER_RECORD = /^\/api\/collections\/(users|_pb_users_auth_)\/records\/([a-z0-9]{15})\/?$/;
+const PB_USER_CONFIRM = /^\/api\/collections\/(users|_pb_users_auth_)\/confirm-(password-reset|email-change)\/?$/;
+
+/** Whose remembered sessions (lib/sessionCache) a /pb request may end: a
+ *  user id for a write to that users record, 'all' for a reset link, null
+ *  for anything else. */
+export function pbSessionChange(method: string, path: string): string | 'all' | null {
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null;
+  const full = normalizePath(path);
+  if (full === null || !/^\/pb(\/|$)/.test(full)) return null;
+  const pbPath = full.slice(3);
+  if (PB_USER_CONFIRM.test(pbPath)) return 'all';
+  return PB_USER_RECORD.exec(pbPath)?.[2] ?? null;
+}
+
 /** PocketBase's own error shape, so the sign-in form shows it as it shows
  *  any other PocketBase error. */
 function tooManyAttempts(retryAfter: number): Response {
@@ -253,41 +272,73 @@ export default async function proxy(req: NextRequest) {
   /** How long the session check took, for the Server-Timing header. */
   let authMs: number | null = null;
 
-  // If the token is close to expiring, refresh and write the new cookie back
-  // so subsequent requests don't re-hit the same code path.
+  // The session check (docs/android-performance.md, section 9). A token
+  // PocketBase accepted moments ago is accepted from memory
+  // (lib/sessionCache: hashed, bounded, SESSION_CACHE_TTL_MS, never past the
+  // token's expiry); otherwise PocketBase is asked with an auth refresh. The
+  // browser only gets the new token once its own is an hour old: a cookie
+  // that changed on every request meant no answer was ever reused, and the
+  // route checked it all over again.
   if (pb.authStore.isValid) {
-    const authStart = performance.now();
-    try {
-      await pb.collection('users').authRefresh();
-      authMs = performance.now() - authStart;
-      setCookies.push(pb.authStore.exportToCookie(cookieOpts));
-    } catch (e) {
-      // An expired or invalid token is ROUTINE, someone came back after a
-      // fortnight, or the server was reinstalled. Logging it as an error fills
-      // the host's error log (and every bug report, which counts server errors)
-      // with non-events and buries the real ones. Only unexpected failures,
-      // PocketBase unreachable, a 5xx, deserve the error log.
-      const status = (e as { status?: number } | undefined)?.status;
-      const expiredSession = status === 401 || status === 403;
-      if (!expiredSession) {
-        serverLogger.error('middleware', 'authRefresh failed', { status }, e, {
-          reqId,
-          route: req.nextUrl.pathname,
-        });
-        checkFailed = true;
-      }
-      authMs = performance.now() - authStart;
-      pb.authStore.clear();
-      if (expiredSession) {
-        // A session PocketBase refuses is dead for good (bughunt V5): drop
-        // the cookie in the browser, and keep it from this request's render,
-        // whose root layout would otherwise paint a signed-in shell from it
-        // and set every signed-in fetch off into a 401.
+    const token = pb.authStore.token;
+    const cookieRecord = JSON.stringify(pb.authStore.record ?? null);
+    /** Keep `nextToken` with PocketBase's record in the auth store, and
+     *  send the browser a cookie when either differs from the one it sent:
+     *  the root layout paints the name and theme from the cookie's copy. */
+    const settle = (nextToken: string, record: RecordModel) => {
+      pb.authStore.save(nextToken, record);
+      if (nextToken !== token || JSON.stringify(record) !== cookieRecord) {
         setCookies.push(pb.authStore.exportToCookie(cookieOpts));
-        requestHeaders.set('cookie', withoutCookie(req.headers.get('cookie') ?? '', 'pb_auth'));
+      }
+    };
+    const authStart = performance.now();
+    const hit = cachedSession(token);
+    if (hit) {
+      settle(token, hit);
+      authMs = performance.now() - authStart;
+    } else {
+      try {
+        const fresh = await verifySession(token, async () => {
+          const res = await pb.collection('users').authRefresh({ requestKey: null });
+          return { record: res.record, token: res.token };
+        });
+        authMs = performance.now() - authStart;
+        settle(shouldRotate(token, fresh.token) ? fresh.token : token, fresh.record);
+      } catch (e) {
+        // An expired or invalid token is ROUTINE, someone came back after a
+        // fortnight, or the server was reinstalled. Logging it as an error fills
+        // the host's error log (and every bug report, which counts server errors)
+        // with non-events and buries the real ones. Only unexpected failures,
+        // PocketBase unreachable, a 5xx, deserve the error log.
+        const status = (e as { status?: number } | undefined)?.status;
+        const expiredSession = status === 401 || status === 403;
+        if (!expiredSession) {
+          serverLogger.error('middleware', 'authRefresh failed', { status }, e, {
+            reqId,
+            route: req.nextUrl.pathname,
+          });
+          checkFailed = true;
+        }
+        authMs = performance.now() - authStart;
+        pb.authStore.clear();
+        if (expiredSession) {
+          // A session PocketBase refuses is dead for good (bughunt V5): drop
+          // the cookie in the browser, and keep it from this request's render,
+          // whose root layout would otherwise paint a signed-in shell from it
+          // and set every signed-in fetch off into a 401.
+          setCookies.push(pb.authStore.exportToCookie(cookieOpts));
+          requestHeaders.set('cookie', withoutCookie(req.headers.get('cookie') ?? '', 'pb_auth'));
+        }
       }
     }
   }
+
+  // A change to a member's account through /pb (their own password or
+  // email) can end their other sessions at PocketBase: stop vouching for
+  // them from memory. A password reset by link names nobody: forget all.
+  const sessionChange = pbSessionChange(req.method, req.nextUrl.pathname);
+  if (sessionChange === 'all') forgetAllSessions();
+  else if (sessionChange) forgetUser(sessionChange);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('x-request-id', reqId);
@@ -296,7 +347,9 @@ export default async function proxy(req: NextRequest) {
   if (authMs !== null && perfLogEnabled()) response.headers.append('server-timing', `auth;dur=${authMs.toFixed(1)}`);
   for (const c of setCookies) response.headers.append('set-cookie', c);
 
-  const user = pb.authStore.record;
+  // Only a record that came with a live token counts: the cookie's copy of
+  // an expired session is not a session (the routes refuse it too).
+  const user = pb.authStore.isValid ? pb.authStore.record : null;
   const path = req.nextUrl.pathname;
 
   const isPublicPage = isPublicPath(path);

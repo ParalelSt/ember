@@ -145,9 +145,9 @@ export function createWorld() {
           },
           getFullList: async (opts: { filter?: string; sort?: string; expand?: string } = {}) =>
             list(opts.filter, opts.sort, opts.expand),
-          getList: async (_page: number, perPage: number, opts: { filter?: string; sort?: string; expand?: string } = {}) => {
+          getList: async (page: number, perPage: number, opts: { filter?: string; sort?: string; expand?: string } = {}) => {
             const all = list(opts.filter, opts.sort, opts.expand);
-            return { items: all.slice(0, perPage), totalItems: all.length };
+            return { items: all.slice((page - 1) * perPage, page * perPage), totalItems: all.length };
           },
           getFirstListItem: async (filter: string, opts: { sort?: string; expand?: string } = {}) => {
             const first = list(filter, opts.sort, opts.expand)[0];

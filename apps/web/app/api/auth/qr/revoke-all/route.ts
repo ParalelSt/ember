@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
+import { forgetUser } from '@/lib/sessionCache';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { serverLogger } from '@/lib/logger/server';
 import { rateLimitResponse } from '@/lib/rateLimit';
@@ -28,6 +29,9 @@ export const POST = withRequestLog('auth/qr/revoke-all', async (req: NextRequest
     const pb = await createAdminClient();
     await cancelApprovedFor(pb, user.id);
     await pb.send('/api/ember/qr-login/revoke-all', { method: 'POST', body: { user: user.id }, requestKey: null });
+    // This server's memory of their sessions goes too, or they would keep
+    // working for the cache window (lib/sessionCache).
+    forgetUser(user.id);
     serverLogger.info('auth', 'signed out everywhere', { userId: user.id });
     return json({ ok: true });
   } catch (e) {

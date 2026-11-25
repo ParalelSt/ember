@@ -4,6 +4,7 @@ import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { serverLogger } from '@/lib/logger/server';
 import { artworkUrl, collabClient, playlistArtworks, sharedWith } from '@/lib/playlistAccess';
+import { cachedPlaylistList, playlistListGeneration, rememberPlaylistList } from '@/lib/playlistListCache';
 import type { Playlist } from '@/types/track';
 
 const MAX_NAME_LEN = 200;
@@ -12,10 +13,16 @@ const MAX_NAME_LEN = 200;
  *  people added you to (newest share first, `role: 'member'`, with the
  *  owner's name). Each carries `track_artworks`, the covers of its first
  *  few distinct songs, for the phone Home's mosaic tiles, and
- *  `track_count`, how many songs it has (the phone Library's rows). */
+ *  `track_count`, how many songs it has (the phone Library's rows).
+ *  Remembered per person for a short while and forgotten on any playlist
+ *  change (lib/playlistListCache); only a complete answer is kept. */
 export const GET = withRequestLog('playlists', async () => {
   try {
     const { pb, user } = await requireUser();
+    const cached = cachedPlaylistList<Playlist[]>(user.id);
+    if (cached) return Response.json({ playlists: cached });
+    const generation = playlistListGeneration();
+    let complete = true;
     const records = await pb.collection('playlists').getFullList({
       filter: `user = "${user.id}"`,
       sort: '-created',
@@ -33,6 +40,7 @@ export const GET = withRequestLog('playlists', async () => {
     try {
       shared = await sharedWith(await collabClient(), user.id);
     } catch (e) {
+      complete = false;
       serverLogger.error('api', 'shared playlists lookup failed', { userId: user.id }, e instanceof Error ? e : undefined);
     }
     // Covers are decoration: if they cannot be read the list still loads.
@@ -43,6 +51,7 @@ export const GET = withRequestLog('playlists', async () => {
       artworks = found;
       counts = found.counts;
     } catch (e) {
+      complete = false;
       serverLogger.error('api', 'playlist artworks lookup failed', { userId: user.id }, e instanceof Error ? e : undefined);
     }
     // The song count rides on the same rows; when they could not be read it
@@ -52,6 +61,7 @@ export const GET = withRequestLog('playlists', async () => {
       track_artworks: artworks.get(p.id) ?? [],
       ...(counts ? { track_count: counts.get(p.id) ?? 0 } : {}),
     }));
+    if (complete) rememberPlaylistList(user.id, generation, playlists);
     return Response.json({ playlists });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

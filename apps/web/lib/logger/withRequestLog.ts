@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { serverLogger, requestContext } from './server';
 import { verifiedUserId } from '@/lib/auth';
+import { changesPlaylists, playlistsChanged } from '@/lib/playlistListCache';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RouteHandler<Ctx = any> = (req: NextRequest, ctx: Ctx) => Promise<Response> | Response;
@@ -78,6 +79,7 @@ export function withRequestLog<Ctx = unknown>(
     try {
       res = await requestContext.run({ reqId, route: name, userId }, () => handler(req, ctx));
     } catch (e) {
+      if (changesPlaylists(name, method)) playlistsChanged();
       const durationMs = Date.now() - start;
       serverLogger.error(
         'api',
@@ -88,6 +90,10 @@ export function withRequestLog<Ctx = unknown>(
       );
       return Response.json({ error: 'Internal error' }, { status: 500 });
     }
+
+    // A write that may have changed a playlist list (lib/playlistListCache)
+    // forgets the remembered lists once it is done, whatever it answered.
+    if (changesPlaylists(name, method)) playlistsChanged();
 
     const durationMs = Date.now() - start;
     if (res.status === 429) {

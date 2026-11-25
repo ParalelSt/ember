@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { fileUrl } from '@/lib/pocketbase/fileUrl';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { deleteMember } from '@/lib/tabStore';
+import { forgetUser } from '@/lib/sessionCache';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const MAX_NAME_LEN = 50;
@@ -36,6 +37,8 @@ export const PATCH = withRequestLog('admin/users/[id]', async (req: NextRequest,
 
     const pb = await createAdminClient();
     const updated = await pb.collection('users').update(id, patch);
+    // The admin flag is read from the remembered session (lib/sessionCache).
+    forgetUser(id);
     return Response.json({
       ok: true,
       user: {
@@ -63,6 +66,7 @@ export const DELETE = withRequestLog('admin/users/[id]', async (_req: NextReques
     }
     const pb = await createAdminClient();
     await deleteMember(pb, id);
+    forgetUser(id);
     return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
