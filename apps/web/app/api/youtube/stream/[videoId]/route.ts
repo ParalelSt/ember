@@ -24,7 +24,15 @@ import { fromError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
 import { queueCacheWarm } from '@/lib/streamCache';
 import { clearTrackUnavailable, freshUnavailableMark, listUnavailableIds, markTrackUnavailable } from '@/lib/trackAvailability';
-import { forgetFailure, recentFailure, rememberTransient, rememberUnavailable } from '@/lib/sources/failureMemo';
+import {
+  forgetDownloadFailure,
+  forgetFailure,
+  recentDownloadFailure,
+  recentFailure,
+  rememberDownloadFailed,
+  rememberTransient,
+  rememberUnavailable,
+} from '@/lib/sources/failureMemo';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { isBusyError } from '@/lib/downloadGate';
 import { busyResponse, isPrefetchRequest, PREFETCH_HEADERS, prefetchLimitResponse } from '@/lib/prefetch';
@@ -57,6 +65,16 @@ function streamMode(): 'cache' | 'proxy' {
   const m = (process.env.STREAM_MODE ?? 'cache').toLowerCase();
   return m === 'proxy' ? 'proxy' : 'cache';
 }
+
+/** Which answer the host gave, for the player's log: `disk` is a file it
+ *  has, `live` is YouTube relayed as it arrives (the download failed). A
+ *  stall report that says which one it was explains itself. */
+const SOURCE_HEADER = 'X-Ember-Source';
+
+/** A request the host takes longer than this to answer is logged: a
+ *  player gives up on an answer after 25 s, so anything near that is worth
+ *  seeing on the host too. */
+const SLOW_ANSWER_MS = 5_000;
 
 /** Strips path separators / quotes / control chars from a download filename
  *  so the Content-Disposition stays a valid one-segment file name. */
@@ -141,6 +159,7 @@ function serveFile(
       const stream = fs.createReadStream(filePath, { start, end });
       const headers = new Headers({
         ...extra,
+        [SOURCE_HEADER]: 'disk',
         'Content-Range': `bytes ${start}-${end}/${stat.size}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': String(chunk),
@@ -155,6 +174,7 @@ function serveFile(
   const stream = fs.createReadStream(filePath);
   const headers = new Headers({
     ...extra,
+    [SOURCE_HEADER]: 'disk',
     'Content-Length': String(stat.size),
     'Content-Type': mime,
     'Accept-Ranges': 'bytes',
@@ -244,6 +264,10 @@ function cannotLoadResponse(videoId: string, detail: string) {
   // Remembered briefly, so the player's immediate retries get this answer at
   // once instead of each waiting through the same failure again.
   rememberTransient(videoId, detail);
+  // The live relay is not working either, so this song is not one to relay
+  // without trying its download: once the short memory above is over, the
+  // next request makes a full attempt.
+  forgetDownloadFailure(videoId);
   return Response.json(
     { error: `This song could not be loaded right now (${detail}).`, cause: 'stream-failed' },
     { status: 502, headers: NO_STORE },
@@ -262,7 +286,32 @@ async function clearIfFlagged(videoId: string): Promise<void> {
   if ((await listUnavailableIds()).has(id)) void clearTrackUnavailable(id);
 }
 
-export const GET = withRequestLog('youtube/stream/[videoId]', async (request: NextRequest, ctx: RouteContext<'/api/youtube/stream/[videoId]'>) => {
+type StreamHandler = (request: NextRequest, ctx: RouteContext<'/api/youtube/stream/[videoId]'>) => Promise<Response>;
+
+/** Logs an answer that took long enough to cost a listener their song, with
+ *  what it was and how it was served, so "the host did not answer" in a
+ *  player's report can be matched to the host's side of it. */
+function timed(handler: StreamHandler): StreamHandler {
+  return async (request, ctx) => {
+    const start = Date.now();
+    const res = await handler(request, ctx);
+    const ms = Date.now() - start;
+    if (ms >= SLOW_ANSWER_MS) {
+      const { videoId } = await ctx.params;
+      serverLogger.warn('stream', 'slow to answer', {
+        videoId,
+        ms,
+        status: res.status,
+        source: res.headers.get(SOURCE_HEADER),
+        range: request.headers.get('range'),
+        downloading: isDownloading(videoId),
+      });
+    }
+    return res;
+  };
+}
+
+export const GET = withRequestLog('youtube/stream/[videoId]', timed(async (request, ctx) => {
   const { videoId } = await ctx.params;
   // Validate up front so a malformed id can't reach findCachedFile
   // (path.join risk), ensureDownloaded, or resolveStreamUrl. Failed
@@ -345,7 +394,19 @@ export const GET = withRequestLog('youtube/stream/[videoId]', async (request: Ne
     // is 'proxy'. yt-dlp writes the file to MUSIC_DIR once; subsequent
     // downloads of the same track hit findCachedFile() above and are instant.
     const isDownload = request.nextUrl.searchParams.get('download') === '1';
-    if (streamMode() === 'cache' || isDownload) {
+    // The download failed minutes ago and the song is being relayed live:
+    // relay this request too, straight away. Running yt-dlp again (or waiting
+    // on the cache warm already running it) before a single byte cost every
+    // seek, re-open and retry of that song tens of seconds, and the players
+    // give up on a request after 25 ("the host did not answer a request for
+    // more of the song while seeking"). The memory runs out after a while, a
+    // yt-dlp upgrade clears it, and the cache warm keeps trying behind it.
+    // The listener's own "Tap to retry" still gets a real download attempt.
+    const listenerRetry = request.nextUrl.searchParams.get(STREAM_RETRY_PARAM) === '1';
+    const liveOnly = isDownload || listenerRetry ? null : recentDownloadFailure(videoId);
+    if (liveOnly) {
+      downloadFailure = liveOnly;
+    } else if (streamMode() === 'cache' || isDownload) {
       try {
         const filePath = await ensureDownloaded(videoId);
         // Playable again (or always was): a stale flag from an earlier
@@ -450,7 +511,7 @@ export const GET = withRequestLog('youtube/stream/[videoId]', async (request: Ne
       return cannotLoadResponse(videoId, `the live stream answered ${upstream.status}`);
     }
 
-    const respHeaders = new Headers();
+    const respHeaders = new Headers({ [SOURCE_HEADER]: 'live' });
     for (const h of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'last-modified']) {
       const v = upstream.headers.get(h);
       if (v) respHeaders.set(h, v);
@@ -463,6 +524,11 @@ export const GET = withRequestLog('youtube/stream/[videoId]', async (request: Ne
     if (upstream.ok) {
       queueCacheWarm(videoId);
       void clearIfFlagged(videoId);
+      // The download failed in THIS request and the live relay works: relay
+      // this song's next requests without asking yt-dlp first (see liveOnly).
+      // Only remembered here, so a song nothing could serve still gets a
+      // real attempt once its short failure memory is over.
+      if (downloadFailure && !liveOnly) rememberDownloadFailed(videoId, downloadFailure);
     }
     const intent = downloadIntent(request, info.ext);
     // A proxied body that goes quiet must break, not hang: see lib/streamGuard.
@@ -481,4 +547,4 @@ export const GET = withRequestLog('youtube/stream/[videoId]', async (request: Ne
     }
     return fromError(e);
   }
-});
+}));

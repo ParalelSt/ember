@@ -11,7 +11,7 @@ import { downloadGate, type Release } from '@/lib/downloadGate';
 import { BusyError, createSemaphore, type Semaphore } from '@/lib/semaphore';
 import { exceedsMediaLimits, isTooLargeMessage } from '@/lib/mediaLimits';
 import { gainForMeasurement } from '@/lib/loudnessPolicy';
-import { forgetFailure, recentFailure, rememberUnavailable } from '@/lib/sources/failureMemo';
+import { forgetDownloadFailure, forgetFailure, recentFailure, rememberUnavailable } from '@/lib/sources/failureMemo';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
 // but both resolve to the same spotify-clone root.
@@ -542,6 +542,7 @@ export async function ensureDownloaded(videoId: string, opts: { prefetch?: boole
     try {
       const result = await spawnPython<{ filePath: string }>(['download', '--', videoId], 180000);
       forgetFailure(videoId);
+      forgetDownloadFailure(videoId);
       return result.filePath;
     } catch (e) {
       noteFailure(videoId, e);
