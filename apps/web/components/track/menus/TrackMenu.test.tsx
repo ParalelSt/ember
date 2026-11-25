@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { Track } from '@/types/track';
 
 const playTrack = vi.fn();
+const startRadio = vi.fn();
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
 
@@ -29,7 +30,7 @@ vi.mock('./AddToPlaylistMenu', () => ({
     </div>
   ),
 }));
-vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => ({ playTrack }) }));
+vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => ({ playTrack, startRadio }) }));
 vi.mock('sonner', () => ({
   toast: { success: (m: string, o?: unknown) => toastSuccess(m, o), error: (m: string) => toastError(m) },
 }));
@@ -66,6 +67,7 @@ beforeEach(() => {
   blocking.block.mockClear();
   blocking.unblock.mockClear();
   playTrack.mockReset();
+  startRadio.mockReset();
   toastSuccess.mockReset();
   toastError.mockReset();
   usePlayerStore.setState({ queue: [], index: -1, baseCount: 0 });
@@ -239,5 +241,17 @@ describe('TrackMenu: Go to song / Go to artist', () => {
   it('an upload has no song page, so no Go to song', () => {
     render(<TrackMenu track={{ ...track, id: 'upload:u1', source: 'upload', sourceId: 'u1' }} />);
     expect(screen.queryByRole('menuitem', { name: /Go to song/ })).toBeNull();
+  });
+});
+
+describe('TrackMenu start radio', () => {
+  it('offers "Start radio" and starts it from this song', () => {
+    render(<TrackMenu track={track} />);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Start radio/ }));
+    expect(startRadio).toHaveBeenCalledWith(track);
+  });
+  it('is not offered for a song known to be unavailable', () => {
+    render(<TrackMenu track={{ ...track, unavailableAt: '2026-01-01' } as Track} />);
+    expect(screen.queryByRole('menuitem', { name: /Start radio/ })).toBeNull();
   });
 });
