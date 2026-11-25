@@ -23,22 +23,27 @@ export const GET = withRequestLog('youtube/recommended', async (request: NextReq
       const limited = await limitCaller(request, 'recommended', PUBLIC_PYTHON_LIMITS.recommended);
       if (limited) return limited;
     }
-    const dead = await listUnavailableIds();
+    // The three independent reads run together: the host's gone-song list,
+    // the suggestions (a Python run for a seed), and who is asking with
+    // their blocked list. They used to run one after the other.
     // No seed (an empty playlist's picker): today's chart from the cache,
     // rather than a Python spawn that would fetch the same chart again.
-    const raw = seed && VIDEO_ID_RE.test(seed)
-      ? await seededOrChart(seed, country)
-      : await chartTracks();
+    const rawPromise = seed && VIDEO_ID_RE.test(seed)
+      ? seededOrChart(seed, country)
+      : chartTracks();
+    // A list that cannot be read never costs the suggestions themselves.
+    // Signed out: no list. Radio never queues a song the person asking
+    // blocked (web radio, the phone app's own radio and the song pickers all
+    // come through here).
+    const blockedPromise = verifiedUserId()
+      .catch(() => null)
+      .then((userId) => (userId ? createCatalogClient().then((pb) => listBlocked(pb, userId)).catch(() => []) : []));
+    const [dead, raw, blocked] = await Promise.all([listUnavailableIds(), rawPromise, blockedPromise]);
     // Radio never queues a song the host knows will not play: flagged in the
     // database, or found gone by this process (a radio song nobody saved has
     // no row to flag, and is exactly the kind radio keeps suggesting).
     const gone = unavailableTrackIds();
     const playable = raw.filter((t) => !dead.has(t.id) && !gone.has(t.id));
-    // Nor a song the person asking blocked (web radio, the phone app's own
-    // radio and the song pickers all come through here). Signed out: no list.
-    const userId = await verifiedUserId().catch(() => null);
-    // A list that cannot be read never costs the suggestions themselves.
-    const blocked = userId ? await createCatalogClient().then((pb) => listBlocked(pb, userId)).catch(() => []) : [];
     const tracks = withoutBlocked(playable, blocked);
     return Response.json({ tracks });
   } catch (e) {
