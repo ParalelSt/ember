@@ -218,8 +218,9 @@ export const usePlayerStore = create<PlayerState>()(
       previewVolume: (volume) => unsaved(() => set({ volume: clampVolume(volume) })),
       setContext: (context) => set({ context }),
       setLoopMode: (loopMode) => set({ loopMode }),
-      /** Shuffle the upcoming tracks only, whatever is playing stays playing
-       *  and stays at the current index, so toggling never interrupts audio.
+      /** Shuffle on: the song playing stays playing and moves to the front,
+       *  the rest of the queue follows in a fresh random order, so toggling
+       *  never interrupts audio.
        *  Turning it off restores the original order and re-points the index at
        *  the same track. */
       toggleShuffle: () => set((s) => {
@@ -229,13 +230,11 @@ export const usePlayerStore = create<PlayerState>()(
           const { queue, index } = restoreOrder(original, s.queue, s.index);
           return { shuffle: false, orderBackup: null, queue, index };
         }
-        if (s.queue.length < 2) return { shuffle: true, orderBackup: s.queue.slice() };
-        const backup = s.queue.slice();
-        const played = s.queue.slice(0, Math.max(0, s.index + 1));
-        const upcoming = s.queue.slice(Math.max(0, s.index + 1));
-        // Shuffle the upcoming tracks only; the played prefix (including the
-        // current track) stays put.
-        return { shuffle: true, orderBackup: backup, queue: [...played, ...shuffle(upcoming)] };
+        const around = queueEdit.shuffleAround(s);
+        if (!around) return { shuffle: true, orderBackup: s.queue.slice() };
+        // The song playing keeps playing; everything else is re-dealt behind
+        // it (the played songs too), and off puts the order back.
+        return { shuffle: true, orderBackup: s.queue.slice(), queue: around.queue, index: around.index };
       }),
       // off → all → one → off. Any unexpected persisted value lands on 'off'.
       cycleLoopMode: () => set((s) => ({

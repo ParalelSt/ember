@@ -255,6 +255,20 @@ describe('androidBackend: a page starting while native already plays', () => {
     expect(n.plugin.setQueue).toHaveBeenCalledWith(expect.objectContaining({ tracks: [t('a'), t('b')], index: 1, play: false }));
   });
 
+  it('Shuffle on the playing list: the new order goes over with the playing song first, at 0, still playing', async () => {
+    const { n, b } = withNative(
+      { playing: true, position: 42, duration: 200, index: 2, trackId: 'c' },
+      { tracks: [t('a'), t('b'), t('c'), t('d')], index: 2 },
+    );
+    await flush();
+    (n.plugin.setQueue as ReturnType<typeof vi.fn>).mockClear();
+    b.setQueue!([t('c'), t('d'), t('a'), t('b')], 0, true);
+    expect(n.plugin.setQueue).toHaveBeenCalledTimes(1);
+    expect(n.plugin.setQueue).toHaveBeenCalledWith(expect.objectContaining({ tracks: [t('c'), t('d'), t('a'), t('b')], index: 0, play: true }));
+    // No seek and no restart from here: native keeps the item (QueueSync).
+    expect(n.plugin.seek).not.toHaveBeenCalled();
+  });
+
   it('a tap never waits, and drops the saved queue still waiting', async () => {
     const { n, b } = withNative(
       { playing: true, position: 5, duration: 200, index: 0, trackId: 'x' },

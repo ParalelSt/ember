@@ -214,10 +214,10 @@ export function CollectionPage({
                   type="button"
                   onClick={playback.shuffle}
                   disabled={!tracks.length}
-                  aria-pressed={playback.shuffleOn}
-                  className={cn(ACTION_CIRCLE, playback.shuffleOn && ACTION_CIRCLE_ON)}
-                  aria-label={playback.active ? (playback.shuffleOn ? 'Shuffle off' : 'Shuffle') : 'Shuffle play'}
-                  title={playback.active ? (playback.shuffleOn ? 'Shuffling' : 'Shuffle') : 'Shuffle play'}
+                  aria-pressed={playback.active && playback.shuffleOn}
+                  className={cn(ACTION_CIRCLE, playback.active && playback.shuffleOn && ACTION_CIRCLE_ON)}
+                  aria-label="Shuffle play"
+                  title="Shuffle play"
                 >
                   <ShuffleIcon className="h-5 w-5" />
                 </button>

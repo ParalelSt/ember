@@ -526,3 +526,44 @@ describe('NowPlaying on playhead reports', () => {
     expect(summaryRendered).toHaveBeenCalledTimes(before);
   });
 });
+
+// The collection page's Shuffle play only ever re-deals, so this button is
+// the one way to turn shuffle off: it must be there for every list that can
+// be shuffled (not only playlists) and a real on/off toggle.
+describe('NowPlaying: the shuffle button', () => {
+  const list = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ ...TRACK, id, sourceId: id }));
+  const ids = () => usePlayerStore.getState().queue.map((s) => s.id);
+
+  it.each([
+    [{ type: 'liked' }],
+    [{ type: 'playlist', playlistId: 'p1', playlistName: 'P' }],
+    [{ type: 'album', albumId: 'a', albumTitle: 'A' }],
+    [{ type: 'chart', chartSlug: 'x', chartTitle: 'X' }],
+    [{ type: 'mix', mixKey: 'k', mixTitle: 'K' }],
+    [{ type: 'history' }],
+    [{ type: 'uploads' }],
+    [{ type: 'artist', artistName: 'B' }],
+  ] as const)('turns shuffle on, then OFF on the second press, in a %o list', (context) => {
+    player.current = list[1];
+    usePlayerStore.setState({ queue: list, index: 1, context: context as never, shuffle: false, orderBackup: null });
+    render(<NowPlaying />);
+    fireEvent.click(within(view()).getByRole('button', { name: 'Shuffle' }));
+    expect(usePlayerStore.getState().shuffle).toBe(true);
+    expect(usePlayerStore.getState().queue[usePlayerStore.getState().index].id).toBe('b');
+    fireEvent.click(within(view()).getByRole('button', { name: 'Shuffle off' }));
+    expect(usePlayerStore.getState().shuffle).toBe(false);
+    expect(ids()).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(usePlayerStore.getState().index).toBe(1);
+    expect(within(view()).getByRole('button', { name: 'Shuffle' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('stays out of a search, radio, stations or single-song queue, unless shuffle is on', () => {
+    player.current = list[1];
+    usePlayerStore.setState({ queue: list, index: 1, context: { type: 'search' }, shuffle: false, orderBackup: null });
+    const { rerender } = render(<NowPlaying />);
+    expect(within(view()).queryByRole('button', { name: 'Shuffle' })).toBeNull();
+    act(() => usePlayerStore.setState({ shuffle: true, orderBackup: list }));
+    rerender(<NowPlaying />);
+    expect(within(view()).getByRole('button', { name: 'Shuffle off' })).toBeInTheDocument();
+  });
+});
