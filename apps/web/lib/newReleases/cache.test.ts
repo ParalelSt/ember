@@ -2,11 +2,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { artistKey } from '@/lib/genres/artistKey';
 import type { FamilySlug } from '@/lib/genres/taxonomy';
 import type { NewReleasesExploreItem, NewReleasesFetch } from '@/lib/sources/youtube';
 import {
   createNewReleasesCache,
   FAMILY_LOOKUPS_PER_RUN,
+  MEMBER_LOOKUPS_PER_RUN,
   NEW_RELEASES_RETRY_MS,
   NEW_RELEASES_TTL_MS,
   type MemberLikes,
@@ -93,7 +95,8 @@ function make(over: Partial<Deps> = {}) {
     loadMemberLikes: async () => members,
     genreCharts: async () => charts,
     chartsBusy: () => chartsBusy,
-    familiesOf: async () => new Map(),
+    // Like the real tagger: every artist gets a row, "none" when unknown.
+    familiesOf: async (refs) => new Map(refs.map((r) => [artistKey(r.name), { family: null as FamilySlug | null }])),
     cacheFile: file,
     now: () => clock,
     warn,
@@ -275,7 +278,7 @@ describe('createNewReleasesCache', () => {
     expect(got.releases.map((r) => r.browseId)).toEqual(['x']);
     expect(got.refreshedAt).toBe(iso(clock));
     expect(got.stale).toBe(false);
-    expect(restarted.busy()).toBe(false);
+    await settled(restarted);
     expect(second).not.toHaveBeenCalled();
   });
 
@@ -323,8 +326,86 @@ describe('createNewReleasesCache', () => {
     const got = await cache.get();
     expect(got.releases.map((r) => r.browseId)).toEqual(['x']);
     expect(got.releases[0].family).toBeNull();
-    expect(got.stale).toBe(false);
+    // Not fresh: the family is still missing, so the answer says stale.
+    expect(got.stale).toBe(true);
     expect(warn).toHaveBeenCalledWith('new releases: could not tag the new releases, trying again next run', { reason: 'lastfm down' });
+  });
+
+  it('tagging that failed (a 503 storm) is retried after the retry time without another YouTube run, and then fills the family', async () => {
+    const fetchReleases = fetchFake(async (ids) => fetched(ids, { explore: [shelf('x')] }));
+    members = [member('m1', [1])];
+    let down = true;
+    const familiesOf = familiesFake(async (refs, opts) => {
+      if (opts.maxLookups === 0) return new Map<string, { family: FamilySlug | null }>();
+      // A failed lookup leaves no row, exactly like the real tagger.
+      return down ? new Map<string, { family: FamilySlug | null }>() : new Map<string, { family: FamilySlug | null }>(refs.map((r) => [r.name.toLowerCase(), { family: 'pop' as FamilySlug }]));
+    });
+    const cache = make({ fetchReleases, familiesOf });
+    await cache.get();
+    await settled(cache);
+
+    const first = await cache.get();
+    expect(first.releases.map((r) => r.family)).toEqual([null]);
+    expect(first.stale).toBe(true);
+
+    // Inside the retry time nothing is tried again.
+    clock += NEW_RELEASES_RETRY_MS - 1000;
+    await cache.get();
+    await settled(cache);
+    const calls = familiesOf.mock.calls.filter(([, o]) => o.maxLookups === FAMILY_LOOKUPS_PER_RUN).length;
+    expect(calls).toBe(1);
+
+    down = false;
+    clock += 2000;
+    await cache.get();
+    await settled(cache);
+    const done = await cache.get();
+    expect(done.releases.map((r) => r.family)).toEqual(['pop']);
+    expect(done.stale).toBe(false);
+    expect(fetchReleases).toHaveBeenCalledTimes(1);
+    expect(readMirrorFile().releases[0].family).toBe('pop');
+  });
+
+  it('after a restart a mirror with untagged releases is tagged again', async () => {
+    seedMirror({
+      refreshedAt: iso(clock - HOUR),
+      releases: [{ browseId: 'x', title: 'X', kind: 'album', year: null, artworkUrl: null, artist: 'Shelf', artistId: id(99), family: null, firstSeenAt: iso(clock - HOUR), via: 'explore' }],
+    });
+    const fetchReleases = fetchFake(async (ids) => fetched(ids));
+    const familiesOf = familiesFake(async () => new Map<string, { family: FamilySlug | null }>([['shelf', { family: 'rock-metal' }]]));
+    const cache = make({ fetchReleases, familiesOf });
+    expect((await cache.get()).stale).toBe(false);
+    await settled(cache);
+    const got = await cache.get();
+    expect(got.releases[0].family).toBe('rock-metal');
+    expect(got.stale).toBe(false);
+    expect(fetchReleases).not.toHaveBeenCalled();
+  });
+
+  it('looks up the members own artists too, a few a run, so their genres exist', async () => {
+    members = [member('m1', [1, 2, 3])];
+    const familiesOf = familiesFake(async () => new Map<string, { family: FamilySlug | null }>());
+    const cache = make({ familiesOf });
+    await cache.get();
+    await settled(cache);
+    expect(familiesOf).toHaveBeenCalledWith(
+      [id(1), id(2), id(3)].map((a, i) => ({ name: `A${i + 1}`, artistId: a })),
+      { maxLookups: MEMBER_LOOKUPS_PER_RUN },
+    );
+  });
+
+  it('a run that got only failures is not cached as fresh: nothing is written and it retries', async () => {
+    members = [member('m1', [1])];
+    const fetchReleases = fetchFake(async () => ({ artists: [], explore: null, failed: [id(1)] }));
+    const cache = make({ fetchReleases });
+    await cache.get();
+    await settled(cache);
+    expect(fs.existsSync(file)).toBe(false);
+    expect(await cache.get()).toEqual(EMPTY);
+    clock += NEW_RELEASES_RETRY_MS;
+    await cache.get();
+    await settled(cache);
+    expect(fetchReleases).toHaveBeenCalledTimes(2);
   });
 
   it('disabled: no run, ever, and an empty answer', async () => {

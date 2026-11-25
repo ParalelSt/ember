@@ -1,4 +1,5 @@
 import { artistKey } from './artistKey';
+import { RateLimitedError } from './sources';
 import { chartDef, classifyTags, type FamilySlug, type RawTag, type SubSlug } from './taxonomy';
 
 /** The artist genre tagger (docs/mixes.md): makes sure the artists a mix
@@ -53,6 +54,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const NONE_RETRY_MS = 30 * DAY_MS;
 /** A "found" row is refreshed after this. */
 export const FOUND_REFRESH_MS = 180 * DAY_MS;
+/** After a source says "slow down" (and keeps saying it), no lookup goes out
+ *  for this long, unless its Retry-After asks for more. */
+export const RATE_LIMIT_REST_MS = 10 * 60 * 1000;
 
 /** Whether a row (or its absence) calls for a lookup now. A manual row
  *  never does: the admin's word stands. */
@@ -70,6 +74,8 @@ export function createTagger(deps: TaggerDeps) {
   const now = deps.now ?? Date.now;
   const warn = deps.warn ?? (() => {});
   const inFlight = new Map<string, Promise<ArtistGenre | null>>();
+  /** No lookup before this time (a source rate limited us). */
+  let restUntil = -Infinity;
 
   /** One artist's lookup: Last.fm, then MusicBrainz when Last.fm has no
    *  key, does not know them or says nothing mappable. Null when a source
@@ -98,6 +104,7 @@ export function createTagger(deps: TaggerDeps) {
         }
       }
     } catch (e) {
+      if (e instanceof RateLimitedError) restUntil = now() + Math.max(RATE_LIMIT_REST_MS, e.retryAfterMs ?? 0);
       warn('genres: lookup failed, trying again later', { artist: ref.name, reason: e instanceof Error ? e.message : String(e) });
       return null;
     }
@@ -143,6 +150,9 @@ export function createTagger(deps: TaggerDeps) {
     if (!canLookUp) return { rows, lookups };
     for (const [key, ref] of unique) {
       if (lookups >= maxLookups) break;
+      // Resting after a rate limit: the rest of the batch waits, and so does
+      // everything asked for until the rest is over.
+      if (now() < restUntil) break;
       const row = rows.get(key);
       if (!needsLookup(row, now())) continue;
       lookups++;

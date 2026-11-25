@@ -79,7 +79,17 @@ every 5 days.
   so one dead channel cannot block the queue. A whole failed run changes
   nothing and keeps serving what it had, marked stale.
 - After each run the new releases' artists are tagged for their family, at
-  most 25 lookups, which go to Last.fm and MusicBrainz, never to YouTube.
+  most 25 lookups, then up to 10 of the members' own liked artists (so
+  `artist_genres` has the genres the route reads). Lookups go to Last.fm and
+  MusicBrainz, never to YouTube.
+- **A tagger fault is not a fresh, finished ledger.** MusicBrainz answers 503
+  when it is asked too fast or by a vague client: the lookup waits and
+  retries (2 s, 4 s, or its Retry-After), is paced at 0.9 a second with a
+  `Ember/<version> ( <contact> )` User-Agent (`MUSICBRAINZ_CONTACT`, else the
+  repo URL), and after the retries the tagger rests 10 minutes. Releases left
+  without a family mark the ledger `stale` and are tagged again after 5
+  minutes, without another YouTube run. A liked artist's own releases never
+  need a family, so they show whatever the tagger does.
 - `NEW_RELEASES_DISABLED=1` turns the run off and the route answers empty.
 
 ## Where the code is

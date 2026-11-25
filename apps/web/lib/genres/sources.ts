@@ -45,11 +45,41 @@ export interface MbArtist {
   tags?: { name?: string; count?: number }[];
 }
 
-/** MusicBrainz asks for a User-Agent naming the app and a contact. */
-export function musicbrainzUserAgent(contact: string | undefined): string {
+/** The contact MusicBrainz sees when MUSICBRAINZ_CONTACT is not set: the
+ *  project's public repository, no personal address. */
+export const MUSICBRAINZ_DEFAULT_CONTACT = 'https://github.com/ParalelSt/ember';
+
+/** MusicBrainz asks for a User-Agent naming the app, its version and a
+ *  contact (`Ember/0.7.52 ( https://... )`); a vague one is throttled with
+ *  503s first. */
+export function musicbrainzUserAgent(contact: string | undefined, version = '1.0'): string {
   const c = String(contact ?? '').trim();
-  return `Ember/1.0 ( ${c || 'self-hosted Ember music server'} )`;
+  return `Ember/${version.trim() || '1.0'} ( ${c || MUSICBRAINZ_DEFAULT_CONTACT} )`;
 }
+
+/** MusicBrainz said "slow down" (429 or 503) and kept saying it after the
+ *  retries. The tagger stops its batch and rests instead of hammering on. */
+export class RateLimitedError extends Error {
+  constructor(message: string, readonly retryAfterMs: number | null = null) {
+    super(message);
+    this.name = 'RateLimitedError';
+  }
+}
+
+/** Retry-After as milliseconds (seconds or an HTTP date), null when absent. */
+function retryAfterMs(res: Response): number | null {
+  const h = res.headers?.get?.('retry-after');
+  if (!h) return null;
+  const secs = Number(h);
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+  const at = Date.parse(h);
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+}
+
+export const MB_RETRIES = 2;
+export const MB_BACKOFF_MS = 2000;
+/** The longest a Retry-After may hold one request back. */
+const MB_MAX_WAIT_MS = 30_000;
 
 /** The best search hit for a name: the same name once normalized (or one
  *  of its aliases), with a search score of at least 85. MusicBrainz knows
@@ -68,20 +98,35 @@ export function pickMbArtist(search: MbArtistSearch | null | undefined, name: st
 
 /** Genres (curated, counted double) and tags of an artist looked up by
  *  name: a search, then the artist with inc=genres+tags. `pace` is awaited
- *  before each of the two requests (MusicBrainz allows one a second). */
+ *  before every request, retries included (MusicBrainz allows one a
+ *  second). A 429 or 503 is retried MB_RETRIES times with a growing wait
+ *  (or its Retry-After), then thrown as a RateLimitedError. */
 export async function musicbrainzTags(
   name: string,
-  { userAgent, pace = async () => {}, fetchImpl = fetch }: { userAgent: string; pace?: () => Promise<void>; fetchImpl?: Fetch },
+  {
+    userAgent,
+    pace = async () => {},
+    fetchImpl = fetch,
+    sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
+  }: { userAgent: string; pace?: () => Promise<void>; fetchImpl?: Fetch; sleep?: (ms: number) => Promise<void> },
 ): Promise<RawTag[] | null> {
   const headers = { Accept: 'application/json', 'User-Agent': userAgent };
+  async function get(url: string, what: string): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      await pace();
+      const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(15_000) });
+      if (res.status !== 429 && res.status !== 503) return res;
+      const hinted = retryAfterMs(res);
+      if (attempt >= MB_RETRIES) throw new RateLimitedError(`musicbrainz: ${what} HTTP ${res.status}`, hinted);
+      await sleep(Math.min(hinted ?? MB_BACKOFF_MS * 2 ** attempt, MB_MAX_WAIT_MS));
+    }
+  }
   const q = `artist:"${name.replace(/(["\\])/g, '\\$1')}"`;
-  await pace();
-  const res = await fetchImpl(`https://musicbrainz.org/ws/2/artist/?fmt=json&limit=5&query=${encodeURIComponent(q)}`, { headers, signal: AbortSignal.timeout(15_000) });
+  const res = await get(`https://musicbrainz.org/ws/2/artist/?fmt=json&limit=5&query=${encodeURIComponent(q)}`, 'search');
   if (!res.ok) throw new Error(`musicbrainz: search HTTP ${res.status}`);
   const id = pickMbArtist((await res.json()) as MbArtistSearch, name);
   if (!id) return null;
-  await pace();
-  const one = await fetchImpl(`https://musicbrainz.org/ws/2/artist/${encodeURIComponent(id)}?fmt=json&inc=genres+tags`, { headers, signal: AbortSignal.timeout(15_000) });
+  const one = await get(`https://musicbrainz.org/ws/2/artist/${encodeURIComponent(id)}?fmt=json&inc=genres+tags`, 'artist');
   if (one.status === 404) return null;
   if (!one.ok) throw new Error(`musicbrainz: artist HTTP ${one.status}`);
   const artist = (await one.json()) as MbArtist;
