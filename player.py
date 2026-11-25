@@ -25,6 +25,78 @@ MUSIC_DIR.mkdir(parents=True, exist_ok=True)
 yt = YTMusic()  # Works anonymously. For better results, use OAuth later.
 
 
+# ytmusicapi fetches music.youtube.com's home page ONCE per process to learn
+# an anonymous "visitor id" before its first request. Every helper run is a
+# fresh process, so every search / recommended / lyrics call paid that extra
+# round trip (about a second). The id is long-lived and not tied to a person,
+# so a run keeps it in a small file and the next run starts with it. A file
+# that is missing, unreadable or older than the TTL just means the normal
+# fetch happens, and its answer is saved for the next run.
+VISITOR_ID_TTL_SEC = 12 * 3600
+VISITOR_ID_FILE = MUSIC_DIR / ".ytm-visitor.json"
+_visitor_seeded = False
+
+
+def _load_visitor_id(path=None, now=None):
+    """The saved visitor id, or None when absent, stale or unreadable."""
+    try:
+        data = json.loads((path or VISITOR_ID_FILE).read_text())
+        vid = data.get("visitorId")
+        at = float(data.get("savedAt", 0))
+        if isinstance(vid, str) and vid and (now if now is not None else time.time()) - at < VISITOR_ID_TTL_SEC:
+            return vid
+    except Exception:
+        pass
+    return None
+
+
+def _save_visitor_id(vid, path=None, now=None):
+    target = path or VISITOR_ID_FILE
+    try:
+        fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".ytm-visitor-", suffix=".tmp")
+        with os.fdopen(fd, "w") as out:
+            json.dump({"visitorId": vid, "savedAt": now if now is not None else time.time()}, out)
+        os.replace(tmp, target)
+    except Exception as e:
+        print(f"[visitor] could not save the visitor id ({e})", file=sys.stderr)
+
+
+def seed_visitor_id(client, path=None, now=None):
+    """Hand `client` the saved visitor id so its first request skips the
+    home-page fetch. Returns True when it was seeded. On a miss, remembers to
+    save whatever the client fetches itself (see _save_fetched_visitor_id)."""
+    global _visitor_seeded
+    try:
+        vid = _load_visitor_id(path, now)
+        if not vid:
+            return False
+        from ytmusicapi.helpers import initialize_headers
+        headers = initialize_headers()
+        headers["X-Goog-Visitor-Id"] = vid
+        client.__dict__["base_headers"] = headers  # a cached_property, so this IS its value
+        _visitor_seeded = True
+        return True
+    except Exception as e:
+        print(f"[visitor] not seeded ({e})", file=sys.stderr)
+        return False
+
+
+def _save_fetched_visitor_id(client, path=None, now=None):
+    """After a run that fetched its own visitor id, keep it for the next."""
+    if _visitor_seeded:
+        return
+    try:
+        vid = client.__dict__.get("base_headers", {}).get("X-Goog-Visitor-Id")
+        if isinstance(vid, str) and vid:
+            _save_visitor_id(vid, path, now)
+    except Exception:
+        pass
+
+
+seed_visitor_id(yt)
+atexit.register(lambda: _save_fetched_visitor_id(yt))
+
+
 def _cookie_opts():
     """yt-dlp cookie config to get past YouTube's intermittent "Sign in to
     confirm you're not a bot" 403s on info/stream/download. Set ONE of these
