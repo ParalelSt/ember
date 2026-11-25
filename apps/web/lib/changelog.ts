@@ -26,6 +26,28 @@ export type ChangelogScope = (typeof CHANGELOG_SCOPES)[number];
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'faster-and-fixed',
+    version: '0.7.53',
+    date: '2026-11-25',
+    title: 'Faster, and a pile of fixes',
+    summary: 'Quicker playlists, search and Home, songs that no longer stall when you skip around, and a list of fixes you asked for.',
+    bullets: [
+      'Faster: your playlist list, search, Home suggestions, lyrics and the song page load much quicker.',
+      'Songs no longer stall for 25 seconds when you jump around in a song.',
+      'New releases on Home, picked from the artists you listen to most.',
+      'Start radio from any song: tap ⋯ on a song, then Start radio, for similar songs instead of the rest of your list.',
+      'Shuffle works the same from every shuffle button: the song keeps playing and turning it off brings back your order.',
+      'Swipe the player bar left or right to skip; it now follows your finger.',
+      'Your playlists in the sidebar stay in place instead of jumping to the top.',
+      'Search results stay in place after you play one.',
+      'The friends row, page numbers on big playlists, a thinner scrollbar and a fuller song page with lyrics and similar songs.',
+      'A new version shows as a small card on PC and a bar on your phone; it goes away by itself or with a swipe.',
+      'Requests can be sent with just a name.',
+      'Links to other websites open in your browser instead of inside Ember.',
+      'Fixes for the car playlist covers and the Android player showing the wrong song after a while away.',
+    ],
+  },
+  {
     id: 'update-bar',
     version: '0.7.52',
     date: '2026-11-24',

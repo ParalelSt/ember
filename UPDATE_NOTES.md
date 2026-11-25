@@ -1,3 +1,10 @@
+# 0.7.53: Faster, and a pile of fixes (android 0.4.37, windows, macos, linux 0.4.29)
+
+**Host: run `./update.sh` as usual. Run ./update.sh as usual. Nothing new to
+set up.** New apps: Android 0.4.37 (versionCode 42), Windows 0.4.29, macOS
+0.4.29, Linux 0.4.29. Unchanged: iOS 0.4.26. Tags: `android-v0.4.37`,
+`windows-v0.4.29`, `macos-v0.4.29`, `linux-v0.4.29`.
+
 # 0.7.52: Updates that work
 
 **Host: run `./update.sh` as usual. Run ./update.sh as usual. Nothing new to
