@@ -3,6 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fileUrl } from '@/lib/pocketbase/fileUrl';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { forgetUser } from '@/lib/sessionCache';
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -43,6 +44,8 @@ export const PATCH = withRequestLog('profile', async (req: NextRequest) => {
     if (!hasChange) return Response.json({ ok: true });
 
     const updated = await pb.collection('users').update(user.id, patch);
+    // Memory of this session holds the old copy (lib/sessionCache).
+    forgetUser(user.id);
     return Response.json({
       ok: true,
       user: {

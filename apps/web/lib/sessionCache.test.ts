@@ -1,7 +1,9 @@
 // @vitest-environment node
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   ROTATE_AFTER_MS,
+  SESSION_HOLD_MS,
+  holdSessions,
   SESSION_CACHE_MAX,
   SESSION_CACHE_TTL_MS,
   _resetSessionCache,
@@ -22,6 +24,7 @@ const jwt = (secondsLeft: number, now = Date.now(), extra: object = {}) =>
 const rec = (id = 'u1') => ({ id, collectionId: 'c', collectionName: 'users' });
 
 beforeEach(() => _resetSessionCache());
+afterEach(() => vi.useRealTimers());
 
 describe('sessionCache', () => {
   it('reads the expiry, and nothing from a token that is not a JWT', () => {
@@ -129,5 +132,73 @@ describe('sessionCache', () => {
     expect(shouldRotate(jwt(14 * 86400 - 60, now), fresh, now)).toBe(false);
     expect(shouldRotate(jwt(14 * 86400 - ROTATE_AFTER_MS / 1000 - 1, now), fresh, now)).toBe(true);
     expect(shouldRotate('opaque', fresh, now)).toBe(true);
+  });
+
+  /** A refresh that answers only when told to. */
+  function deferred(token: string, id = 'u1') {
+    let answer: () => void = () => {};
+    const refresh = () => new Promise<{ token: string; record: ReturnType<typeof rec> }>((r) => { answer = () => r({ token, record: rec(id) }); });
+    return { refresh, answer: () => answer() };
+  }
+
+  it('keeps no answer when the member was forgotten while PocketBase was being asked', async () => {
+    const t = jwt(3600, Date.now(), { n: 1 });
+    const fresh = jwt(7200, Date.now(), { n: 2 });
+    const d = deferred(fresh);
+    const asking = verifySession(t, d.refresh);
+    forgetUser('u1'); // a revoke or password reset lands meanwhile
+    d.answer();
+    await asking;
+    expect(cachedSession(t)).toBeNull();
+    expect(cachedSession(fresh)).toBeNull();
+  });
+
+  it('keeps no answer when everyone was forgotten while PocketBase was being asked', async () => {
+    const t = jwt(3600, Date.now(), { n: 1 });
+    const d = deferred(jwt(7200, Date.now(), { n: 2 }));
+    const asking = verifySession(t, d.refresh);
+    forgetAllSessions();
+    d.answer();
+    await asking;
+    expect(cachedSession(t)).toBeNull();
+  });
+
+  it('a forget does not stop an unrelated member\'s answer from being kept', async () => {
+    const t = jwt(3600, Date.now(), { n: 1 });
+    const d = deferred(jwt(7200, Date.now(), { n: 2 }), 'bob');
+    const asking = verifySession(t, d.refresh);
+    forgetUser('alice');
+    d.answer();
+    await asking;
+    expect(cachedSession(t)).not.toBeNull();
+  });
+
+  it('holds a member for a short while: answers about them are not kept until PocketBase has applied the change', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t = jwt(3600, Date.now(), { n: 1 });
+    const other = jwt(3600, Date.now(), { n: 2 });
+    rememberSession(t, rec('u1'));
+    holdSessions('u1');
+    expect(cachedSession(t)).toBeNull();
+    await verifySession(t, async () => ({ token: jwt(7200, Date.now(), { n: 3 }), record: rec('u1') }));
+    expect(cachedSession(t)).toBeNull();
+    rememberSession(other, rec('u2'));
+    expect(cachedSession(other)).not.toBeNull();
+    vi.advanceTimersByTime(SESSION_HOLD_MS + 1);
+    await verifySession(t, async () => ({ token: jwt(7200, Date.now(), { n: 3 }), record: rec('u1') }));
+    expect(cachedSession(t)).not.toBeNull();
+  });
+
+  it('holds everyone for a reset link', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t = jwt(3600, Date.now(), { n: 1 });
+    rememberSession(t, rec('u1'));
+    holdSessions('all');
+    expect(cachedSession(t)).toBeNull();
+    rememberSession(t, rec('u2'));
+    expect(cachedSession(t)).toBeNull();
+    vi.advanceTimersByTime(SESSION_HOLD_MS + 1);
+    rememberSession(t, rec('u2'));
+    expect(cachedSession(t)).not.toBeNull();
   });
 });

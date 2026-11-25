@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { forgetUser } from '@/lib/sessionCache';
 
 /** Two independent "don't broadcast what I'm playing" switches:
  *
@@ -46,6 +47,8 @@ export const PATCH = withRequestLog('privacy', async (request: NextRequest) => {
     }
 
     const updated = await pb.collection('users').update(user.id, patch);
+    // Memory of this session holds the old copy (lib/sessionCache).
+    forgetUser(user.id);
     return Response.json({
       shareDiscord: updated.share_discord === true,
       shareListening: updated.share_listening === true,

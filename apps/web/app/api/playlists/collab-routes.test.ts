@@ -22,6 +22,7 @@ vi.mock('@/lib/auth', () => ({
   }),
   UnauthorizedError,
   unauthorizedResponse: () => Response.json({ error: 'Unauthorized' }, { status: 401 }),
+  adminNow: async (u: { isAdmin: boolean }) => u.isAdmin,
 }));
 /** Set to hand the routes a broken server client for one test. */
 let serverOverride: unknown = null;

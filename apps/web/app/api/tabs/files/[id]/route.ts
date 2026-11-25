@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import fs from 'node:fs/promises';
-import { ForbiddenError, requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
+import { adminNow, ForbiddenError, requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
@@ -15,7 +15,9 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
  *  one (a private tab of someone else's does not exist for you). */
 export const DELETE = withRequestLog('tabs/files/[id]', async (_req: NextRequest, ctx: RouteContext<'/api/tabs/files/[id]'>) => {
   try {
-    const { user } = await requireUser();
+    const { user: session } = await requireUser();
+    // The admin power checked fresh, not from the remembered session.
+    const user = { ...session, isAdmin: await adminNow(session) };
     const { id } = await ctx.params;
     const pb = await createAdminClient();
 
@@ -44,7 +46,8 @@ export const DELETE = withRequestLog('tabs/files/[id]', async (_req: NextRequest
  *  Everyone else keeps their own nudge on their device. */
 export const PATCH = withRequestLog('tabs/files/[id]', async (request: NextRequest, ctx: RouteContext<'/api/tabs/files/[id]'>) => {
   try {
-    const { user } = await requireUser();
+    const { user: session } = await requireUser();
+    const user = { ...session, isAdmin: await adminNow(session) };
     const { id } = await ctx.params;
     const body = (await request.json().catch(() => null)) as { offsetMs?: unknown } | null;
     const offsetMs = body?.offsetMs;

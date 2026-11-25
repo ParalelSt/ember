@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { updateDiscordActivity, clearDiscordActivity } from '@/lib/discord';
-import { requireUser } from '@/lib/auth';
+import { adminNow, requireUser, type AuthedUser } from '@/lib/auth';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -8,10 +8,10 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
  *  only reach the Discord running next to it: the owner's. The owner is the
  *  EMBER_ADMIN_EMAIL account (ensure_admin.pb.js); without one configured,
  *  any admin. */
-function isPresenceOwner(user: { email: string; isAdmin: boolean }): boolean {
+async function isPresenceOwner(user: AuthedUser): Promise<boolean> {
   const owner = (process.env.EMBER_ADMIN_EMAIL ?? '').trim().toLowerCase();
   if (owner) return user.email.trim().toLowerCase() === owner;
-  return user.isAdmin;
+  return adminNow(user);
 }
 
 /** Publish "now playing" to the HOST's Discord (browsers can't reach their
@@ -52,7 +52,7 @@ export const POST = withRequestLog('discord/update', async (request: NextRequest
     return Response.json({ ok: true, shared: false });
   }
 
-  if (!isPresenceOwner(session.user)) return Response.json({ ok: true, shared: false, owner: false });
+  if (!(await isPresenceOwner(session.user))) return Response.json({ ok: true, shared: false, owner: false });
 
   let mayShare = false;
   try {

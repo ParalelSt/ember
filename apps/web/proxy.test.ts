@@ -6,7 +6,7 @@ vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn() } }));
 
 const { default: proxy, pbSessionChange, uiModeSwitch, isStaticAsset, isBlockedPbPath, isPbAuthPath, isPbSignUpPath, PB_AUTH_LIMIT, PB_SIGNUP_LIMIT } = await import('./proxy');
 const { _resetBuckets } = await import('./lib/rateLimitCore');
-const { _resetSessionCache, SESSION_CACHE_TTL_MS, forgetUser } = await import('./lib/sessionCache');
+const { _resetSessionCache, SESSION_CACHE_TTL_MS, SESSION_HOLD_MS, forgetUser } = await import('./lib/sessionCache');
 
 // Each test starts with no remembered sessions (lib/sessionCache).
 beforeEach(() => _resetSessionCache());
@@ -646,6 +646,15 @@ describe('proxy [perf, section 9]: the session check is answered from memory', (
     expect(sent.record.is_admin).toBeUndefined();
   });
 
+  it('leaves the cookie alone when only its name, avatar or theme differ from the remembered record', async () => {
+    pocketBase();
+    const token = jwt(14 * DAY - 60);
+    // The browser saved a newer name a moment ago; memory may be older.
+    const res = await proxy(req('/api/likes', { cookie: cookieFor(token, { ...record, name: 'Newer name', theme: { x: 1 } }) }));
+    expect(res.status).toBe(200);
+    expect(authCookie(res)).toBeUndefined();
+  });
+
   it('a write to a users record through /pb stops vouching for that member from memory', async () => {
     const pb = pocketBase();
     const cookie = cookieFor(jwt(14 * DAY - 60));
@@ -657,6 +666,28 @@ describe('proxy [perf, section 9]: the session check is answered from memory', (
     forgetUser('u1');
     await proxy(req('/api/likes', { cookie }));
     expect(pb).toHaveBeenCalledTimes(2);
+  });
+
+  it('after a /pb account change passes, answers about that member are not kept until PocketBase has applied it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const member = { ...record, id: 'abcdefghijklmno' };
+      const pb = pocketBase((n) => Response.json({ token: jwt(14 * DAY, 2000 + n), record: member }));
+      const cookie = cookieFor(jwt(14 * DAY - 60), member);
+      await proxy(req('/pb/api/collections/users/records/abcdefghijklmno', { cookie, method: 'PATCH' }));
+      // The password change is still on its way: PocketBase still accepts the
+      // old token, and that answer must not be remembered.
+      await proxy(req('/api/likes', { cookie }));
+      await proxy(req('/api/likes', { cookie }));
+      const during = pb.mock.calls.length;
+      vi.advanceTimersByTime(SESSION_HOLD_MS + 1);
+      await proxy(req('/api/likes', { cookie }));
+      await proxy(req('/api/likes', { cookie }));
+      expect(pb.mock.calls.length - during).toBe(1);
+      expect(during).toBeGreaterThanOrEqual(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('pbSessionChange names the member, or everyone for a reset link', () => {

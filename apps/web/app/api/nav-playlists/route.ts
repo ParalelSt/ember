@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { forgetUser } from '@/lib/sessionCache';
 import { applyNavPatch, atNavCap, parseNavPatch, pruneNavPrefs, readNavPrefs, type NavPrefs } from '@/lib/navPlaylists';
 import { collabClient, sharedWith } from '@/lib/playlistAccess';
 import type PocketBase from 'pocketbase';
@@ -78,6 +79,8 @@ export const PATCH = withRequestLog('nav-playlists', async (request: NextRequest
       const next = applyNavPatch(prefs, patch, Date.now());
       return pb.collection('users').update(user.id, { navPlaylists: next });
     });
+    // Memory of this session holds the old copy (lib/sessionCache).
+    forgetUser(user.id);
     return Response.json(readNavPrefs(updated.navPlaylists) satisfies NavPrefs);
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

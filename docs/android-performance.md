@@ -556,20 +556,31 @@ All three steps, in `apps/web/lib/sessionCache.ts`, used by `proxy.ts` and
   browser only gets the new token once its own is an hour old
   (`ROTATE_AFTER_MS`), so a session still lasts the full token lifetime
   from the last visit. The new token is remembered too, so the request
-  after a rotation is answered from memory. When PocketBase's record
-  differs from the cookie's copy, the cookie is rewritten with the same
-  token and PocketBase's record.
+  after a rotation is answered from memory. When the cookie's copy names
+  another member or another admin flag than PocketBase's record, the
+  cookie is rewritten with the same token and PocketBase's record; other
+  differences (name, avatar, theme) are left to the browser.
 - Routes keep the token they came with; the proxy alone rotates.
-- `requireAdmin` always asks PocketBase, never the memory.
+- `requireAdmin` always asks PocketBase, never the memory, and so does
+  `adminNow` (lib/auth.ts), used wherever the admin flag grants a power
+  outside requireAdmin: deleting or editing anyone's upload, anyone's tab,
+  prank previews, the host's Discord card, members' emails in the
+  Collaborate picker. A demotion takes effect at once there.
 
 Security window: a session ended at PocketBase can keep working from
 memory for up to 60 s. These end it at once on this server
 (`forgetUser`): Settings > Sign out everywhere, Admin > Users (sign out
-everywhere, password reset, role or name change, delete), and any write to
-a users record through `/pb` (a member changing their own password or
-email); a password or email reset link through `/pb` forgets everyone.
+everywhere, password reset, role or name change, delete), and a member's
+own account edits through the app (profile, privacy, theme, plugins,
+pinned playlists, changelog). An answer PocketBase was giving while such a
+forget happened is not kept. A write to a users record through `/pb` (a
+member changing their own password or email) reaches PocketBase only
+after the proxy, so it holds that member (`holdSessions`): nothing about
+them is remembered for 10 s (`SESSION_HOLD_MS`), time for PocketBase to
+apply it; a password or email reset link through `/pb` holds everyone.
 Only a change made outside the app (PocketBase's admin UI on the host)
-waits for the window. A plain sign-out only drops the cookie in that
+waits for the 60 s window, except admin powers, which are always checked
+fresh. A plain sign-out only drops the cookie in that
 browser; PocketBase tokens are not revocable one by one, so that is
 unchanged.
 

@@ -1,7 +1,7 @@
 import 'server-only';
 import type PocketBase from 'pocketbase';
 import type { RecordModel } from 'pocketbase';
-import type { AuthedUser } from '@/lib/auth';
+import { adminNow, type AuthedUser } from '@/lib/auth';
 import { jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
 import { uploadArtUrl } from '@/lib/uploads';
@@ -17,7 +17,7 @@ export async function loadOwnUpload(
 ): Promise<{ row: RecordModel; error?: never } | { row?: never; error: Response }> {
   const row = await pb.collection('uploads').getOne(id).catch(() => null);
   if (!row) return { error: jsonError('Upload not found', 404) };
-  if (row.uploader !== user.id && !user.isAdmin) {
+  if (row.uploader !== user.id && !(await adminNow(user))) {
     return { error: jsonError('Only the person who uploaded this can change it', 403) };
   }
   return { row };

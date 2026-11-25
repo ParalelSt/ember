@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server';
-import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
+import { adminNow, requireUser, UnauthorizedError, unauthorizedResponse, type AuthedUser } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { jsonError } from '@/lib/upsertTrack';
 import { rateLimitResponse } from '@/lib/rateLimit';
@@ -21,11 +21,11 @@ import { alignmentStatus, alignTab } from '@/lib/tabAlign';
  *  fetched before. Listening costs CPU, so it is one job at a time for the
  *  whole server (lib/pythonJobs.ts) and rate limited per member. */
 
-async function rowFor(tabId: string, viewer: { id: string; isAdmin: boolean }) {
+async function rowFor(tabId: string, viewer: AuthedUser) {
   const pb = await createAdminClient();
   const row = await pb.collection('tabs').getOne(tabId).catch(() => null);
   // A generated tab (older servers) is never drawn, so there is nothing to line up.
-  if (!row || isRetired(row) || !(canView(row, viewer) || viewer.isAdmin)) return { pb, row: null };
+  if (!row || isRetired(row) || !(canView(row, viewer) || (await adminNow(viewer)))) return { pb, row: null };
   return { pb, row };
 }
 

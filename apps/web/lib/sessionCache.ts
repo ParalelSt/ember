@@ -30,6 +30,11 @@ import type { RecordModel } from 'pocketbase';
 export const SESSION_CACHE_TTL_MS = 60_000;
 /** Tokens remembered at once; the least recently used goes first. */
 export const SESSION_CACHE_MAX = 2_000;
+/** How long holdSessions keeps answers about a member out of memory: time
+ *  for PocketBase to apply a change that passed the proxy on its way. */
+export const SESSION_HOLD_MS = 10_000;
+/** Members whose forget is tracked at once (forgotAt, heldUntil). */
+const TRACKED_MAX = 5_000;
 /** The browser gets a fresh token once its own is older than this. */
 export const ROTATE_AFTER_MS = 60 * 60_000;
 
@@ -42,6 +47,17 @@ interface Entry {
 interface State {
   entries: Map<string, Entry>;
   inFlight: Map<string, Promise<Verified>>;
+  /** Counts forgets, so an answer PocketBase gave while one happened is
+   *  not kept (verifySession). */
+  seq: number;
+  /** The seq of the last forgetAllSessions. */
+  allForgotAt: number;
+  /** The seq of each member's last forget. */
+  forgotAt: Map<string, number>;
+  /** Until when nothing is kept about a member (holdSessions). */
+  heldUntil: Map<string, number>;
+  /** Until when nothing is kept about anyone. */
+  allHeldUntil: number;
 }
 
 export interface Verified {
@@ -54,6 +70,11 @@ const KEY = Symbol.for('ember.sessionCache');
 const state = ((globalThis as Record<symbol, unknown>)[KEY] ??= {
   entries: new Map(),
   inFlight: new Map(),
+  seq: 0,
+  allForgotAt: 0,
+  forgotAt: new Map(),
+  heldUntil: new Map(),
+  allHeldUntil: 0,
 }) as State;
 
 function keyOf(token: string): string {
@@ -94,6 +115,7 @@ export function cachedSession(token: string, now = Date.now()): RecordModel | nu
 export function rememberSession(token: string, record: RecordModel, now = Date.now()): void {
   const exp = tokenExpiry(token);
   if (!token || exp === null || exp <= now || !record?.id) return;
+  if (held(record.id, now)) return;
   const key = keyOf(token);
   state.entries.delete(key);
   state.entries.set(key, { userId: record.id, record, expires: Math.min(now + SESSION_CACHE_TTL_MS, exp) });
@@ -104,16 +126,58 @@ export function rememberSession(token: string, record: RecordModel, now = Date.n
   }
 }
 
+function held(userId: string, now: number): boolean {
+  if (state.allHeldUntil > now) return true;
+  const until = state.heldUntil.get(userId);
+  if (until === undefined) return false;
+  if (until > now) return true;
+  state.heldUntil.delete(userId);
+  return false;
+}
+
+/** Keep a small map from growing without end: drop its oldest entries. */
+function trim<V>(map: Map<string, V>): void {
+  while (map.size > TRACKED_MAX) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
+
 /** Forget every remembered session of a person: their sessions just ended
- *  or changed at PocketBase. */
+ *  or changed at PocketBase. An answer about them PocketBase is giving right
+ *  now is not kept either, and checks already under way are not joined. */
 export function forgetUser(userId: string): void {
   for (const [key, entry] of state.entries) if (entry.userId === userId) state.entries.delete(key);
+  state.forgotAt.delete(userId);
+  state.forgotAt.set(userId, ++state.seq);
+  trim(state.forgotAt);
+  state.inFlight.clear();
 }
 
 /** Forget every remembered session (a password reset by link: whose it is
  *  is not known here). */
 export function forgetAllSessions(): void {
   state.entries.clear();
+  state.allForgotAt = ++state.seq;
+  state.forgotAt.clear();
+  state.inFlight.clear();
+}
+
+/** A change to a member's account ('all': to someone's, by reset link) is
+ *  on its way to PocketBase: forget them, and keep nothing about them for
+ *  SESSION_HOLD_MS, so a request with their old token that PocketBase
+ *  answers before the change lands is not remembered. */
+export function holdSessions(target: string | 'all', now = Date.now()): void {
+  if (target === 'all') {
+    state.allHeldUntil = now + SESSION_HOLD_MS;
+    forgetAllSessions();
+    return;
+  }
+  state.heldUntil.delete(target);
+  state.heldUntil.set(target, now + SESSION_HOLD_MS);
+  trim(state.heldUntil);
+  forgetUser(target);
 }
 
 export function sessionCacheSize(): number {
@@ -128,13 +192,20 @@ export function verifySession(token: string, refresh: () => Promise<Verified>, n
   const key = keyOf(token);
   const pending = state.inFlight.get(key);
   if (pending) return pending;
+  const startedAt = state.seq;
   const job = refresh()
     .then((res) => {
-      rememberSession(token, res.record, now());
-      rememberSession(res.token, res.record, now());
+      // A forget while PocketBase answered: the answer may predate it.
+      const forgotten = state.allForgotAt > startedAt || (state.forgotAt.get(res.record?.id) ?? 0) > startedAt;
+      if (!forgotten) {
+        rememberSession(token, res.record, now());
+        rememberSession(res.token, res.record, now());
+      }
       return res;
     })
-    .finally(() => state.inFlight.delete(key));
+    .finally(() => {
+      if (state.inFlight.get(key) === job) state.inFlight.delete(key);
+    });
   state.inFlight.set(key, job);
   return job;
 }
@@ -155,4 +226,9 @@ export function shouldRotate(oldToken: string, newToken: string, now = Date.now(
 export function _resetSessionCache(): void {
   state.entries.clear();
   state.inFlight.clear();
+  state.seq = 0;
+  state.allForgotAt = 0;
+  state.forgotAt.clear();
+  state.heldUntil.clear();
+  state.allHeldUntil = 0;
 }

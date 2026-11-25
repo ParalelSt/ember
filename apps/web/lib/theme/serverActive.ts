@@ -3,6 +3,7 @@ import type PocketBase from 'pocketbase';
 import { parseThemeDoc, type ThemeDoc } from '@/lib/theme/model';
 import { problems } from '@/lib/theme/guard';
 import type { ThemeInputs } from '@/lib/theme/model';
+import { forgetUser } from '@/lib/sessionCache';
 
 /** The active theme on the signed-in user's own row (users.theme), read and
  *  written with their own client: the users rules already limit that row
@@ -14,6 +15,8 @@ export async function readActive(pb: PocketBase, userId: string): Promise<ThemeD
 
 export async function writeActive(pb: PocketBase, userId: string, doc: ThemeDoc): Promise<ThemeDoc> {
   const record = await pb.collection('users').update(userId, { theme: doc });
+  // Memory of this member's session holds the old theme (lib/sessionCache).
+  forgetUser(userId);
   return parseThemeDoc(record.theme);
 }
 

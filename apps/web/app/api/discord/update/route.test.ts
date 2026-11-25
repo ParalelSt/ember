@@ -15,6 +15,7 @@ vi.mock('@/lib/discord', () => ({
 const requireUserMock = vi.fn();
 vi.mock('@/lib/auth', () => ({
   requireUser: () => requireUserMock(),
+  adminNow: async (u: { isAdmin: boolean }) => u.isAdmin,
 }));
 vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
