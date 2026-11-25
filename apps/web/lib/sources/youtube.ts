@@ -11,6 +11,7 @@ import { downloadGate, type Release } from '@/lib/downloadGate';
 import { BusyError, createSemaphore, type Semaphore } from '@/lib/semaphore';
 import { exceedsMediaLimits, isTooLargeMessage } from '@/lib/mediaLimits';
 import { gainForMeasurement } from '@/lib/loudnessPolicy';
+import { createTtlMemo } from '@/lib/ttlMemo';
 import { forgetFailure, recentFailure, rememberUnavailable } from '@/lib/sources/failureMemo';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
@@ -341,34 +342,27 @@ function dedupeByVideoId(tracks: RawYoutubeTrack[]): RawYoutubeTrack[] {
   });
 }
 
-const SEARCH_CACHE = new Map<string, { tracks: Track[]; expires: number }>();
 const SEARCH_TTL_MS = 5 * 60 * 1000;
 const SEARCH_CACHE_MAX = 100;
 
-export async function searchTracks(query: string, { limit = 30 } = {}): Promise<Track[]> {
-  const key = `${query}:${limit}`;
-  const hit = SEARCH_CACHE.get(key);
-  if (hit && hit.expires > Date.now()) return hit.tracks;
+/** The same search typed with other capitals or spacing is the same search:
+ *  one cache entry and one helper run for "Daft  Punk" and "daft punk". */
+function searchKey(query: string, limit: number): string {
+  return `${query.trim().replace(/\s+/g, ' ').toLowerCase()}:${limit}`;
+}
 
-  // `--` separates flags from positionals so a query string that starts with
-  // `-` doesn't get misparsed as a flag by argparse. Flags come first.
-  const results = await runPython<RawYoutubeTrack[]>(['search', '--limit', String(limit), '--', query]);
-  const tracks = dedupeByVideoId(results).map(normalize);
-  // An empty answer is cheap to ask again and, if search was having a bad
-  // moment, would otherwise read "no results" for the next 5 minutes.
-  if (!tracks.length) return tracks;
+/** An empty answer is cheap to ask again and, if search was having a bad
+ *  moment, would otherwise read "no results" for the next 5 minutes. Asks
+ *  for the same query that arrive while one is running share that run. */
+const SEARCH_MEMO = createTtlMemo<Track[]>({ ttlMs: SEARCH_TTL_MS, max: SEARCH_CACHE_MAX, keep: (t) => t.length > 0 });
 
-  // Bound the cache. Drop the oldest insertion when we hit the cap, Map
-  // iteration order is insertion order in JS. Not strict LRU (we don't
-  // bump on hit) but TTL evicts stale entries anyway, and the cap of 100
-  // keeps total memory in the low-MB range.
-  if (SEARCH_CACHE.size >= SEARCH_CACHE_MAX) {
-    const oldest = SEARCH_CACHE.keys().next().value;
-    if (oldest !== undefined) SEARCH_CACHE.delete(oldest);
-  }
-  SEARCH_CACHE.set(key, { tracks, expires: Date.now() + SEARCH_TTL_MS });
-
-  return tracks;
+export function searchTracks(query: string, { limit = 30 } = {}): Promise<Track[]> {
+  return SEARCH_MEMO.get(searchKey(query, limit), async () => {
+    // `--` separates flags from positionals so a query string that starts with
+    // `-` doesn't get misparsed as a flag by argparse. Flags come first.
+    const results = await runPython<RawYoutubeTrack[]>(['search', '--limit', String(limit), '--', query]);
+    return dedupeByVideoId(results).map(normalize);
+  });
 }
 
 /** The three lookups of one streamed search, each a promise that settles
@@ -394,6 +388,7 @@ interface FinishedParts {
  *  answer with no tracks is never kept. Its own map, since an entry here
  *  holds three lists rather than one. */
 const PARTS_CACHE = new Map<string, { parts: FinishedParts; expires: number }>();
+const PARTS_INFLIGHT = new Map<string, YoutubeSearchParts>();
 
 function settled<T>(value: T): Promise<T> {
   return Promise.resolve(value);
@@ -420,11 +415,15 @@ function deferred<T>() {
  *  which only runs once songs and videos are both empty. A failed run
  *  rejects every part still waiting; parts already in stay as they were. */
 export function searchTrackParts(query: string, { limit = 30 } = {}): YoutubeSearchParts {
-  const key = `${query}:${limit}`;
+  const key = searchKey(query, limit);
   const hit = PARTS_CACHE.get(key);
   if (hit && hit.expires > Date.now()) {
     return { songs: settled(hit.parts.songs), videos: settled(hit.parts.videos), artists: settled(hit.parts.artists) };
   }
+  // The same search already running: listen to its run instead of starting
+  // a second helper (a promise can be awaited by any number of listeners).
+  const running = PARTS_INFLIGHT.get(key);
+  if (running) return running;
 
   const songs = deferred<Track[]>();
   const videos = deferred<Track[]>();
@@ -450,8 +449,12 @@ export function searchTrackParts(query: string, { limit = 30 } = {}): YoutubeSea
     // An empty videos line waits: the fallback may still fill it.
   };
 
+  const handle: YoutubeSearchParts = { songs: songs.promise, videos: videos.promise, artists: artists.promise };
+  PARTS_INFLIGHT.set(key, handle);
+
   runPython<void>(['search', '--stream', '--limit', String(limit), '--', query], { onLine }).then(
     () => {
+      PARTS_INFLIGHT.delete(key);
       if (!songs.isDone()) songs.resolve([]);
       if (!videos.isDone()) videos.resolve([]);
       if (!artists.isDone()) artists.resolve([]);
@@ -459,11 +462,12 @@ export function searchTrackParts(query: string, { limit = 30 } = {}): YoutubeSea
       capInsert(PARTS_CACHE, key, { parts: got, expires: Date.now() + SEARCH_TTL_MS }, SEARCH_CACHE_MAX);
     },
     (e: unknown) => {
+      PARTS_INFLIGHT.delete(key);
       for (const part of [songs, videos, artists]) if (!part.isDone()) part.reject(e);
     },
   );
 
-  return { songs: songs.promise, videos: videos.promise, artists: artists.promise };
+  return handle;
 }
 
 /** Downloads in flight, keyed by videoId.
@@ -754,7 +758,18 @@ interface RecommendedArgs {
   limit?: number;
 }
 
-export async function getRecommended({ seed, country = 'ZZ', limit = 30 }: RecommendedArgs = {}): Promise<Track[]> {
+/** Radio for one seed song changes slowly, and the same seed is asked for by
+ *  Home's rows, the player's radio and the pickers at about the same time.
+ *  Ten minutes per seed, country and size; a failure or an empty list is not
+ *  kept, and concurrent asks share one helper run. */
+const RECOMMENDED_MEMO = createTtlMemo<Track[]>({ ttlMs: 10 * 60 * 1000, max: 200, keep: (t) => t.length > 0 });
+
+export function getRecommended({ seed, country = 'ZZ', limit = 30 }: RecommendedArgs = {}): Promise<Track[]> {
+  const key = `${seed && VIDEO_ID_RE.test(seed) ? seed : ''}|${country}|${limit}`;
+  return RECOMMENDED_MEMO.get(key, () => fetchRecommended({ seed, country, limit }));
+}
+
+async function fetchRecommended({ seed, country = 'ZZ', limit = 30 }: RecommendedArgs): Promise<Track[]> {
   const args = ['recommended', '--country', country, '--limit', String(limit)];
   // `--seed=<id>` (not `--seed <id>`) so a hyphen-leading videoId (legal per
   // VIDEO_ID_RE, e.g. "-UaaeSP971U") is never mistaken by argparse for
@@ -1004,7 +1019,9 @@ export interface LyricsResult {
 }
 
 const LYRICS_CACHE = new Map<string, { result: LyricsResult; expires: number }>();
-const LYRICS_TTL_MS = 60 * 60 * 1000;
+const LYRICS_TTL_MS = 6 * 60 * 60 * 1000;
+/** Lyrics lookups running now, by cache key, so two askers share one. */
+const LYRICS_INFLIGHT = new Map<string, Promise<LyricsResult>>();
 const LYRICS_CACHE_MAX = 500;
 
 /** Shared with URL_CACHE: both are keyed by an unbounded input (every
@@ -1165,6 +1182,35 @@ export async function getLyrics(
   const cached = LYRICS_CACHE.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.result;
 
+  // Someone is already looking this song up: wait for that answer. If that
+  // lookup fails (it may have been refused by ITS caller's rate limit), this
+  // caller runs its own, so one person's failure is never another's answer.
+  const running = LYRICS_INFLIGHT.get(cacheKey);
+  if (running) {
+    try {
+      return await running;
+    } catch {
+      // fall through to a lookup of our own
+    }
+  }
+  const lookup = lookupLyrics(cacheKey, cleanTitle, cleanArtist, seconds, opts);
+  if (!running) {
+    LYRICS_INFLIGHT.set(cacheKey, lookup);
+    const forget = () => {
+      if (LYRICS_INFLIGHT.get(cacheKey) === lookup) LYRICS_INFLIGHT.delete(cacheKey);
+    };
+    lookup.then(forget, forget);
+  }
+  return lookup;
+}
+
+async function lookupLyrics(
+  cacheKey: string,
+  cleanTitle: string,
+  cleanArtist: string,
+  seconds: number,
+  opts: { beforeHelper?: () => void },
+): Promise<LyricsResult> {
   // Prefer LRCLib because it can give us synced timing. If it has nothing
   // useful, fall back to Genius via the Python scraper for the plain text.
   const lrclib = await fetchLrclib(cleanTitle, cleanArtist, seconds || undefined);
