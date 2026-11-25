@@ -41,13 +41,19 @@ function fakeClient() {
 vi.mock('@/lib/pocketbase/server', () => ({ createClient: async () => fakeClient() }));
 
 const { requireUser, requireAdmin, UnauthorizedError, ForbiddenError } = await import('./auth');
+const { _resetSessionCache, SESSION_CACHE_TTL_MS, forgetUser } = await import('./sessionCache');
 
 const member: Rec = { id: 'alice', email: 'alice@ember.test', is_admin: false };
 const admin: Rec = { id: 'boss', email: 'boss@ember.test', is_admin: true };
 let seq = 0;
-const token = () => `token-${++seq}`;
+/** A JWT-shaped token, an hour from expiry (lib/sessionCache reads exp). */
+const token = () => {
+  const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  return `${b64({ alg: 'HS256' })}.${b64({ id: 'x', n: ++seq, exp: Math.floor(Date.now() / 1000) + 3600 })}.sig`;
+};
 
 beforeEach(() => {
+  _resetSessionCache();
   authRefresh.mockReset();
   authRefresh.mockImplementation(async (t) => ({ token: `${t}-refreshed`, record: member }));
 });
@@ -94,7 +100,7 @@ describe('requireUser / requireAdmin', () => {
     await expect(requireUser()).rejects.toThrow('down');
   });
 
-  it('asks PocketBase once per token for a few seconds, then again', async () => {
+  it('asks PocketBase once per token for the cache window, then again', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     cookie = { token: token(), record: member, valid: true };
     await requireUser();
@@ -102,7 +108,9 @@ describe('requireUser / requireAdmin', () => {
     expect(authRefresh).toHaveBeenCalledTimes(1);
     // The cached answer still replaces whatever record the cookie carried.
     expect(second.pb.authStore.record).toEqual(member);
-    vi.advanceTimersByTime(10_000);
+    // The route keeps the token it came with.
+    expect(second.pb.authStore.token).toBe(cookie.token);
+    vi.advanceTimersByTime(SESSION_CACHE_TTL_MS + 1);
     await requireUser();
     expect(authRefresh).toHaveBeenCalledTimes(2);
   });
@@ -115,5 +123,35 @@ describe('requireUser / requireAdmin', () => {
     const { user } = await requireUser();
     expect(user.id).toBe('boss');
     expect(authRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('admin routes always ask PocketBase: a demoted admin is refused at once', async () => {
+    authRefresh.mockImplementation(async (t) => ({ token: `${t}-r`, record: admin }));
+    cookie = { token: token(), record: admin, valid: true };
+    await requireAdmin();
+    authRefresh.mockImplementation(async (t) => ({ token: `${t}-r`, record: { ...admin, is_admin: false } }));
+    await expect(requireAdmin()).rejects.toBeInstanceOf(ForbiddenError);
+    expect(authRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('a revoked session stops working at once once its user is forgotten', async () => {
+    cookie = { token: token(), record: member, valid: true };
+    await requireUser();
+    authRefresh.mockRejectedValue(Object.assign(new Error('revoked'), { status: 401 }));
+    // Still remembered: this is the documented window.
+    await expect(requireUser()).resolves.toBeTruthy();
+    forgetUser('alice');
+    await expect(requireUser()).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+
+  it('a burst of calls with one new token asks PocketBase once', async () => {
+    let release: () => void = () => {};
+    authRefresh.mockImplementation((t) => new Promise((r) => { release = () => r({ token: `${t}-r`, record: member }); }));
+    cookie = { token: token(), record: member, valid: true };
+    const burst = Promise.all([requireUser(), requireUser(), requireUser()]);
+    await new Promise((r) => setTimeout(r, 0));
+    release();
+    await burst;
+    expect(authRefresh).toHaveBeenCalledTimes(1);
   });
 });

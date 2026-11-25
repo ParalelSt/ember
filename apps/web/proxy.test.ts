@@ -1,11 +1,15 @@
 // @vitest-environment node
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn() } }));
 
-const { default: proxy, uiModeSwitch, isStaticAsset, isBlockedPbPath, isPbAuthPath, isPbSignUpPath, PB_AUTH_LIMIT, PB_SIGNUP_LIMIT } = await import('./proxy');
+const { default: proxy, pbSessionChange, uiModeSwitch, isStaticAsset, isBlockedPbPath, isPbAuthPath, isPbSignUpPath, PB_AUTH_LIMIT, PB_SIGNUP_LIMIT } = await import('./proxy');
 const { _resetBuckets } = await import('./lib/rateLimitCore');
+const { _resetSessionCache, SESSION_CACHE_TTL_MS, forgetUser } = await import('./lib/sessionCache');
+
+// Each test starts with no remembered sessions (lib/sessionCache).
+beforeEach(() => _resetSessionCache());
 
 /** A minimal stand-in for Next's NextURL: proxy() only reads pathname,
  *  protocol and searchParams, and clones itself for the /auth redirect. */
@@ -552,5 +556,116 @@ describe('proxy [perf]: the session check is timed for the page (Server-Timing)'
     const res = await proxy(req('/library', { cookie: staleCookie() }));
     expect(res.status).toBe(200);
     expect(res.headers.get('server-timing')).toBeNull();
+  });
+});
+
+describe('proxy [perf, section 9]: the session check is answered from memory', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const DAY = 86400;
+  const jwt = (secondsLeft: number, n = 0) =>
+    `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ id: 'u1', type: 'auth', collectionId: '_pb_users_auth_', n, exp: Math.floor(Date.now() / 1000) + secondsLeft })}.sig`;
+  const record = { id: 'u1', collectionName: 'users', email: 'a@b.c', name: 'A' };
+  const cookieFor = (token: string, rec: object = record) => `pb_auth=${encodeURIComponent(JSON.stringify({ token, record: rec }))}`;
+  const authCookie = (res: Response) => res.headers.getSetCookie().find((c) => /^pb_auth=/.test(c));
+  const tokenIn = (setCookie: string) => JSON.parse(decodeURIComponent(setCookie.split(';')[0].slice('pb_auth='.length))).token as string;
+
+  /** PocketBase handing out a fresh 14-day token for every refresh. */
+  function pocketBase(answer: (n: number) => Response = (n) => Response.json({ token: jwt(14 * DAY, 1000 + n), record })) {
+    const fetchMock = vi.fn(async () => answer(fetchMock.mock.calls.length));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('a burst of API calls with one cookie makes one PocketBase call and sets no new cookie', async () => {
+    const pb = pocketBase();
+    const cookie = cookieFor(jwt(14 * DAY - 60));
+    const first = await Promise.all(Array.from({ length: 5 }, () => proxy(req('/api/playlists', { cookie }))));
+    const later = await Promise.all(Array.from({ length: 20 }, () => proxy(req('/api/likes', { cookie }))));
+    expect(pb).toHaveBeenCalledTimes(1);
+    for (const res of [...first, ...later]) {
+      expect(res.status).toBe(200);
+      expect(authCookie(res)).toBeUndefined();
+    }
+  });
+
+  it('asks PocketBase again once the window has passed', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const pb = pocketBase();
+      const cookie = cookieFor(jwt(14 * DAY - 60));
+      await proxy(req('/api/likes', { cookie }));
+      vi.advanceTimersByTime(SESSION_CACHE_TTL_MS + 1);
+      await proxy(req('/api/likes', { cookie }));
+      expect(pb).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hands an hour-old token a new one, which is then answered from memory', async () => {
+    const pb = pocketBase();
+    const res = await proxy(req('/api/likes', { cookie: cookieFor(jwt(13 * DAY)) }));
+    const set = authCookie(res);
+    expect(set).toBeDefined();
+    const fresh = tokenIn(set!);
+    const next = await proxy(req('/api/likes', { cookie: cookieFor(fresh) }));
+    expect(next.status).toBe(200);
+    expect(authCookie(next)).toBeUndefined();
+    expect(pb).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a tampered token even right after the real one was accepted', async () => {
+    const good = jwt(14 * DAY - 60);
+    pocketBase();
+    expect((await proxy(req('/api/likes', { cookie: cookieFor(good) }))).status).toBe(200);
+    const pb = pocketBase(() => new Response(JSON.stringify({ code: 401, message: 'no', data: {} }), { status: 401, headers: { 'content-type': 'application/json' } }));
+    const [h, p] = good.split('.');
+    const forged = `${h}.${p}.forged`;
+    const res = await proxy(req('/api/likes', { cookie: cookieFor(forged) }));
+    expect(res.status).toBe(401);
+    expect(pb).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses an expired token without asking PocketBase', async () => {
+    const pb = pocketBase();
+    const res = await proxy(req('/api/likes', { cookie: cookieFor(jwt(-10)) }));
+    expect(res.status).toBe(401);
+    expect(pb).not.toHaveBeenCalled();
+  });
+
+  it('takes the record from PocketBase, not the cookie, and sends the corrected copy back with the same token', async () => {
+    pocketBase();
+    const token = jwt(14 * DAY - 60);
+    const res = await proxy(req('/api/likes', { cookie: cookieFor(token, { ...record, is_admin: true }) }));
+    const set = authCookie(res);
+    expect(set).toBeDefined();
+    const sent = JSON.parse(decodeURIComponent(set!.split(';')[0].slice('pb_auth='.length)));
+    expect(sent.token).toBe(token);
+    expect(sent.record.is_admin).toBeUndefined();
+  });
+
+  it('a write to a users record through /pb stops vouching for that member from memory', async () => {
+    const pb = pocketBase();
+    const cookie = cookieFor(jwt(14 * DAY - 60));
+    await proxy(req('/api/likes', { cookie }));
+    await proxy(req('/pb/api/collections/users/records/u10000000000001', { cookie, method: 'PATCH' }));
+    // u1 is not that member: still remembered.
+    await proxy(req('/api/likes', { cookie }));
+    expect(pb).toHaveBeenCalledTimes(1);
+    forgetUser('u1');
+    await proxy(req('/api/likes', { cookie }));
+    expect(pb).toHaveBeenCalledTimes(2);
+  });
+
+  it('pbSessionChange names the member, or everyone for a reset link', () => {
+    expect(pbSessionChange('PATCH', '/pb/api/collections/users/records/abcdefghijklmno')).toBe('abcdefghijklmno');
+    expect(pbSessionChange('DELETE', '/pb/api/collections/_pb_users_auth_/records/abcdefghijklmno/')).toBe('abcdefghijklmno');
+    expect(pbSessionChange('POST', '/pb/api/collections/users/confirm-password-reset')).toBe('all');
+    expect(pbSessionChange('POST', '/pb//api/collections/USERS/confirm-email-change')).toBe('all');
+    expect(pbSessionChange('GET', '/pb/api/collections/users/records/abcdefghijklmno')).toBeNull();
+    expect(pbSessionChange('PATCH', '/pb/api/collections/playlists/records/abcdefghijklmno')).toBeNull();
+    expect(pbSessionChange('PATCH', '/api/profile')).toBeNull();
   });
 });

@@ -496,7 +496,7 @@ Slice 9 changes how sessions are checked, so it needs a security review.
 8. Which phone is the target for "good enough", and how big is the largest
    Liked songs list?
 
-## 9. Proposal: the session check in `proxy.ts` (not done, needs a security review)
+## 9. The session check in `proxy.ts` (built 2026-11-25 on perf/playlists-auth)
 
 Today `proxy.ts` calls `users.authRefresh()` on every request it covers
 (every API poll, `/pb/*`, audio range requests) and writes the new token back
@@ -527,3 +527,41 @@ also drop the token from the cache on this server, and the admin's ban
 action should clear the cache for that user. Tests to keep green:
 `proxy.test.ts` and the authorization suites; add one that a burst of API
 calls with one cookie makes one PocketBase call and sets no new cookie.
+
+### What was built
+
+All three steps, in `apps/web/lib/sessionCache.ts`, used by `proxy.ts` and
+`lib/auth.ts`:
+
+- One memory for both, on `globalThis`, keyed by a SHA-256 of the token
+  (the token itself is never kept or logged), at most 2,000 tokens, least
+  recently used dropped first.
+- A token PocketBase accepted is accepted from memory for 60 s
+  (`SESSION_CACHE_TTL_MS`), never past the token's own expiry. An expired
+  token is refused before any lookup; a tampered one never matches (its
+  hash differs) and goes to PocketBase, which refuses it. Concurrent checks
+  of one token share a single PocketBase call. Refusals are not remembered.
+- On a miss the proxy still asks PocketBase with an auth refresh, but the
+  browser only gets the new token once its own is an hour old
+  (`ROTATE_AFTER_MS`), so a session still lasts the full token lifetime
+  from the last visit. The new token is remembered too, so the request
+  after a rotation is answered from memory. When PocketBase's record
+  differs from the cookie's copy, the cookie is rewritten with the same
+  token and PocketBase's record.
+- Routes keep the token they came with; the proxy alone rotates.
+- `requireAdmin` always asks PocketBase, never the memory.
+
+Security window: a session ended at PocketBase can keep working from
+memory for up to 60 s. These end it at once on this server
+(`forgetUser`): Settings > Sign out everywhere, Admin > Users (sign out
+everywhere, password reset, role or name change, delete), and any write to
+a users record through `/pb` (a member changing their own password or
+email); a password or email reset link through `/pb` forgets everyone.
+Only a change made outside the app (PocketBase's admin UI on the host)
+waits for the window. A plain sign-out only drops the cookie in that
+browser; PocketBase tokens are not revocable one by one, so that is
+unchanged.
+
+Also: the proxy no longer treats the cookie's record of an expired token
+as signed in (routes already refused it).
+

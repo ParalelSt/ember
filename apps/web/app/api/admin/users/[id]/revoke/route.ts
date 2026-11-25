@@ -8,6 +8,7 @@ import {
 } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { serverLogger } from '@/lib/logger/server';
+import { forgetUser } from '@/lib/sessionCache';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { csrfRefusal } from '@/lib/qrLogin/sameOrigin';
 import { cancelApprovedFor, failure, json } from '@/lib/qrLogin/server';
@@ -36,6 +37,7 @@ export const POST = withRequestLog('admin/users/[id]/revoke', async (req: NextRe
       if ((e as { status?: number })?.status === 404) return json({ error: 'No such member' }, 404);
       throw e;
     }
+    forgetUser(id);
     // An audit trail entry, not a problem (same as a password reset).
     serverLogger.info('admin', 'sign-out-everywhere', { targetId: id, byId: actor.id, by: actor.email });
     return json({ ok: true, self: id === actor.id });

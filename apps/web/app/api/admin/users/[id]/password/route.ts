@@ -9,6 +9,7 @@ import {
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
+import { forgetUser } from '@/lib/sessionCache';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { cancelApprovedFor } from '@/lib/qrLogin/server';
 
@@ -36,6 +37,8 @@ export const POST = withRequestLog('admin/users/[id]/password', async (req: Next
       password: pw,
       passwordConfirm: pw,
     });
+    // A new password ends their sessions at PocketBase; end them here too.
+    forgetUser(id);
 
     // An audit trail entry, not a problem: info stays off the digest (see
     // lib/reports/digest.ts), while still keeping the "who reset whose
