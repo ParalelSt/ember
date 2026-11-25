@@ -633,21 +633,24 @@ describe('the library list carries each playlist\'s first song covers (phone Hom
     expect(m.body.playlists).toEqual([expect.objectContaining({ id: shared, track_artworks: [art(9)] })]);
   });
 
-  it('asks for the covers in one request for your own playlists, however many there are, with no related-field filter', async () => {
+  it('asks for each playlist\'s covers on its own, owner rows with the owner\'s session, never with a related-field filter', async () => {
     const ids = [secret, ...Array.from({ length: 5 }, (_, i) => world.addPlaylist(owner, `More ${i}`).id)];
     const seen: { who: string; filter?: string }[] = [];
     const spyOn = (c: ReturnType<typeof world.server>) => ({
       ...c,
       collection: (name: string) => {
         const col = c.collection(name);
-        return { ...col, getFullList: async (opts: { filter?: string } = {}) => { seen.push({ who: c.label, filter: opts.filter }); return col.getFullList(opts); } };
+        const spy = (opts: { filter?: string } = {}) => seen.push({ who: c.label, filter: opts.filter });
+        return {
+          ...col,
+          getFullList: async (opts: { filter?: string } = {}) => { spy(opts); return col.getFullList(opts); },
+          getList: async (page: number, perPage: number, opts: { filter?: string } = {}) => { spy(opts); return col.getList(page, perPage, opts); },
+        };
       },
     });
     const { playlistArtworks } = await import('@/lib/playlistAccess');
     await playlistArtworks(spyOn(world.member(owner)) as never, ids, [], async () => spyOn(world.server()) as never);
-    expect(seen).toHaveLength(1);
-    expect(seen[0].who).toBe(owner);
-    expect(seen[0].filter).toBe(ids.map((id) => `playlist = "${id}"`).join(' || '));
+    expect(seen).toEqual(ids.map((id) => ({ who: owner, filter: `playlist = "${id}"` })));
     // pb_hooks/guard_filters refuses `relation.field` paths to users: the
     // real guard must pass this filter.
     const { createRequire } = await import('node:module');

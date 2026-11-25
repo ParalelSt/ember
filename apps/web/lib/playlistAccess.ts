@@ -6,6 +6,7 @@ import { createCatalogClient } from '@/lib/pocketbase/server';
 import { fileUrl } from '@/lib/pocketbase/fileUrl';
 import { isRecordId, MAX_MEMBERS, publicName } from '@/lib/collab';
 import { jsonError } from '@/lib/upsertTrack';
+import { mapLimit } from '@/lib/bulkCopy';
 import type { Playlist, PlaylistPerson, PlaylistRole } from '@/types/track';
 
 /** Who may do what with a playlist (pb_hooks/ensure_collab_playlists.pb.js):
@@ -124,7 +125,7 @@ export const MOSAIC_ARTWORKS = 4;
 /** The first MOSAIC_ARTWORKS distinct song covers of each playlist, in
  *  playlist order, from playlist_tracks rows already sorted by position
  *  (each with its track expanded, or only `expand.track.artwork_url`). Rows
- *  without art are skipped. Pure, so the list route stays one query. */
+ *  without art are skipped. Pure. */
 export function firstArtworks(rows: readonly RecordModel[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const r of rows) {
@@ -138,49 +139,71 @@ export function firstArtworks(rows: readonly RecordModel[]): Map<string, string[
   return out;
 }
 
-/** How many songs each playlist has, from the same playlist_tracks rows
- *  firstArtworks reads (every row counts, with art or without). Pure. */
-export function trackCounts(rows: readonly RecordModel[]): Map<string, number> {
-  const out = new Map<string, number>();
-  for (const r of rows) {
-    const pid = String(r.playlist ?? '');
-    if (pid) out.set(pid, (out.get(pid) ?? 0) + 1);
+/** Songs read per request when looking for a playlist's covers. */
+export const COVER_PAGE_SIZE = 20;
+/** At most this many pages per playlist: a playlist whose first songs share
+ *  fewer than four covers (an album) is read a little further, never to the
+ *  end. */
+export const COVER_PAGES = 3;
+/** Playlists looked up at the same time. */
+const COVER_CONCURRENCY = 6;
+
+/** One playlist's first covers and its song count: one small sorted page
+ *  (with PocketBase's total, so the count costs nothing more), and a page or
+ *  two more only when the first did not hold four distinct covers. The
+ *  (playlist, position) index answers both. requestKey null: these run side
+ *  by side on one client, and the SDK would otherwise cancel all but the
+ *  last. */
+async function coversAndCount(db: PocketBase, id: string): Promise<{ covers: string[]; count: number }> {
+  const rows: RecordModel[] = [];
+  let count = 0;
+  for (let page = 1; page <= COVER_PAGES; page++) {
+    const res = await db.collection('playlist_tracks').getList(page, COVER_PAGE_SIZE, {
+      filter: db.filter('playlist = {:p}', { p: id }),
+      sort: 'position,created',
+      expand: 'track',
+      fields: 'playlist,expand.track.artwork_url',
+      ...(page > 1 ? { skipTotal: true } : {}),
+      requestKey: null,
+    });
+    if (page === 1) count = res.totalItems;
+    rows.push(...res.items);
+    const covers = firstArtworks(rows).get(id) ?? [];
+    if (covers.length >= MOSAIC_ARTWORKS || res.items.length < COVER_PAGE_SIZE || page * COVER_PAGE_SIZE >= count) {
+      return { covers, count };
+    }
   }
-  return out;
+  return { covers: firstArtworks(rows).get(id) ?? [], count };
 }
 
-/** The covers for the Home tiles' mosaics, for every playlist in the
- *  library in at most two requests: one for your own (your session, so
- *  PocketBase checks it too), one for the shared ones (the server's
- *  client, like their rows). The filter names the playlist ids themselves:
- *  pb_hooks/guard_filters refuses a related field (`playlist.user`) to
- *  anyone but a superuser. Only the playlist id and the song's cover come
- *  back, never the whole song. */
+/** The covers for the Home tiles' mosaics and the song count of every
+ *  playlist in the library. Each playlist costs one small request (rarely
+ *  up to COVER_PAGES), however many songs it holds; it used to read every
+ *  song of every playlist, 500 rows a request, one after the other. Your
+ *  own through your session (PocketBase checks it too), the shared ones
+ *  through the server's client, like their rows. The filter names the
+ *  playlist id itself: pb_hooks/guard_filters refuses a related field
+ *  (`playlist.user`) to anyone but a superuser. Only the playlist id and
+ *  the song's cover come back, never the whole song. */
 export async function playlistArtworks(
   pb: PocketBase,
   ownIds: readonly string[],
   sharedIds: readonly string[],
   admin: () => Promise<PocketBase>,
 ): Promise<Map<string, string[]> & { counts: Map<string, number> }> {
-  const rowsFor = async (db: PocketBase, ids: readonly string[]): Promise<RecordModel[]> => {
-    const valid = ids.filter(isRecordId);
-    if (valid.length === 0) return [];
-    const params: Record<string, string> = {};
-    const clauses = valid.map((id, i) => {
-      params[`p${i}`] = id;
-      return `playlist = {:p${i}}`;
-    });
-    return db.collection('playlist_tracks').getFullList({
-      filter: db.filter(clauses.join(' || '), params),
-      sort: 'position,created',
-      expand: 'track',
-      fields: 'playlist,expand.track.artwork_url',
-    });
-  };
-  const own = await rowsFor(pb, ownIds);
-  const theirs = sharedIds.length > 0 ? await rowsFor(await admin(), sharedIds) : [];
-  const rows = [...own, ...theirs];
-  return Object.assign(firstArtworks(rows), { counts: trackCounts(rows) });
+  const own = ownIds.filter(isRecordId);
+  const shared = sharedIds.filter(isRecordId);
+  const server = shared.length > 0 ? await admin() : null;
+  const jobs: [PocketBase, string][] = [...own.map((id): [PocketBase, string] => [pb, id])];
+  if (server) for (const id of shared) jobs.push([server, id]);
+  const found = await mapLimit(jobs, COVER_CONCURRENCY, ([db, id]) => coversAndCount(db, id));
+  const covers = new Map<string, string[]>();
+  const counts = new Map<string, number>();
+  jobs.forEach(([, id], i) => {
+    if (found[i].covers.length > 0) covers.set(id, found[i].covers);
+    counts.set(id, found[i].count);
+  });
+  return Object.assign(covers, { counts });
 }
 
 /** A user row as members see it: name and picture, no email. */

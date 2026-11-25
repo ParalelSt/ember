@@ -312,3 +312,41 @@ describe('withRequestLog: no Server-Timing of its own', () => {
     expect(res.headers.get('server-timing')).toBeNull();
   });
 });
+
+describe('withRequestLog: playlist writes forget the remembered playlist lists', () => {
+  it('a write to a playlist route forgets them, even when it fails; a read or another route does not', async () => {
+    const { playlistListGeneration } = await import('@/lib/playlistListCache');
+    const ok = async () => Response.json({ ok: true });
+    const before = playlistListGeneration();
+    await withRequestLog('playlists/[id]/tracks', ok)(makeReq({}, 'POST') as never, {});
+    expect(playlistListGeneration()).toBe(before + 1);
+    await withRequestLog('playlists/[id]', async () => { throw new Error('boom'); })(makeReq({}, 'DELETE') as never, {});
+    expect(playlistListGeneration()).toBe(before + 2);
+    await withRequestLog('playlists', ok)(makeReq() as never, {});
+    await withRequestLog('likes', ok)(makeReq({}, 'POST') as never, {});
+    expect(playlistListGeneration()).toBe(before + 2);
+  });
+
+  it('every playlist and import route that writes is one of those routes', async () => {
+    const { changesPlaylists } = await import('@/lib/playlistListCache');
+    const root = join(__dirname, '../../app/api');
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const f of readdirSync(dir)) {
+        const p = join(dir, f);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (f === 'route.ts') files.push(p);
+      }
+    };
+    for (const dir of ['playlists', 'import', 'nav-playlists', 'uploads']) walk(join(root, dir));
+    let checked = 0;
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8');
+      for (const m of src.matchAll(/export const (POST|PATCH|PUT|DELETE) = withRequestLog\(\s*'([^']+)'/g)) {
+        expect(changesPlaylists(m[2], m[1]), `${m[1]} ${m[2]}`).toBe(true);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(15);
+  });
+});

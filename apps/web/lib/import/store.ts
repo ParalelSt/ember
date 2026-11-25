@@ -8,6 +8,7 @@ import { syntheticLikedAt, transferBase, type SourceOrder } from '@/lib/import/l
 import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, JobKind, SourceItem } from '@/lib/import/types';
 import type { ItemResult, JobCounts, JobPatch, JobStore, PendingItem, RunnerJob } from '@/lib/import/runner';
 import { escapeFilterValue as esc } from '@/lib/pocketbase/filterValue';
+import { playlistsChanged } from '@/lib/playlistListCache';
 
 // PocketBase side of imports. Every write goes through the admin client:
 // the collections have no create/update rules (ensure_imports.pb.js), so
@@ -56,6 +57,10 @@ export async function addTrackAt(pb: PocketBase, playlistId: string, position: n
     await pb.collection('playlist_tracks').create({ playlist: playlistId, track: trackId, position });
   } catch (e) {
     if (status(e) !== 400) throw e;
+  } finally {
+    // The runner adds songs outside any request: the playlist list's covers
+    // and count change with each one (lib/playlistListCache).
+    playlistsChanged();
   }
 }
 
@@ -361,6 +366,7 @@ export async function attachCover(pb: PocketBase, playlistId: string, coverUrl: 
     const fd = new FormData();
     fd.append('artwork', blob, `cover.${type.split('/')[1]}`);
     await pb.collection('playlists').update(playlistId, fd);
+    playlistsChanged();
   } catch {
     // no cover
   }
@@ -401,6 +407,7 @@ export async function pickItem(pb: PocketBase, job: ImportJob, item: ImportItem,
       if (status(e) !== 400) throw e;
       await pb.collection('playlist_tracks').delete(junction.id);
     }
+    playlistsChanged();
   } else {
     await addTrackAt(pb, playlistId, playlistPosition(item.position), track);
   }
@@ -510,6 +517,7 @@ async function removeFromPlaylist(pb: PocketBase, job: ImportJob, item: ImportIt
       .collection('playlist_tracks')
       .getFirstListItem(`playlist = "${esc(job.playlistId)}" && track = "${t.id}"`);
     await pb.collection('playlist_tracks').delete(row.id);
+    playlistsChanged();
   } catch (e) {
     if (status(e) !== 404) throw e;
   }
