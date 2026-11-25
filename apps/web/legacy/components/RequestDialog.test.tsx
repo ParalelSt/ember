@@ -75,7 +75,7 @@ describe('RequestDialog: default kind', () => {
   it('shows the feature labels and placeholders', () => {
     render(<RequestDialog open onOpenChange={() => {}} />);
     expect(screen.getByPlaceholderText('Short name, e.g. Sleep timer')).toBeInTheDocument();
-    expect(screen.getByText('Description')).toBeInTheDocument();
+    expect(screen.getByText('Description (optional)')).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText(
         'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
@@ -119,30 +119,32 @@ describe('RequestDialog: switching kind', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Fix' }));
 
     expect(screen.getByPlaceholderText('What needs fixing, e.g. Queue jumps to the top')).toHaveValue('Something');
-    expect(screen.getByText('Recommended approach')).toBeInTheDocument();
+    expect(screen.getByText('Recommended approach (optional)')).toBeInTheDocument();
   });
 });
 
 describe('RequestDialog: Send disabled state', () => {
-  it('disables Send until name and main are filled', async () => {
+  it('disables Send until there is a name; the description is optional', async () => {
     render(<RequestDialog open onOpenChange={() => {}} />);
     const sendButton = screen.getByRole('button', { name: 'Send' });
     expect(sendButton).toBeDisabled();
 
     await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
-    expect(sendButton).toBeDisabled();
-
-    await userEvent.type(
-      screen.getByPlaceholderText(
-        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
-      ),
-      'Stop after 30 min',
-    );
     expect(sendButton).not.toBeDisabled();
   });
 });
 
 describe('RequestDialog: submit', () => {
+  it.each(['feature', 'fix'] as const)('sends a %s with only a name', async (kind) => {
+    const fetchMock = mockFetch();
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    if (kind === 'fix') await userEvent.click(screen.getByRole('tab', { name: 'Fix' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name' }), 'Only a title');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(requestBody(fetchMock)).toMatchObject({ kind, name: 'Only a title', main: '' });
+  });
+
   it('posts the right body', async () => {
     const fetchMock = mockFetch();
     render(<RequestDialog open onOpenChange={() => {}} />);
