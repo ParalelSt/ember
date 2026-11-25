@@ -100,7 +100,7 @@ describe('GET /api/playlists/counts on the real PocketBase SDK', () => {
       if (url.pathname.endsWith('/collections/playlists/records')) {
         return json({ page: 1, perPage: 500, totalItems: 4, totalPages: 1, items: ids.map((id) => ({ id })) });
       }
-      const id = /playlist = "(\w+)"/.exec(url.searchParams.get('filter') ?? '')?.[1] ?? '';
+      const id = /playlist = '(\w+)'/.exec(url.searchParams.get('filter') ?? '')?.[1] ?? '';
       return json({ page: 1, perPage: 1, totalItems: totals[id], totalPages: totals[id], items: [] });
     });
     vi.stubGlobal('fetch', stub);
